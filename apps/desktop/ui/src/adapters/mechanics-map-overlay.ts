@@ -48,6 +48,9 @@ export interface MechanicsMapCanvasPreferences {
   actionsX: number;
   actionsY: number;
   actionsWidth: number;
+  partyX: number;
+  partyY: number;
+  partyWidth: number;
 }
 
 const DEFAULT_PREFERENCES: MechanicsMapCanvasPreferences = {
@@ -70,6 +73,9 @@ const DEFAULT_PREFERENCES: MechanicsMapCanvasPreferences = {
   actionsX: 24,
   actionsY: 680,
   actionsWidth: 520,
+  partyX: 1040,
+  partyY: 48,
+  partyWidth: 360,
 };
 
 export function parseMechanicsMapCanvasPreferences(value: unknown): MechanicsMapCanvasPreferences {
@@ -97,6 +103,9 @@ export function parseMechanicsMapCanvasPreferences(value: unknown): MechanicsMap
     actionsX: finiteBounded(value.actionsX) ? value.actionsX : 24,
     actionsY: finiteBounded(value.actionsY) ? value.actionsY : 680,
     actionsWidth: finitePositive(value.actionsWidth) ? Math.max(280, value.actionsWidth) : 520,
+    partyX: finiteBounded(value.partyX) ? value.partyX : 1040,
+    partyY: finiteBounded(value.partyY) ? value.partyY : 48,
+    partyWidth: finitePositive(value.partyWidth) ? Math.max(260, value.partyWidth) : 360,
   };
 }
 
@@ -123,6 +132,8 @@ export function mountMechanicsMapOverlay(
   let playerResize: { pointerId: number; x: number; width: number } | null = null;
   let actionsDrag: { pointerId: number; x: number; y: number; left: number; top: number } | null = null;
   let actionsResize: { pointerId: number; x: number; width: number } | null = null;
+  let partyDrag: { pointerId: number; x: number; y: number; left: number; top: number } | null = null;
+  let partyResize: { pointerId: number; x: number; width: number } | null = null;
   let frame: number | null = null;
   let image: HTMLImageElement | null = null;
   let imageUrl: string | null = null;
@@ -210,6 +221,17 @@ export function mountMechanicsMapOverlay(
   actionsResizeHandle.title = "Resize action cooldowns";
   actionsResizeHandle.setAttribute("aria-label", "Resize action cooldowns");
   actionsPanel.append(actionsToolbar, actionsBody, actionsResizeHandle);
+  const partyPanel = element("section", "party-frame-overlay-runtime");
+  const partyToolbar = element("header", "party-frame-overlay-toolbar");
+  const partyTitle = text("strong", "Party");
+  const partyStatus = text("span", "WAITING");
+  partyToolbar.append(partyTitle, partyStatus);
+  const partyBody = element("section", "party-frame-overlay-body");
+  const partyResizeHandle = element("button", "party-frame-overlay-resize");
+  partyResizeHandle.type = "button";
+  partyResizeHandle.title = "Resize party frames";
+  partyResizeHandle.setAttribute("aria-label", "Resize party frames");
+  partyPanel.append(partyToolbar, partyBody, partyResizeHandle);
   const targetPanel = element("section", "target-frame-overlay-runtime");
   const targetToolbar = element("header", "target-frame-overlay-toolbar");
   const targetTitle = text("strong", "Current target");
@@ -221,7 +243,7 @@ export function mountMechanicsMapOverlay(
   targetResizeHandle.title = "Resize target frame";
   targetResizeHandle.setAttribute("aria-label", "Resize target frame");
   targetPanel.append(targetToolbar, targetBody, targetResizeHandle);
-  root.append(panel, playerPanel, actionsPanel, targetPanel);
+  root.append(panel, playerPanel, actionsPanel, partyPanel, targetPanel);
   container.replaceChildren(root);
   applyModuleGeometry();
 
@@ -277,6 +299,25 @@ export function mountMechanicsMapOverlay(
   actionsResizeHandle.addEventListener("pointermove", resizeActions);
   actionsResizeHandle.addEventListener("pointerup", endActionsResize);
   actionsResizeHandle.addEventListener("pointercancel", endActionsResize);
+  partyToolbar.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    partyDrag = {
+      pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+      left: preferences.partyX, top: preferences.partyY,
+    };
+    partyToolbar.setPointerCapture(event.pointerId);
+  });
+  partyToolbar.addEventListener("pointermove", moveParty);
+  partyToolbar.addEventListener("pointerup", endPartyDrag);
+  partyToolbar.addEventListener("pointercancel", endPartyDrag);
+  partyResizeHandle.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    partyResize = { pointerId: event.pointerId, x: event.clientX, width: preferences.partyWidth };
+    partyResizeHandle.setPointerCapture(event.pointerId);
+  });
+  partyResizeHandle.addEventListener("pointermove", resizeParty);
+  partyResizeHandle.addEventListener("pointerup", endPartyResize);
+  partyResizeHandle.addEventListener("pointercancel", endPartyResize);
   targetToolbar.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
     targetDrag = {
@@ -347,6 +388,7 @@ export function mountMechanicsMapOverlay(
     loadBackground(snapshot.background_asset_url);
     renderPlayer(snapshot);
     renderActions(snapshot);
+    renderParty(snapshot);
     renderTarget(snapshot);
     scheduleDraw();
   }
@@ -416,6 +458,41 @@ export function mountMechanicsMapOverlay(
     if (actionsTimer === null) return;
     window.clearInterval(actionsTimer);
     actionsTimer = null;
+  }
+
+  function renderParty(snapshot: MechanicsMapSnapshot): void {
+    partyBody.replaceChildren();
+    partyStatus.textContent = snapshot.party.length === 0 ? "WAITING" : `${snapshot.party.length} JOINED`;
+    partyStatus.dataset.state = snapshot.party.length === 0 ? "waiting" : "live";
+    if (snapshot.party.length === 0) {
+      partyBody.append(text("p", "Waiting for rostered party actors…", "party-frame-overlay-empty"));
+      return;
+    }
+    for (const member of snapshot.party) {
+      const row = element("article", "party-frame-overlay-member");
+      row.dataset.dead = String(member.dead);
+      row.dataset.stale = String(member.stale);
+      const identity = element("div", "party-frame-overlay-identity");
+      identity.append(
+        text("strong", member.display_name ?? `Player ${member.actor_id}`),
+        text("span", member.dead ? "DEFEATED" : member.stale ? "STALE" : formatTargetHealth(member.current_hp, member.max_hp)),
+      );
+      const health = element("div", "party-frame-overlay-health");
+      health.dataset.observed = String(member.hp_percent !== null);
+      const healthFill = element("span");
+      healthFill.style.width = `${member.hp_percent ?? 0}%`;
+      health.append(healthFill);
+      row.append(identity, health);
+      if (member.current_shield !== null || member.max_shield !== null) {
+        const shield = element("div", "party-frame-overlay-shield");
+        shield.dataset.observed = String(member.shield_percent !== null);
+        const shieldFill = element("span");
+        shieldFill.style.width = `${member.shield_percent ?? 0}%`;
+        shield.append(shieldFill);
+        row.append(shield);
+      }
+      partyBody.append(row);
+    }
   }
 
   function renderPlayer(snapshot: MechanicsMapSnapshot): void {
@@ -706,6 +783,12 @@ export function mountMechanicsMapOverlay(
     actionsPanel.style.left = `${preferences.actionsX}px`;
     actionsPanel.style.top = `${preferences.actionsY}px`;
     actionsPanel.style.width = `${actionsWidth}px`;
+    const partyWidth = Math.min(window.innerWidth, preferences.partyWidth);
+    preferences.partyX = Math.min(Math.max(0, window.innerWidth - partyWidth), Math.max(0, preferences.partyX));
+    preferences.partyY = Math.min(Math.max(0, window.innerHeight - 96), Math.max(0, preferences.partyY));
+    partyPanel.style.left = `${preferences.partyX}px`;
+    partyPanel.style.top = `${preferences.partyY}px`;
+    partyPanel.style.width = `${partyWidth}px`;
   }
 
   function moveModule(event: PointerEvent): void {
@@ -781,6 +864,31 @@ export function mountMechanicsMapOverlay(
   function endActionsResize(event: PointerEvent): void {
     if (actionsResize?.pointerId !== event.pointerId) return;
     actionsResize = null;
+    savePreferences();
+  }
+
+  function moveParty(event: PointerEvent): void {
+    if (partyDrag?.pointerId !== event.pointerId) return;
+    preferences.partyX = partyDrag.left + event.clientX - partyDrag.x;
+    preferences.partyY = partyDrag.top + event.clientY - partyDrag.y;
+    applyModuleGeometry();
+  }
+
+  function endPartyDrag(event: PointerEvent): void {
+    if (partyDrag?.pointerId !== event.pointerId) return;
+    partyDrag = null;
+    savePreferences();
+  }
+
+  function resizeParty(event: PointerEvent): void {
+    if (partyResize?.pointerId !== event.pointerId) return;
+    preferences.partyWidth = Math.max(260, partyResize.width + event.clientX - partyResize.x);
+    applyModuleGeometry();
+  }
+
+  function endPartyResize(event: PointerEvent): void {
+    if (partyResize?.pointerId !== event.pointerId) return;
+    partyResize = null;
     savePreferences();
   }
 

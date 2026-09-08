@@ -32,7 +32,7 @@ export interface MechanicsMapSignal {
 }
 
 export interface MechanicsMapSnapshot {
-  schema_version: 6;
+  schema_version: 7;
   revision: number;
   session_id: string | null;
   client_build: string | null;
@@ -50,6 +50,7 @@ export interface MechanicsMapSnapshot {
   local_actor_id: number | null;
   local_position_observed: boolean;
   player: PlayerFrameSnapshot | null;
+  party: readonly PlayerFrameSnapshot[];
   action_controls: readonly ActionControlSnapshot[];
   encounter_pack: string | null;
   encounter_pack_reviewed: boolean;
@@ -69,7 +70,7 @@ export interface MechanicsMapSnapshot {
 }
 
 export interface MechanicsMapUpdate {
-  schema_version: 6;
+  schema_version: 7;
   revision: number;
   snapshot: MechanicsMapSnapshot;
 }
@@ -351,7 +352,7 @@ function projectWorldRect(value: MechanicsMapSnapshot, x: number, z: number, hal
 }
 
 export function parseMechanicsMapUpdate(value: unknown): MechanicsMapUpdate {
-  if (!record(value) || value.schema_version !== 6 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
+  if (!record(value) || value.schema_version !== 7 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
     throw new Error("The local host returned an invalid Mechanics Map update.");
   }
   return value as unknown as MechanicsMapUpdate;
@@ -412,7 +413,7 @@ export function projectMechanicsMapPoint(
 }
 
 function snapshot(value: unknown): value is MechanicsMapSnapshot {
-  return record(value) && value.schema_version === 6 &&
+  return record(value) && value.schema_version === 7 &&
     nonnegativeInteger(value.revision) && nullableString(value.session_id) && nullableString(value.client_build) &&
     nullableInteger(value.scene_id) && nullableInteger(value.map_id) && nullableString(value.scene_name) &&
     ["player_relative_radar", "absolute_scene_map"].includes(String(value.map_model)) && finitePositive(value.world_radius) &&
@@ -421,6 +422,7 @@ function snapshot(value: unknown): value is MechanicsMapSnapshot {
     nullablePositive(value.map_span_x) && nullablePositive(value.map_span_z) &&
     nullableString(value.background_asset_url) && nullableInteger(value.local_actor_id) &&
     typeof value.local_position_observed === "boolean" && (value.player === null || player(value.player)) &&
+    Array.isArray(value.party) && value.party.length <= 39 && value.party.every(player) &&
     Array.isArray(value.action_controls) && value.action_controls.length <= 48 && value.action_controls.every(actionControl) &&
     nullableString(value.encounter_pack) &&
     typeof value.encounter_pack_reviewed === "boolean" && (value.target === null || target(value.target)) &&

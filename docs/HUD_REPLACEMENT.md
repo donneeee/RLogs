@@ -1,9 +1,10 @@
 # Modular HUD replacement
 
 Status: active product track. The screen-sized native Overlay Canvas, its
-packet-backed Mechanics Map, and the first current-target frame are
-implemented; additional HUD modules remain disabled until their authoritative
-event and asset contracts pass the gates below.
+packet-backed Mechanics Map, current-target frame, local-player frame, action
+cooldowns, and party frames are implemented; additional HUD modules remain
+disabled until their authoritative event and asset contracts pass the gates
+below.
 
 ## Product goal
 
@@ -118,12 +119,13 @@ editing. The same canvas/window contract is reserved for future target,
 status, action, party, objective, and chat modules rather than creating a new
 native window for each feature.
 
-The target frame is the second module on that same canvas. It has independent
-persisted position and width, while canvas edit/click-through lock remains a
-single recovery-safe setting for the transparent native window. Target select
-and clear, HP state, debuff lifecycle, actor despawn, scene changes, and stale
+The target frame, local-player frame, action-cooldown panel, and party frames
+share that canvas. Each has independent persisted position and width, while
+canvas edit/click-through lock remains a single recovery-safe setting for the
+transparent native window. Target selection, player and roster identity, HP,
+shield, debuff and cooldown lifecycle, actor despawn, scene changes, and stale
 state are projected from the same bounded live feed as the map.
-Long-poll timeouts that carry no new revision do not rebuild either module, so
+Long-poll timeouts that carry no new revision do not rebuild any module, so
 their DOM, countdown anchors, and native overlay remain visually stable.
 
 The map uses the locally compiled in-game map as the visual base and keeps

@@ -11,7 +11,7 @@ use rlogs_events::{
 };
 use serde::{Deserialize, Serialize};
 
-pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 6;
+pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 7;
 const ENTITY_STALE_AFTER_MICROS: u64 = 5_000_000;
 const CAST_STALE_AFTER_MICROS: u64 = 8_000_000;
 const MAX_ENTITIES: usize = 192;
@@ -19,6 +19,7 @@ const MAX_MECHANICS: usize = 96;
 const MAX_TARGET_DEBUFFS: usize = 24;
 const MAX_TARGET_STATUSES: usize = 4_096;
 const MAX_LOCAL_COOLDOWNS: usize = 48;
+const MAX_PARTY_FRAMES: usize = 39;
 const MINIMAP_WORLD_RADIUS: f32 = 140.0;
 // Exact build-locked `EAttrType` IDs decoded by the BPSR integration.
 const ATTR_TARGET_ID: i32 = 0x1e;
@@ -50,6 +51,9 @@ pub struct MechanicsMapSnapshot {
     /// the same entity-attribute lifecycle as the target frame; absent packet
     /// values remain unavailable instead of being filled from a profile.
     pub player: Option<PlayerFrameSnapshot>,
+    /// Packet-rostered party members that currently have a joined actor.
+    /// Missing actors remain absent instead of borrowing combat rows.
+    pub party: Vec<PlayerFrameSnapshot>,
     /// Latest packet-observed skill cooldown state for the local character.
     /// These are HUD controls only: they do not synthesize input or infer a
     /// cooldown from damage hits.
@@ -89,6 +93,7 @@ impl Default for MechanicsMapSnapshot {
             local_actor_id: None,
             local_position_observed: false,
             player: None,
+            party: Vec::new(),
             action_controls: Vec::new(),
             encounter_pack: None,
             encounter_pack_reviewed: false,
@@ -761,6 +766,38 @@ impl MechanicsMapProjector {
                 dead: entity.dead,
                 stale: now.saturating_sub(entity.last_observed_micros) > ENTITY_STALE_AFTER_MICROS,
             });
+        let mut party = self
+            .entities
+            .values()
+            .filter(|entity| {
+                Some(entity.actor.actor_id.0) != local_actor_id
+                    && entity
+                        .character_id
+                        .as_ref()
+                        .is_some_and(|id| self.party_character_ids.contains(id))
+            })
+            .map(|entity| PlayerFrameSnapshot {
+                actor_id: entity.actor.actor_id.0,
+                entity_uuid: entity.actor.entity_uuid.0,
+                display_name: entity.display_name.clone(),
+                current_hp: entity.current_hp,
+                max_hp: entity.max_hp,
+                hp_percent: observed_percent(entity.current_hp, entity.max_hp),
+                current_shield: entity.current_shield,
+                max_shield: entity.max_shield,
+                shield_percent: observed_percent(entity.current_shield, entity.max_shield),
+                dead: entity.dead,
+                stale: now.saturating_sub(entity.last_observed_micros) > ENTITY_STALE_AFTER_MICROS,
+            })
+            .collect::<Vec<_>>();
+        party.sort_by(|left, right| {
+            left.display_name
+                .as_deref()
+                .unwrap_or_default()
+                .cmp(right.display_name.as_deref().unwrap_or_default())
+                .then(left.actor_id.cmp(&right.actor_id))
+        });
+        party.truncate(MAX_PARTY_FRAMES);
         let mut action_controls = local_actor_id
             .into_iter()
             .flat_map(|actor_id| {
@@ -1000,6 +1037,7 @@ impl MechanicsMapProjector {
             local_actor_id,
             local_position_observed,
             player,
+            party,
             action_controls,
             encounter_pack: pack,
             encounter_pack_reviewed: pack.is_some(),
@@ -1977,6 +2015,124 @@ mod tests {
         assert_eq!(control.cooldown_type, Some(2));
         assert_eq!(control.charge_count, Some(1));
         assert_eq!(control.observed_at_micros, 2_000_000);
+    }
+
+    #[test]
+    fn party_frames_require_rostered_joined_actors_and_packet_vitals() {
+        let mut projector = MechanicsMapProjector::default();
+        let region = RegionIdentity {
+            deployment_id: "global".into(),
+            region_id: "north-america".into(),
+            realm_id: None,
+            world_id: None,
+        };
+        projector.observe(&envelope(
+            1,
+            CanonicalEvent::CharacterProfileObserved {
+                profile: Box::new(GameProfileEvent {
+                    game_plugin_id: "game.rlogs.blue-protocol-star-resonance".into(),
+                    payload_schema_id: "test".into(),
+                    payload_schema_version: 1,
+                    character: CharacterIdentity {
+                        region: region.clone(),
+                        character_id: "42".into(),
+                    },
+                    payload: serde_json::json!({}),
+                }),
+            },
+        ));
+        projector.observe(&envelope(
+            2,
+            CanonicalEvent::PartyChanged {
+                members: vec![CharacterIdentity {
+                    region,
+                    character_id: "84".into(),
+                }],
+            },
+        ));
+        let local = entity(7, 42 << 16);
+        let teammate = entity(8, 84 << 16);
+        projector.observe(&envelope(
+            3,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 3,
+                time: EventTime {
+                    observed_micros: 3_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance {
+                    confidence: EvidenceConfidence::Exact,
+                    source: EvidenceSource::Wire {
+                        capture_sequence: 3,
+                        connection_id: 1,
+                        stream_id: 1,
+                    },
+                },
+                kind: TimelineEventKind::Actor(actor_event(local, ActorKind::Player, Some("42"))),
+            }),
+        ));
+        let mut teammate_actor = actor_event(teammate, ActorKind::Player, Some("84"));
+        teammate_actor.display_name = Some("Teammate".into());
+        projector.observe(&envelope(
+            4,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 4,
+                time: EventTime {
+                    observed_micros: 4_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance {
+                    confidence: EvidenceConfidence::Exact,
+                    source: EvidenceSource::Wire {
+                        capture_sequence: 4,
+                        connection_id: 1,
+                        stream_id: 1,
+                    },
+                },
+                kind: TimelineEventKind::Actor(teammate_actor),
+            }),
+        ));
+        projector.observe(&envelope(
+            5,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 5,
+                time: EventTime {
+                    observed_micros: 5_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance {
+                    confidence: EvidenceConfidence::Exact,
+                    source: EvidenceSource::Wire {
+                        capture_sequence: 5,
+                        connection_id: 1,
+                        stream_id: 1,
+                    },
+                },
+                kind: TimelineEventKind::EntityAttributes(EntityAttributeEvent {
+                    actor: teammate,
+                    update_kind: EntityAttributeUpdateKind::Delta,
+                    ownership: None,
+                    attributes: vec![
+                        EntityAttribute {
+                            attribute_id: ATTR_CURRENT_HP,
+                            raw_value: vec![],
+                            decoded: Some(EntityAttributeValue::Integer(750)),
+                        },
+                        EntityAttribute {
+                            attribute_id: ATTR_MAX_HP_FINAL,
+                            raw_value: vec![],
+                            decoded: Some(EntityAttributeValue::Integer(1_000)),
+                        },
+                    ],
+                }),
+            }),
+        ));
+
+        let snapshot = projector.snapshot();
+        assert_eq!(snapshot.player.expect("local frame").actor_id, 7);
+        assert_eq!(snapshot.party.len(), 1);
+        assert_eq!(snapshot.party[0].display_name.as_deref(), Some("Teammate"));
+        assert_eq!(snapshot.party[0].hp_percent, Some(75.0));
     }
 
     #[test]
