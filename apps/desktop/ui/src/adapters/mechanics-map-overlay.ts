@@ -26,6 +26,7 @@ export interface MechanicsMapOverlayDependencies {
   hide(): Promise<void>;
   setInteractive(interactive: boolean): Promise<void>;
   onInteractivity(handler: (interactive: boolean) => void): Promise<() => void>;
+  onFocusHeld(handler: (held: boolean) => void): Promise<() => void>;
 }
 
 export interface MechanicsMapCanvasPreferences {
@@ -140,6 +141,7 @@ export function mountMechanicsMapOverlay(
   let imageReady = false;
   let preparingAsset = false;
   let removeInteractivityListener: (() => void) | null = null;
+  let removeFocusHeldListener: (() => void) | null = null;
   let targetTimer: number | null = null;
   let targetRenderedAtMillis = 0;
   let actionsTimer: number | null = null;
@@ -354,6 +356,10 @@ export function mountMechanicsMapOverlay(
   void dependencies.onInteractivity((interactive) => {
     if (interactive && preferences.locked) void setLocked(false);
   }).then((remove) => { removeInteractivityListener = remove; });
+  void dependencies.onFocusHeld((held) => {
+    root.dataset.focusHeld = String(held);
+    actionsPanel.dataset.focused = String(held);
+  }).then((remove) => { removeFocusHeldListener = remove; });
   void connect();
 
   async function connect(): Promise<void> {
@@ -783,6 +789,9 @@ export function mountMechanicsMapOverlay(
     actionsPanel.style.left = `${preferences.actionsX}px`;
     actionsPanel.style.top = `${preferences.actionsY}px`;
     actionsPanel.style.width = `${actionsWidth}px`;
+    const actionsHorizontalAnchor = preferences.actionsX + actionsWidth / 2 > window.innerWidth / 2 ? "right" : "left";
+    const actionsVerticalAnchor = preferences.actionsY + actionsPanel.offsetHeight / 2 > window.innerHeight / 2 ? "bottom" : "top";
+    actionsPanel.style.transformOrigin = `${actionsHorizontalAnchor} ${actionsVerticalAnchor}`;
     const partyWidth = Math.min(window.innerWidth, preferences.partyWidth);
     preferences.partyX = Math.min(Math.max(0, window.innerWidth - partyWidth), Math.max(0, preferences.partyX));
     preferences.partyY = Math.min(Math.max(0, window.innerHeight - 96), Math.max(0, preferences.partyY));
@@ -926,6 +935,7 @@ export function mountMechanicsMapOverlay(
       resizeObserver.disconnect();
       window.removeEventListener("resize", handleScreenResize);
       removeInteractivityListener?.();
+      removeFocusHeldListener?.();
       image = null;
       root.remove();
     },

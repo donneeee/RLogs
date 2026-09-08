@@ -31,6 +31,13 @@ related set without merging their state or rendering code.
 
 ## Controller focus mode
 
+The first focus-mode stage is implemented for the action-cooldown panel.
+Holding controller RB, or Right Ctrl as the keyboard fallback, enlarges that
+panel around its nearest screen-edge anchor and adds the blue focus backing.
+The native host observes physical hold state passively: it does not register,
+consume, inject, repeat, or redirect game input. Per-setup remapping and focus
+groups remain later stages.
+
 The requested FFXI-like focus behavior is a hold action, not a permanent UI
 zoom. Holding a configurable keyboard or controller modifier (RB by default
 for controller setups) activates one configured display group:

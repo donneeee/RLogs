@@ -137,6 +137,10 @@ if (isCombatOverlayRuntime) {
         "overlay-canvas-interactivity",
         ({ payload }) => handler(payload),
       ),
+      onFocusHeld: async (handler) => appWindow.listen<boolean>(
+        "overlay-canvas-focus-held",
+        ({ payload }) => handler(payload),
+      ),
     });
     await invoke("overlay_canvas_ready");
   } catch (error) {

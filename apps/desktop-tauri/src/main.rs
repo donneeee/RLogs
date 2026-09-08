@@ -21,6 +21,12 @@ use windows_sys::Win32::{
         Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW},
     },
     UI::{
+        Input::{
+            KeyboardAndMouse::{GetAsyncKeyState, VK_RCONTROL},
+            XboxController::{
+                XINPUT_GAMEPAD_RIGHT_SHOULDER, XINPUT_STATE, XInputGetState, XUSER_MAX_COUNT,
+            },
+        },
         Shell::ShellExecuteW,
         WindowsAndMessaging::{
             GWL_EXSTYLE, GetForegroundWindow, GetWindowLongPtrW, GetWindowThreadProcessId, SW_HIDE,
@@ -1090,6 +1096,58 @@ fn monitor_overlay_focus_policy(
         .map(|_| ())
 }
 
+#[cfg(windows)]
+fn overlay_focus_hold_is_active() -> bool {
+    // GetAsyncKeyState's high bit is the physical key-down state. Reading it
+    // is passive and does not register, consume, or synthesize a shortcut.
+    let keyboard_held = unsafe { GetAsyncKeyState(i32::from(VK_RCONTROL)) } < 0;
+    let controller_buttons = (0..XUSER_MAX_COUNT).filter_map(|user_index| {
+        let mut state = XINPUT_STATE::default();
+        (unsafe { XInputGetState(user_index, &raw mut state) } == 0)
+            .then_some(state.Gamepad.wButtons)
+    });
+    overlay_focus_hold_from_inputs(
+        keyboard_held,
+        controller_buttons,
+        XINPUT_GAMEPAD_RIGHT_SHOULDER,
+    )
+}
+
+#[cfg(not(windows))]
+fn overlay_focus_hold_is_active() -> bool {
+    false
+}
+
+fn overlay_focus_hold_from_inputs(
+    keyboard_held: bool,
+    controller_buttons: impl IntoIterator<Item = u16>,
+    controller_mask: u16,
+) -> bool {
+    keyboard_held
+        || controller_buttons
+            .into_iter()
+            .any(|buttons| buttons & controller_mask != 0)
+}
+
+fn monitor_overlay_focus_hold(app: tauri::AppHandle) -> std::io::Result<()> {
+    thread::Builder::new()
+        .name("rlogs-overlay-focus-hold".into())
+        .spawn(move || {
+            let mut previous = false;
+            loop {
+                let held = overlay_focus_hold_is_active();
+                if held != previous {
+                    previous = held;
+                    if let Some(window) = app.get_webview_window("overlay-canvas") {
+                        let _ = window.emit("overlay-canvas-focus-held", held);
+                    }
+                }
+                thread::sleep(Duration::from_millis(25));
+            }
+        })
+        .map(|_| ())
+}
+
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     tauri::Builder::default()
         .plugin(
@@ -1140,6 +1198,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             app.manage(host);
             monitor_combat_overlay_activity(app.handle().clone(), combat_observer)?;
             monitor_overlay_focus_policy(app.handle().clone(), game_process_names)?;
+            monitor_overlay_focus_hold(app.handle().clone())?;
             monitor_combat_overlay_renderer(app.handle().clone())?;
             install_global_hotkeys(
                 app.handle(),
@@ -1177,7 +1236,7 @@ mod tests {
     use super::{
         OverlayFocusPolicyDebounce, combat_overlay_damage_started, combat_overlay_health_status,
         combat_overlay_hostile_activity_started, combat_overlay_renderer_is_stale,
-        combat_overlay_should_be_visible, is_overlay_window_label,
+        combat_overlay_should_be_visible, is_overlay_window_label, overlay_focus_hold_from_inputs,
     };
 
     #[test]
@@ -1301,6 +1360,22 @@ mod tests {
         assert!(is_overlay_window_label("overlay-canvas"));
         assert!(!is_overlay_window_label("main"));
         assert!(!is_overlay_window_label("settings"));
+    }
+
+    #[test]
+    fn focus_hold_accepts_keyboard_or_right_shoulder_without_rewriting_input() {
+        const RIGHT_SHOULDER: u16 = 0x0200;
+        assert!(overlay_focus_hold_from_inputs(true, [], RIGHT_SHOULDER));
+        assert!(overlay_focus_hold_from_inputs(
+            false,
+            [0x0010, RIGHT_SHOULDER],
+            RIGHT_SHOULDER,
+        ));
+        assert!(!overlay_focus_hold_from_inputs(
+            false,
+            [0x0010, 0x0100],
+            RIGHT_SHOULDER,
+        ));
     }
 
     #[test]
