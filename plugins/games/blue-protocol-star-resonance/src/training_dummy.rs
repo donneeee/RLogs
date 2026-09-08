@@ -349,13 +349,9 @@ impl TrainingDummyController {
                         if self.deadline_reached(now) {
                             self.finish();
                             observation.changed = true;
-                        } else if self.player_owner(damage.source.actor_id) != self.locked_player {
-                            self.invalidate("multiple_players", now);
-                            observation.changed = true;
-                        } else if Some(damage.target.actor_id) != self.locked_target {
-                            self.invalidate("multiple_targets", now);
-                            observation.changed = true;
-                        } else {
+                        } else if self.player_owner(damage.source.actor_id) == self.locked_player
+                            && Some(damage.target.actor_id) == self.locked_target
+                        {
                             observation.accept_damage = true;
                             observation.changed = true;
                             self.add_damage(damage.amount);
@@ -721,6 +717,58 @@ mod tests {
         assert_eq!(controller.state().phase, TrainingDummyPhase::Running);
         assert_eq!(controller.state().player_character_id.as_deref(), Some("1"));
         assert_eq!(controller.state().total_damage, 1_000);
+    }
+
+    #[test]
+    fn running_window_ignores_damage_outside_the_locked_player_and_dummy_pair() {
+        let mut factory = factory();
+        let mut controller = TrainingDummyController::default();
+        for event in [
+            emit(
+                &mut factory,
+                1,
+                CanonicalEventDraftKind::WorldChanged(WorldContext {
+                    scene_id: Some(SceneId(GUILD_HALL_SCENE_ID)),
+                    map_id: None,
+                    line_id: None,
+                    scene_instance_id: None,
+                    dungeon_instance_id: None,
+                }),
+            ),
+            emit(&mut factory, 2, actor(1, ActorKind::Player, None)),
+            emit(&mut factory, 3, actor(3, ActorKind::Player, None)),
+            emit(
+                &mut factory,
+                4,
+                actor(2, ActorKind::TrainingDummy, Some(115)),
+            ),
+            emit(
+                &mut factory,
+                5,
+                actor(4, ActorKind::TrainingDummy, Some(122)),
+            ),
+        ] {
+            controller.observe(&event);
+        }
+        controller.observe(&emit_local_profile(&mut factory, 6, "1"));
+        controller.arm();
+
+        controller.observe(&emit(&mut factory, 10, damage(1, 2, 1_000)));
+        let nearby_same_target =
+            controller.observe(&emit(&mut factory, 11, damage(3, 2, 50_000)));
+        let nearby_other_target =
+            controller.observe(&emit(&mut factory, 12, damage(3, 4, 60_000)));
+        let local_other_target =
+            controller.observe(&emit(&mut factory, 13, damage(1, 4, 70_000)));
+        let local_locked_target =
+            controller.observe(&emit(&mut factory, 14, damage(1, 2, 500)));
+
+        assert!(!nearby_same_target.accept_damage);
+        assert!(!nearby_other_target.accept_damage);
+        assert!(!local_other_target.accept_damage);
+        assert!(local_locked_target.accept_damage);
+        assert_eq!(controller.state().phase, TrainingDummyPhase::Running);
+        assert_eq!(controller.state().total_damage, 1_500);
     }
 
     #[test]
