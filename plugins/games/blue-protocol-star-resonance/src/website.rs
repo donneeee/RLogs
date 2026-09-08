@@ -164,7 +164,10 @@ mod tests {
             "9007199254740993"
         );
         assert_eq!(request.payload.routing["realm"], "asteria");
-        assert_eq!(request.payload.body["character"]["region"]["realm_id"], "asteria");
+        assert_eq!(
+            request.payload.body["character"]["region"]["realm_id"],
+            "asteria"
+        );
         assert_eq!(request.payload.body["talent_progress"]["total_points"], 10);
         assert!(request.payload.body.get("account_id").is_none());
     }
