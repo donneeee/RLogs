@@ -8491,10 +8491,11 @@ impl RuntimeController {
                                     }
                                 }
                                 let next_world_scene_id = world_scene_id(&event.event);
-                                let departed_live_dungeon = live_dungeon_active
-                                    && live_dungeon_scene_id
-                                        .zip(next_world_scene_id)
-                                        .is_some_and(|(active, next)| active != next);
+                                let departed_live_dungeon = live_dungeon_scene_departed(
+                                    live_dungeon_active,
+                                    &mut live_dungeon_scene_id,
+                                    next_world_scene_id,
+                                );
                                 if event.event.topic() == EventTopic::World {
                                     last_world_context_event = Some(event.clone());
                                 }
@@ -10060,6 +10061,23 @@ fn world_scene_id(event: &CanonicalEvent) -> Option<i32> {
         CanonicalEvent::WorldChanged(world) => world.scene_id.map(|scene| scene.0),
         _ => None,
     }
+}
+
+fn live_dungeon_scene_departed(
+    active: bool,
+    dungeon_scene_id: &mut Option<i32>,
+    next_world_scene_id: Option<i32>,
+) -> bool {
+    if !active {
+        return false;
+    }
+    if dungeon_scene_id.is_none() && next_world_scene_id.is_some() {
+        *dungeon_scene_id = next_world_scene_id;
+        return false;
+    }
+    dungeon_scene_id
+        .zip(next_world_scene_id)
+        .is_some_and(|(dungeon, next)| dungeon != next)
 }
 
 fn begin_live_encounter_preserving_world(
@@ -14900,6 +14918,30 @@ mod tests {
             },
         });
         assert!(!closes_live_run_history(&nonterminal));
+    }
+
+    #[test]
+    fn live_dungeon_latches_a_late_scene_then_detects_town_departure() {
+        let mut scene_id = None;
+        assert!(!live_dungeon_scene_departed(
+            true,
+            &mut scene_id,
+            Some(1_633)
+        ));
+        assert_eq!(scene_id, Some(1_633));
+        assert!(!live_dungeon_scene_departed(
+            true,
+            &mut scene_id,
+            Some(1_633)
+        ));
+        assert!(live_dungeon_scene_departed(true, &mut scene_id, Some(8)));
+    }
+
+    #[test]
+    fn inactive_live_dungeon_does_not_latch_world_context() {
+        let mut scene_id = None;
+        assert!(!live_dungeon_scene_departed(false, &mut scene_id, Some(8)));
+        assert_eq!(scene_id, None);
     }
 
     #[test]

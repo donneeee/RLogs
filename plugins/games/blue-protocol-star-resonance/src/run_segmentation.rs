@@ -95,6 +95,18 @@ impl DungeonRunSegmenter {
                 CanonicalEvent::WorldChanged(world) => world.scene_id.map(|scene| scene.0),
                 _ => None,
             };
+            // A capture can observe the dungeon Entered/Started packet before
+            // the first usable WorldChanged packet. In that ordering the
+            // segment used to keep a null scene for its entire lifetime, so a
+            // later return to town could never satisfy the scene-departure
+            // boundary and town traffic leaked into the sealed run. Bind the
+            // first observed scene to an active scene-less segment; subsequent
+            // world changes can then close it at the actual departure.
+            if let (Some(active), Some(scene_id)) = (&mut self.active, next_world_scene_id)
+                && active.scene_id.is_none()
+            {
+                active.scene_id = Some(scene_id);
+            }
             let exits_active_scene = self
                 .active
                 .as_ref()
@@ -672,6 +684,37 @@ mod tests {
                 ..
             }
         ));
+        assert!(!segmenter.is_recording());
+    }
+
+    #[test]
+    fn scene_less_entry_latches_first_world_and_seals_on_return_to_town() {
+        let mut factory = factory();
+        let mut segmenter = DungeonRunSegmenter::default();
+
+        // Some client builds deliver Entered before their first usable world
+        // context. That must not leave the segment permanently scene-less.
+        let entry = dungeon(&mut factory, 1, DungeonEventKind::Entered, "run-1");
+        segmenter.observe_batch([entry]);
+
+        let dungeon_world = world(&mut factory, 2, 1_633);
+        let dungeon_actions = segmenter.observe_batch([dungeon_world]);
+        assert!(
+            dungeon_actions
+                .iter()
+                .all(|action| !matches!(action, DungeonSegmentAction::Seal { .. }))
+        );
+        assert!(segmenter.is_recording());
+
+        let town_world = world(&mut factory, 3, 8);
+        let town_time = town_world.time;
+        let town_actions = segmenter.observe_batch([town_world]);
+        let seal = town_actions.last().expect("town departure seal");
+        let DungeonSegmentAction::Seal { reason, boundary } = seal else {
+            panic!("last action was not a seal");
+        };
+        assert_eq!(*reason, DungeonSegmentEndReason::SceneDeparted);
+        assert_eq!(boundary.time, town_time);
         assert!(!segmenter.is_recording());
     }
 
