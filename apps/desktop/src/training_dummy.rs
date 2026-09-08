@@ -32,6 +32,7 @@ pub struct TrainingDummyState {
     pub player_name: Option<String>,
     pub class_id: Option<i32>,
     pub specialization_id: Option<i32>,
+    pub observed_party_size: Option<usize>,
     pub target_actor_id: Option<String>,
     pub target_monster_id: Option<i64>,
     pub started_micros: Option<u64>,
@@ -78,6 +79,7 @@ impl Default for TrainingDummyState {
             player_name: None,
             class_id: None,
             specialization_id: None,
+            observed_party_size: None,
             target_actor_id: None,
             target_monster_id: None,
             started_micros: None,
@@ -114,6 +116,7 @@ pub struct TrainingDummyController {
     state: TrainingDummyState,
     actors: HashMap<ActorId, ActorEvidence>,
     active_statuses: HashSet<(ActorId, ActorId, StatusEffectId)>,
+    observed_party_size: Option<usize>,
 }
 
 impl Default for TrainingDummyController {
@@ -122,6 +125,7 @@ impl Default for TrainingDummyController {
             state: TrainingDummyState::idle(None),
             actors: HashMap::new(),
             active_statuses: HashSet::new(),
+            observed_party_size: None,
         }
     }
 }
@@ -133,7 +137,11 @@ impl TrainingDummyController {
 
     pub fn arm(&mut self) {
         self.state = TrainingDummyState::armed(self.state.scene_id);
+        self.state.observed_party_size = self.observed_party_size;
         self.active_statuses.clear();
+        if self.observed_party_size.is_some_and(|size| size > 1) {
+            self.invalidate("party_not_solo", 0);
+        }
     }
 
     pub fn disarm(&mut self) {
@@ -162,6 +170,30 @@ impl TrainingDummyController {
         }
 
         let CanonicalEvent::Timeline(timeline) = &event.event else {
+            let party_size = match &event.event {
+                CanonicalEvent::PartyRosterObserved(roster) => match &roster.observation {
+                    rlogs_events::PartyRosterObservation::FullSnapshot { members, .. } => {
+                        Some(members.len())
+                    }
+                    rlogs_events::PartyRosterObservation::Dissolved => Some(0),
+                    _ => None,
+                },
+                CanonicalEvent::PartyChanged { members } => Some(members.len()),
+                _ => None,
+            };
+            if let Some(party_size) = party_size {
+                self.observed_party_size = Some(party_size);
+                self.state.observed_party_size = Some(party_size);
+                observation.changed = true;
+                if party_size > 1
+                    && matches!(
+                        self.state.phase,
+                        TrainingDummyPhase::Armed | TrainingDummyPhase::Running
+                    )
+                {
+                    self.invalidate("party_not_solo", event.time.observed_micros);
+                }
+            }
             return observation;
         };
         match &timeline.kind {
