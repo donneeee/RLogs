@@ -475,6 +475,7 @@ export function mountMechanicsMapOverlay(
   void dependencies.onFocusHeld((held) => {
     root.dataset.focusHeld = String(held);
     actionsPanel.dataset.focused = String(held);
+    playerPanel.dataset.focused = String(held);
   }).then((remove) => { removeFocusHeldListener = remove; });
   void connect();
 
@@ -828,7 +829,26 @@ export function mountMechanicsMapOverlay(
       entry.append(item);
       statuses.append(entry);
     }
-    playerBody.replaceChildren(identity, vitals, statuses);
+    const resources = element("div", "player-resource-overlay-list");
+    resources.setAttribute("aria-label", "Packet-observed class resources");
+    for (const resource of snapshot.resources) {
+      const resourceRow = element("section", "player-resource-overlay-row");
+      resourceRow.dataset.kind = resource.kind;
+      const resourceIdentity = element("div", "player-resource-overlay-identity");
+      resourceIdentity.append(
+        text("strong", resource.label),
+        text("span", `${resource.current.toLocaleString()} / ${resource.max.toLocaleString()}`),
+      );
+      const resourceTrack = element("div", "player-resource-overlay-track");
+      const resourceFill = element("span");
+      resourceFill.style.width = `${Math.max(0, Math.min(100, resource.percent ?? 0))}%`;
+      resourceTrack.dataset.observed = String(resource.percent !== null);
+      resourceTrack.append(resourceFill);
+      resourceRow.append(resourceIdentity, resourceTrack);
+      resources.append(resourceRow);
+    }
+    resources.hidden = snapshot.resources.length === 0;
+    playerBody.replaceChildren(identity, vitals, statuses, resources);
     playerRenderedAtMillis = performance.now();
     updatePlayerTimers();
     if (player.statuses.some((effect) => effect.remaining_millis !== null)) {

@@ -2,7 +2,7 @@
 
 Status: active product track. The screen-sized native Overlay Canvas, its
 packet-backed Mechanics Map, current-target frame, local-player frame with
-packet-backed status effects, action cooldowns, party frames, and a dungeon
+packet-backed status effects and class resources, action cooldowns, party frames, and a dungeon
 tracker with an authoritative pull clock, plus reviewed mechanic alerts, are
 implemented; additional HUD modules remain
 disabled until their authoritative event and asset contracts pass the gates
@@ -33,9 +33,10 @@ related set without merging their state or rendering code.
 
 ## Controller focus mode
 
-The first focus-mode stage is implemented for the action-cooldown panel.
-Holding controller RB, or Right Ctrl as the keyboard fallback, enlarges that
-panel around its nearest screen-edge anchor and adds the blue focus backing.
+The first focus-mode stage is implemented for the action-cooldown and
+local-player panels. Holding controller RB, or Right Ctrl as the keyboard
+fallback, enlarges those panels around their nearest screen-edge anchors and
+adds the blue focus backing.
 The native host observes physical hold state passively: it does not register,
 consume, inject, repeat, or redirect game input. Per-setup remapping and focus
 groups remain later stages.
@@ -83,6 +84,15 @@ renders effects whose exact current-build game icon belongs to a buff atlas.
 It shows the game icon, localized name, stack count, packet source, and a local
 countdown derived from the packet duration. Debuff-atlas and unknown effects
 remain absent rather than being mislabeled as player buffs.
+
+The frame also exposes the reviewed class-resource pairs used by the current
+Global classes: Blade Intent and Thunder Sigil, Energy and Sharpness, Flame
+Soul and Frenzy, and Energy and Flower. Each gauge requires both its exact
+current and maximum resource ID in equal-length packet arrays. Unknown IDs,
+partial arrays, unsupported classes, and missing maxima remain absent instead
+of being guessed into a percentage. The gauge treatment is native CSS for now;
+game-extracted art and Verdant Oracle's separate bloom-rotation presentation
+remain gated follow-up work.
 
 Parser Health separately retains the current-build local skill-request route
 count, successful decodes, decode failures, and emitted canonical cast starts.

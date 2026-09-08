@@ -32,7 +32,7 @@ export interface MechanicsMapSignal {
 }
 
 export interface MechanicsMapSnapshot {
-  schema_version: 11;
+  schema_version: 12;
   revision: number;
   session_id: string | null;
   client_build: string | null;
@@ -52,6 +52,7 @@ export interface MechanicsMapSnapshot {
   player: PlayerFrameSnapshot | null;
   party: readonly PlayerFrameSnapshot[];
   action_controls: readonly ActionControlSnapshot[];
+  resources: readonly ResourceHudSnapshot[];
   encounter_pack: string | null;
   encounter_pack_reviewed: boolean;
   target: TargetFrameSnapshot | null;
@@ -71,7 +72,7 @@ export interface MechanicsMapSnapshot {
 }
 
 export interface MechanicsMapUpdate {
-  schema_version: 11;
+  schema_version: 12;
   revision: number;
   snapshot: MechanicsMapSnapshot;
 }
@@ -115,6 +116,16 @@ export interface ActionControlSnapshot {
   cooldown_type: number | null;
   charge_count: number | null;
   observed_at_micros: number;
+}
+
+export interface ResourceHudSnapshot {
+  kind: "bar" | "charges";
+  label: string;
+  current_id: number;
+  max_id: number;
+  current: number;
+  max: number;
+  percent: number | null;
 }
 
 export interface PlayerFrameSnapshot {
@@ -383,7 +394,7 @@ function projectWorldRect(value: MechanicsMapSnapshot, x: number, z: number, hal
 }
 
 export function parseMechanicsMapUpdate(value: unknown): MechanicsMapUpdate {
-  if (!record(value) || value.schema_version !== 11 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
+  if (!record(value) || value.schema_version !== 12 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
     throw new Error("The local host returned an invalid Mechanics Map update.");
   }
   return value as unknown as MechanicsMapUpdate;
@@ -455,7 +466,7 @@ export function projectMechanicsMapPoint(
 }
 
 function snapshot(value: unknown): value is MechanicsMapSnapshot {
-  return record(value) && value.schema_version === 11 &&
+  return record(value) && value.schema_version === 12 &&
     nonnegativeInteger(value.revision) && nullableString(value.session_id) && nullableString(value.client_build) &&
     nullableInteger(value.scene_id) && nullableInteger(value.map_id) && nullableString(value.scene_name) &&
     ["player_relative_radar", "absolute_scene_map"].includes(String(value.map_model)) && finitePositive(value.world_radius) &&
@@ -466,12 +477,20 @@ function snapshot(value: unknown): value is MechanicsMapSnapshot {
     typeof value.local_position_observed === "boolean" && (value.player === null || player(value.player)) &&
     Array.isArray(value.party) && value.party.length <= 39 && value.party.every(player) &&
     Array.isArray(value.action_controls) && value.action_controls.length <= 48 && value.action_controls.every(actionControl) &&
+    Array.isArray(value.resources) && value.resources.length <= 8 && value.resources.every(resourceHud) &&
     nullableString(value.encounter_pack) &&
     typeof value.encounter_pack_reviewed === "boolean" && (value.target === null || target(value.target)) &&
     (value.dungeon === null || dungeon(value.dungeon)) &&
     Array.isArray(value.entities) && value.entities.every(entity) &&
     Array.isArray(value.mechanics) && value.mechanics.every(signal) && Array.isArray(value.markers) &&
     nullableString(value.data_gap) && nullableInteger(value.last_event_sequence) && nullableInteger(value.last_observed_micros);
+}
+
+function resourceHud(value: unknown): value is ResourceHudSnapshot {
+  return record(value) && ["bar", "charges"].includes(String(value.kind)) &&
+    typeof value.label === "string" && value.label.length > 0 && value.label.length <= 64 &&
+    nonnegativeInteger(value.current_id) && nonnegativeInteger(value.max_id) &&
+    nonnegativeInteger(value.current) && nonnegativeInteger(value.max) && nullableFinite(value.percent);
 }
 
 function dungeon(value: unknown): value is DungeonHudSnapshot {

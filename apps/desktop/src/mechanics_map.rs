@@ -12,7 +12,7 @@ use rlogs_events::{
 };
 use serde::{Deserialize, Serialize};
 
-pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 11;
+pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 12;
 const ENTITY_STALE_AFTER_MICROS: u64 = 5_000_000;
 const CAST_STALE_AFTER_MICROS: u64 = 8_000_000;
 const MAX_ENTITIES: usize = 192;
@@ -21,6 +21,7 @@ const MAX_TARGET_DEBUFFS: usize = 24;
 const MAX_PLAYER_STATUSES: usize = 24;
 const MAX_TARGET_STATUSES: usize = 4_096;
 const MAX_LOCAL_COOLDOWNS: usize = 48;
+const MAX_RESOURCE_VALUES: usize = 32;
 const MAX_PARTY_FRAMES: usize = 39;
 const MAX_DUNGEON_OBJECTIVES: usize = 32;
 const MINIMAP_WORLD_RADIUS: f32 = 140.0;
@@ -61,6 +62,10 @@ pub struct MechanicsMapSnapshot {
     /// These are HUD controls only: they do not synthesize input or infer a
     /// cooldown from damage hits.
     pub action_controls: Vec<ActionControlSnapshot>,
+    /// Exact local-player class resources from the parallel resource arrays.
+    /// A pair is published only when both its current and maximum IDs were
+    /// observed; mismatched arrays are never zipped or guessed.
+    pub resources: Vec<ResourceHudSnapshot>,
     /// Exact packet-backed dungeon flow and objectives for an independently
     /// movable HUD tracker. Raw values remain raw when their unit or semantic
     /// meaning has not been proven for this build.
@@ -102,6 +107,7 @@ impl Default for MechanicsMapSnapshot {
             player: None,
             party: Vec::new(),
             action_controls: Vec::new(),
+            resources: Vec::new(),
             dungeon: None,
             encounter_pack: None,
             encounter_pack_reviewed: false,
@@ -156,6 +162,17 @@ pub struct MechanicsMapMarker {
     pub x: Option<f32>,
     pub y: Option<f32>,
     pub z: Option<f32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ResourceHudSnapshot {
+    pub kind: &'static str,
+    pub label: &'static str,
+    pub current_id: u32,
+    pub max_id: u32,
+    pub current: u32,
+    pub max: u32,
+    pub percent: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -348,6 +365,8 @@ struct EntityState {
     character_id: Option<String>,
     display_name: Option<String>,
     monster_id: Option<i64>,
+    class_id: Option<i32>,
+    specialization_id: Option<i32>,
     current_hp: Option<i64>,
     max_hp: Option<i64>,
     current_shield: Option<i64>,
@@ -421,6 +440,7 @@ pub struct MechanicsMapProjector {
     attack_targets: BTreeMap<u64, i64>,
     target_statuses: BTreeMap<(u64, i64), TargetStatusState>,
     cooldowns: BTreeMap<(u64, i64), CooldownState>,
+    resource_values: BTreeMap<(u64, u32), u32>,
     dungeon: Option<DungeonHudState>,
     signals: BTreeMap<(u64, i64), SignalState>,
     markers: BTreeMap<Option<i64>, MechanicsMapMarker>,
@@ -455,6 +475,7 @@ impl MechanicsMapProjector {
                     self.entities.clear();
                     self.attack_targets.clear();
                     self.target_statuses.clear();
+                    self.resource_values.clear();
                     self.signals.clear();
                     self.markers.clear();
                     self.dungeon = None;
@@ -655,6 +676,8 @@ impl MechanicsMapProjector {
                             .retain(|_, signal| signal.target.actor_id != event.actor.actor_id);
                         self.cooldowns
                             .retain(|(actor_id, _), _| *actor_id != event.actor.actor_id.0);
+                        self.resource_values
+                            .retain(|(actor_id, _), _| *actor_id != event.actor.actor_id.0);
                     } else {
                         let entry =
                             self.entities
@@ -665,6 +688,8 @@ impl MechanicsMapProjector {
                                     character_id: event.character_id.clone(),
                                     display_name: event.display_name.clone(),
                                     monster_id: event.monster_id.map(|id| id.0),
+                                    class_id: event.class_id,
+                                    specialization_id: event.specialization_id,
                                     current_hp: None,
                                     max_hp: None,
                                     current_shield: None,
@@ -686,6 +711,9 @@ impl MechanicsMapProjector {
                             .clone()
                             .or_else(|| entry.display_name.clone());
                         entry.monster_id = event.monster_id.map(|id| id.0).or(entry.monster_id);
+                        entry.class_id = event.class_id.or(entry.class_id);
+                        entry.specialization_id =
+                            event.specialization_id.or(entry.specialization_id);
                         entry.last_observed_micros = envelope.time.observed_micros;
                         changed = true;
                     }
@@ -698,6 +726,8 @@ impl MechanicsMapProjector {
                         character_id: None,
                         display_name: None,
                         monster_id: None,
+                        class_id: None,
+                        specialization_id: None,
                         current_hp: None,
                         max_hp: None,
                         current_shield: None,
@@ -772,6 +802,8 @@ impl MechanicsMapProjector {
                                 character_id: None,
                                 display_name: None,
                                 monster_id: None,
+                                class_id: None,
+                                specialization_id: None,
                                 current_hp: None,
                                 max_hp: None,
                                 current_shield: None,
@@ -809,6 +841,32 @@ impl MechanicsMapProjector {
                             },
                         );
                         changed = true;
+                    }
+                }
+                TimelineEventKind::Resource(resource) => {
+                    let actor_id = resource.actor.actor_id.0;
+                    if resource.update_kind == EntityAttributeUpdateKind::Snapshot {
+                        let before = self.resource_values.len();
+                        self.resource_values
+                            .retain(|(existing_actor_id, _), _| *existing_actor_id != actor_id);
+                        changed |= before != self.resource_values.len();
+                    }
+                    // The protocol owns two parallel arrays. Pairing is exact
+                    // only when their lengths agree; partial arrays remain in
+                    // the canonical event and are not guessed into HUD state.
+                    if resource.resource_ids.len() == resource.resource_values.len() {
+                        for (&resource_id, &value) in resource
+                            .resource_ids
+                            .iter()
+                            .zip(resource.resource_values.iter())
+                            .take(MAX_RESOURCE_VALUES)
+                        {
+                            if !is_reviewed_hud_resource_id(resource_id) {
+                                continue;
+                            }
+                            changed |= self.resource_values.insert((actor_id, resource_id), value)
+                                != Some(value);
+                        }
                     }
                 }
                 TimelineEventKind::Status(status) => {
@@ -986,6 +1044,16 @@ impl MechanicsMapProjector {
             .collect::<Vec<_>>();
         action_controls.sort_by_key(|control| control.skill_level_id);
         action_controls.truncate(MAX_LOCAL_COOLDOWNS);
+        let resources = local_actor_id
+            .and_then(|actor_id| {
+                self.entities
+                    .get(&actor_id)
+                    .and_then(|entity| entity.class_id)
+                    .map(|class_id| {
+                        resource_hud_snapshots(class_id, actor_id, &self.resource_values)
+                    })
+            })
+            .unwrap_or_default();
         let mut entities = self
             .entities
             .values()
@@ -1217,6 +1285,7 @@ impl MechanicsMapProjector {
             player,
             party,
             action_controls,
+            resources,
             dungeon: self
                 .dungeon
                 .as_ref()
@@ -1360,6 +1429,8 @@ impl MechanicsMapProjector {
                     .retain(|_, status| status.target.actor_id.0 != actor_id);
                 self.signals
                     .retain(|_, signal| signal.target.actor_id.0 != actor_id);
+                self.resource_values
+                    .retain(|(resource_actor_id, _), _| *resource_actor_id != actor_id);
             }
         }
         while self.target_statuses.len() > MAX_TARGET_STATUSES {
@@ -1383,6 +1454,9 @@ impl MechanicsMapProjector {
                 break;
             };
             self.cooldowns.remove(&oldest);
+        }
+        while self.resource_values.len() > MAX_RESOURCE_VALUES {
+            self.resource_values.pop_first();
         }
         while self.signals.len() > MAX_MECHANICS {
             let Some(oldest) = self
@@ -1581,6 +1655,121 @@ fn action_control_snapshot(cooldown: &CooldownState, now_micros: u64) -> ActionC
         charge_count: cooldown.charge_count,
         observed_at_micros: cooldown.observed_at_micros,
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ResourceHudSpec {
+    kind: &'static str,
+    label: &'static str,
+    current_id: u32,
+    max_id: u32,
+}
+
+fn resource_hud_specs(class_id: i32) -> &'static [ResourceHudSpec] {
+    match class_id {
+        1 => &[
+            ResourceHudSpec {
+                kind: "bar",
+                label: "Blade Intent",
+                current_id: 12_051,
+                max_id: 12_057,
+            },
+            ResourceHudSpec {
+                kind: "charges",
+                label: "Thunder Sigil",
+                current_id: 12_041,
+                max_id: 12_047,
+            },
+        ],
+        2 => &[
+            ResourceHudSpec {
+                kind: "bar",
+                label: "Energy",
+                current_id: 12_001,
+                max_id: 12_007,
+            },
+            ResourceHudSpec {
+                kind: "charges",
+                label: "Sharpness",
+                current_id: 12_021,
+                max_id: 12_027,
+            },
+        ],
+        3 => &[
+            ResourceHudSpec {
+                kind: "bar",
+                label: "Flame Soul",
+                current_id: 13_011,
+                max_id: 13_017,
+            },
+            ResourceHudSpec {
+                kind: "charges",
+                label: "Frenzy",
+                current_id: 13_001,
+                max_id: 13_007,
+            },
+        ],
+        4 => &[
+            ResourceHudSpec {
+                kind: "bar",
+                label: "Energy",
+                current_id: 14_011,
+                max_id: 14_017,
+            },
+            ResourceHudSpec {
+                kind: "charges",
+                label: "Sharpness",
+                current_id: 14_001,
+                max_id: 14_007,
+            },
+        ],
+        5 => &[
+            ResourceHudSpec {
+                kind: "bar",
+                label: "Energy",
+                current_id: 15_001,
+                max_id: 15_007,
+            },
+            ResourceHudSpec {
+                kind: "charges",
+                label: "Flower",
+                current_id: 15_011,
+                max_id: 15_017,
+            },
+        ],
+        _ => &[],
+    }
+}
+
+fn is_reviewed_hud_resource_id(resource_id: u32) -> bool {
+    (1..=5).any(|class_id| {
+        resource_hud_specs(class_id)
+            .iter()
+            .any(|spec| spec.current_id == resource_id || spec.max_id == resource_id)
+    })
+}
+
+fn resource_hud_snapshots(
+    class_id: i32,
+    actor_id: u64,
+    values: &BTreeMap<(u64, u32), u32>,
+) -> Vec<ResourceHudSnapshot> {
+    resource_hud_specs(class_id)
+        .iter()
+        .filter_map(|spec| {
+            let current = *values.get(&(actor_id, spec.current_id))?;
+            let max = *values.get(&(actor_id, spec.max_id))?;
+            Some(ResourceHudSnapshot {
+                kind: spec.kind,
+                label: spec.label,
+                current_id: spec.current_id,
+                max_id: spec.max_id,
+                current,
+                max,
+                percent: (max > 0).then(|| (f64::from(current) / f64::from(max)) * 100.0),
+            })
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1891,7 +2080,7 @@ mod tests {
         DungeonFlowSnapshot, DungeonId, DungeonObjectiveCatalogReference, EntityAttribute,
         EntityAttributeEvent, EntityUuid, EventProvenance, EventSensitivity, EventTime,
         EvidenceConfidence, EvidenceSource, GameProfileEvent, RegionContext, RegionIdentity,
-        SceneId, StatusEffectId, StatusEffectInstanceId, StatusEvent, TimelineEvent,
+        ResourceEvent, SceneId, StatusEffectId, StatusEffectInstanceId, StatusEvent, TimelineEvent,
     };
 
     fn envelope(sequence: u64, event: CanonicalEvent) -> EventEnvelope {
@@ -1977,6 +2166,54 @@ mod tests {
             auxiliary_loadout: vec![],
             loadout_observation: ActorLoadoutObservation::default(),
         }
+    }
+
+    #[test]
+    fn class_resources_require_exact_current_and_max_packet_ids() {
+        let actor_id = 7;
+        let values = BTreeMap::from([
+            ((actor_id, 14_011), 72),
+            ((actor_id, 14_017), 100),
+            ((actor_id, 14_001), 4),
+            ((actor_id, 14_007), 5),
+        ]);
+        let resources = resource_hud_snapshots(4, actor_id, &values);
+        assert_eq!(resources.len(), 2);
+        assert_eq!(resources[0].label, "Energy");
+        assert_eq!(resources[0].percent, Some(72.0));
+        assert_eq!(resources[1].label, "Sharpness");
+        assert_eq!(resources[1].current, 4);
+        assert!(is_reviewed_hud_resource_id(14_011));
+        assert!(!is_reviewed_hud_resource_id(99_999));
+
+        let incomplete = BTreeMap::from([((actor_id, 14_011), 72)]);
+        assert!(resource_hud_snapshots(4, actor_id, &incomplete).is_empty());
+        assert!(resource_hud_snapshots(11, actor_id, &values).is_empty());
+    }
+
+    #[test]
+    fn mismatched_parallel_resource_arrays_are_never_zipped() {
+        let mut projector = MechanicsMapProjector::default();
+        projector.observe(&envelope(
+            1,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 1,
+                time: EventTime {
+                    observed_micros: 1_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance::wire(1, 1, 1),
+                kind: TimelineEventKind::Resource(ResourceEvent {
+                    actor: entity(7, 42),
+                    update_kind: EntityAttributeUpdateKind::Snapshot,
+                    origin_energy_raw_bits: None,
+                    resource_ids: vec![14_011, 14_017],
+                    resource_values: vec![72],
+                    cooldowns: vec![],
+                }),
+            }),
+        ));
+        assert!(projector.resource_values.is_empty());
     }
 
     #[test]
