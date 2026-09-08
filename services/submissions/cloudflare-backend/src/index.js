@@ -305,6 +305,63 @@ async function profileLeaderboards(env, url) {
   }
 }
 
+async function trainingDummyLeaderboard(env, url) {
+  if (!env.RLOGS_DB) return json({ error: "leaderboard storage is unavailable" }, 503);
+  const requestedSeason = Number.parseInt(url.searchParams.get("season") ?? "3", 10);
+  const season = Number.isSafeInteger(requestedSeason) && requestedSeason > 0 ? requestedSeason : 3;
+  const region = url.searchParams.get("region")?.trim() || null;
+  const requestedClass = Number.parseInt(url.searchParams.get("class") ?? "0", 10);
+  const classId = Number.isSafeInteger(requestedClass) && requestedClass > 0 ? requestedClass : null;
+  const requestedSpecialization = Number.parseInt(url.searchParams.get("specialization") ?? "0", 10);
+  const specializationId = Number.isSafeInteger(requestedSpecialization) && requestedSpecialization > 0
+    ? requestedSpecialization
+    : null;
+  const requestedLimit = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
+  const limit = Number.isSafeInteger(requestedLimit)
+    ? Math.min(100, Math.max(1, requestedLimit))
+    : 100;
+  try {
+    const rows = await env.RLOGS_DB.prepare(`SELECT
+        result_id, character_id, display_name, deployment_id, region_id, realm_id, world_id,
+        season_id, class_id, specialization_id, target_monster_id, duration_micros,
+        total_damage, dps, created_unix_millis, verified_unix_millis
+      FROM training_dummy_results
+      WHERE visibility='public' AND season_id=?1
+        AND (?2 IS NULL OR region_id=?2)
+        AND (?3 IS NULL OR class_id=?3)
+        AND (?4 IS NULL OR specialization_id=?4)
+      ORDER BY dps DESC, verified_unix_millis, result_id
+      LIMIT ?5`).bind(season, region, classId, specializationId, limit).all();
+    return json({
+      schema_version: 1,
+      season_id: season,
+      region_id: region,
+      class_id: classId,
+      specialization_id: specializationId,
+      duration_micros: 180_000_000,
+      results: rows.results ?? [],
+    }, 200, { "Cache-Control": "public, max-age=60, stale-while-revalidate=300" });
+  } catch (cause) {
+    console.error("rLogs training-dummy leaderboard read failed", cause);
+    return json({ error: "training-dummy leaderboard is temporarily unavailable" }, 503);
+  }
+}
+
+async function trainingDummyResult(env, resultId) {
+  if (!env.RLOGS_DB || !env.RLOGS_ARTIFACTS) return notFound();
+  try {
+    const row = await env.RLOGS_DB.prepare(`SELECT visibility, projection_object_key
+      FROM training_dummy_results WHERE result_id=?1`).bind(resultId).first();
+    if (!row || row.visibility === "private") return notFound();
+    const object = await env.RLOGS_ARTIFACTS.get(row.projection_object_key);
+    if (!object) return notFound();
+    return json({ ...await object.json(), visibility: row.visibility });
+  } catch (cause) {
+    console.error("rLogs training-dummy result read failed", cause);
+    return notFound();
+  }
+}
+
 async function parseCatalog(env, url) {
   const storedCatalog = await env.RLOGS_DATA.get("fs:catalog.v1.json", "json");
   const catalog = storedCatalog && Array.isArray(storedCatalog.entries)
@@ -435,6 +492,7 @@ async function route(request, env) {
   }
   if (path === "/v1/profiles") return profileCatalog(env, url);
   if (path === "/v1/leaderboards/profiles") return profileLeaderboards(env, url);
+  if (path === "/v1/leaderboards/training-dummy") return trainingDummyLeaderboard(env, url);
   if (path === "/v1/characters") return storedJson(env, "characters/catalog.v1.json");
   if (path === "/v1/parses") return parseCatalog(env, url);
   if (path === "/v1/activity/milestones") {
@@ -442,6 +500,8 @@ async function route(request, env) {
   }
   let match = /^\/v1\/parses\/(rpt_[A-Za-z0-9_-]+)$/.exec(path);
   if (match) return publicReport(env, match[1]);
+  match = /^\/v1\/training-dummy\/(rpt_[A-Za-z0-9_-]+)$/.exec(path);
+  if (match) return trainingDummyResult(env, match[1]);
   match = /^\/v1\/run-groups\/([A-Za-z0-9_-]+)\/reconciliation$/.exec(path);
   if (match) return storedJson(env, `reconciliations/${match[1]}.json`);
   match = /^\/v1\/profiles\/(prf_[a-z0-9_]+)$/.exec(path);

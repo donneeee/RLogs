@@ -32,6 +32,7 @@ pub struct TrainingDummyState {
     pub player_name: Option<String>,
     pub class_id: Option<i32>,
     pub specialization_id: Option<i32>,
+    pub season_id: Option<i64>,
     pub observed_party_size: Option<usize>,
     pub target_actor_id: Option<String>,
     pub target_monster_id: Option<i64>,
@@ -79,6 +80,7 @@ impl Default for TrainingDummyState {
             player_name: None,
             class_id: None,
             specialization_id: None,
+            season_id: None,
             observed_party_size: None,
             target_actor_id: None,
             target_monster_id: None,
@@ -119,6 +121,7 @@ pub struct TrainingDummyController {
     owner_entity_by_actor: HashMap<ActorId, EntityUuid>,
     active_statuses: HashSet<(ActorId, ActorId, StatusEffectId)>,
     local_character_id: Option<String>,
+    local_season_id: Option<i64>,
     observed_party_size: Option<usize>,
     locked_player: Option<ActorId>,
     locked_target: Option<ActorId>,
@@ -133,6 +136,7 @@ impl Default for TrainingDummyController {
             owner_entity_by_actor: HashMap::new(),
             active_statuses: HashSet::new(),
             local_character_id: None,
+            local_season_id: None,
             observed_party_size: None,
             locked_player: None,
             locked_target: None,
@@ -147,7 +151,9 @@ impl TrainingDummyController {
 
     pub fn arm(&mut self) {
         self.state = TrainingDummyState::armed(self.state.scene_id);
+        self.state.season_id = self.local_season_id;
         self.state.observed_party_size = self.observed_party_size;
+        self.state.season_id = self.local_season_id;
         self.locked_player = None;
         self.locked_target = None;
         if self.observed_party_size.is_some_and(|size| size > 1) {
@@ -197,6 +203,19 @@ impl TrainingDummyController {
                         != Some(profile.character.character_id.as_str())
                     {
                         self.local_character_id = Some(profile.character.character_id.clone());
+                        self.local_season_id = None;
+                        observation.changed = true;
+                    }
+                    if let Some(season_id) = (profile.game_plugin_id == crate::BPSR_GAME_PLUGIN_ID
+                        && profile.payload_schema_id == crate::BPSR_PROFILE_SCHEMA_ID
+                        && profile.payload_schema_version == crate::BPSR_PROFILE_SCHEMA_VERSION)
+                        .then(|| profile.payload.get("season")?.get("season_id")?.as_i64())
+                        .flatten()
+                        .filter(|season_id| *season_id > 0)
+                        && self.local_season_id != Some(season_id)
+                    {
+                        self.local_season_id = Some(season_id);
+                        self.state.season_id = Some(season_id);
                         observation.changed = true;
                     }
                     None
@@ -397,6 +416,7 @@ impl TrainingDummyController {
         self.state.specialization_id = player_evidence
             .as_ref()
             .and_then(|actor| actor.specialization_id);
+        self.state.season_id = self.local_season_id;
         self.state.target_actor_id = Some(target.0.to_string());
         self.state.target_monster_id = Some(monster_id);
         self.state.started_micros = Some(now);
@@ -545,9 +565,9 @@ mod tests {
                 sensitivity: EventSensitivity::PersonalGameplay,
                 kind: CanonicalEventDraftKind::CharacterProfileObserved {
                     profile: Box::new(GameProfileEvent {
-                        game_plugin_id: "rlogs.test".into(),
-                        payload_schema_id: "rlogs.test.profile".into(),
-                        payload_schema_version: 1,
+                        game_plugin_id: crate::BPSR_GAME_PLUGIN_ID.into(),
+                        payload_schema_id: crate::BPSR_PROFILE_SCHEMA_ID.into(),
+                        payload_schema_version: crate::BPSR_PROFILE_SCHEMA_VERSION,
                         character: CharacterIdentity {
                             character_id: character_id.into(),
                             region: RegionIdentity {
@@ -557,7 +577,7 @@ mod tests {
                                 world_id: Some("asteria".into()),
                             },
                         },
-                        payload: serde_json::json!({}),
+                        payload: serde_json::json!({"season": {"season_id": 3}}),
                     }),
                 },
             })
@@ -640,6 +660,7 @@ mod tests {
         ));
         controller.observe(&emit_local_profile(&mut factory, 4, "1"));
         controller.arm();
+        assert_eq!(controller.state().season_id, Some(3));
 
         let first = controller.observe(&emit(&mut factory, 10, damage(1, 2, 1_000)));
         assert!(first.reset_meter && first.accept_damage);

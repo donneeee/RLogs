@@ -9,14 +9,14 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use rlogs_submission::{Sha256Digest, UploadManifest};
+use rlogs_submission::{Sha256Digest, SubmissionPurpose, UploadManifest};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
-    HostedVerificationOutput, PublicSubmissionProvenance, ServiceError,
-    verify_hosted_submission_path,
+    HostedVerificationResult, PublicSubmissionProvenance, ServiceError,
+    verify_hosted_submission_path, verify_hosted_training_dummy_path,
 };
 
 const MAXIMUM_JOB_BYTES: usize = 2 * 1024 * 1024;
@@ -108,7 +108,7 @@ async fn health() -> Json<serde_json::Value> {
 async fn verify(
     State(state): State<HostedVerifierState>,
     Json(job): Json<HostedVerificationJob>,
-) -> Result<Json<HostedVerificationOutput>, HostedVerifierError> {
+) -> Result<Json<HostedVerificationResult>, HostedVerifierError> {
     validate_job(&job)?;
     let path = state.staging_root.join(format!(
         "{}-{}.rlog",
@@ -124,7 +124,7 @@ async fn download_and_verify(
     state: &HostedVerifierState,
     job: &HostedVerificationJob,
     path: &PathBuf,
-) -> Result<HostedVerificationOutput, HostedVerifierError> {
+) -> Result<HostedVerificationResult, HostedVerifierError> {
     let mut output = OpenOptions::new().create_new(true).write(true).open(path)?;
     let mut artifact_hasher = Sha256::new();
     for chunk in &job.chunks {
@@ -177,8 +177,15 @@ async fn download_and_verify(
     let created = job.created_unix_millis;
     let provenance = job.submission_provenance.clone();
     let names = job.verified_names_by_character.clone();
-    tokio::task::spawn_blocking(move || {
-        verify_hosted_submission_path(&path, &manifest, &report_id, created, provenance, &names)
+    tokio::task::spawn_blocking(move || match manifest.metadata.purpose {
+        SubmissionPurpose::CombatRun => {
+            verify_hosted_submission_path(&path, &manifest, &report_id, created, provenance, &names)
+                .map(HostedVerificationResult::Combat)
+        }
+        SubmissionPurpose::TrainingDummy => verify_hosted_training_dummy_path(
+            &path, &manifest, &report_id, created, provenance, &names,
+        )
+        .map(HostedVerificationResult::TrainingDummy),
     })
     .await
     .map_err(|error| HostedVerifierError::Retryable(error.to_string()))?

@@ -33,6 +33,7 @@ use rlogs_game_bpsr::{
     BPSR_GAME_PLUGIN_ID, BpsrLifeWaveTriggerLearner, BpsrRemoteFactorLearner,
     BpsrStatResonanceTransitionLearner, BpsrStateDamageContributionProjector,
     CharacterProfilePatch, SwiftVortexCandidateAuditAnalyzer, SwiftVortexCandidateAuditReport,
+    TRAINING_DURATION_MICROS, TrainingDummyController, TrainingDummyPhase,
     bundled_run_reducer_config, canonicalize_bpsr_region_identity, character_id_from_entity_uuid,
     combat_action_presentation, combat_breakdown_ability_id, combat_recount_group_id,
     confirmed_damage_contribution_rules, is_stat_resonance_status, localized_class_name,
@@ -46,7 +47,7 @@ use rlogs_plugin_combat_meter::{
 use rlogs_plugin_encounter_recorder::EncounterRecorderPlugin;
 use rlogs_submission::{
     ArtifactBuildLimits, LocalLogArtifact, ReportVisibility, Sha256Digest, SubmissionMetadata,
-    SubmissionSession, UploadManifest, VerificationTier,
+    SubmissionPurpose, SubmissionSession, UploadManifest, VerificationTier,
     build_privacy_verified_submission_artifact, submission_privacy_policy_digest,
 };
 use serde::{Deserialize, Serialize};
@@ -2581,6 +2582,42 @@ pub struct HostedVerificationOutput {
     pub membership: PrivateParseMembership,
 }
 
+/// Deterministic server result for a ranked three-minute training-dummy test.
+/// Every score is reconstructed from the sealed event stream; no client-side
+/// summary or displayed meter total is accepted as evidence.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostedTrainingDummyOutput {
+    pub schema_version: u16,
+    pub result_id: String,
+    pub visibility: ReportVisibility,
+    pub created_unix_millis: u64,
+    pub game_plugin_id: String,
+    pub deployment_id: String,
+    pub region_id: String,
+    pub realm_id: Option<String>,
+    pub world_id: Option<String>,
+    pub client_build: String,
+    pub protocol_pack_digest: String,
+    pub verification: PublicVerification,
+    pub submission_provenance: PublicSubmissionProvenance,
+    pub character_id: String,
+    pub player_name: Option<String>,
+    pub class_id: i32,
+    pub specialization_id: i32,
+    pub season_id: i64,
+    pub target_monster_id: i64,
+    pub duration_micros: u64,
+    pub total_damage: i64,
+    pub dps: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum HostedVerificationResult {
+    Combat(HostedVerificationOutput),
+    TrainingDummy(HostedTrainingDummyOutput),
+}
+
 impl Default for PublicSubmissionProvenance {
     fn default() -> Self {
         Self {
@@ -3621,6 +3658,12 @@ pub fn verify_hosted_submission_path(
     submission_provenance: PublicSubmissionProvenance,
     verified_names_by_character: &BTreeMap<String, String>,
 ) -> Result<HostedVerificationOutput, ServiceError> {
+    if manifest.metadata.purpose != SubmissionPurpose::CombatRun {
+        return Err(ServiceError::SubmissionPurposeMismatch {
+            expected: "combat_run",
+            actual: manifest.metadata.purpose,
+        });
+    }
     validate_identifier(report_id, "report ID")?;
     validate_manifest(manifest)?;
     let artifact = build_privacy_verified_submission_artifact(
@@ -3649,6 +3692,151 @@ pub fn verify_hosted_submission_path(
         schema_version: 1,
         report,
         membership,
+    })
+}
+
+/// Verifies a ranked training-dummy artifact by replaying only packet-derived
+/// canonical events through the shared BPSR controller. The controller locks
+/// to the locally observed character (including its owned summons) and one of
+/// the two known elite dummy IDs for exactly three minutes.
+pub fn verify_hosted_training_dummy_path(
+    path: &Path,
+    manifest: &UploadManifest,
+    result_id: &str,
+    created_unix_millis: u64,
+    submission_provenance: PublicSubmissionProvenance,
+    verified_names_by_character: &BTreeMap<String, String>,
+) -> Result<HostedTrainingDummyOutput, ServiceError> {
+    validate_identifier(result_id, "training result ID")?;
+    validate_manifest(manifest)?;
+    if manifest.metadata.purpose != SubmissionPurpose::TrainingDummy {
+        return Err(ServiceError::SubmissionPurposeMismatch {
+            expected: "training_dummy",
+            actual: manifest.metadata.purpose,
+        });
+    }
+    if manifest.metadata.game_plugin_id != BPSR_GAME_PLUGIN_ID {
+        return Err(ServiceError::UnsupportedGamePlugin(
+            manifest.metadata.game_plugin_id.clone(),
+        ));
+    }
+
+    let artifact = build_privacy_verified_submission_artifact(
+        File::open(path)?,
+        ArtifactBuildLimits::default(),
+        RlogLimits::default(),
+    )
+    .map_err(std::io::Error::other)?;
+    verify_artifact_metadata(manifest, &artifact)?;
+
+    let reader = RlogReader::new(BufReader::new(File::open(path)?), RlogLimits::default())?;
+    let mut controller = TrainingDummyController::default();
+    controller.arm();
+    let replay = reader.replay(|event| {
+        controller.observe(event);
+        Ok(())
+    })?;
+    let state = controller.state();
+    if state.phase != TrainingDummyPhase::Finished || !state.valid {
+        return Err(ServiceError::InvalidTrainingDummyResult(
+            state
+                .invalid_reason
+                .unwrap_or_else(|| "the sealed event window did not finish".into()),
+        ));
+    }
+    if state.observed_party_size.is_none() {
+        return Err(ServiceError::InvalidTrainingDummyResult(
+            "the sealed event window has no authoritative solo-party witness".into(),
+        ));
+    }
+    if state.observed_party_size.is_some_and(|size| size > 1) {
+        return Err(ServiceError::InvalidTrainingDummyResult(
+            "the training test was not solo".into(),
+        ));
+    }
+    if state.duration_micros != TRAINING_DURATION_MICROS
+        || state.elapsed_micros != TRAINING_DURATION_MICROS
+        || state
+            .ended_micros
+            .zip(state.started_micros)
+            .is_none_or(|(ended, started)| {
+                ended.saturating_sub(started) != TRAINING_DURATION_MICROS
+            })
+    {
+        return Err(ServiceError::InvalidTrainingDummyResult(
+            "the training window is not exactly three minutes".into(),
+        ));
+    }
+    if state.total_damage <= 0 {
+        return Err(ServiceError::InvalidTrainingDummyResult(
+            "the training window contains no qualifying damage".into(),
+        ));
+    }
+
+    let character_id = state
+        .player_character_id
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            ServiceError::InvalidTrainingDummyResult(
+                "the local player has no packet-proven character identity".into(),
+            )
+        })?;
+    let class_id = state.class_id.ok_or_else(|| {
+        ServiceError::InvalidTrainingDummyResult("the local player class is unresolved".into())
+    })?;
+    let specialization_id = state.specialization_id.ok_or_else(|| {
+        ServiceError::InvalidTrainingDummyResult(
+            "the local player specialization is unresolved".into(),
+        )
+    })?;
+    let target_monster_id = state.target_monster_id.ok_or_else(|| {
+        ServiceError::InvalidTrainingDummyResult("the target dummy is unresolved".into())
+    })?;
+    let season_id = state.season_id.ok_or_else(|| {
+        ServiceError::InvalidTrainingDummyResult(
+            "the local player's current season is unresolved".into(),
+        )
+    })?;
+    let player_name = verified_names_by_character
+        .get(&character_id)
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+        .or(state.player_name);
+    let mut identity = artifact.header.region.identity.clone();
+    canonicalize_bpsr_region_identity(&mut identity);
+    let total_damage = state.total_damage;
+
+    Ok(HostedTrainingDummyOutput {
+        schema_version: 1,
+        result_id: result_id.to_owned(),
+        visibility: manifest.metadata.visibility,
+        created_unix_millis,
+        game_plugin_id: manifest.metadata.game_plugin_id.clone(),
+        deployment_id: identity.deployment_id,
+        region_id: identity.region_id,
+        realm_id: identity.realm_id,
+        world_id: identity.world_id,
+        client_build: artifact.header.region.client_build.clone(),
+        protocol_pack_digest: artifact.header.region.protocol_pack_digest.clone(),
+        verification: PublicVerification {
+            tier: VerificationTier::Replayed,
+            artifact_sha256: artifact.file_sha256.to_string(),
+            canonical_content_sha256: replay.content_sha256,
+            event_count: replay.event_count,
+            privacy_policy_digest: manifest.metadata.privacy_policy_digest.to_string(),
+        },
+        submission_provenance,
+        character_id,
+        player_name,
+        class_id,
+        specialization_id,
+        season_id,
+        target_monster_id,
+        duration_micros: TRAINING_DURATION_MICROS,
+        total_damage,
+        dps: total_damage as f64 / 180.0,
     })
 }
 
@@ -5941,6 +6129,13 @@ pub enum ServiceError {
     UnsupportedPrivacyPolicy { expected: String, actual: String },
     #[error("game plug-in {0:?} is not supported by this replay worker")]
     UnsupportedGamePlugin(String),
+    #[error("submission purpose mismatch: expected {expected}, received {actual:?}")]
+    SubmissionPurposeMismatch {
+        expected: &'static str,
+        actual: SubmissionPurpose,
+    },
+    #[error("invalid training-dummy result: {0}")]
+    InvalidTrainingDummyResult(String),
     #[error("server replay failed: {0}")]
     Replay(String),
     #[error(

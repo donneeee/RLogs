@@ -57,6 +57,7 @@ mod swift_vortex_audit;
 mod talent_presentation;
 mod traffic_signature;
 mod training_dummy;
+mod training_dummy_recording;
 mod use_skill_attr;
 mod weapon_presentation;
 mod website;
@@ -327,6 +328,9 @@ pub use traffic_signature::classify_bpsr_tcp_payload;
 pub use training_dummy::{
     GUILD_HALL_SCENE_ID, TRAINING_DURATION_MICROS, TrainingDummyController,
     TrainingDummyObservation, TrainingDummyPhase, TrainingDummyState,
+};
+pub use training_dummy_recording::{
+    SealedTrainingDummyLog, TrainingDummyLogWriter, TrainingDummyRecordingError,
 };
 pub use use_skill_attr::{
     BPSR_CURRENT_USE_SKILL_ATTR_BUILD, BPSR_USE_SKILL_ATTR_BUILD, ClientSkillStageEndSnapshot,

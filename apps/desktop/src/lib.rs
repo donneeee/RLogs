@@ -85,7 +85,7 @@ use rlogs_game_bpsr::{
     OfflineRecordingLimits, OfflineRecordingReport, ProtocolDecodeStatus, ProtocolPack,
     ProtocolPackRouteDisposition, ProtocolRuntimeConfig, RDPS_VALIDATION_REPORT_SCHEMA_VERSION,
     RdpsValidationAnalyzer, RdpsValidationProgress, RdpsValidationReport, RegionResolverError,
-    ResolvedRegion, RouteKey, SealedDungeonRunLog, ServerRealmCatalog,
+    ResolvedRegion, RouteKey, SealedDungeonRunLog, ServerRealmCatalog, TrainingDummyLogWriter,
     auxiliary_action_presentation, battle_imagine_presentation, bundled_gauntlet_scene_ids,
     bundled_run_reducer_config, bundled_scene_run_identities, bundled_terminal_boss_scene_ids,
     character_id_from_entity_uuid, classify_bpsr_tcp_payload, combat_action_presentation,
@@ -127,8 +127,8 @@ use rlogs_profiles::{LIVE_PROFILE_CAPTURE_KIND, LocalProfilePackage};
 use rlogs_submission::{
     ArtifactBuildLimits, LocalLogArtifact, LogArtifactTrackingReader,
     MAXIMUM_LOCAL_ARTIFACT_PATH_BYTES, MAXIMUM_UPLOAD_CHUNK_BYTES, MockSubmissionReceiver,
-    QueuedSubmission, ReportVisibility, Sha256Digest, SubmissionMetadata, SubmissionState,
-    build_privacy_verified_submission_artifact, build_sealed_log_artifact,
+    QueuedSubmission, ReportVisibility, Sha256Digest, SubmissionMetadata, SubmissionPurpose,
+    SubmissionState, build_privacy_verified_submission_artifact, build_sealed_log_artifact,
     submission_privacy_policy_digest, write_privacy_filtered_submission_log,
 };
 use serde::{Deserialize, Serialize};
@@ -8307,6 +8307,14 @@ impl RuntimeController {
                     let mut live_mechanics_map = MechanicsMapProjector::default();
                     live_mechanics_map.reset(&session_id, &live_header.region.client_build);
                     let mut training_dummy = TrainingDummyController::default();
+                    let mut training_dummy_writer = TrainingDummyLogWriter::new(
+                        &output_directory,
+                        &session_id,
+                        &producer,
+                    )
+                    .map_err(|error| {
+                        format!("training-dummy recorder failed to start: {error}")
+                    })?;
                     let live_profile_client_build = live_header.region.client_build.clone();
                     let live_profile_pack_digest = live_header.region.protocol_pack_digest.clone();
                     let mut last_live_profile_created_unix_millis = 0_u64;
@@ -8458,8 +8466,18 @@ impl RuntimeController {
                                 LiveCombatControl::SetTrainingDummy { enabled } => {
                                     if enabled {
                                         training_dummy.arm();
+                                        training_dummy_writer.arm().map_err(|error| {
+                                            format!(
+                                                "could not arm training-dummy recording: {error}"
+                                            )
+                                        })?;
                                     } else {
                                         training_dummy.disarm();
+                                        training_dummy_writer.disarm().map_err(|error| {
+                                            format!(
+                                                "could not disarm training-dummy recording: {error}"
+                                            )
+                                        })?;
                                     }
                                     begin_live_combat_preserving_world(
                                         &mut live_meter,
@@ -8518,6 +8536,8 @@ impl RuntimeController {
                         let mut live_protocol_records = Vec::new();
                         let mut live_damage_activity = Vec::new();
                         let mut local_photo_assets = Vec::new();
+                        let mut sealed_training_logs = Vec::new();
+                        let mut training_recording_error = None;
                         let mut mechanics_map_dirty = false;
                         let mut frame_protocol_observability =
                             CastObservabilityCounters::default();
@@ -8529,6 +8549,19 @@ impl RuntimeController {
                                 frame_event_observability.observe_event(event);
                                 mechanics_map_dirty |= live_mechanics_map.observe(event);
                                 let training_observation = training_dummy.observe(event);
+                                if training_recording_error.is_none() {
+                                    match training_dummy_writer
+                                        .observe(event, &training_dummy.state())
+                                    {
+                                        Ok(Some(log)) => sealed_training_logs.push(log),
+                                        Ok(None) => {}
+                                        Err(error) => {
+                                            training_recording_error = Some(format!(
+                                                "training-dummy recording failed: {error}"
+                                            ));
+                                        }
+                                    }
+                                }
                                 if training_observation.reset_meter {
                                     begin_live_combat_preserving_world(
                                         &mut live_meter,
@@ -8786,6 +8819,44 @@ impl RuntimeController {
                                 }
                             })
                             .map_err(|error| format!("live BPSR decoding failed: {error}"))?;
+                        if let Some(error) = training_recording_error {
+                            return Err(error);
+                        }
+                        for log in sealed_training_logs {
+                            if automatic_submissions {
+                                let queued = build_upload_artifact(&log.path).and_then(|artifact| {
+                                    enqueue_verified_artifact_with_purpose(
+                                        &submission_queue,
+                                        &artifact,
+                                        log.path.to_string_lossy().into_owned(),
+                                        unix_millis(),
+                                        default_visibility,
+                                        SubmissionPurpose::TrainingDummy,
+                                    )
+                                });
+                                match queued {
+                                    Ok((_, queue_id)) => {
+                                        let mut snapshot = state.lock().unwrap_or_else(
+                                            std::sync::PoisonError::into_inner,
+                                        );
+                                        snapshot.detail = format!(
+                                            "Training Dummy result {} DPS was sealed and queued as {queue_id}.",
+                                            log.result.dps.round() as u64,
+                                        );
+                                    }
+                                    Err(error) => record_recoverable_capture_error_durably(
+                                        &state,
+                                        &parser_health,
+                                        &session_id,
+                                        format!(
+                                            "training result {} was preserved at {} but could not be queued: {error}",
+                                            log.session_id,
+                                            log.path.display(),
+                                        ),
+                                    ),
+                                }
+                            }
+                        }
                         cast_observability.add(frame_protocol_observability);
                         cast_observability.add(frame_event_observability);
                         live_combat_feed.set_training_dummy(training_dummy.state());
@@ -10698,6 +10769,24 @@ fn enqueue_verified_artifact(
     created_unix_millis: u64,
     visibility: ReportVisibility,
 ) -> Result<(QueueInsertOutcome, String), String> {
+    enqueue_verified_artifact_with_purpose(
+        queue,
+        source_artifact,
+        local_artifact_path,
+        created_unix_millis,
+        visibility,
+        SubmissionPurpose::CombatRun,
+    )
+}
+
+fn enqueue_verified_artifact_with_purpose(
+    queue: &Arc<Mutex<LocalSubmissionQueue>>,
+    source_artifact: &LocalLogArtifact,
+    local_artifact_path: String,
+    created_unix_millis: u64,
+    visibility: ReportVisibility,
+    purpose: SubmissionPurpose,
+) -> Result<(QueueInsertOutcome, String), String> {
     let (artifact, local_artifact_path) =
         prepare_submission_artifact(queue, source_artifact, Path::new(&local_artifact_path))?;
     let protocol_pack_digest = parse_prefixed_sha256(&artifact.header.region.protocol_pack_digest)?;
@@ -10711,7 +10800,8 @@ fn enqueue_verified_artifact(
         protocol_pack_digest,
         submission_privacy_policy_digest(),
         visibility,
-    );
+    )
+    .with_purpose(purpose);
     let entry = QueuedSubmission::new_post_run(
         metadata,
         &artifact,

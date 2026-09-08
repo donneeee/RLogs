@@ -1,7 +1,7 @@
 import { Container, ContainerProxy } from "@cloudflare/containers";
 import {
   catalogEntry, compatibleProfileName, runOneShotVerifier, sameChunkCommitments, validateOutput,
-  validateWakeup,
+  validateTrainingOutput, validateWakeup,
 } from "./core.js";
 
 // Cloudflare requires this named export whenever a Container class installs
@@ -95,6 +95,14 @@ async function verifyJob(request, env) {
       ? rejectJob(env, wakeup.upload_id, "replay_rejected", detail)
       : retryJob(env, wakeup.upload_id, "verifier_unavailable", detail);
   }
+  if ((manifest.metadata.purpose ?? "combat_run") === "training_dummy") {
+    if (!validateTrainingOutput(result, wakeup)) {
+      return retryJob(env, wakeup.upload_id, "invalid_verifier_output", "training verifier output failed identity validation");
+    }
+    return persistTrainingDummyResult(env, {
+      result, wakeup, session, job, manifest,
+    });
+  }
   if (!validateOutput(result, wakeup)) {
     return retryJob(env, wakeup.upload_id, "invalid_verifier_output", "verifier output failed identity validation");
   }
@@ -156,6 +164,63 @@ async function verifyJob(request, env) {
   }
   await env.RLOGS_DB.batch(statements);
   return json({ accepted: true, report_id: wakeup.expected_report_id, projection_sha256: projectionDigest });
+}
+
+async function persistTrainingDummyResult(env, { result, wakeup, session, job, manifest }) {
+  const account = await first(env, "SELECT publish_verified_parses FROM accounts WHERE submitter_id=?1", session.submitter_id);
+  result.visibility = Number(account?.publish_verified_parses) === 1 ? "public" : manifest.metadata.visibility;
+  const projectionBytes = new TextEncoder().encode(JSON.stringify(result));
+  const projectionDigest = await sha256(projectionBytes);
+  const projectionKey = `training-dummy/${wakeup.expected_report_id}/projection-${projectionDigest}.json`;
+  await env.RLOGS_ARTIFACTS.put(projectionKey, projectionBytes, { httpMetadata: { contentType: "application/json" } });
+
+  const completed = Date.now();
+  await env.RLOGS_DB.batch([
+    env.RLOGS_DB.prepare(`INSERT INTO training_dummy_results (
+        result_id, upload_id, visibility, verification_tier, verifier_release,
+        submitter_id, character_id, display_name, deployment_id, region_id, realm_id,
+        world_id, season_id, class_id, specialization_id, target_monster_id,
+        duration_micros, total_damage, dps, artifact_sha256, projection_sha256,
+        projection_object_key, created_unix_millis, verified_unix_millis, published_unix_millis
+      ) VALUES (?1,?2,?3,'replayed',?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24)
+      ON CONFLICT(upload_id) DO NOTHING`).bind(
+      result.result_id,
+      wakeup.upload_id,
+      result.visibility,
+      job.verifier_release,
+      session.submitter_id,
+      result.character_id,
+      result.player_name ?? null,
+      result.deployment_id,
+      result.region_id,
+      result.realm_id ?? null,
+      result.world_id ?? null,
+      result.season_id,
+      result.class_id,
+      result.specialization_id,
+      result.target_monster_id,
+      result.duration_micros,
+      result.total_damage,
+      result.dps,
+      wakeup.artifact_sha256,
+      projectionDigest,
+      projectionKey,
+      result.created_unix_millis,
+      completed,
+      result.visibility === "public" ? completed : null,
+    ),
+    env.RLOGS_DB.prepare(`UPDATE verification_jobs SET state='accepted', output_sha256=?2,
+      completed_unix_millis=?3, updated_unix_millis=?3, lease_owner=NULL,
+      lease_expires_unix_millis=NULL WHERE upload_id=?1`).bind(wakeup.upload_id, projectionDigest, completed),
+    env.RLOGS_DB.prepare(`UPDATE upload_sessions SET state='accepted', updated_unix_millis=?2,
+      rejection_code=NULL, rejection_detail=NULL WHERE upload_id=?1`).bind(wakeup.upload_id, completed),
+  ]);
+  return json({
+    accepted: true,
+    report_id: result.result_id,
+    training_result_id: result.result_id,
+    projection_sha256: projectionDigest,
+  });
 }
 
 async function rejectJob(env, uploadId, code, detail) {

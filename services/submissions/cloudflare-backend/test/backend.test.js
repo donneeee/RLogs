@@ -248,6 +248,26 @@ test("profile leaderboard ranks scores and exact dungeon-tier times from D1", as
   ]);
 });
 
+test("training leaderboard supports season, region, class, and spec filters", async () => {
+  const env = environment();
+  let captured = null;
+  env.RLOGS_DB.prepare = (query) => ({
+    bind(...bindings) {
+      captured = { query, bindings };
+      return { async all() { return { results: [{ dps: 1_000 }] }; } };
+    },
+  });
+  const response = await backend.fetch(new Request(
+    "https://backend/v1/leaderboards/training-dummy?season=3&region=north-america&class=4&specialization=41",
+  ), env);
+  assert.equal(response.status, 200);
+  const value = await response.json();
+  assert.equal(value.duration_micros, 180_000_000);
+  assert.equal(value.results[0].dps, 1_000);
+  assert.match(captured.query, /FROM training_dummy_results/u);
+  assert.deepEqual(captured.bindings, [3, "north-america", 4, 41, 100]);
+});
+
 test("observed character directory comes only from its materialized Cloudflare catalog", async () => {
   const catalog = {
     schema_version: 1,

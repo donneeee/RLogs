@@ -3,7 +3,7 @@ import test from "node:test";
 
 import {
   catalogEntry, compatibleProfileName, expectedReportId, sameChunkCommitments,
-  runOneShotVerifier, validateOutput, validateWakeup,
+  runOneShotVerifier, validateOutput, validateTrainingOutput, validateWakeup,
 } from "../src/core.js";
 
 const digest = "a".repeat(64);
@@ -30,6 +30,26 @@ test("container output must preserve report and artifact identities", () => {
   assert.equal(validateOutput(output, wakeup), true);
   output.report.verification.artifact_sha256 = "b".repeat(64);
   assert.equal(validateOutput(output, wakeup), false);
+});
+
+test("training output must be an exact server-replayed solo dummy result", () => {
+  const output = {
+    schema_version: 1,
+    result_id: wakeup.expected_report_id,
+    verification: { artifact_sha256: digest },
+    character_id: "3296036",
+    class_id: 4,
+    specialization_id: 41,
+    season_id: 3,
+    target_monster_id: 115,
+    duration_micros: 180_000_000,
+    total_damage: 180_000,
+    dps: 1_000,
+  };
+  assert.equal(validateTrainingOutput(output, wakeup), true);
+  assert.equal(validateTrainingOutput({ ...output, target_monster_id: 999 }, wakeup), false);
+  assert.equal(validateTrainingOutput({ ...output, duration_micros: 183_000_000 }, wakeup), false);
+  assert.equal(validateTrainingOutput({ ...output, dps: 999 }, wakeup), false);
 });
 
 test("chunk commitments compare semantically rather than by JSON property order", () => {

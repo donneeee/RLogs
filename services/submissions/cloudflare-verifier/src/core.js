@@ -43,6 +43,19 @@ export function validateOutput(value, wakeup) {
     value.report.runs.length > 0 && Array.isArray(value.membership?.runs);
 }
 
+export function validateTrainingOutput(value, wakeup) {
+  const damage = Number(value?.total_damage);
+  const dps = Number(value?.dps);
+  return value?.schema_version === 1 && value?.result_id === wakeup.expected_report_id &&
+    value?.verification?.artifact_sha256 === wakeup.artifact_sha256 &&
+    typeof value?.character_id === "string" && value.character_id.trim() !== "" &&
+    Number.isInteger(value?.class_id) && Number.isInteger(value?.specialization_id) &&
+    Number.isInteger(value?.season_id) && value.season_id > 0 &&
+    (value?.target_monster_id === 115 || value?.target_monster_id === 122) &&
+    value?.duration_micros === 180_000_000 && Number.isSafeInteger(damage) && damage > 0 &&
+    Number.isFinite(dps) && Math.abs(dps - damage / 180) < 0.001;
+}
+
 export async function runOneShotVerifier(container, request) {
   try {
     const response = await container.fetch(request);
