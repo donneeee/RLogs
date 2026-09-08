@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { claimAutomaticMapPreparation } from "./mechanics-map-surface";
-import { actionControlRemainingMillis, mechanicSignalRemainingMillis, parseMechanicsMapUpdate, projectCoralMatrixBeam, projectCoralPizzaRegions, projectCoralWaveRegion, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectRaidFloorRegions, projectTinaPizzaRegion, targetDebuffRemainingMillis, zoomMechanicsMapAt, type MechanicsMapSignal, type MechanicsMapSnapshot } from "./mechanics-map";
+import { actionControlRemainingMillis, fitMechanicsMapCanvasRect, mechanicSignalRemainingMillis, parseMechanicsMapUpdate, projectCoralMatrixBeam, projectCoralPizzaRegions, projectCoralWaveRegion, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectRaidFloorRegions, projectTinaPizzaRegion, targetDebuffRemainingMillis, zoomMechanicsMapAt, type MechanicsMapSignal, type MechanicsMapSnapshot } from "./mechanics-map";
 
 function snapshot(): MechanicsMapSnapshot {
   return {
@@ -56,6 +56,21 @@ describe("Mechanics Map", () => {
     const zoomedOut = zoomMechanicsMapAt({ scale: 1, panX: 0, panY: 0 }, 0, 0, 10_000);
     expect(zoomedOut.scale).toBeLessThan(0.000001);
     expect(zoomedOut.scale).toBeGreaterThan(0);
+  });
+
+  it("letterboxes the complete game map without stretching its coordinate plane", () => {
+    expect(fitMechanicsMapCanvasRect(1_200, 800, 4_096, 4_096)).toEqual({
+      x: 200, y: 0, width: 800, height: 800,
+    });
+    expect(fitMechanicsMapCanvasRect(800, 1_200, 4_096, 4_096)).toEqual({
+      x: 0, y: 200, width: 800, height: 800,
+    });
+    expect(fitMechanicsMapCanvasRect(1_200, 800, 1_200, 800)).toEqual({
+      x: 0, y: 0, width: 1_200, height: 800,
+    });
+    expect(fitMechanicsMapCanvasRect(Number.NaN, 800, 4_096, 4_096)).toEqual({
+      x: 0, y: 0, width: 0, height: 800,
+    });
   });
 
   it("accepts the bounded host contract", () => {

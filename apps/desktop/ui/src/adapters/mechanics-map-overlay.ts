@@ -1,6 +1,7 @@
 import type { MountedSurface } from "../shell/types";
 import {
   actionControlRemainingMillis,
+  fitMechanicsMapCanvasRect,
   mechanicSignalRemainingMillis,
   projectCoralMatrixBeam,
   projectCoralPizzaRegions,
@@ -13,6 +14,7 @@ import {
   targetDebuffRemainingMillis,
   zoomMechanicsMapAt,
   type MechanicsMapProjectedRegion,
+  type MechanicsMapCanvasRect,
   type MechanicsMapSnapshot,
   type MechanicsMapUpdate,
   type MechanicsMapViewPoint,
@@ -37,6 +39,7 @@ export interface MechanicsMapCanvasPreferences {
   rotateWithPlayer: boolean;
   showMonsters: boolean;
   locked: boolean;
+  expanded: boolean;
   moduleX: number;
   moduleY: number;
   moduleWidth: number;
@@ -68,6 +71,7 @@ const DEFAULT_PREFERENCES: MechanicsMapCanvasPreferences = {
   rotateWithPlayer: true,
   showMonsters: true,
   locked: false,
+  expanded: false,
   moduleX: 24,
   moduleY: 120,
   moduleWidth: 520,
@@ -104,6 +108,7 @@ export function parseMechanicsMapCanvasPreferences(value: unknown): MechanicsMap
     rotateWithPlayer: typeof value.rotateWithPlayer === "boolean" ? value.rotateWithPlayer : true,
     showMonsters: typeof value.showMonsters === "boolean" ? value.showMonsters : true,
     locked: typeof value.locked === "boolean" ? value.locked : false,
+    expanded: typeof value.expanded === "boolean" ? value.expanded : false,
     moduleX: finiteBounded(value.moduleX) ? value.moduleX : 24,
     moduleY: finiteBounded(value.moduleY) ? value.moduleY : 120,
     moduleWidth: finitePositive(value.moduleWidth) ? Math.max(260, value.moduleWidth) : 520,
@@ -206,6 +211,7 @@ export function mountMechanicsMapOverlay(
   const root = element("main", "overlay-canvas-runtime");
   const panel = element("section", "mechanics-map-overlay-runtime");
   panel.dataset.locked = String(preferences.locked);
+  panel.dataset.expanded = String(preferences.expanded);
   const toolbar = element("header", "mechanics-map-overlay-toolbar");
   const identity = element("div", "mechanics-map-overlay-identity");
   const title = text("strong", "Waiting for scene");
@@ -224,18 +230,22 @@ export function mountMechanicsMapOverlay(
     savePreferences();
     scheduleDraw();
   });
-  const reset = button("Reset", false, () => {
+  const fit = button("Fit", false, () => {
     preferences.scale = 1;
     preferences.panX = 0;
     preferences.panY = 0;
     savePreferences();
     scheduleDraw();
   });
+  const center = button("Center", false, centerOnPlayer);
+  const expand = button(preferences.expanded ? "Window" : "Full map", preferences.expanded, () => {
+    setExpanded(!preferences.expanded);
+  });
   const lock = button(preferences.locked ? "Unlock" : "Lock", preferences.locked, () => {
     void setLocked(!preferences.locked);
   });
   const hide = button("Hide", false, () => { void dependencies.hide(); });
-  actions.append(rotate, monsters, reset, lock, hide);
+  actions.append(rotate, monsters, fit, center, expand, lock, hide);
   toolbar.append(identity, actions);
 
   const viewport = element("section", "mechanics-map-overlay-viewport");
@@ -244,11 +254,17 @@ export function mountMechanicsMapOverlay(
   canvas.setAttribute("aria-label", "Live packet-observed Mechanics Map canvas");
   const notice = text("p", "Waiting for packet-observed position…", "mechanics-map-overlay-notice");
   viewport.append(canvas, notice);
+  const footer = element("footer", "mechanics-map-overlay-footer");
+  const mapSource = text("span", "RADAR FALLBACK");
+  const mapCoordinates = text("span", "X — · Z —");
+  const mapMetrics = text("span", "1× · 0 entities");
+  footer.append(mapSource, mapCoordinates, mapMetrics);
   const resize = element("button", "mechanics-map-overlay-resize");
   resize.type = "button";
   resize.title = "Resize Mechanics Map overlay";
   resize.setAttribute("aria-label", "Resize Mechanics Map overlay");
   resize.addEventListener("pointerdown", (event) => {
+    if (preferences.expanded) return;
     event.preventDefault();
     moduleResize = {
       pointerId: event.pointerId, x: event.clientX, y: event.clientY,
@@ -256,7 +272,7 @@ export function mountMechanicsMapOverlay(
     };
     resize.setPointerCapture(event.pointerId);
   });
-  panel.append(toolbar, viewport, resize);
+  panel.append(toolbar, viewport, footer, resize);
   const playerPanel = element("section", "player-frame-overlay-runtime");
   const playerToolbar = element("header", "player-frame-overlay-toolbar");
   const playerTitle = text("strong", "Player");
@@ -328,7 +344,7 @@ export function mountMechanicsMapOverlay(
   applyModuleGeometry();
 
   toolbar.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 || (event.target as Element).closest("button")) return;
+    if (preferences.expanded || event.button !== 0 || (event.target as Element).closest("button")) return;
     moduleDrag = {
       pointerId: event.pointerId, x: event.clientX, y: event.clientY,
       left: preferences.moduleX, top: preferences.moduleY,
@@ -515,7 +531,22 @@ export function mountMechanicsMapOverlay(
     renderTarget(snapshot);
     renderDungeonObjectives(snapshot);
     renderMechanicAlerts(snapshot);
+    renderMapFooter(snapshot);
     scheduleDraw();
+  }
+
+  function renderMapFooter(snapshot: MechanicsMapSnapshot): void {
+    mapSource.textContent = snapshot.map_model === "absolute_scene_map"
+      ? imageReady ? "GAME MAP" : preparingAsset ? "PREPARING MAP" : "MAP ASSET PENDING"
+      : "RADAR FALLBACK";
+    mapSource.dataset.state = snapshot.map_model === "absolute_scene_map" && imageReady ? "live" : "fallback";
+    const local = snapshot.entities.find((entity) => entity.actor_id === snapshot.local_actor_id);
+    mapCoordinates.textContent = local
+      ? `X ${formatMechanicsMapCoordinate(local.x)} · Z ${formatMechanicsMapCoordinate(local.z)}`
+      : "X — · Z —";
+    const mechanicCount = snapshot.mechanics.filter((signal) => signal.mechanic_kind !== null).length;
+    const objectiveCount = snapshot.dungeon?.objectives.length ?? 0;
+    mapMetrics.textContent = `${formatMechanicsMapZoom(preferences.scale)}× · ${snapshot.entities.length} entities · ${mechanicCount} mechanics · ${objectiveCount} objectives`;
   }
 
   function renderMechanicAlerts(snapshot: MechanicsMapSnapshot): void {
@@ -993,6 +1024,7 @@ export function mountMechanicsMapOverlay(
       if (!alive || imageUrl !== url) return;
       image = next;
       imageReady = true;
+      if (update?.snapshot) renderMapFooter(update.snapshot);
       scheduleDraw();
     };
     next.onerror = () => {
@@ -1032,14 +1064,23 @@ export function mountMechanicsMapOverlay(
     if (!context) return;
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     context.clearRect(0, 0, width, height);
+    context.fillStyle = "rgba(3, 9, 16, 0.94)";
+    context.fillRect(0, 0, width, height);
+    context.imageSmoothingEnabled = true;
     context.save();
     context.translate(width / 2 + preferences.panX, height / 2 + preferences.panY);
     context.scale(preferences.scale, preferences.scale);
     context.translate(-width / 2, -height / 2);
-    drawBackdrop(context, snapshot, width, height, imageReady ? image : null);
+    const activeImage = imageReady ? image : null;
+    const content = mechanicsMapContentRect(snapshot, width, height, activeImage);
+    drawBackdrop(context, snapshot, content, activeImage);
+    context.save();
+    context.translate(content.x, content.y);
+    context.scale(content.width / width, content.height / height);
     drawArena(context, snapshot, width, height);
     drawRegions(context, snapshot, width, height);
     drawEntities(context, snapshot, width, height, preferences);
+    context.restore();
     context.restore();
   }
 
@@ -1055,6 +1096,30 @@ export function mountMechanicsMapOverlay(
     preferences.scale = next.scale;
     preferences.panX = next.panX;
     preferences.panY = next.panY;
+    savePreferences();
+    if (update?.snapshot) renderMapFooter(update.snapshot);
+    scheduleDraw();
+  }
+
+  function centerOnPlayer(): void {
+    const snapshot = update?.snapshot;
+    if (!snapshot) return;
+    if (snapshot.map_model !== "absolute_scene_map") {
+      preferences.panX = 0;
+      preferences.panY = 0;
+    } else {
+      const local = snapshot.entities.find((entity) => entity.actor_id === snapshot.local_actor_id);
+      const point = local ? projectMechanicsMapPoint(snapshot, local.x, local.z, false) : null;
+      const rect = viewport.getBoundingClientRect();
+      if (!point || rect.width <= 0 || rect.height <= 0) return;
+      const width = Math.max(1, Math.round(rect.width));
+      const height = Math.max(1, Math.round(rect.height));
+      const content = mechanicsMapContentRect(snapshot, width, height, imageReady ? image : null);
+      const pointX = content.x + point.mapX / 100 * content.width;
+      const pointY = content.y + point.mapY / 100 * content.height;
+      preferences.panX = -preferences.scale * (pointX - width / 2);
+      preferences.panY = -preferences.scale * (pointY - height / 2);
+    }
     savePreferences();
     scheduleDraw();
   }
@@ -1091,19 +1156,38 @@ export function mountMechanicsMapOverlay(
     await dependencies.setInteractive(!value);
   }
 
+  function setExpanded(value: boolean): void {
+    preferences.expanded = value;
+    panel.dataset.expanded = String(value);
+    expand.textContent = value ? "Window" : "Full map";
+    expand.dataset.active = String(value);
+    moduleDrag = null;
+    moduleResize = null;
+    applyModuleGeometry();
+    savePreferences();
+    scheduleDraw();
+  }
+
   function savePreferences(): void {
     localStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences));
   }
 
   function applyModuleGeometry(): void {
-    const maximumX = Math.max(0, window.innerWidth - preferences.moduleWidth);
-    const maximumY = Math.max(0, window.innerHeight - preferences.moduleHeight);
-    preferences.moduleX = Math.min(maximumX, Math.max(0, preferences.moduleX));
-    preferences.moduleY = Math.min(maximumY, Math.max(0, preferences.moduleY));
-    panel.style.left = `${preferences.moduleX}px`;
-    panel.style.top = `${preferences.moduleY}px`;
-    panel.style.width = `${Math.min(window.innerWidth, preferences.moduleWidth)}px`;
-    panel.style.height = `${Math.min(window.innerHeight, preferences.moduleHeight)}px`;
+    if (preferences.expanded) {
+      panel.style.left = "0";
+      panel.style.top = "0";
+      panel.style.width = `${Math.max(1, window.innerWidth)}px`;
+      panel.style.height = `${Math.max(1, window.innerHeight)}px`;
+    } else {
+      const maximumX = Math.max(0, window.innerWidth - preferences.moduleWidth);
+      const maximumY = Math.max(0, window.innerHeight - preferences.moduleHeight);
+      preferences.moduleX = Math.min(maximumX, Math.max(0, preferences.moduleX));
+      preferences.moduleY = Math.min(maximumY, Math.max(0, preferences.moduleY));
+      panel.style.left = `${preferences.moduleX}px`;
+      panel.style.top = `${preferences.moduleY}px`;
+      panel.style.width = `${Math.min(window.innerWidth, preferences.moduleWidth)}px`;
+      panel.style.height = `${Math.min(window.innerHeight, preferences.moduleHeight)}px`;
+    }
     const targetWidth = Math.min(window.innerWidth, preferences.targetWidth);
     preferences.targetX = Math.min(Math.max(0, window.innerWidth - targetWidth), Math.max(0, preferences.targetX));
     preferences.targetY = Math.min(Math.max(0, window.innerHeight - 96), Math.max(0, preferences.targetY));
@@ -1146,7 +1230,7 @@ export function mountMechanicsMapOverlay(
   }
 
   function moveModule(event: PointerEvent): void {
-    if (moduleDrag?.pointerId !== event.pointerId) return;
+    if (preferences.expanded || moduleDrag?.pointerId !== event.pointerId) return;
     preferences.moduleX = moduleDrag.left + event.clientX - moduleDrag.x;
     preferences.moduleY = moduleDrag.top + event.clientY - moduleDrag.y;
     applyModuleGeometry();
@@ -1159,7 +1243,7 @@ export function mountMechanicsMapOverlay(
   }
 
   function resizeModule(event: PointerEvent): void {
-    if (moduleResize?.pointerId !== event.pointerId) return;
+    if (preferences.expanded || moduleResize?.pointerId !== event.pointerId) return;
     preferences.moduleWidth = Math.max(260, moduleResize.width + event.clientX - moduleResize.x);
     preferences.moduleHeight = Math.max(260, moduleResize.height + event.clientY - moduleResize.y);
     applyModuleGeometry();
@@ -1343,28 +1427,41 @@ export function mountMechanicsMapOverlay(
 function drawBackdrop(
   context: CanvasRenderingContext2D,
   snapshot: MechanicsMapSnapshot,
-  width: number,
-  height: number,
+  rect: MechanicsMapCanvasRect,
   activeImage: HTMLImageElement | null,
 ): void {
   context.fillStyle = "rgba(5, 13, 23, 0.92)";
-  context.fillRect(0, 0, width, height);
+  context.fillRect(rect.x, rect.y, rect.width, rect.height);
   if (snapshot.map_model === "absolute_scene_map" && activeImage) {
-    const ratio = Math.min(width / activeImage.naturalWidth, height / activeImage.naturalHeight);
-    const imageWidth = activeImage.naturalWidth * ratio;
-    const imageHeight = activeImage.naturalHeight * ratio;
     context.globalAlpha = 0.9;
-    context.drawImage(activeImage, (width - imageWidth) / 2, (height - imageHeight) / 2, imageWidth, imageHeight);
+    context.drawImage(activeImage, rect.x, rect.y, rect.width, rect.height);
     context.globalAlpha = 1;
     context.fillStyle = "rgba(3, 11, 19, 0.16)";
-    context.fillRect(0, 0, width, height);
+    context.fillRect(rect.x, rect.y, rect.width, rect.height);
   } else {
-    const gradient = context.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, Math.max(width, height) * 0.7);
+    const centerX = rect.x + rect.width / 2;
+    const centerY = rect.y + rect.height / 2;
+    const gradient = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, Math.max(rect.width, rect.height) * 0.7);
     gradient.addColorStop(0, "rgba(49, 84, 96, 0.35)");
     gradient.addColorStop(1, "rgba(5, 13, 23, 0.98)");
     context.fillStyle = gradient;
-    context.fillRect(0, 0, width, height);
+    context.fillRect(rect.x, rect.y, rect.width, rect.height);
   }
+}
+
+function mechanicsMapContentRect(
+  snapshot: MechanicsMapSnapshot,
+  width: number,
+  height: number,
+  activeImage: HTMLImageElement | null,
+): MechanicsMapCanvasRect {
+  if (snapshot.map_model !== "absolute_scene_map") return { x: 0, y: 0, width, height };
+  return fitMechanicsMapCanvasRect(
+    width,
+    height,
+    activeImage?.naturalWidth ?? 1,
+    activeImage?.naturalHeight ?? 1,
+  );
 }
 
 function drawArena(context: CanvasRenderingContext2D, snapshot: MechanicsMapSnapshot, width: number, height: number): void {
@@ -1559,6 +1656,14 @@ function loadPreferences(): MechanicsMapCanvasPreferences {
   } catch {
     return { ...DEFAULT_PREFERENCES };
   }
+}
+
+function formatMechanicsMapCoordinate(value: number): string {
+  return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 1 });
+}
+
+function formatMechanicsMapZoom(value: number): string {
+  return value >= 10 ? value.toFixed(0) : value.toFixed(value < 2 ? 2 : 1).replace(/\.0+$/, "");
 }
 
 function formatTargetHealth(current: number | null, maximum: number | null): string {

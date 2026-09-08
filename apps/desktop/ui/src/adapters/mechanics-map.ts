@@ -197,6 +197,43 @@ export interface MechanicsMapTransform {
   panY: number;
 }
 
+export interface MechanicsMapCanvasRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Preserve the game texture's aspect ratio while keeping the complete map in
+ * view. Packet coordinates are projected through this same rectangle so a
+ * freely resized overlay cannot drift away from the art underneath it.
+ */
+export function fitMechanicsMapCanvasRect(
+  viewportWidth: number,
+  viewportHeight: number,
+  sourceWidth: number,
+  sourceHeight: number,
+): MechanicsMapCanvasRect {
+  if (![viewportWidth, viewportHeight, sourceWidth, sourceHeight].every(finitePositive)) {
+    return {
+      x: 0,
+      y: 0,
+      width: finitePositive(viewportWidth) ? viewportWidth : 0,
+      height: finitePositive(viewportHeight) ? viewportHeight : 0,
+    };
+  }
+  const ratio = Math.min(viewportWidth / sourceWidth, viewportHeight / sourceHeight);
+  const width = sourceWidth * ratio;
+  const height = sourceHeight * ratio;
+  return {
+    x: (viewportWidth - width) / 2,
+    y: (viewportHeight - height) / 2,
+    width,
+    height,
+  };
+}
+
 export function zoomMechanicsMapAt(
   current: MechanicsMapTransform,
   cursorX: number,

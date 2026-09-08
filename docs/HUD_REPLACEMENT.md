@@ -138,7 +138,13 @@ canvas covers the active display at its actual resolution, while its backing
 HTML canvas scales by the display pixel ratio so high-DPI displays retain full
 pixel detail. The map module moves and resizes inside that transparent surface;
 its position, dimensions, free zoom, pan, rotation, monster filter, and lock
-state persist locally. Locking makes the entire native canvas click-through;
+state persist locally. It can switch between its saved windowed geometry and a
+full-display map at the user's actual screen resolution. `Fit` restores the
+complete map and `Center` moves the packet-observed local player to the middle
+without imposing a zoom cap. The game texture and every entity, marker, and
+mechanic layer share one aspect-preserving content rectangle, so a wide or tall
+overlay cannot stretch the packet coordinates away from the underlying art.
+Locking makes the entire native canvas click-through;
 opening the canvas again from Mechanics Map is the recovery path that restores
 editing. The same canvas/window contract is reserved for future target,
 status, action, party, objective, and chat modules rather than creating a new
