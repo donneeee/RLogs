@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use rlogs_events::{
-    ActorId, ActorKind, CanonicalEvent, EventEnvelope, StatusEffectId, StatusState,
-    TimelineEventKind,
+    ActorId, ActorKind, ActorOwnershipUpdate, CanonicalEvent, EntityUuid, EventEnvelope,
+    StatusEffectId, StatusState, TimelineEventKind,
 };
 use serde::Serialize;
 
@@ -115,8 +115,12 @@ struct ActorEvidence {
 pub struct TrainingDummyController {
     state: TrainingDummyState,
     actors: HashMap<ActorId, ActorEvidence>,
+    actor_by_entity_uuid: HashMap<EntityUuid, ActorId>,
+    owner_entity_by_actor: HashMap<ActorId, EntityUuid>,
     active_statuses: HashSet<(ActorId, ActorId, StatusEffectId)>,
     observed_party_size: Option<usize>,
+    locked_player: Option<ActorId>,
+    locked_target: Option<ActorId>,
 }
 
 impl Default for TrainingDummyController {
@@ -124,8 +128,12 @@ impl Default for TrainingDummyController {
         Self {
             state: TrainingDummyState::idle(None),
             actors: HashMap::new(),
+            actor_by_entity_uuid: HashMap::new(),
+            owner_entity_by_actor: HashMap::new(),
             active_statuses: HashSet::new(),
             observed_party_size: None,
+            locked_player: None,
+            locked_target: None,
         }
     }
 }
@@ -139,6 +147,8 @@ impl TrainingDummyController {
         self.state = TrainingDummyState::armed(self.state.scene_id);
         self.state.observed_party_size = self.observed_party_size;
         self.active_statuses.clear();
+        self.locked_player = None;
+        self.locked_target = None;
         if self.observed_party_size.is_some_and(|size| size > 1) {
             self.invalidate("party_not_solo", 0);
         }
@@ -147,6 +157,8 @@ impl TrainingDummyController {
     pub fn disarm(&mut self) {
         self.state = TrainingDummyState::idle(self.state.scene_id);
         self.active_statuses.clear();
+        self.locked_player = None;
+        self.locked_target = None;
     }
 
     pub fn observe(&mut self, event: &EventEnvelope) -> TrainingDummyObservation {
@@ -161,7 +173,10 @@ impl TrainingDummyController {
                 self.state.scene_id = scene_id;
                 observation.changed = true;
             }
-            if self.state.phase != TrainingDummyPhase::Idle && scene_id != Some(GUILD_HALL_SCENE_ID)
+            if matches!(
+                self.state.phase,
+                TrainingDummyPhase::Armed | TrainingDummyPhase::Running
+            ) && scene_id != Some(GUILD_HALL_SCENE_ID)
             {
                 self.invalidate("left_guild_hall", event.time.observed_micros);
                 observation.changed = true;
@@ -198,6 +213,8 @@ impl TrainingDummyController {
         };
         match &timeline.kind {
             TimelineEventKind::Actor(actor) => {
+                self.actor_by_entity_uuid
+                    .insert(actor.actor.entity_uuid, actor.actor.actor_id);
                 self.actors.insert(
                     actor.actor.actor_id,
                     ActorEvidence {
@@ -209,6 +226,20 @@ impl TrainingDummyController {
                         specialization_id: actor.specialization_id,
                     },
                 );
+            }
+            TimelineEventKind::EntityAttributes(attributes) => {
+                if let Some(ownership) = attributes.ownership {
+                    match ownership {
+                        ActorOwnershipUpdate::Confirmed { owner_entity_uuid } => {
+                            self.owner_entity_by_actor
+                                .insert(attributes.actor.actor_id, owner_entity_uuid);
+                        }
+                        ActorOwnershipUpdate::Cleared => {
+                            self.owner_entity_by_actor
+                                .remove(&attributes.actor.actor_id);
+                        }
+                    }
+                }
             }
             TimelineEventKind::Status(status) => {
                 if let Some(source) = status.source {
@@ -222,12 +253,12 @@ impl TrainingDummyController {
                         }
                     }
                     let external_player_effect = self.state.phase == TrainingDummyPhase::Running
-                        && self.actor_is_player(source.actor_id)
-                        && Some(source.actor_id.0.to_string()) != self.state.player_actor_id
-                        && (Some(status.target.actor_id.0.to_string())
-                            == self.state.player_actor_id
-                            || Some(status.target.actor_id.0.to_string())
-                                == self.state.target_actor_id);
+                        && self.locked_player.is_some_and(|player| {
+                            self.player_owner(source.actor_id)
+                                .is_some_and(|owner| owner != player)
+                        })
+                        && (Some(status.target.actor_id) == self.locked_player
+                            || Some(status.target.actor_id) == self.locked_target);
                     if external_player_effect
                         && matches!(
                             status.state,
@@ -254,13 +285,14 @@ impl TrainingDummyController {
                             || !target
                                 .monster_id
                                 .is_some_and(|id| ELITE_DUMMY_MONSTER_IDS.contains(&id))
-                            || !self.actor_is_player(damage.source.actor_id)
+                            || self.player_owner(damage.source.actor_id).is_none()
                         {
                             return observation;
                         }
                         let monster_id = target.monster_id.expect("validated dummy monster id");
                         self.start(
-                            damage.source.actor_id,
+                            self.player_owner(damage.source.actor_id)
+                                .expect("validated player owner"),
                             damage.target.actor_id,
                             monster_id,
                             event.time.observed_micros,
@@ -275,14 +307,10 @@ impl TrainingDummyController {
                         if self.deadline_reached(now) {
                             self.finish();
                             observation.changed = true;
-                        } else if Some(damage.source.actor_id.0.to_string())
-                            != self.state.player_actor_id
-                        {
+                        } else if self.player_owner(damage.source.actor_id) != self.locked_player {
                             self.invalidate("multiple_players", now);
                             observation.changed = true;
-                        } else if Some(damage.target.actor_id.0.to_string())
-                            != self.state.target_actor_id
-                        {
+                        } else if Some(damage.target.actor_id) != self.locked_target {
                             self.invalidate("multiple_targets", now);
                             observation.changed = true;
                         } else {
@@ -307,14 +335,27 @@ impl TrainingDummyController {
         observation
     }
 
-    fn actor_is_player(&self, actor_id: ActorId) -> bool {
-        self.actors
-            .get(&actor_id)
-            .is_some_and(|actor| actor.kind == ActorKind::Player)
+    fn player_owner(&self, actor_id: ActorId) -> Option<ActorId> {
+        let mut current = actor_id;
+        for _ in 0..8 {
+            let actor = self.actors.get(&current)?;
+            if actor.kind == ActorKind::Player {
+                return Some(current);
+            }
+            let owner_uuid = self.owner_entity_by_actor.get(&current)?;
+            let owner = *self.actor_by_entity_uuid.get(owner_uuid)?;
+            if owner == current {
+                return None;
+            }
+            current = owner;
+        }
+        None
     }
 
     fn start(&mut self, player: ActorId, target: ActorId, monster_id: i64, now: u64) {
         let player_evidence = self.actors.get(&player).cloned();
+        self.locked_player = Some(player);
+        self.locked_target = Some(target);
         self.state.phase = TrainingDummyPhase::Running;
         self.state.player_actor_id = Some(player.0.to_string());
         self.state.player_character_id = player_evidence
@@ -340,8 +381,9 @@ impl TrainingDummyController {
 
         let externally_buffed = self.active_statuses.iter().any(|(source, recipient, _)| {
             (*recipient == player || *recipient == target)
-                && *source != player
-                && self.actor_is_player(*source)
+                && self
+                    .player_owner(*source)
+                    .is_some_and(|owner| owner != player)
         });
         if externally_buffed {
             self.invalidate("external_player_effect", now);
@@ -394,9 +436,10 @@ mod tests {
     use super::*;
     use rlogs_events::{
         ActorEvent, ActorLoadoutObservation, ActorState, CanonicalEventDraft,
-        CanonicalEventDraftKind, DamageEvent, DamageFlags, EntityRef, EntityUuid,
-        EventEnvelopeFactory, EventProvenance, EventSensitivity, EventTime, MonsterId,
-        RegionContext, RegionIdentity, SceneId, StatusEvent, WorldContext,
+        CanonicalEventDraftKind, DamageEvent, DamageFlags, EntityAttributeEvent,
+        EntityAttributeUpdateKind, EntityRef, EntityUuid, EventEnvelopeFactory, EventProvenance,
+        EventSensitivity, EventTime, MonsterId, RegionContext, RegionIdentity, SceneId,
+        StatusEvent, WorldContext,
     };
 
     fn entity(id: u64) -> EntityRef {
@@ -479,6 +522,19 @@ mod tests {
             flags: DamageFlags::default(),
             packet: Default::default(),
         }))
+    }
+
+    fn ownership(actor: u64, owner: u64) -> CanonicalEventDraftKind {
+        CanonicalEventDraftKind::Timeline(TimelineEventKind::EntityAttributes(
+            EntityAttributeEvent {
+                actor: entity(actor),
+                update_kind: EntityAttributeUpdateKind::Delta,
+                ownership: Some(ActorOwnershipUpdate::Confirmed {
+                    owner_entity_uuid: entity(owner).entity_uuid,
+                }),
+                attributes: Vec::new(),
+            },
+        ))
     }
 
     #[test]
@@ -575,5 +631,136 @@ mod tests {
             controller.state().invalid_reason.as_deref(),
             Some("external_player_effect")
         );
+    }
+
+    #[test]
+    fn own_imagine_is_internal_but_another_players_imagine_is_external() {
+        let mut factory = factory();
+        let mut controller = TrainingDummyController::default();
+        for event in [
+            emit(
+                &mut factory,
+                1,
+                CanonicalEventDraftKind::WorldChanged(WorldContext {
+                    scene_id: Some(SceneId(GUILD_HALL_SCENE_ID)),
+                    map_id: None,
+                    line_id: None,
+                    scene_instance_id: None,
+                    dungeon_instance_id: None,
+                }),
+            ),
+            emit(&mut factory, 2, actor(1, ActorKind::Player, None)),
+            emit(
+                &mut factory,
+                3,
+                actor(2, ActorKind::TrainingDummy, Some(115)),
+            ),
+            emit(&mut factory, 4, actor(3, ActorKind::Pet, None)),
+            emit(&mut factory, 5, ownership(3, 1)),
+            emit(&mut factory, 6, actor(4, ActorKind::Player, None)),
+            emit(&mut factory, 7, actor(5, ActorKind::Pet, None)),
+            emit(&mut factory, 8, ownership(5, 4)),
+        ] {
+            controller.observe(&event);
+        }
+        controller.arm();
+
+        let first = controller.observe(&emit(&mut factory, 10, damage(3, 2, 1_000)));
+        assert!(first.reset_meter && first.accept_damage);
+        assert_eq!(controller.state().player_actor_id.as_deref(), Some("1"));
+        assert_eq!(controller.state().total_damage, 1_000);
+
+        controller.observe(&emit(
+            &mut factory,
+            11,
+            CanonicalEventDraftKind::Timeline(TimelineEventKind::Status(StatusEvent {
+                source: Some(entity(3)),
+                target: entity(2),
+                effect: StatusEffectId(99),
+                instance_id: None,
+                origin: None,
+                state: StatusState::Applied,
+                stacks: Some(1),
+                duration_millis: Some(10_000),
+                level: None,
+                part_id: None,
+                count: None,
+                created_at_millis: None,
+            })),
+        ));
+        assert_eq!(controller.state().phase, TrainingDummyPhase::Running);
+
+        controller.observe(&emit(
+            &mut factory,
+            12,
+            CanonicalEventDraftKind::Timeline(TimelineEventKind::Status(StatusEvent {
+                source: Some(entity(5)),
+                target: entity(2),
+                effect: StatusEffectId(100),
+                instance_id: None,
+                origin: None,
+                state: StatusState::Applied,
+                stacks: Some(1),
+                duration_millis: Some(10_000),
+                level: None,
+                part_id: None,
+                count: None,
+                created_at_millis: None,
+            })),
+        ));
+        assert_eq!(controller.state().phase, TrainingDummyPhase::Invalid);
+        assert_eq!(
+            controller.state().invalid_reason.as_deref(),
+            Some("external_player_effect")
+        );
+    }
+
+    #[test]
+    fn leaving_guild_hall_does_not_destroy_a_finished_result() {
+        let mut factory = factory();
+        let mut controller = TrainingDummyController::default();
+        for event in [
+            emit(
+                &mut factory,
+                1,
+                CanonicalEventDraftKind::WorldChanged(WorldContext {
+                    scene_id: Some(SceneId(GUILD_HALL_SCENE_ID)),
+                    map_id: None,
+                    line_id: None,
+                    scene_instance_id: None,
+                    dungeon_instance_id: None,
+                }),
+            ),
+            emit(&mut factory, 2, actor(1, ActorKind::Player, None)),
+            emit(
+                &mut factory,
+                3,
+                actor(2, ActorKind::TrainingDummy, Some(115)),
+            ),
+        ] {
+            controller.observe(&event);
+        }
+        controller.arm();
+        controller.observe(&emit(&mut factory, 10, damage(1, 2, 1_000)));
+        controller.observe(&emit(
+            &mut factory,
+            TRAINING_DURATION_MICROS + 10,
+            damage(1, 2, 1),
+        ));
+        assert_eq!(controller.state().phase, TrainingDummyPhase::Finished);
+
+        controller.observe(&emit(
+            &mut factory,
+            TRAINING_DURATION_MICROS + 20,
+            CanonicalEventDraftKind::WorldChanged(WorldContext {
+                scene_id: Some(SceneId(1)),
+                map_id: None,
+                line_id: None,
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            }),
+        ));
+        assert_eq!(controller.state().phase, TrainingDummyPhase::Finished);
+        assert!(controller.state().valid);
     }
 }
