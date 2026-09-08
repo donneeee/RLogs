@@ -5817,6 +5817,22 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
 .dungeon-objectives-overlay-progress { grid-column: 1 / -1; width: 100%; height: 4px; border: 0; accent-color: #57dfd6; }
 .dungeon-objectives-overlay-empty { margin: 0; padding: 7px 0; color: #8fa8bb; font-size: 11px; }
 .dungeon-objectives-overlay-resize { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; padding: 0; border: 0; cursor: ew-resize; background: linear-gradient(135deg, transparent 45%, rgb(92 228 212 / 68%) 48%, rgb(92 228 212 / 68%) 58%, transparent 61%); }
+.mechanic-alerts-overlay-runtime { position: absolute; box-sizing: border-box; overflow: hidden; border: 1px solid rgb(242 195 107 / 46%); border-radius: 10px; color: #eef6fb; background: rgb(5 13 23 / 90%); box-shadow: 0 8px 28px rgb(0 0 0 / 38%); }
+.mechanic-alerts-overlay-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; padding: 7px 10px; cursor: move; border-bottom: 1px solid rgb(242 195 107 / 24%); background: rgb(41 31 16 / 88%); }
+.mechanic-alerts-overlay-toolbar strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mechanic-alerts-overlay-toolbar span { flex: none; color: #f2c36b; font-size: 10px; font-weight: 800; letter-spacing: .1em; }
+.mechanic-alerts-overlay-body { display: grid; gap: 6px; padding: 8px 10px 10px; }
+.mechanic-alerts-overlay-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; min-width: 0; padding: 7px 8px; border: 1px solid rgb(242 195 107 / 22%); border-radius: 7px; background: rgb(35 27 16 / 78%); }
+.mechanic-alerts-overlay-row[data-effect-id^="-"] { border-color: rgb(255 111 131 / 30%); background: rgb(49 20 29 / 74%); }
+.mechanic-alerts-overlay-row[data-expired="true"] { display: none; }
+.mechanic-alerts-overlay-identity { display: grid; min-width: 0; gap: 2px; }
+.mechanic-alerts-overlay-identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.mechanic-alerts-overlay-identity small { color: #9caebd; font-size: 8px; font-weight: 800; letter-spacing: .08em; }
+.mechanic-alerts-overlay-detail { display: inline-flex; align-items: center; gap: 7px; }
+.mechanic-alerts-overlay-detail b { min-width: 6.8ch; color: #f2c36b; font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; }
+.mechanic-alerts-overlay-stacks { color: #ff9bae; font-size: 10px; font-weight: 850; }
+.mechanic-alerts-overlay-empty { margin: 0; padding: 7px 0; color: #9caebd; font-size: 11px; }
+.mechanic-alerts-overlay-resize { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; padding: 0; border: 0; cursor: ew-resize; background: linear-gradient(135deg, transparent 45%, rgb(242 195 107 / 72%) 48%, rgb(242 195 107 / 72%) 58%, transparent 61%); }
 .party-frame-overlay-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; padding: 6px 9px; border-bottom: 1px solid rgb(145 126 255 / 20%); background: rgb(18 17 39 / 92%); cursor: move; user-select: none; }
 .party-frame-overlay-toolbar strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .party-frame-overlay-toolbar span { color: #8ca3ba; font-size: 8px; font-weight: 900; letter-spacing: .12em; }

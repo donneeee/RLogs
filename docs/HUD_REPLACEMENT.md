@@ -3,7 +3,8 @@
 Status: active product track. The screen-sized native Overlay Canvas, its
 packet-backed Mechanics Map, current-target frame, local-player frame with
 packet-backed status effects, action cooldowns, party frames, and a dungeon
-tracker with an authoritative pull clock are implemented; additional HUD modules remain
+tracker with an authoritative pull clock, plus reviewed mechanic alerts, are
+implemented; additional HUD modules remain
 disabled until their authoritative event and asset contracts pass the gates
 below.
 
@@ -145,6 +146,12 @@ clear, or end boundary. Its retry total advances only for packet-proven wipes,
 so boss-death outro packets cannot extend the displayed time. Long-poll timeouts
 that carry no new revision do not rebuild any module, so
 their DOM, countdown anchors, and native overlay remain visually stable.
+
+The mechanic-alert panel is independently movable and resizable. It shows only
+signals admitted by a reviewed current-build encounter pack. Packet-duration
+status effects receive a local countdown anchored to the snapshot timestamp;
+reviewed cast signals remain labeled `OBSERVED` because their current host
+lifetime is only a stale-data bound, not proof of the game's cast duration.
 
 The map uses the locally compiled in-game map as the visual base and keeps
 mechanic knowledge in separate toggleable layers. Required foundations are an

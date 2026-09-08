@@ -1,6 +1,7 @@
 import type { MountedSurface } from "../shell/types";
 import {
   actionControlRemainingMillis,
+  mechanicSignalRemainingMillis,
   projectCoralMatrixBeam,
   projectCoralPizzaRegions,
   projectCoralWaveRegion,
@@ -55,6 +56,9 @@ export interface MechanicsMapCanvasPreferences {
   objectivesX: number;
   objectivesY: number;
   objectivesWidth: number;
+  alertsX: number;
+  alertsY: number;
+  alertsWidth: number;
 }
 
 const DEFAULT_PREFERENCES: MechanicsMapCanvasPreferences = {
@@ -83,6 +87,9 @@ const DEFAULT_PREFERENCES: MechanicsMapCanvasPreferences = {
   objectivesX: 580,
   objectivesY: 360,
   objectivesWidth: 420,
+  alertsX: 1040,
+  alertsY: 420,
+  alertsWidth: 360,
 };
 
 export function parseMechanicsMapCanvasPreferences(value: unknown): MechanicsMapCanvasPreferences {
@@ -116,6 +123,9 @@ export function parseMechanicsMapCanvasPreferences(value: unknown): MechanicsMap
     objectivesX: finiteBounded(value.objectivesX) ? value.objectivesX : 580,
     objectivesY: finiteBounded(value.objectivesY) ? value.objectivesY : 360,
     objectivesWidth: finitePositive(value.objectivesWidth) ? Math.max(280, value.objectivesWidth) : 420,
+    alertsX: finiteBounded(value.alertsX) ? value.alertsX : 1040,
+    alertsY: finiteBounded(value.alertsY) ? value.alertsY : 420,
+    alertsWidth: finitePositive(value.alertsWidth) ? Math.max(260, value.alertsWidth) : 360,
   };
 }
 
@@ -173,6 +183,8 @@ export function mountMechanicsMapOverlay(
   let partyResize: { pointerId: number; x: number; width: number } | null = null;
   let objectivesDrag: { pointerId: number; x: number; y: number; left: number; top: number } | null = null;
   let objectivesResize: { pointerId: number; x: number; width: number } | null = null;
+  let alertsDrag: { pointerId: number; x: number; y: number; left: number; top: number } | null = null;
+  let alertsResize: { pointerId: number; x: number; width: number } | null = null;
   let frame: number | null = null;
   let image: HTMLImageElement | null = null;
   let imageUrl: string | null = null;
@@ -188,6 +200,8 @@ export function mountMechanicsMapOverlay(
   let actionsRenderedAtMillis = 0;
   let objectivesTimer: number | null = null;
   let objectivesRenderedAtMillis = 0;
+  let alertsTimer: number | null = null;
+  let alertsRenderedAtMillis = 0;
 
   const root = element("main", "overlay-canvas-runtime");
   const panel = element("section", "mechanics-map-overlay-runtime");
@@ -298,7 +312,18 @@ export function mountMechanicsMapOverlay(
   objectivesResizeHandle.title = "Resize dungeon objectives";
   objectivesResizeHandle.setAttribute("aria-label", "Resize dungeon objectives");
   objectivesPanel.append(objectivesToolbar, objectivesBody, objectivesResizeHandle);
-  root.append(panel, playerPanel, actionsPanel, partyPanel, targetPanel, objectivesPanel);
+  const alertsPanel = element("section", "mechanic-alerts-overlay-runtime");
+  const alertsToolbar = element("header", "mechanic-alerts-overlay-toolbar");
+  const alertsTitle = text("strong", "Mechanic alerts");
+  const alertsStatus = text("span", "WAITING");
+  alertsToolbar.append(alertsTitle, alertsStatus);
+  const alertsBody = element("section", "mechanic-alerts-overlay-body");
+  const alertsResizeHandle = element("button", "mechanic-alerts-overlay-resize");
+  alertsResizeHandle.type = "button";
+  alertsResizeHandle.title = "Resize mechanic alerts";
+  alertsResizeHandle.setAttribute("aria-label", "Resize mechanic alerts");
+  alertsPanel.append(alertsToolbar, alertsBody, alertsResizeHandle);
+  root.append(panel, playerPanel, actionsPanel, partyPanel, targetPanel, objectivesPanel, alertsPanel);
   container.replaceChildren(root);
   applyModuleGeometry();
 
@@ -411,6 +436,25 @@ export function mountMechanicsMapOverlay(
   objectivesResizeHandle.addEventListener("pointermove", resizeObjectives);
   objectivesResizeHandle.addEventListener("pointerup", endObjectivesResize);
   objectivesResizeHandle.addEventListener("pointercancel", endObjectivesResize);
+  alertsToolbar.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    alertsDrag = {
+      pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+      left: preferences.alertsX, top: preferences.alertsY,
+    };
+    alertsToolbar.setPointerCapture(event.pointerId);
+  });
+  alertsToolbar.addEventListener("pointermove", moveAlerts);
+  alertsToolbar.addEventListener("pointerup", endAlertsDrag);
+  alertsToolbar.addEventListener("pointercancel", endAlertsDrag);
+  alertsResizeHandle.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    alertsResize = { pointerId: event.pointerId, x: event.clientX, width: preferences.alertsWidth };
+    alertsResizeHandle.setPointerCapture(event.pointerId);
+  });
+  alertsResizeHandle.addEventListener("pointermove", resizeAlerts);
+  alertsResizeHandle.addEventListener("pointerup", endAlertsResize);
+  alertsResizeHandle.addEventListener("pointercancel", endAlertsResize);
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("pointerdown", beginPan);
   canvas.addEventListener("pointermove", continuePan);
@@ -469,7 +513,67 @@ export function mountMechanicsMapOverlay(
     renderParty(snapshot);
     renderTarget(snapshot);
     renderDungeonObjectives(snapshot);
+    renderMechanicAlerts(snapshot);
     scheduleDraw();
+  }
+
+  function renderMechanicAlerts(snapshot: MechanicsMapSnapshot): void {
+    stopAlertsTimer();
+    alertsBody.replaceChildren();
+    const signals = snapshot.mechanics
+      .filter((signal) => signal.mechanic_kind !== null)
+      .slice(-8)
+      .reverse();
+    alertsStatus.textContent = signals.length === 0 ? "WAITING" : `${signals.length} OBSERVED`;
+    alertsStatus.dataset.state = signals.length === 0 ? "waiting" : "live";
+    if (signals.length === 0) {
+      alertsBody.append(text("p", "Waiting for reviewed packet mechanic signals…", "mechanic-alerts-overlay-empty"));
+      return;
+    }
+    alertsRenderedAtMillis = performance.now();
+    for (const signal of signals) {
+      const row = element("article", "mechanic-alerts-overlay-row");
+      row.dataset.effectId = String(signal.effect_id);
+      row.dataset.durationMillis = signal.duration_millis === null ? "" : String(signal.duration_millis);
+      row.dataset.appliedAtMicros = String(signal.applied_at_micros);
+      row.dataset.snapshotObservedMicros = snapshot.last_observed_micros === null
+        ? ""
+        : String(snapshot.last_observed_micros);
+      row.title = `Packet effect ID: ${signal.effect_id}`;
+      const identity = element("span", "mechanic-alerts-overlay-identity");
+      identity.append(
+        text("strong", signal.presentation_name ?? humanizeDungeonState(signal.mechanic_kind!)),
+        text("small", humanizeDungeonState(signal.mechanic_kind!)),
+      );
+      const detail = element("span", "mechanic-alerts-overlay-detail");
+      if (signal.stacks !== null && signal.stacks > 1) {
+        detail.append(text("small", `×${signal.stacks}`, "mechanic-alerts-overlay-stacks"));
+      }
+      detail.append(text("b", "OBSERVED", "mechanic-alerts-overlay-time"));
+      row.append(identity, detail);
+      alertsBody.append(row);
+    }
+    updateAlertTimers();
+    if (signals.some((signal) => mechanicSignalRemainingMillis(signal, snapshot.last_observed_micros, 0) !== null)) {
+      alertsTimer = window.setInterval(updateAlertTimers, 100);
+    }
+  }
+
+  function updateAlertTimers(): void {
+    const elapsed = performance.now() - alertsRenderedAtMillis;
+    let active = false;
+    for (const row of alertsBody.querySelectorAll<HTMLElement>(".mechanic-alerts-overlay-row")) {
+      const remaining = mechanicSignalRemainingMillis({
+        effect_id: Number(row.dataset.effectId),
+        duration_millis: row.dataset.durationMillis === "" ? null : Number(row.dataset.durationMillis),
+        applied_at_micros: Number(row.dataset.appliedAtMicros),
+      }, row.dataset.snapshotObservedMicros === "" ? null : Number(row.dataset.snapshotObservedMicros), elapsed);
+      const timer = row.querySelector<HTMLElement>(".mechanic-alerts-overlay-time");
+      if (timer && remaining !== null) timer.textContent = `${(remaining / 1_000).toFixed(1)}s`;
+      row.dataset.expired = String(remaining === 0);
+      active ||= (remaining ?? 0) > 0;
+    }
+    if (!active) stopAlertsTimer();
   }
 
   function renderDungeonObjectives(snapshot: MechanicsMapSnapshot): void {
@@ -617,6 +721,12 @@ export function mountMechanicsMapOverlay(
     if (objectivesTimer === null) return;
     window.clearInterval(objectivesTimer);
     objectivesTimer = null;
+  }
+
+  function stopAlertsTimer(): void {
+    if (alertsTimer === null) return;
+    window.clearInterval(alertsTimer);
+    alertsTimer = null;
   }
 
   function renderParty(snapshot: MechanicsMapSnapshot): void {
@@ -1007,6 +1117,12 @@ export function mountMechanicsMapOverlay(
     objectivesPanel.style.left = `${preferences.objectivesX}px`;
     objectivesPanel.style.top = `${preferences.objectivesY}px`;
     objectivesPanel.style.width = `${objectivesWidth}px`;
+    const alertsWidth = Math.min(window.innerWidth, preferences.alertsWidth);
+    preferences.alertsX = Math.min(Math.max(0, window.innerWidth - alertsWidth), Math.max(0, preferences.alertsX));
+    preferences.alertsY = Math.min(Math.max(0, window.innerHeight - 96), Math.max(0, preferences.alertsY));
+    alertsPanel.style.left = `${preferences.alertsX}px`;
+    alertsPanel.style.top = `${preferences.alertsY}px`;
+    alertsPanel.style.width = `${alertsWidth}px`;
   }
 
   function moveModule(event: PointerEvent): void {
@@ -1160,6 +1276,31 @@ export function mountMechanicsMapOverlay(
     savePreferences();
   }
 
+  function moveAlerts(event: PointerEvent): void {
+    if (alertsDrag?.pointerId !== event.pointerId) return;
+    preferences.alertsX = alertsDrag.left + event.clientX - alertsDrag.x;
+    preferences.alertsY = alertsDrag.top + event.clientY - alertsDrag.y;
+    applyModuleGeometry();
+  }
+
+  function endAlertsDrag(event: PointerEvent): void {
+    if (alertsDrag?.pointerId !== event.pointerId) return;
+    alertsDrag = null;
+    savePreferences();
+  }
+
+  function resizeAlerts(event: PointerEvent): void {
+    if (alertsResize?.pointerId !== event.pointerId) return;
+    preferences.alertsWidth = Math.max(260, alertsResize.width + event.clientX - alertsResize.x);
+    applyModuleGeometry();
+  }
+
+  function endAlertsResize(event: PointerEvent): void {
+    if (alertsResize?.pointerId !== event.pointerId) return;
+    alertsResize = null;
+    savePreferences();
+  }
+
   return {
     dispose() {
       alive = false;
@@ -1168,6 +1309,7 @@ export function mountMechanicsMapOverlay(
       stopPlayerTimer();
       stopActionsTimer();
       stopObjectivesTimer();
+      stopAlertsTimer();
       resizeObserver.disconnect();
       window.removeEventListener("resize", handleScreenResize);
       removeInteractivityListener?.();

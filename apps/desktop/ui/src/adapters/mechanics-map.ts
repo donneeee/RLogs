@@ -406,6 +406,17 @@ export function actionControlRemainingMillis(
   return Math.max(0, control.remaining_millis - Math.max(0, elapsedMillis));
 }
 
+export function mechanicSignalRemainingMillis(
+  signal: Pick<MechanicsMapSignal, "effect_id" | "duration_millis" | "applied_at_micros">,
+  snapshotObservedMicros: number | null,
+  elapsedSinceSnapshotMillis: number,
+): number | null {
+  if (signal.effect_id < 0 || signal.duration_millis === null) return null;
+  const observedMicros = snapshotObservedMicros ?? signal.applied_at_micros;
+  const observedAgeMillis = Math.max(0, observedMicros - signal.applied_at_micros) / 1_000;
+  return Math.max(0, signal.duration_millis - observedAgeMillis - Math.max(0, elapsedSinceSnapshotMillis));
+}
+
 export function projectMechanicsMapEntities(
   value: MechanicsMapSnapshot,
   rotateWithPlayer: boolean,

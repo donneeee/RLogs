@@ -36,6 +36,9 @@ describe("Mechanics Map overlay canvas preferences", () => {
       objectivesX: 620,
       objectivesY: 380,
       objectivesWidth: 440,
+      alertsX: 1060,
+      alertsY: 440,
+      alertsWidth: 380,
     })).toEqual({
       scale: 37.5,
       panX: -184,
@@ -62,6 +65,9 @@ describe("Mechanics Map overlay canvas preferences", () => {
       objectivesX: 620,
       objectivesY: 380,
       objectivesWidth: 440,
+      alertsX: 1060,
+      alertsY: 440,
+      alertsWidth: 380,
     });
   });
 
@@ -92,6 +98,9 @@ describe("Mechanics Map overlay canvas preferences", () => {
       objectivesX: Number.POSITIVE_INFINITY,
       objectivesY: Number.NaN,
       objectivesWidth: 0,
+      alertsX: Number.NEGATIVE_INFINITY,
+      alertsY: Number.NaN,
+      alertsWidth: 0,
     })).toEqual({
       scale: 1,
       panX: 0,
@@ -118,6 +127,9 @@ describe("Mechanics Map overlay canvas preferences", () => {
       objectivesX: 580,
       objectivesY: 360,
       objectivesWidth: 420,
+      alertsX: 1040,
+      alertsY: 420,
+      alertsWidth: 360,
     });
   });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { claimAutomaticMapPreparation } from "./mechanics-map-surface";
-import { actionControlRemainingMillis, parseMechanicsMapUpdate, projectCoralMatrixBeam, projectCoralPizzaRegions, projectCoralWaveRegion, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectRaidFloorRegions, projectTinaPizzaRegion, targetDebuffRemainingMillis, zoomMechanicsMapAt, type MechanicsMapSignal, type MechanicsMapSnapshot } from "./mechanics-map";
+import { actionControlRemainingMillis, mechanicSignalRemainingMillis, parseMechanicsMapUpdate, projectCoralMatrixBeam, projectCoralPizzaRegions, projectCoralWaveRegion, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectRaidFloorRegions, projectTinaPizzaRegion, targetDebuffRemainingMillis, zoomMechanicsMapAt, type MechanicsMapSignal, type MechanicsMapSnapshot } from "./mechanics-map";
 
 function snapshot(): MechanicsMapSnapshot {
   return {
@@ -73,6 +73,15 @@ describe("Mechanics Map", () => {
     }];
     const player = parseMechanicsMapUpdate({ schema_version: 11, revision: 3, snapshot: value }).snapshot.player;
     expect(player?.statuses[0]).toMatchObject({ effect_id: 21_412, stacks: 2 });
+  });
+
+  it("counts down only packet-duration mechanic effects", () => {
+    const effect = {
+      effect_id: 884_162, duration_millis: 10_000, applied_at_micros: 2_000_000,
+    };
+    expect(mechanicSignalRemainingMillis(effect, 4_000_000, 1_250)).toBe(6_750);
+    expect(mechanicSignalRemainingMillis({ ...effect, effect_id: -3_390_117 }, 4_000_000, 1_250)).toBeNull();
+    expect(mechanicSignalRemainingMillis({ ...effect, duration_millis: null }, 4_000_000, 1_250)).toBeNull();
   });
 
   it("accepts bounded packet-backed dungeon objectives", () => {
