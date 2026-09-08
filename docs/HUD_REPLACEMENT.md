@@ -299,6 +299,16 @@ reviewed for one exact build in a single command. Before writing each image,
 batch mode verifies its source and region bundle hashes, texture dimensions,
 and complete X/Z transform against that allowlist:
 
+The current Global Steam allowlist contains 57 exact asset entries covering
+all 56 scene-map families joined to active scenes by the build-24687926 game
+tables (plus the separately packet-proven Wasteland scene). This broad map
+coverage is independent of encounter-mechanic coverage: only the six reviewed
+encounter packs add mechanic semantics, but every reviewed city, open-world,
+dungeon, raid, tower, world-boss, guild/activity, and housing map can render as
+the full scene map. Multi-floor families currently select their primary
+game-authored texture; alternate floor/foreground textures remain inventoried
+for explicit layer-selection work rather than being guessed or flattened.
+
 ```powershell
 python tools/bpsr-local-map-asset.py `
   --container "C:\Program Files (x86)\Steam\steamapps\common\Blue Protocol Star Resonance\bpsr\BPSR_STEAM_Data\StreamingAssets\container" `
@@ -306,6 +316,37 @@ python tools/bpsr-local-map-asset.py `
   --build global/steam-24687926 `
   --reviewed-manifest apps/desktop-tauri/resources/map-compiler/reviewed-map-assets.v1.json
 ```
+
+Before review, the same compiler can inventory the complete installed
+current-build scene-map catalog. Supplying exact-build scene tables joins each
+asset family to all of its scene IDs and hashes the table inputs for audit:
+
+```powershell
+python tools/bpsr-local-map-asset.py `
+  --container "C:\Program Files (x86)\Steam\steamapps\common\Blue Protocol Star Resonance\bpsr\BPSR_STEAM_Data\StreamingAssets\container" `
+  --build global/steam-24687926 `
+  --inventory-output runtime-data/map-audits/global-steam-24687926.json `
+  --scene-table <exact-build-SceneTable.json> `
+  --scene-resource-table <exact-build-SceneResourceTable.json>
+```
+
+This audit does not itself authorize a map. Production still requires one
+unambiguous texture, its paired `region_data`, exact bundle hashes and
+dimensions, a positive transform, and at least one exact-build scene ID.
+
+Strict single-texture candidates can be materialized into a separate visual
+review directory and candidate-only manifest without changing production:
+
+```powershell
+python tools/bpsr-local-map-asset.py `
+  --container "C:\Program Files (x86)\Steam\steamapps\common\Blue Protocol Star Resonance\bpsr\BPSR_STEAM_Data\StreamingAssets\container" `
+  --runtime-root runtime-data/map-review `
+  --build global/steam-24687926 `
+  --inventory-input runtime-data/map-audits/global-steam-24687926.json `
+  --candidate-manifest-output runtime-data/map-audits/global-steam-24687926-candidates.json
+```
+
+The candidate output is intentionally not accepted as a production allowlist.
 
 ## Chat tabs
 

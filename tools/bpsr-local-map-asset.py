@@ -17,7 +17,7 @@ from PIL import __version__ as pillow_version  # type: ignore
 
 DEFAULT_ADDRESS = "ui/textures/map/dungeon_map_bg"
 DEFAULT_OBJECT_NAME = "dungeon_map_bg"
-COMPILER_VERSION = "1"
+COMPILER_VERSION = "2"
 
 
 def main() -> None:
@@ -25,6 +25,11 @@ def main() -> None:
     parser.add_argument("--version", action="store_true")
     parser.add_argument("--self-check", action="store_true")
     parser.add_argument("--reviewed-manifest", type=Path)
+    parser.add_argument("--inventory-output", type=Path)
+    parser.add_argument("--inventory-input", type=Path)
+    parser.add_argument("--candidate-manifest-output", type=Path)
+    parser.add_argument("--scene-table", type=Path)
+    parser.add_argument("--scene-resource-table", type=Path)
     parser.add_argument("--container", type=Path)
     parser.add_argument("--runtime-root", type=Path)
     parser.add_argument("--build")
@@ -40,7 +45,34 @@ def main() -> None:
         run_self_check()
         return
     if args.container is None or args.runtime_root is None or args.build is None:
-        parser.error("--container, --runtime-root, and --build are required for extraction")
+        if args.inventory_output is None:
+            parser.error("--container, --runtime-root, and --build are required for extraction")
+    if args.inventory_output is not None:
+        if args.container is None or args.build is None:
+            parser.error("--container and --build are required for map inventory")
+        write_scene_map_inventory(
+            args.container,
+            args.build,
+            args.inventory_output,
+            args.scene_table,
+            args.scene_resource_table,
+        )
+        return
+    if args.candidate_manifest_output is not None:
+        if args.container is None or args.runtime_root is None or args.build is None:
+            parser.error(
+                "--container, --runtime-root, and --build are required for candidate extraction"
+            )
+        if args.inventory_input is None:
+            parser.error("--inventory-input is required for candidate extraction")
+        compile_inventory_candidates(
+            args.container,
+            args.runtime_root,
+            args.build,
+            args.inventory_input,
+            args.candidate_manifest_output,
+        )
+        return
     if args.reviewed_manifest is not None:
         compile_reviewed_manifest(
             args.container, args.runtime_root, args.build, args.reviewed_manifest
@@ -49,7 +81,12 @@ def main() -> None:
     compile_asset(args)
 
 
-def compile_asset(args: argparse.Namespace, expected: Optional[dict] = None) -> dict:
+def compile_asset(
+    args: argparse.Namespace,
+    expected: Optional[dict] = None,
+    address_catalog: Optional[bytes] = None,
+    meta_entries: Optional[list[tuple[int, int, int, int]]] = None,
+) -> dict:
     if not is_safe_relative_identity(args.build, 128):
         raise SystemExit("build must be a safe exact client-build identity")
     if not re.fullmatch(r"[A-Za-z0-9._/-]{1,240}", args.address) or ".." in args.address:
@@ -64,7 +101,8 @@ def compile_asset(args: argparse.Namespace, expected: Optional[dict] = None) -> 
     ):
         raise SystemExit("region-address must be a safe exact game-asset address")
 
-    address_catalog = (args.container / "m0.pkg").read_bytes()
+    if address_catalog is None:
+        address_catalog = (args.container / "m0.pkg").read_bytes()
     pattern = re.compile(
         rb"address:" + re.escape(args.address.encode()) + rb" ->>>> hash:\d+ ->>>> bundleHash:(\d+)"
     )
@@ -77,7 +115,9 @@ def compile_asset(args: argparse.Namespace, expected: Optional[dict] = None) -> 
             f"reviewed source bundle changed for {args.asset}: "
             f"expected {expected['source_bundle_hash']}, observed {bundle_hash}"
         )
-    entries = [entry for entry in read_meta_entries((args.container / "meta.pkg").read_bytes()) if entry[0] == bundle_hash]
+    if meta_entries is None:
+        meta_entries = read_meta_entries((args.container / "meta.pkg").read_bytes())
+    entries = [entry for entry in meta_entries if entry[0] == bundle_hash]
     if len(entries) != 1:
         raise SystemExit(f"expected one meta entry for bundle {bundle_hash}, observed {len(entries)}")
     _, package_index, offset, length = entries[0]
@@ -210,6 +250,8 @@ def compile_reviewed_manifest(
         "region_bundle_hash", "width", "height", "origin_x", "origin_z", "span_x",
         "span_z", "scene_ids",
     }
+    address_catalog = (container / "m0.pkg").read_bytes()
+    meta_entries = read_meta_entries((container / "meta.pkg").read_bytes())
     for entry in entries:
         if not isinstance(entry, dict) or set(entry) != required:
             raise SystemExit("reviewed map manifest entry has invalid fields")
@@ -226,8 +268,282 @@ def compile_reviewed_manifest(
                 region_address=entry["region_address"],
             ),
             entry,
+            address_catalog,
+            meta_entries,
         )
     print(f"prepared {len(entries)} reviewed map assets for {build}")
+
+
+def compile_inventory_candidates(
+    container: Path,
+    runtime_root: Path,
+    build: str,
+    inventory_path: Path,
+    output_path: Path,
+) -> None:
+    """Materialize strict one-texture candidates for visual review.
+
+    This deliberately writes a candidate manifest, never the production
+    reviewed manifest. Multi-layer maps and map families without an exact
+    SceneTable join remain excluded until their composition or alias is
+    reviewed separately.
+    """
+    inventory_bytes = bounded_table_bytes(inventory_path, "map inventory")
+    inventory = json.loads(inventory_bytes)
+    if (
+        not isinstance(inventory, dict)
+        or inventory.get("schema_version") != 1
+        or inventory.get("game_build") != build
+        or not isinstance(inventory.get("families"), list)
+    ):
+        raise SystemExit("map inventory does not match the requested exact build")
+    address_catalog = (container / "m0.pkg").read_bytes()
+    meta_entries = read_meta_entries((container / "meta.pkg").read_bytes())
+    reviewed = []
+    for family in inventory["families"]:
+        if not isinstance(family, dict) or not family.get("review_ready"):
+            continue
+        textures = family.get("texture_candidates")
+        region = family.get("region_data")
+        scene_ids = family.get("scene_ids")
+        name = family.get("family")
+        if (
+            not isinstance(textures, list)
+            or len(textures) != 1
+            or not isinstance(region, dict)
+            or not isinstance(scene_ids, list)
+            or not scene_ids
+            or not isinstance(name, str)
+        ):
+            raise SystemExit("review-ready inventory row has invalid fields")
+        texture = textures[0]
+        address = texture.get("address")
+        region_address = region.get("address")
+        if not isinstance(address, str) or not isinstance(region_address, str):
+            raise SystemExit("review-ready inventory row has invalid addresses")
+        object_name = address.rsplit("/", 1)[-1]
+        asset_name = f"scene-map-{name}.png"
+        manifest = compile_asset(
+            argparse.Namespace(
+                container=container,
+                runtime_root=runtime_root,
+                build=build,
+                address=address,
+                object_name=object_name,
+                asset=asset_name,
+                region_address=region_address,
+            ),
+            address_catalog=address_catalog,
+            meta_entries=meta_entries,
+        )
+        transform = manifest.get("region_transform")
+        if not isinstance(transform, dict):
+            raise SystemExit(f"candidate {name} has no region transform")
+        world_origin = transform["world_origin"]
+        world_span = transform["world_span"]
+        reviewed.append({
+            "scene_ids": sorted(set(scene_ids)),
+            "address": address,
+            "object_name": object_name,
+            "asset": asset_name,
+            "region_address": region_address,
+            "source_bundle_hash": manifest["source_bundle_hash"],
+            "region_bundle_hash": transform["source_bundle_hash"],
+            "width": manifest["width"],
+            "height": manifest["height"],
+            "origin_x": world_origin["x"],
+            "origin_z": world_origin["z"],
+            "span_x": world_span["x"],
+            "span_z": world_span["z"],
+        })
+    candidate = {
+        "schema_version": 1,
+        "candidate_only": True,
+        "game_build": build,
+        "inventory_sha256": hashlib.sha256(inventory_bytes).hexdigest(),
+        "entries": reviewed,
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(candidate, indent=2) + "\n", encoding="utf-8")
+    print(f"prepared {len(reviewed)} map candidates for review -> {output_path}")
+
+
+def write_scene_map_inventory(
+    container: Path,
+    build: str,
+    output: Path,
+    scene_table_path: Optional[Path],
+    scene_resource_table_path: Optional[Path],
+) -> None:
+    """Inventory every scene-map address before any family is reviewed.
+
+    This is deliberately an audit artifact, not an extraction allowlist. A map
+    becomes production-visible only after its scene IDs, texture, bundle hashes,
+    dimensions, and region transform are copied into the reviewed manifest.
+    """
+    if not is_safe_relative_identity(build, 128):
+        raise SystemExit("build must be a safe exact client-build identity")
+    if (scene_table_path is None) != (scene_resource_table_path is None):
+        raise SystemExit("--scene-table and --scene-resource-table must be supplied together")
+    catalog_path = container / "m0.pkg"
+    if not catalog_path.is_file():
+        raise SystemExit(f"address catalog is missing: {catalog_path}")
+    rows = read_scene_map_address_rows(catalog_path.read_bytes())
+    families: dict[str, dict] = {}
+    for address, bundle_hash in rows.items():
+        parts = address.split("/")
+        if len(parts) < 5:
+            continue
+        family = parts[3]
+        entry = families.setdefault(family, {
+            "family": family,
+            "scene_ids": [],
+            "scene_resource_ids": [],
+            "texture_candidates": [],
+            "region_data": None,
+            "auxiliary_assets": [],
+        })
+        basename = parts[-1]
+        record = {"address": address, "bundle_hash": bundle_hash}
+        if basename.endswith("_region_data"):
+            if entry["region_data"] is not None:
+                raise SystemExit(f"scene-map family {family} has multiple region_data addresses")
+            entry["region_data"] = record
+        elif is_scene_map_texture_candidate(address, basename):
+            entry["texture_candidates"].append(record)
+        else:
+            entry["auxiliary_assets"].append(record)
+
+    table_provenance = None
+    if scene_table_path is not None and scene_resource_table_path is not None:
+        scene_bytes = bounded_table_bytes(scene_table_path, "SceneTable")
+        resource_bytes = bounded_table_bytes(scene_resource_table_path, "SceneResourceTable")
+        scenes = require_table_rows(json.loads(scene_bytes), "SceneTable")
+        resources = require_table_rows(json.loads(resource_bytes), "SceneResourceTable")
+        resource_families: dict[int, str] = {}
+        for key, row in resources.items():
+            if not isinstance(row, dict) or not isinstance(row.get("SceneFile"), str):
+                continue
+            resource_id = exact_integer(row.get("Id", key))
+            family = row["SceneFile"].replace("\\", "/").rstrip("/").split("/")[-1]
+            if resource_id is not None and family:
+                resource_families[resource_id] = family
+        compact_families: dict[str, list[str]] = {}
+        for family in families:
+            compact_families.setdefault(compact_scene_family(family), []).append(family)
+        for key, row in scenes.items():
+            if not isinstance(row, dict):
+                continue
+            scene_id = exact_integer(row.get("Id", key))
+            resource_id = exact_integer(row.get("SceneResourceId"))
+            source_family = resource_families.get(resource_id) if resource_id is not None else None
+            if scene_id is None or resource_id is None or source_family is None:
+                continue
+            family = source_family if source_family in families else None
+            if family is None:
+                matches = compact_families.get(compact_scene_family(source_family), [])
+                family = matches[0] if len(matches) == 1 else None
+            if family is None:
+                continue
+            families[family]["scene_ids"].append(scene_id)
+            families[family]["scene_resource_ids"].append(resource_id)
+        table_provenance = {
+            "scene_table": {
+                "file": scene_table_path.name,
+                "sha256": hashlib.sha256(scene_bytes).hexdigest(),
+            },
+            "scene_resource_table": {
+                "file": scene_resource_table_path.name,
+                "sha256": hashlib.sha256(resource_bytes).hexdigest(),
+            },
+        }
+
+    values = []
+    for entry in families.values():
+        entry["scene_ids"] = sorted(set(entry["scene_ids"]))
+        entry["scene_resource_ids"] = sorted(set(entry["scene_resource_ids"]))
+        entry["texture_candidates"].sort(key=lambda value: value["address"])
+        entry["auxiliary_assets"].sort(key=lambda value: value["address"])
+        entry["review_ready"] = bool(
+            entry["scene_ids"] and entry["region_data"] and len(entry["texture_candidates"]) == 1
+        )
+        values.append(entry)
+    values.sort(key=lambda value: value["family"])
+    inventory = {
+        "schema_version": 1,
+        "compiler_version": COMPILER_VERSION,
+        "game_build": build,
+        "catalog": {
+            "file": catalog_path.name,
+            "bytes": catalog_path.stat().st_size,
+            "scene_map_address_count": len(rows),
+        },
+        "table_provenance": table_provenance,
+        "summary": {
+            "map_family_count": len(values),
+            "families_with_region_data": sum(value["region_data"] is not None for value in values),
+            "families_with_scene_ids": sum(bool(value["scene_ids"]) for value in values),
+            "review_ready_candidates": sum(value["review_ready"] for value in values),
+        },
+        "families": values,
+    }
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(inventory, indent=2) + "\n", encoding="utf-8")
+    print(
+        f"inventoried {len(values)} map families and {len(rows)} exact addresses "
+        f"for {build} -> {output}"
+    )
+
+
+def read_scene_map_address_rows(data: bytes) -> dict[str, int]:
+    pattern = re.compile(
+        rb"address:(ui/textures/scenemaps/[A-Za-z0-9._/-]+) "
+        rb"->>>> hash:\d+ ->>>> bundleHash:(\d+)"
+    )
+    observed: dict[str, set[int]] = {}
+    for address, bundle_hash in pattern.findall(data):
+        observed.setdefault(address.decode("ascii"), set()).add(int(bundle_hash))
+    ambiguous = {address: hashes for address, hashes in observed.items() if len(hashes) != 1}
+    if ambiguous:
+        raise SystemExit(f"scene-map addresses resolved to multiple bundle hashes: {ambiguous!r}")
+    return {address: next(iter(hashes)) for address, hashes in observed.items()}
+
+
+def is_scene_map_texture_candidate(address: str, basename: str) -> bool:
+    lowered = address.lower()
+    return not (
+        "/regions/" in lowered
+        or "gray_mask" in basename.lower()
+        or basename.lower() in {"minimap_cloud", "world_map_cloud"}
+    )
+
+
+def compact_scene_family(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", value.lower())
+
+
+def bounded_table_bytes(path: Path, label: str) -> bytes:
+    if not path.is_file():
+        raise SystemExit(f"{label} is missing: {path}")
+    if path.stat().st_size > 64 * 1024 * 1024:
+        raise SystemExit(f"{label} exceeds 64 MiB")
+    return path.read_bytes()
+
+
+def require_table_rows(value: object, label: str) -> dict:
+    if not isinstance(value, dict):
+        raise SystemExit(f"{label} must be a JSON object keyed by row ID")
+    return value
+
+
+def exact_integer(value: object) -> Optional[int]:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and re.fullmatch(r"-?\d+", value):
+        return int(value)
+    return None
 
 
 def run_self_check() -> None:
@@ -249,6 +565,17 @@ def run_self_check() -> None:
     for unsafe in ("/absolute", "../escape", "global//build", "global/./build"):
         if is_safe_relative_identity(unsafe, 128):
             raise SystemExit(f"self-check accepted unsafe build identity: {unsafe}")
+    address_fixture = (
+        b"address:ui/textures/scenemaps/example/example_example ->>>> hash:1 ->>>> bundleHash:22\n"
+        b"address:ui/textures/scenemaps/example/example_region_data ->>>> hash:2 ->>>> bundleHash:23\n"
+    )
+    if read_scene_map_address_rows(address_fixture) != {
+        "ui/textures/scenemaps/example/example_example": 22,
+        "ui/textures/scenemaps/example/example_region_data": 23,
+    }:
+        raise SystemExit("self-check scene-map address inventory mismatch")
+    if compact_scene_family("cty001_new") != compact_scene_family("cty001new"):
+        raise SystemExit("self-check compact scene-family matching mismatch")
     unitypy_version = getattr(UnityPy, "__version__", "unknown")
     print(
         "self-check passed: "

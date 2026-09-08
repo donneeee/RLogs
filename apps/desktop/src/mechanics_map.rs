@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::{Condvar, Mutex},
+    sync::{Condvar, Mutex, OnceLock},
     time::{Duration, Instant},
 };
 
@@ -1782,6 +1782,39 @@ struct SceneMapSpec {
     span_z: f32,
 }
 
+#[derive(Debug, Deserialize)]
+struct PackagedSceneMapManifest<'a> {
+    schema_version: u16,
+    #[serde(borrow)]
+    builds: BTreeMap<&'a str, Vec<PackagedSceneMapEntry<'a>>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PackagedSceneMapEntry<'a> {
+    scene_ids: Vec<i32>,
+    #[serde(borrow)]
+    asset: &'a str,
+    origin_x: f32,
+    origin_z: f32,
+    span_x: f32,
+    span_z: f32,
+}
+
+const PACKAGED_SCENE_MAP_MANIFEST: &str = include_str!(
+    "../../desktop-tauri/resources/map-compiler/reviewed-map-assets.v1.json"
+);
+
+fn packaged_scene_maps() -> &'static PackagedSceneMapManifest<'static> {
+    static MANIFEST: OnceLock<PackagedSceneMapManifest<'static>> = OnceLock::new();
+    MANIFEST.get_or_init(|| {
+        let manifest: PackagedSceneMapManifest<'static> =
+            serde_json::from_str(PACKAGED_SCENE_MAP_MANIFEST)
+                .expect("packaged reviewed-map-assets.v1.json must be valid");
+        assert_eq!(manifest.schema_version, 1, "unsupported packaged map manifest");
+        manifest
+    })
+}
+
 fn raid_arena_spec(
     build: Option<&str>,
     scene_id: Option<i32>,
@@ -1812,73 +1845,20 @@ fn raid_arena_spec(
 }
 
 fn scene_map_spec(build: Option<&str>, scene_id: Option<i32>) -> Option<SceneMapSpec> {
-    if build != Some("global/steam-24687926") {
-        return None;
-    }
-    match scene_id? {
-        // SceneTable -> SceneResource 1150 resolves this exact S3 tower file.
-        // Its paired region_data provides the non-rounded world transform.
-        1150..=1152 => Some(SceneMapSpec {
-            asset_file: Some("scene-1150-towering-ruin.png"),
-            layout: None,
-            origin_x: -275.674,
-            origin_z: -472.974,
-            span_x: 297.348,
-            span_z: 297.348,
-        }),
-        // Exact texture: dng_main_1001_tina. The paired game-owned region_data
-        // stores the lower-left world origin and 800 x 800 span.
-        1631..=1633 => Some(SceneMapSpec {
-            asset_file: Some("scene-1631-tina-mindrealm.png"),
-            layout: None,
-            origin_x: -640.0,
-            origin_z: -523.0,
-            span_x: 800.0,
-            span_z: 800.0,
-        }),
-        // Exact texture: dng_branch_6561_coral. Its paired region_data stores
-        // the lower-left world origin and 1000 x 1000 span.
-        6563..=6565 => Some(SceneMapSpec {
-            asset_file: Some("scene-6563-coral-sea.png"),
-            layout: None,
-            origin_x: -600.0,
-            origin_z: -500.0,
-            span_x: 1000.0,
-            span_z: 1000.0,
-        }),
-        // Exact texture: dng_branch_6501_godvault. The paired game-owned
-        // region_data stores the lower-left world origin and 450 x 450 span.
-        6513..=6515 => Some(SceneMapSpec {
-            asset_file: Some("scene-6513-cursed-tomb.png"),
-            layout: None,
-            origin_x: -149.0,
-            origin_z: -377.0,
-            span_x: 450.0,
-            span_z: 450.0,
-        }),
-        // SceneResource 13021-13023 resolves dng_raid_001. The game texture
-        // contains every vertically separated raid arena; packet Y selects
-        // the active mechanic layout while this transform remains exact.
-        13021..=13023 => Some(SceneMapSpec {
-            asset_file: Some("scene-13021-s3-raid.png"),
-            layout: None,
-            origin_x: -500.0,
-            origin_z: -400.0,
-            span_x: 1000.0,
-            span_z: 1000.0,
-        }),
-        // The current-build Boyce branch resources back Desolate/Wasteland
-        // Court scene 6615 and provide this exact world transform.
-        6615 => Some(SceneMapSpec {
-            asset_file: Some("scene-6615-wasteland-court.png"),
-            layout: None,
-            origin_x: -180.0,
-            origin_z: -250.0,
-            span_x: 500.0,
-            span_z: 500.0,
-        }),
-        _ => None,
-    }
+    let scene_id = scene_id?;
+    let entry = packaged_scene_maps()
+        .builds
+        .get(build?)?
+        .iter()
+        .find(|entry| entry.scene_ids.contains(&scene_id))?;
+    Some(SceneMapSpec {
+        asset_file: Some(entry.asset),
+        layout: None,
+        origin_x: entry.origin_x,
+        origin_z: entry.origin_z,
+        span_x: entry.span_x,
+        span_z: entry.span_z,
+    })
 }
 
 fn encounter_pack(client_build: Option<&str>, scene_id: Option<i32>) -> Option<&'static str> {
@@ -2830,8 +2810,10 @@ mod tests {
         let tower = scene_map_spec(Some("global/steam-24687926"), Some(1151))
             .expect("reviewed Towering Ruin map");
         assert_eq!(tower.asset_file, Some("scene-1150-towering-ruin.png"));
-        assert_eq!((tower.origin_x, tower.origin_z), (-275.674, -472.974));
-        assert_eq!((tower.span_x, tower.span_z), (297.348, 297.348));
+        assert!((tower.origin_x - -275.674).abs() < 0.001);
+        assert!((tower.origin_z - -472.974).abs() < 0.001);
+        assert!((tower.span_x - 297.348).abs() < 0.001);
+        assert!((tower.span_z - 297.348).abs() < 0.001);
 
         let tina = scene_map_spec(Some("global/steam-24687926"), Some(1632))
             .expect("reviewed Tina Mindrealm map");
@@ -2892,11 +2874,16 @@ mod tests {
         let entries = value["builds"]["global/steam-24687926"]
             .as_array()
             .expect("current build map entries");
-        assert_eq!(entries.len(), 6);
+        assert_eq!(entries.len(), 57);
+        let mut reviewed_scene_ids = BTreeSet::new();
         for entry in entries {
             let asset = entry["asset"].as_str().expect("asset name");
             let scene_ids = entry["scene_ids"].as_array().expect("scene IDs");
             for scene_id in scene_ids {
+                assert!(
+                    reviewed_scene_ids.insert(scene_id.as_i64().expect("numeric scene ID")),
+                    "a scene ID may resolve to only one reviewed map"
+                );
                 let spec = scene_map_spec(
                     Some("global/steam-24687926"),
                     Some(scene_id.as_i64().expect("numeric scene ID") as i32),
