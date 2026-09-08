@@ -947,6 +947,7 @@ export function mountMechanicsMapOverlay(
     debuffs.setAttribute("aria-label", "Target debuffs");
     for (const effect of target.debuffs) {
       const entry = element("span", "target-frame-overlay-debuff-entry");
+      entry.dataset.localOwned = String(effect.owned_by_local_player);
       const item = element("span", "target-frame-overlay-debuff");
       const effectName = effect.presentation_name ?? `Effect ${effect.effect_id}`;
       const sourceName = effect.source_display_name ?? (effect.source_actor_id === null ? "not supplied" : "unresolved actor");
@@ -960,12 +961,21 @@ export function mountMechanicsMapOverlay(
         item.append(text("span", "?"));
       }
       if ((effect.stacks ?? 0) > 1) item.append(text("b", String(effect.stacks)));
+      if (effect.owned_by_local_player) {
+        const localOwner = text("i", "YOU", "target-frame-overlay-debuff-local-owner");
+        localOwner.setAttribute("aria-label", "Applied by you or your Battle Imagine");
+        item.append(localOwner);
+      }
       if (effect.remaining_millis !== null) {
         const timer = text("span", formatDebuffRemaining(effect.remaining_millis), "target-frame-overlay-debuff-time");
         timer.dataset.targetDebuffRemaining = String(effect.remaining_millis);
         item.append(timer);
       }
-      const owner = text("small", effect.source_display_name ?? "—", "target-frame-overlay-debuff-owner");
+      const owner = text(
+        "small",
+        effect.owned_by_local_player ? "Yours" : effect.source_display_name ?? "—",
+        "target-frame-overlay-debuff-owner",
+      );
       entry.append(item, owner);
       debuffs.append(entry);
     }

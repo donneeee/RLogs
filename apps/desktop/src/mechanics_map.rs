@@ -5,14 +5,14 @@ use std::{
 };
 
 use rlogs_events::{
-    ActorKind, ActorState, CanonicalEvent, CastState, DungeonEventKind, DungeonFlowPhase,
-    DungeonObjectiveCatalogResolution, EncounterState, EntityAttributeUpdateKind,
+    ActorKind, ActorOwnershipUpdate, ActorState, CanonicalEvent, CastState, DungeonEventKind,
+    DungeonFlowPhase, DungeonObjectiveCatalogResolution, EncounterState, EntityAttributeUpdateKind,
     EntityAttributeValue, EntityRef, EventEnvelope, LifeState, MapEventKind,
     PartyRosterObservation, StatusState, TimelineEventKind,
 };
 use serde::{Deserialize, Serialize};
 
-pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 12;
+pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 13;
 const ENTITY_STALE_AFTER_MICROS: u64 = 5_000_000;
 const CAST_STALE_AFTER_MICROS: u64 = 8_000_000;
 const MAX_ENTITIES: usize = 192;
@@ -239,6 +239,9 @@ pub struct TargetFrameDebuff {
     pub icon_asset_path: Option<String>,
     pub source_actor_id: Option<u64>,
     pub source_display_name: Option<String>,
+    /// True only when the packet-proven source is the local player or an
+    /// ownership descendant such as that player's Battle Imagine.
+    pub owned_by_local_player: bool,
     pub stacks: Option<u32>,
     pub duration_millis: Option<u64>,
     pub remaining_millis: Option<u64>,
@@ -367,6 +370,7 @@ struct EntityState {
     monster_id: Option<i64>,
     class_id: Option<i32>,
     specialization_id: Option<i32>,
+    owner_entity_uuid: Option<i64>,
     current_hp: Option<i64>,
     max_hp: Option<i64>,
     current_shield: Option<i64>,
@@ -690,6 +694,7 @@ impl MechanicsMapProjector {
                                     monster_id: event.monster_id.map(|id| id.0),
                                     class_id: event.class_id,
                                     specialization_id: event.specialization_id,
+                                    owner_entity_uuid: None,
                                     current_hp: None,
                                     max_hp: None,
                                     current_shield: None,
@@ -728,6 +733,7 @@ impl MechanicsMapProjector {
                         monster_id: None,
                         class_id: None,
                         specialization_id: None,
+                        owner_entity_uuid: None,
                         current_hp: None,
                         max_hp: None,
                         current_shield: None,
@@ -740,6 +746,14 @@ impl MechanicsMapProjector {
                     });
                     entry.actor = attributes.actor;
                     entry.last_observed_micros = envelope.time.observed_micros;
+                    if let Some(ownership) = attributes.ownership {
+                        entry.owner_entity_uuid = match ownership {
+                            ActorOwnershipUpdate::Confirmed { owner_entity_uuid } => {
+                                Some(owner_entity_uuid.0)
+                            }
+                            ActorOwnershipUpdate::Cleared => None,
+                        };
+                    }
                     if attributes.update_kind == EntityAttributeUpdateKind::Snapshot {
                         entry.current_hp = None;
                         entry.max_hp = None;
@@ -804,6 +818,7 @@ impl MechanicsMapProjector {
                                 monster_id: None,
                                 class_id: None,
                                 specialization_id: None,
+                                owner_entity_uuid: None,
                                 current_hp: None,
                                 max_hp: None,
                                 current_shield: None,
@@ -1147,13 +1162,6 @@ impl MechanicsMapProjector {
                     .target_statuses
                     .values()
                     .filter(|status| status.target.actor_id == entity.actor.actor_id)
-                    // This panel intentionally mirrors the local player's
-                    // target frame, not a raid-wide debuff inspector.
-                    .filter(|status| {
-                        status
-                            .source
-                            .is_some_and(|source| Some(source.actor_id.0) == local_actor_id)
-                    })
                     .filter(|status| {
                         status
                             .duration_millis
@@ -1204,6 +1212,12 @@ impl MechanicsMapProjector {
                                     })
                                 })
                             }),
+                            owned_by_local_player: status.source.is_some_and(|source| {
+                                self.source_is_owned_by_local_player(
+                                    source.actor_id.0,
+                                    local_actor_id,
+                                )
+                            }),
                             stacks: status.stacks,
                             duration_millis: status.duration_millis,
                             remaining_millis: status.duration_millis.map(|duration| {
@@ -1215,7 +1229,16 @@ impl MechanicsMapProjector {
                         })
                     })
                     .collect::<Vec<_>>();
-                debuffs.sort_by_key(|status| (status.effect_id, status.instance_id));
+                // Local-player effects are the first visual group, including
+                // effects emitted by a packet-proven owned Battle Imagine.
+                // Every other observed debuff remains visible after them.
+                debuffs.sort_by_key(|status| {
+                    (
+                        !status.owned_by_local_player,
+                        status.effect_id,
+                        status.instance_id,
+                    )
+                });
                 debuffs.truncate(MAX_TARGET_DEBUFFS);
                 let hp_percent = observed_percent(entity.current_hp, entity.max_hp);
                 let shield_percent = observed_percent(entity.current_shield, entity.max_shield);
@@ -1325,6 +1348,42 @@ impl MechanicsMapProjector {
             .map(|entity| entity.actor.actor_id.0)
     }
 
+    fn source_is_owned_by_local_player(
+        &self,
+        source_actor_id: u64,
+        local_actor_id: Option<u64>,
+    ) -> bool {
+        let Some(local_actor_id) = local_actor_id else {
+            return false;
+        };
+        let mut current = source_actor_id;
+        for _ in 0..8 {
+            if current == local_actor_id {
+                return true;
+            }
+            let Some(owner_entity_uuid) = self
+                .entities
+                .get(&current)
+                .and_then(|entity| entity.owner_entity_uuid)
+            else {
+                return false;
+            };
+            let Some(owner) = self
+                .entities
+                .values()
+                .find(|entity| entity.actor.entity_uuid.0 == owner_entity_uuid)
+            else {
+                return false;
+            };
+            let next = owner.actor.actor_id.0;
+            if next == current {
+                return false;
+            }
+            current = next;
+        }
+        false
+    }
+
     fn presented_statuses_for_actor(
         &self,
         actor_id: u64,
@@ -1379,6 +1438,12 @@ impl MechanicsMapProjector {
                                 })
                             })
                         })
+                    }),
+                    owned_by_local_player: status.source.is_some_and(|source| {
+                        self.source_is_owned_by_local_player(
+                            source.actor_id.0,
+                            self.local_actor_id(),
+                        )
                     }),
                     stacks: status.stacks,
                     duration_millis: status.duration_millis,
@@ -2576,15 +2641,10 @@ mod tests {
         assert_eq!(selected.max_shield, Some(313_040));
         assert_eq!(selected.shield_percent, Some(11.249680552006133));
         assert_eq!(selected.breaking_stage, Some(0));
-        assert_eq!(selected.debuffs.len(), 1);
-        assert!(
-            selected
-                .debuffs
-                .iter()
-                .all(|effect| effect.source_actor_id == Some(7))
-        );
+        assert_eq!(selected.debuffs.len(), 2);
         assert_eq!(selected.debuffs[0].effect_id, 4_501);
         assert_eq!(selected.debuffs[0].source_actor_id, Some(7));
+        assert!(selected.debuffs[0].owned_by_local_player);
         assert_eq!(
             selected.debuffs[0].source_display_name.as_deref(),
             Some("Local")
@@ -2592,6 +2652,8 @@ mod tests {
         assert_eq!(selected.debuffs[0].stacks, Some(2));
         assert_eq!(selected.debuffs[0].duration_millis, Some(5_000));
         assert_eq!(selected.debuffs[0].remaining_millis, Some(4_998));
+        assert_eq!(selected.debuffs[1].source_actor_id, Some(9));
+        assert!(!selected.debuffs[1].owned_by_local_player);
 
         projector.observe(&envelope(
             7,
@@ -2661,14 +2723,14 @@ mod tests {
                 }),
             }),
         ));
-        assert!(
-            projector
-                .snapshot()
-                .target
-                .expect("target remains selected")
-                .debuffs
-                .is_empty()
-        );
+        let remaining = projector
+            .snapshot()
+            .target
+            .expect("target remains selected")
+            .debuffs;
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].source_actor_id, Some(9));
+        assert!(!remaining[0].owned_by_local_player);
 
         projector.observe(&envelope(
             9,
@@ -2699,6 +2761,72 @@ mod tests {
             }),
         ));
         assert!(projector.snapshot().target.is_none());
+    }
+
+    #[test]
+    fn packet_owned_imagine_debuff_is_marked_as_the_local_players() {
+        let mut projector = MechanicsMapProjector::default();
+        projector.observe(&envelope(
+            1,
+            CanonicalEvent::CharacterProfileObserved {
+                profile: Box::new(GameProfileEvent {
+                    game_plugin_id: "game.rlogs.blue-protocol-star-resonance".into(),
+                    payload_schema_id: "test".into(),
+                    payload_schema_version: 1,
+                    character: CharacterIdentity {
+                        region: RegionIdentity {
+                            deployment_id: "global".into(),
+                            region_id: "north-america".into(),
+                            realm_id: None,
+                            world_id: None,
+                        },
+                        character_id: "42".into(),
+                    },
+                    payload: serde_json::json!({}),
+                }),
+            },
+        ));
+        let local = entity(7, 700);
+        let imagine = entity(10, 1_000);
+        for (sequence, actor) in [
+            (2, actor_event(local, ActorKind::Player, Some("42"))),
+            (3, actor_event(imagine, ActorKind::Pet, None)),
+        ] {
+            projector.observe(&envelope(
+                sequence,
+                CanonicalEvent::Timeline(TimelineEvent {
+                    sequence,
+                    time: EventTime {
+                        observed_micros: sequence * 1_000,
+                        game_time_millis: None,
+                    },
+                    provenance: EventProvenance::wire(sequence, 1, 1),
+                    kind: TimelineEventKind::Actor(actor),
+                }),
+            ));
+        }
+        projector.observe(&envelope(
+            4,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 4,
+                time: EventTime {
+                    observed_micros: 4_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance::wire(4, 1, 1),
+                kind: TimelineEventKind::EntityAttributes(EntityAttributeEvent {
+                    actor: imagine,
+                    update_kind: EntityAttributeUpdateKind::Delta,
+                    ownership: Some(ActorOwnershipUpdate::Confirmed {
+                        owner_entity_uuid: local.entity_uuid,
+                    }),
+                    attributes: Vec::new(),
+                }),
+            }),
+        ));
+
+        assert!(projector.source_is_owned_by_local_player(10, Some(7)));
+        assert!(!projector.source_is_owned_by_local_player(10, Some(9)));
     }
 
     #[test]
