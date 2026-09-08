@@ -61,6 +61,18 @@ pub enum ReportVisibility {
     Public,
 }
 
+/// Server-verifiable meaning of an uploaded sealed artifact.
+///
+/// Missing values remain ordinary combat runs so schema-two clients and
+/// already queued manifests continue to deserialize without reinterpretation.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SubmissionPurpose {
+    #[default]
+    CombatRun,
+    TrainingDummy,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SubmissionState {
@@ -92,6 +104,8 @@ pub struct SubmissionMetadata {
     pub protocol_pack_digest: Sha256Digest,
     pub privacy_policy_digest: Sha256Digest,
     pub visibility: ReportVisibility,
+    #[serde(default)]
+    pub purpose: SubmissionPurpose,
 }
 
 impl SubmissionMetadata {
@@ -118,7 +132,13 @@ impl SubmissionMetadata {
             protocol_pack_digest,
             privacy_policy_digest,
             visibility,
+            purpose: SubmissionPurpose::CombatRun,
         }
+    }
+
+    pub fn with_purpose(mut self, purpose: SubmissionPurpose) -> Self {
+        self.purpose = purpose;
+        self
     }
 }
 
@@ -166,5 +186,33 @@ mod tests {
         assert_eq!(digest.as_str(), "ab".repeat(32));
 
         assert!(serde_json::from_str::<Sha256Digest>("\"not-a-digest\"").is_err());
+    }
+
+    #[test]
+    fn schema_two_metadata_defaults_to_a_combat_run_but_can_name_training_evidence() {
+        let metadata = SubmissionMetadata::new(
+            "app.rlogs.game.example",
+            "local-log-1",
+            2,
+            "capture-session-1",
+            "north-america",
+            "build-1",
+            Sha256Digest::parse("a".repeat(64)).unwrap(),
+            Sha256Digest::parse("b".repeat(64)).unwrap(),
+            ReportVisibility::Private,
+        );
+        assert_eq!(metadata.purpose, SubmissionPurpose::CombatRun);
+        assert_eq!(
+            metadata
+                .clone()
+                .with_purpose(SubmissionPurpose::TrainingDummy)
+                .purpose,
+            SubmissionPurpose::TrainingDummy
+        );
+
+        let mut json = serde_json::to_value(metadata).unwrap();
+        json.as_object_mut().unwrap().remove("purpose");
+        let legacy: SubmissionMetadata = serde_json::from_value(json).unwrap();
+        assert_eq!(legacy.purpose, SubmissionPurpose::CombatRun);
     }
 }

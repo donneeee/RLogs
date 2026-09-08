@@ -20,8 +20,8 @@ pub use mock::{
 };
 pub use model::{
     CURRENT_SUBMISSION_SCHEMA, DigestError, LogChunkDescriptor, ReportVisibility,
-    ServerReportReceipt, Sha256Digest, SubmissionMetadata, SubmissionMode, SubmissionState,
-    UploadManifest, VerificationTier,
+    ServerReportReceipt, Sha256Digest, SubmissionMetadata, SubmissionMode, SubmissionPurpose,
+    SubmissionState, UploadManifest, VerificationTier,
 };
 pub use privacy::{
     SUBMISSION_PRIVACY_POLICY_VERSION, SubmissionPrivacyError, SubmissionPrivacySummary,

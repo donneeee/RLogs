@@ -166,6 +166,18 @@ test("manifest validation enforces contiguous sealed chunks", () => {
   assert.throws(() => canonicalManifest(value), /zero based/u);
 });
 
+test("manifest purpose is backward compatible and rejects unknown artifact meanings", () => {
+  const legacy = canonicalManifest(manifest(new Uint8Array([1]), digest("a")));
+  assert.equal(legacy.metadata.purpose, "combat_run");
+
+  const training = manifest(new Uint8Array([1]), digest("a"));
+  training.metadata.purpose = "training_dummy";
+  assert.equal(canonicalManifest(training).metadata.purpose, "training_dummy");
+
+  training.metadata.purpose = "client_summary";
+  assert.throws(() => canonicalManifest(training), /purpose is invalid/u);
+});
+
 test("upload routes remain disabled without the explicit promotion flag", async () => {
   const { env } = environment();
   delete env.RLOGS_PARSE_UPLOADS_ENABLED;

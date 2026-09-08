@@ -242,6 +242,7 @@ mod tests {
                 protocol_pack_digest: digest(b"pack"),
                 privacy_policy_digest: digest(b"privacy"),
                 visibility: ReportVisibility::Unlisted,
+                purpose: crate::SubmissionPurpose::CombatRun,
             },
             chunks: vec![
                 LogChunkDescriptor::new(0, 0, first.len() as u64, digest(first)),

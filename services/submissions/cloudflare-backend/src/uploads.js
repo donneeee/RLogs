@@ -6,6 +6,7 @@ const MAXIMUM_LOG_BYTES = 16 * 1024 * 1024 * 1024;
 const DIGEST = /^[a-f0-9]{64}$/;
 const IDENTIFIER = /^[A-Za-z0-9_-]{1,128}$/;
 const VISIBILITIES = new Set(["private", "unlisted", "public"]);
+const PURPOSES = new Set(["combat_run", "training_dummy"]);
 
 function json(value, status = 200, headers = {}) {
   return Response.json(value, {
@@ -57,6 +58,8 @@ function canonicalManifest(value) {
     throw new Error("manifest digests must be 64-character SHA-256 values");
   }
   if (!VISIBILITIES.has(metadata.visibility)) throw new Error("visibility is invalid");
+  const purpose = metadata.purpose ?? "combat_run";
+  if (!PURPOSES.has(purpose)) throw new Error("submission purpose is invalid");
   if (!Array.isArray(value.chunks) || value.chunks.length === 0 || value.chunks.length > MAXIMUM_UPLOAD_CHUNKS) {
     throw new Error("chunk count is outside the supported range");
   }
@@ -98,6 +101,7 @@ function canonicalManifest(value) {
       protocol_pack_digest: protocolPackDigest,
       privacy_policy_digest: privacyPolicyDigest,
       visibility: metadata.visibility,
+      purpose,
     },
     chunks,
     sealed_log_digest: sealedLogDigest,
