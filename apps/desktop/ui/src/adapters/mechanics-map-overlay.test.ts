@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseMechanicsMapCanvasPreferences, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
+import { formatDungeonObjectiveValue, parseMechanicsMapCanvasPreferences, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
 
 describe("Mechanics Map overlay canvas preferences", () => {
   it("does not rebuild the overlay after an unchanged long-poll timeout", () => {
@@ -33,6 +33,9 @@ describe("Mechanics Map overlay canvas preferences", () => {
       partyX: 1080,
       partyY: 60,
       partyWidth: 380,
+      objectivesX: 620,
+      objectivesY: 380,
+      objectivesWidth: 440,
     })).toEqual({
       scale: 37.5,
       panX: -184,
@@ -56,6 +59,9 @@ describe("Mechanics Map overlay canvas preferences", () => {
       partyX: 1080,
       partyY: 60,
       partyWidth: 380,
+      objectivesX: 620,
+      objectivesY: 380,
+      objectivesWidth: 440,
     });
   });
 
@@ -83,6 +89,9 @@ describe("Mechanics Map overlay canvas preferences", () => {
       partyX: Number.NEGATIVE_INFINITY,
       partyY: Number.NaN,
       partyWidth: -1,
+      objectivesX: Number.POSITIVE_INFINITY,
+      objectivesY: Number.NaN,
+      objectivesWidth: 0,
     })).toEqual({
       scale: 1,
       panX: 0,
@@ -106,6 +115,15 @@ describe("Mechanics Map overlay canvas preferences", () => {
       partyX: 1040,
       partyY: 48,
       partyWidth: 360,
+      objectivesX: 580,
+      objectivesY: 360,
+      objectivesWidth: 420,
     });
+  });
+
+  it("shows exact packet values without inventing an objective threshold", () => {
+    expect(formatDungeonObjectiveValue(275, false)).toBe("275");
+    expect(formatDungeonObjectiveValue(400, true)).toBe("400 ✓");
+    expect(formatDungeonObjectiveValue(null, false)).toBe("Observed");
   });
 });

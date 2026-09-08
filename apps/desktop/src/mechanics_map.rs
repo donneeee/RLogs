@@ -5,13 +5,13 @@ use std::{
 };
 
 use rlogs_events::{
-    ActorKind, ActorState, CanonicalEvent, CastState, EntityAttributeUpdateKind,
-    EntityAttributeValue, EntityRef, EventEnvelope, LifeState, MapEventKind,
-    PartyRosterObservation, StatusState, TimelineEventKind,
+    ActorKind, ActorState, CanonicalEvent, CastState, DungeonEventKind, DungeonFlowPhase,
+    DungeonObjectiveCatalogResolution, EntityAttributeUpdateKind, EntityAttributeValue, EntityRef,
+    EventEnvelope, LifeState, MapEventKind, PartyRosterObservation, StatusState, TimelineEventKind,
 };
 use serde::{Deserialize, Serialize};
 
-pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 7;
+pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 8;
 const ENTITY_STALE_AFTER_MICROS: u64 = 5_000_000;
 const CAST_STALE_AFTER_MICROS: u64 = 8_000_000;
 const MAX_ENTITIES: usize = 192;
@@ -20,6 +20,7 @@ const MAX_TARGET_DEBUFFS: usize = 24;
 const MAX_TARGET_STATUSES: usize = 4_096;
 const MAX_LOCAL_COOLDOWNS: usize = 48;
 const MAX_PARTY_FRAMES: usize = 39;
+const MAX_DUNGEON_OBJECTIVES: usize = 32;
 const MINIMAP_WORLD_RADIUS: f32 = 140.0;
 // Exact build-locked `EAttrType` IDs decoded by the BPSR integration.
 const ATTR_TARGET_ID: i32 = 0x1e;
@@ -58,6 +59,10 @@ pub struct MechanicsMapSnapshot {
     /// These are HUD controls only: they do not synthesize input or infer a
     /// cooldown from damage hits.
     pub action_controls: Vec<ActionControlSnapshot>,
+    /// Exact packet-backed dungeon flow and objectives for an independently
+    /// movable HUD tracker. Raw values remain raw when their unit or semantic
+    /// meaning has not been proven for this build.
+    pub dungeon: Option<DungeonHudSnapshot>,
     pub encounter_pack: Option<&'static str>,
     pub encounter_pack_reviewed: bool,
     /// Packet-selected target for the local character. `None` means the
@@ -95,6 +100,7 @@ impl Default for MechanicsMapSnapshot {
             player: None,
             party: Vec::new(),
             action_controls: Vec::new(),
+            dungeon: None,
             encounter_pack: None,
             encounter_pack_reviewed: false,
             target: None,
@@ -214,6 +220,29 @@ pub struct TargetFrameDebuff {
     pub duration_millis: Option<u64>,
     pub remaining_millis: Option<u64>,
     pub applied_at_micros: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DungeonHudSnapshot {
+    pub dungeon_id: Option<i64>,
+    pub instance_id: Option<String>,
+    pub difficulty_id: Option<i32>,
+    pub state: &'static str,
+    pub flow_phase: Option<&'static str>,
+    pub flow_state_id: Option<i32>,
+    pub result_id: Option<i32>,
+    pub objectives: Vec<DungeonObjectiveSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DungeonObjectiveSnapshot {
+    pub objective_id: i64,
+    pub objective_map_key: Option<i32>,
+    pub value: Option<i64>,
+    pub complete: Option<bool>,
+    pub catalog_resolution: &'static str,
+    pub activity_target_key: Option<String>,
+    pub scene_event_keys: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -349,6 +378,16 @@ struct CooldownState {
     observed_at_micros: u64,
 }
 
+#[derive(Debug, Clone)]
+struct DungeonHudState {
+    dungeon_id: Option<i64>,
+    instance_id: Option<String>,
+    difficulty_id: Option<i32>,
+    state: DungeonEventKind,
+    flow: Option<rlogs_events::DungeonFlowSnapshot>,
+    objectives: BTreeMap<i64, DungeonObjectiveSnapshot>,
+}
+
 #[derive(Debug, Default)]
 pub struct MechanicsMapProjector {
     revision: u64,
@@ -362,6 +401,7 @@ pub struct MechanicsMapProjector {
     attack_targets: BTreeMap<u64, i64>,
     target_statuses: BTreeMap<(u64, i64), TargetStatusState>,
     cooldowns: BTreeMap<(u64, i64), CooldownState>,
+    dungeon: Option<DungeonHudState>,
     signals: BTreeMap<(u64, i64), SignalState>,
     markers: BTreeMap<Option<i64>, MechanicsMapMarker>,
     data_gap: Option<String>,
@@ -397,6 +437,7 @@ impl MechanicsMapProjector {
                     self.target_statuses.clear();
                     self.signals.clear();
                     self.markers.clear();
+                    self.dungeon = None;
                     self.data_gap = None;
                     changed = true;
                 }
@@ -441,6 +482,73 @@ impl MechanicsMapProjector {
                     self.party_character_ids.clear();
                 }
             },
+            CanonicalEvent::Dungeon(event) => {
+                if event.kind == DungeonEventKind::Exited {
+                    changed |= self.dungeon.take().is_some();
+                } else {
+                    let dungeon_id = event.dungeon_id.map(|id| id.0);
+                    let replace = self.dungeon.as_ref().is_none_or(|current| {
+                        event.kind == DungeonEventKind::Entered
+                            && (current.dungeon_id != dungeon_id
+                                || current.instance_id != event.instance_id)
+                    });
+                    if replace {
+                        self.dungeon = Some(DungeonHudState {
+                            dungeon_id,
+                            instance_id: event.instance_id.clone(),
+                            difficulty_id: event.difficulty_id,
+                            state: event.kind,
+                            flow: event.flow.clone(),
+                            objectives: BTreeMap::new(),
+                        });
+                        changed = true;
+                    }
+                    let state = self.dungeon.get_or_insert_with(|| DungeonHudState {
+                        dungeon_id,
+                        instance_id: event.instance_id.clone(),
+                        difficulty_id: event.difficulty_id,
+                        state: event.kind,
+                        flow: event.flow.clone(),
+                        objectives: BTreeMap::new(),
+                    });
+                    let before = state.clone();
+                    state.dungeon_id = dungeon_id.or(state.dungeon_id);
+                    state.instance_id = event
+                        .instance_id
+                        .clone()
+                        .or_else(|| state.instance_id.clone());
+                    state.difficulty_id = event.difficulty_id.or(state.difficulty_id);
+                    state.state = event.kind;
+                    if event.flow.is_some() {
+                        state.flow = event.flow.clone();
+                    }
+                    if let Some(objective_id) = event.objective_id {
+                        if event.kind == DungeonEventKind::ObjectiveRemoved {
+                            state.objectives.remove(&objective_id);
+                        } else if event.kind == DungeonEventKind::ObjectiveUpdated {
+                            let catalog = event.objective_catalog.as_ref();
+                            state.objectives.insert(
+                                objective_id,
+                                DungeonObjectiveSnapshot {
+                                    objective_id,
+                                    objective_map_key: event.objective_map_key,
+                                    value: event.objective_value,
+                                    complete: event.objective_complete,
+                                    catalog_resolution: objective_resolution(
+                                        catalog.map(|value| value.resolution),
+                                    ),
+                                    activity_target_key: catalog
+                                        .and_then(|value| value.activity_target_key.clone()),
+                                    scene_event_keys: catalog
+                                        .map(|value| value.scene_event_keys.clone())
+                                        .unwrap_or_default(),
+                                },
+                            );
+                        }
+                    }
+                    changed |= !dungeon_hud_state_equal(&before, state);
+                }
+            }
             CanonicalEvent::Map(event) => match event.kind {
                 MapEventKind::MarkerRemoved => {
                     changed |= self.markers.remove(&event.marker_id).is_some();
@@ -1039,6 +1147,7 @@ impl MechanicsMapProjector {
             player,
             party,
             action_controls,
+            dungeon: self.dungeon.as_ref().map(dungeon_hud_snapshot),
             encounter_pack: pack,
             encounter_pack_reviewed: pack.is_some(),
             target,
@@ -1149,6 +1258,78 @@ impl MechanicsMapProjector {
             };
             self.markers.remove(&key);
         }
+    }
+}
+
+fn dungeon_hud_snapshot(state: &DungeonHudState) -> DungeonHudSnapshot {
+    DungeonHudSnapshot {
+        dungeon_id: state.dungeon_id,
+        instance_id: state.instance_id.clone(),
+        difficulty_id: state.difficulty_id,
+        state: dungeon_event_state(state.state),
+        flow_phase: state
+            .flow
+            .as_ref()
+            .and_then(|flow| flow.phase)
+            .map(dungeon_flow_phase),
+        flow_state_id: state.flow.as_ref().and_then(|flow| flow.state_id),
+        result_id: state.flow.as_ref().and_then(|flow| flow.result_id),
+        objectives: state
+            .objectives
+            .values()
+            .take(MAX_DUNGEON_OBJECTIVES)
+            .cloned()
+            .collect(),
+    }
+}
+
+fn dungeon_hud_state_equal(left: &DungeonHudState, right: &DungeonHudState) -> bool {
+    left.dungeon_id == right.dungeon_id
+        && left.instance_id == right.instance_id
+        && left.difficulty_id == right.difficulty_id
+        && left.state == right.state
+        && left.flow == right.flow
+        && left.objectives == right.objectives
+}
+
+fn dungeon_event_state(value: DungeonEventKind) -> &'static str {
+    match value {
+        DungeonEventKind::Entered => "entered",
+        DungeonEventKind::Started => "started",
+        DungeonEventKind::FlowUpdated => "flow_updated",
+        DungeonEventKind::Ended => "ended",
+        DungeonEventKind::ObjectiveUpdated => "objective_updated",
+        DungeonEventKind::ObjectiveRemoved => "objective_removed",
+        DungeonEventKind::BossEngaged => "boss_engaged",
+        DungeonEventKind::BossDefeated => "boss_defeated",
+        DungeonEventKind::Completed => "completed",
+        DungeonEventKind::Failed => "failed",
+        DungeonEventKind::Exited => "exited",
+    }
+}
+
+fn dungeon_flow_phase(value: DungeonFlowPhase) -> &'static str {
+    match value {
+        DungeonFlowPhase::Null => "null",
+        DungeonFlowPhase::Active => "active",
+        DungeonFlowPhase::Ready => "ready",
+        DungeonFlowPhase::Playing => "playing",
+        DungeonFlowPhase::End => "end",
+        DungeonFlowPhase::Settlement => "settlement",
+        DungeonFlowPhase::Vote => "vote",
+        DungeonFlowPhase::Unknown(_) => "unknown",
+    }
+}
+
+fn objective_resolution(value: Option<DungeonObjectiveCatalogResolution>) -> &'static str {
+    match value {
+        Some(DungeonObjectiveCatalogResolution::ResolvedCurrentBuild) => "resolved_current_build",
+        Some(DungeonObjectiveCatalogResolution::UnresolvedCurrentBuild) => {
+            "unresolved_current_build"
+        }
+        Some(DungeonObjectiveCatalogResolution::CatalogNotConfigured) => "catalog_not_configured",
+        Some(DungeonObjectiveCatalogResolution::CatalogUnavailable) => "catalog_unavailable",
+        None => "not_observed",
     }
 }
 
@@ -1508,7 +1689,8 @@ fn is_reviewed_mechanic_cast(
 mod tests {
     use super::*;
     use rlogs_events::{
-        ActorEvent, ActorId, ActorLoadoutObservation, CharacterIdentity, EntityAttribute,
+        ActorEvent, ActorId, ActorLoadoutObservation, CharacterIdentity, DungeonEvent,
+        DungeonFlowSnapshot, DungeonId, DungeonObjectiveCatalogReference, EntityAttribute,
         EntityAttributeEvent, EntityUuid, EventProvenance, EventSensitivity, EventTime,
         EvidenceConfidence, EvidenceSource, GameProfileEvent, RegionContext, RegionIdentity,
         SceneId, StatusEffectId, StatusEffectInstanceId, StatusEvent, TimelineEvent,
@@ -2386,5 +2568,78 @@ mod tests {
         let update = feed.current();
         assert_eq!(update.revision, 9);
         assert_eq!(update.snapshot.scene_id, None);
+    }
+
+    #[test]
+    fn projects_packet_observed_dungeon_objectives_without_inventing_targets() {
+        let mut projector = MechanicsMapProjector::default();
+        projector.observe(&envelope(
+            1,
+            CanonicalEvent::Dungeon(DungeonEvent {
+                kind: DungeonEventKind::Entered,
+                dungeon_id: Some(DungeonId(6513)),
+                instance_id: Some("run-1".into()),
+                difficulty_id: Some(6545),
+                objective_map_key: None,
+                objective_id: None,
+                objective_value: None,
+                objective_complete: None,
+                objective_catalog: None,
+                flow: Some(DungeonFlowSnapshot {
+                    state_id: Some(3),
+                    phase: Some(DungeonFlowPhase::Playing),
+                    ..DungeonFlowSnapshot::default()
+                }),
+            }),
+        ));
+        projector.observe(&envelope(
+            2,
+            CanonicalEvent::Dungeon(DungeonEvent {
+                kind: DungeonEventKind::ObjectiveUpdated,
+                dungeon_id: Some(DungeonId(6513)),
+                instance_id: Some("run-1".into()),
+                difficulty_id: Some(6545),
+                objective_map_key: Some(7),
+                objective_id: Some(651103),
+                objective_value: Some(275),
+                objective_complete: Some(false),
+                objective_catalog: Some(DungeonObjectiveCatalogReference {
+                    resolution: DungeonObjectiveCatalogResolution::UnresolvedCurrentBuild,
+                    activity_target_key: None,
+                    scene_event_keys: vec![],
+                }),
+                flow: None,
+            }),
+        ));
+
+        let snapshot = projector.snapshot();
+        let dungeon = snapshot.dungeon.expect("dungeon HUD state");
+        assert_eq!(dungeon.dungeon_id, Some(6513));
+        assert_eq!(dungeon.flow_phase, Some("playing"));
+        assert_eq!(dungeon.objectives.len(), 1);
+        assert_eq!(dungeon.objectives[0].objective_id, 651103);
+        assert_eq!(dungeon.objectives[0].value, Some(275));
+        assert_eq!(dungeon.objectives[0].complete, Some(false));
+        assert_eq!(
+            dungeon.objectives[0].catalog_resolution,
+            "unresolved_current_build"
+        );
+
+        projector.observe(&envelope(
+            3,
+            CanonicalEvent::Dungeon(DungeonEvent {
+                kind: DungeonEventKind::Exited,
+                dungeon_id: Some(DungeonId(6513)),
+                instance_id: Some("run-1".into()),
+                difficulty_id: Some(6545),
+                objective_map_key: None,
+                objective_id: None,
+                objective_value: None,
+                objective_complete: None,
+                objective_catalog: None,
+                flow: None,
+            }),
+        ));
+        assert!(projector.snapshot().dungeon.is_none());
     }
 }

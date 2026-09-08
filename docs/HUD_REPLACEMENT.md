@@ -289,6 +289,13 @@ and requires a separate security and game-input review.
 
 ## Delivery stages and gates
 
+The Overlay Canvas now includes a movable dungeon-objective tracker driven by
+canonical dungeon packets. It preserves the exact dungeon, difficulty,
+objective IDs, values, completion state, and flow phase received by the host.
+When the current build's catalog cannot resolve an objective, the module shows
+`Objective <ID>` and the observed value; it does not reuse a prior-build label
+or invent a required total. Packet exits and scene changes clear the tracker.
+
 1. **Evidence inventory** — enumerate existing Global implementation code,
    current-build target/status/map/chat routes, UI asset coverage, and every
    unresolved field without promoting guesses.

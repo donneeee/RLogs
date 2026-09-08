@@ -52,6 +52,9 @@ export interface MechanicsMapCanvasPreferences {
   partyX: number;
   partyY: number;
   partyWidth: number;
+  objectivesX: number;
+  objectivesY: number;
+  objectivesWidth: number;
 }
 
 const DEFAULT_PREFERENCES: MechanicsMapCanvasPreferences = {
@@ -77,6 +80,9 @@ const DEFAULT_PREFERENCES: MechanicsMapCanvasPreferences = {
   partyX: 1040,
   partyY: 48,
   partyWidth: 360,
+  objectivesX: 580,
+  objectivesY: 360,
+  objectivesWidth: 420,
 };
 
 export function parseMechanicsMapCanvasPreferences(value: unknown): MechanicsMapCanvasPreferences {
@@ -107,6 +113,9 @@ export function parseMechanicsMapCanvasPreferences(value: unknown): MechanicsMap
     partyX: finiteBounded(value.partyX) ? value.partyX : 1040,
     partyY: finiteBounded(value.partyY) ? value.partyY : 48,
     partyWidth: finitePositive(value.partyWidth) ? Math.max(260, value.partyWidth) : 360,
+    objectivesX: finiteBounded(value.objectivesX) ? value.objectivesX : 580,
+    objectivesY: finiteBounded(value.objectivesY) ? value.objectivesY : 360,
+    objectivesWidth: finitePositive(value.objectivesWidth) ? Math.max(280, value.objectivesWidth) : 420,
   };
 }
 
@@ -115,6 +124,15 @@ export function shouldRenderMechanicsMapUpdate(
   next: Pick<MechanicsMapUpdate, "revision">,
 ): boolean {
   return next.revision !== current.revision;
+}
+
+export function formatDungeonObjectiveValue(value: number | null, complete: boolean | null): string {
+  if (value !== null) return `${value.toLocaleString()}${complete === true ? " ✓" : ""}`;
+  return complete === true ? "Complete" : "Observed";
+}
+
+function humanizeDungeonState(value: string): string {
+  return value.replaceAll("_", " ").toUpperCase();
 }
 
 export function mountMechanicsMapOverlay(
@@ -135,6 +153,8 @@ export function mountMechanicsMapOverlay(
   let actionsResize: { pointerId: number; x: number; width: number } | null = null;
   let partyDrag: { pointerId: number; x: number; y: number; left: number; top: number } | null = null;
   let partyResize: { pointerId: number; x: number; width: number } | null = null;
+  let objectivesDrag: { pointerId: number; x: number; y: number; left: number; top: number } | null = null;
+  let objectivesResize: { pointerId: number; x: number; width: number } | null = null;
   let frame: number | null = null;
   let image: HTMLImageElement | null = null;
   let imageUrl: string | null = null;
@@ -245,7 +265,18 @@ export function mountMechanicsMapOverlay(
   targetResizeHandle.title = "Resize target frame";
   targetResizeHandle.setAttribute("aria-label", "Resize target frame");
   targetPanel.append(targetToolbar, targetBody, targetResizeHandle);
-  root.append(panel, playerPanel, actionsPanel, partyPanel, targetPanel);
+  const objectivesPanel = element("section", "dungeon-objectives-overlay-runtime");
+  const objectivesToolbar = element("header", "dungeon-objectives-overlay-toolbar");
+  const objectivesTitle = text("strong", "Dungeon objectives");
+  const objectivesStatus = text("span", "WAITING");
+  objectivesToolbar.append(objectivesTitle, objectivesStatus);
+  const objectivesBody = element("section", "dungeon-objectives-overlay-body");
+  const objectivesResizeHandle = element("button", "dungeon-objectives-overlay-resize");
+  objectivesResizeHandle.type = "button";
+  objectivesResizeHandle.title = "Resize dungeon objectives";
+  objectivesResizeHandle.setAttribute("aria-label", "Resize dungeon objectives");
+  objectivesPanel.append(objectivesToolbar, objectivesBody, objectivesResizeHandle);
+  root.append(panel, playerPanel, actionsPanel, partyPanel, targetPanel, objectivesPanel);
   container.replaceChildren(root);
   applyModuleGeometry();
 
@@ -339,6 +370,25 @@ export function mountMechanicsMapOverlay(
   targetResizeHandle.addEventListener("pointermove", resizeTarget);
   targetResizeHandle.addEventListener("pointerup", endTargetResize);
   targetResizeHandle.addEventListener("pointercancel", endTargetResize);
+  objectivesToolbar.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    objectivesDrag = {
+      pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+      left: preferences.objectivesX, top: preferences.objectivesY,
+    };
+    objectivesToolbar.setPointerCapture(event.pointerId);
+  });
+  objectivesToolbar.addEventListener("pointermove", moveObjectives);
+  objectivesToolbar.addEventListener("pointerup", endObjectivesDrag);
+  objectivesToolbar.addEventListener("pointercancel", endObjectivesDrag);
+  objectivesResizeHandle.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    objectivesResize = { pointerId: event.pointerId, x: event.clientX, width: preferences.objectivesWidth };
+    objectivesResizeHandle.setPointerCapture(event.pointerId);
+  });
+  objectivesResizeHandle.addEventListener("pointermove", resizeObjectives);
+  objectivesResizeHandle.addEventListener("pointerup", endObjectivesResize);
+  objectivesResizeHandle.addEventListener("pointercancel", endObjectivesResize);
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("pointerdown", beginPan);
   canvas.addEventListener("pointermove", continuePan);
@@ -396,7 +446,50 @@ export function mountMechanicsMapOverlay(
     renderActions(snapshot);
     renderParty(snapshot);
     renderTarget(snapshot);
+    renderDungeonObjectives(snapshot);
     scheduleDraw();
+  }
+
+  function renderDungeonObjectives(snapshot: MechanicsMapSnapshot): void {
+    const dungeon = snapshot.dungeon;
+    objectivesBody.replaceChildren();
+    if (dungeon === null) {
+      objectivesTitle.textContent = "Dungeon objectives";
+      objectivesStatus.textContent = "WAITING";
+      objectivesStatus.dataset.state = "waiting";
+      objectivesBody.append(text("p", "Waiting for packet-observed dungeon objectives…", "dungeon-objectives-overlay-empty"));
+      return;
+    }
+    objectivesTitle.textContent = snapshot.scene_name ??
+      (dungeon.dungeon_id === null ? "Dungeon objectives" : `Dungeon ${dungeon.dungeon_id}`);
+    objectivesStatus.textContent = humanizeDungeonState(dungeon.flow_phase ?? dungeon.state);
+    objectivesStatus.dataset.state = dungeon.state === "completed" ? "complete" : dungeon.state === "failed" ? "failed" : "live";
+    const metadata = [
+      dungeon.dungeon_id === null ? null : `Dungeon ${dungeon.dungeon_id}`,
+      dungeon.difficulty_id === null ? null : `Difficulty ${dungeon.difficulty_id}`,
+    ].filter((value): value is string => value !== null).join(" · ");
+    if (metadata) objectivesBody.append(text("small", metadata, "dungeon-objectives-overlay-meta"));
+    if (dungeon.objectives.length === 0) {
+      objectivesBody.append(text("p", "No packet-observed objectives yet.", "dungeon-objectives-overlay-empty"));
+      return;
+    }
+    for (const objective of dungeon.objectives) {
+      const row = element("article", "dungeon-objectives-overlay-row");
+      row.dataset.complete = String(objective.complete === true);
+      row.dataset.catalogResolution = objective.catalog_resolution;
+      row.title = [
+        `Packet objective ID: ${objective.objective_id}`,
+        objective.objective_map_key === null ? null : `Map key: ${objective.objective_map_key}`,
+        `Catalog: ${humanizeDungeonState(objective.catalog_resolution)}`,
+      ].filter((value): value is string => value !== null).join("\n");
+      const identity = element("span", "dungeon-objectives-overlay-identity");
+      identity.append(
+        text("strong", objective.activity_target_key ?? `Objective ${objective.objective_id}`),
+        text("small", objective.complete === true ? "COMPLETE" : "PACKET OBSERVED"),
+      );
+      row.append(identity, text("b", formatDungeonObjectiveValue(objective.value, objective.complete)));
+      objectivesBody.append(row);
+    }
   }
 
   function renderActions(snapshot: MechanicsMapSnapshot): void {
@@ -798,6 +891,12 @@ export function mountMechanicsMapOverlay(
     partyPanel.style.left = `${preferences.partyX}px`;
     partyPanel.style.top = `${preferences.partyY}px`;
     partyPanel.style.width = `${partyWidth}px`;
+    const objectivesWidth = Math.min(window.innerWidth, preferences.objectivesWidth);
+    preferences.objectivesX = Math.min(Math.max(0, window.innerWidth - objectivesWidth), Math.max(0, preferences.objectivesX));
+    preferences.objectivesY = Math.min(Math.max(0, window.innerHeight - 96), Math.max(0, preferences.objectivesY));
+    objectivesPanel.style.left = `${preferences.objectivesX}px`;
+    objectivesPanel.style.top = `${preferences.objectivesY}px`;
+    objectivesPanel.style.width = `${objectivesWidth}px`;
   }
 
   function moveModule(event: PointerEvent): void {
@@ -923,6 +1022,31 @@ export function mountMechanicsMapOverlay(
   function endTargetResize(event: PointerEvent): void {
     if (targetResize?.pointerId !== event.pointerId) return;
     targetResize = null;
+    savePreferences();
+  }
+
+  function moveObjectives(event: PointerEvent): void {
+    if (objectivesDrag?.pointerId !== event.pointerId) return;
+    preferences.objectivesX = objectivesDrag.left + event.clientX - objectivesDrag.x;
+    preferences.objectivesY = objectivesDrag.top + event.clientY - objectivesDrag.y;
+    applyModuleGeometry();
+  }
+
+  function endObjectivesDrag(event: PointerEvent): void {
+    if (objectivesDrag?.pointerId !== event.pointerId) return;
+    objectivesDrag = null;
+    savePreferences();
+  }
+
+  function resizeObjectives(event: PointerEvent): void {
+    if (objectivesResize?.pointerId !== event.pointerId) return;
+    preferences.objectivesWidth = Math.max(280, objectivesResize.width + event.clientX - objectivesResize.x);
+    applyModuleGeometry();
+  }
+
+  function endObjectivesResize(event: PointerEvent): void {
+    if (objectivesResize?.pointerId !== event.pointerId) return;
+    objectivesResize = null;
     savePreferences();
   }
 

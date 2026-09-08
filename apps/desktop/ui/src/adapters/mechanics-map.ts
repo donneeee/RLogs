@@ -32,7 +32,7 @@ export interface MechanicsMapSignal {
 }
 
 export interface MechanicsMapSnapshot {
-  schema_version: 7;
+  schema_version: 8;
   revision: number;
   session_id: string | null;
   client_build: string | null;
@@ -55,6 +55,7 @@ export interface MechanicsMapSnapshot {
   encounter_pack: string | null;
   encounter_pack_reviewed: boolean;
   target: TargetFrameSnapshot | null;
+  dungeon: DungeonHudSnapshot | null;
   entities: readonly MechanicsMapEntity[];
   mechanics: readonly MechanicsMapSignal[];
   markers: readonly {
@@ -70,9 +71,31 @@ export interface MechanicsMapSnapshot {
 }
 
 export interface MechanicsMapUpdate {
-  schema_version: 7;
+  schema_version: 8;
   revision: number;
   snapshot: MechanicsMapSnapshot;
+}
+
+export interface DungeonObjectiveSnapshot {
+  objective_id: number;
+  objective_map_key: number | null;
+  value: number | null;
+  complete: boolean | null;
+  catalog_resolution: "resolved_current_build" | "unresolved_current_build" | "catalog_not_configured" |
+    "catalog_unavailable" | "not_observed";
+  activity_target_key: string | null;
+  scene_event_keys: readonly string[];
+}
+
+export interface DungeonHudSnapshot {
+  dungeon_id: number | null;
+  instance_id: string | null;
+  difficulty_id: number | null;
+  state: string;
+  flow_phase: string | null;
+  flow_state_id: number | null;
+  result_id: number | null;
+  objectives: readonly DungeonObjectiveSnapshot[];
 }
 
 export interface ActionControlSnapshot {
@@ -352,7 +375,7 @@ function projectWorldRect(value: MechanicsMapSnapshot, x: number, z: number, hal
 }
 
 export function parseMechanicsMapUpdate(value: unknown): MechanicsMapUpdate {
-  if (!record(value) || value.schema_version !== 7 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
+  if (!record(value) || value.schema_version !== 8 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
     throw new Error("The local host returned an invalid Mechanics Map update.");
   }
   return value as unknown as MechanicsMapUpdate;
@@ -413,7 +436,7 @@ export function projectMechanicsMapPoint(
 }
 
 function snapshot(value: unknown): value is MechanicsMapSnapshot {
-  return record(value) && value.schema_version === 7 &&
+  return record(value) && value.schema_version === 8 &&
     nonnegativeInteger(value.revision) && nullableString(value.session_id) && nullableString(value.client_build) &&
     nullableInteger(value.scene_id) && nullableInteger(value.map_id) && nullableString(value.scene_name) &&
     ["player_relative_radar", "absolute_scene_map"].includes(String(value.map_model)) && finitePositive(value.world_radius) &&
@@ -426,9 +449,26 @@ function snapshot(value: unknown): value is MechanicsMapSnapshot {
     Array.isArray(value.action_controls) && value.action_controls.length <= 48 && value.action_controls.every(actionControl) &&
     nullableString(value.encounter_pack) &&
     typeof value.encounter_pack_reviewed === "boolean" && (value.target === null || target(value.target)) &&
+    (value.dungeon === null || dungeon(value.dungeon)) &&
     Array.isArray(value.entities) && value.entities.every(entity) &&
     Array.isArray(value.mechanics) && value.mechanics.every(signal) && Array.isArray(value.markers) &&
     nullableString(value.data_gap) && nullableInteger(value.last_event_sequence) && nullableInteger(value.last_observed_micros);
+}
+
+function dungeon(value: unknown): value is DungeonHudSnapshot {
+  return record(value) && nullableInteger(value.dungeon_id) && nullableString(value.instance_id) &&
+    nullableInteger(value.difficulty_id) && typeof value.state === "string" && nullableString(value.flow_phase) &&
+    nullableInteger(value.flow_state_id) && nullableInteger(value.result_id) && Array.isArray(value.objectives) &&
+    value.objectives.length <= 32 && value.objectives.every(dungeonObjective);
+}
+
+function dungeonObjective(value: unknown): value is DungeonObjectiveSnapshot {
+  return record(value) && Number.isSafeInteger(value.objective_id) && nullableInteger(value.objective_map_key) &&
+    nullableInteger(value.value) && (value.complete === null || typeof value.complete === "boolean") &&
+    ["resolved_current_build", "unresolved_current_build", "catalog_not_configured", "catalog_unavailable", "not_observed"]
+      .includes(String(value.catalog_resolution)) &&
+    nullableString(value.activity_target_key) && Array.isArray(value.scene_event_keys) &&
+    value.scene_event_keys.every((key) => typeof key === "string");
 }
 
 function actionControl(value: unknown): value is ActionControlSnapshot {
