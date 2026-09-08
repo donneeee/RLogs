@@ -14,6 +14,8 @@ pub const BPSR_PROFILE_ENDPOINT: &str = "/v1/games/blue-protocol-star-resonance/
 pub fn website_profile_request(
     profile: &CharacterProfilePatch,
 ) -> Result<WebsitePayloadRequest, BpsrWebsiteProfileError> {
+    let mut profile = profile.clone();
+    apply_reviewed_global_realm(&mut profile);
     let mut routing = BTreeMap::from([
         (
             "deployment".into(),
@@ -32,7 +34,7 @@ pub fn website_profile_request(
         routing.insert("world".into(), world.clone());
     }
 
-    let mut body = serde_json::to_value(profile)?;
+    let mut body = serde_json::to_value(&profile)?;
     // Collection subsection provenance is required for correct local merging,
     // but is an implementation detail rather than public profile content.
     if let Some(collection) = body
@@ -50,6 +52,18 @@ pub fn website_profile_request(
         body,
     )?;
     Ok(WebsitePayloadRequest::new(BPSR_PROFILE_ENDPOINT, payload)?)
+}
+
+fn apply_reviewed_global_realm(profile: &mut CharacterProfilePatch) {
+    let region = &mut profile.character.region;
+    if region.deployment_id != "global" || region.realm_id.is_some() {
+        return;
+    }
+    region.realm_id = match region.region_id.as_str() {
+        "north-america" => Some("asteria".into()),
+        "europe" => Some("bahamar".into()),
+        _ => None,
+    };
 }
 
 #[derive(Debug, Error)]
@@ -149,6 +163,8 @@ mod tests {
             request.payload.body["modules"]["inventory"][0]["instance_id"],
             "9007199254740993"
         );
+        assert_eq!(request.payload.routing["realm"], "asteria");
+        assert_eq!(request.payload.body["character"]["region"]["realm_id"], "asteria");
         assert_eq!(request.payload.body["talent_progress"]["total_points"], 10);
         assert!(request.payload.body.get("account_id").is_none());
     }

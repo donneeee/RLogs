@@ -1,4 +1,5 @@
 import { routeUpload, uploadsEnabled } from "./uploads.js";
+import { canonicalPublishedRouting, normalizePublishedProfile } from "./profile.js";
 
 const JSON_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
@@ -205,10 +206,26 @@ async function profileCatalog(env, url) {
   const catalog = await env.RLOGS_DATA.get("fs:profiles/catalog.v1.json", "json");
   if (!catalog || !Array.isArray(catalog.profiles)) return notFound();
   const characterId = url.searchParams.get("character_id");
-  const profiles = characterId
+  const profiles = (characterId
     ? catalog.profiles.filter((entry) => entry.character_id === characterId)
-    : catalog.profiles;
+    : catalog.profiles).map(normalizeProfileCatalogEntry);
   return json({ ...catalog, profiles });
+}
+
+function normalizeProfileCatalogEntry(entry) {
+  const routing = canonicalPublishedRouting(entry);
+  return {
+    ...entry,
+    deployment: routing.deployment,
+    region: routing.region,
+    realm: routing.realm ?? null,
+    world: routing.world ?? null,
+  };
+}
+
+async function publicProfile(env, profileId) {
+  const profile = await env.RLOGS_DATA.get(`fs:profiles/${profileId}/public.json`, "json");
+  return profile == null ? notFound() : json(normalizePublishedProfile(profile));
 }
 
 async function profileLeaderboards(env, url) {
@@ -409,7 +426,7 @@ async function route(request, env) {
   match = /^\/v1\/run-groups\/([A-Za-z0-9_-]+)\/reconciliation$/.exec(path);
   if (match) return storedJson(env, `reconciliations/${match[1]}.json`);
   match = /^\/v1\/profiles\/(prf_[a-z0-9_]+)$/.exec(path);
-  if (match) return storedJson(env, `profiles/${match[1]}/public.json`);
+  if (match) return publicProfile(env, match[1]);
   match = /^\/v1\/profiles\/(prf_[a-z0-9_]+)\/loadouts\/([1-9][0-9]*)$/.exec(path);
   if (match) return storedJson(env, `profiles/${match[1]}/loadouts/${match[2]}.json`);
   match = /^\/v1\/profiles\/(prf_[a-z0-9_]+)\/photo-wall\/([1-9][0-9]*)$/.exec(path);

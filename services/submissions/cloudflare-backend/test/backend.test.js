@@ -146,13 +146,50 @@ test("profiles come only from bound Cloudflare storage", async () => {
       "fs:profiles/catalog.v1.json": JSON.stringify({
         schema_version: 1,
         profiles: [
-          { profile_id: "prf_a", character_id: "1" },
-          { profile_id: "prf_b", character_id: "2" },
+          { profile_id: "prf_a", character_id: "1", deployment: "sea", region: "asia" },
+          { profile_id: "prf_b", character_id: "2", deployment: "global", region: "north-america" },
         ],
       }),
     }),
   );
-  assert.deepEqual((await response.json()).profiles, [{ profile_id: "prf_b", character_id: "2" }]);
+  assert.deepEqual((await response.json()).profiles, [{
+    profile_id: "prf_b", character_id: "2", deployment: "global", region: "north-america",
+    realm: "asteria", world: null,
+  }]);
+});
+
+test("legacy profiles are normalized to their reviewed server at the public boundary", async () => {
+  const profileId = `prf_${"a".repeat(32)}`;
+  const profile = {
+    profile_id: profileId,
+    deployment: "global",
+    region: "north-america",
+    realm: null,
+    world: null,
+    envelope: {
+      routing: {
+        deployment: "global", region: "north-america", "character-id": "3296036",
+        realm: null, world: null,
+      },
+      body: { character: { character_id: "3296036", region: {
+        deployment_id: "global", region_id: "north-america", realm_id: null, world_id: null,
+      } } },
+    },
+  };
+  const response = await backend.fetch(
+    new Request(`https://backend/v1/profiles/${profileId}`),
+    environment({ [`fs:profiles/${profileId}/public.json`]: JSON.stringify(profile) }),
+  );
+  assert.equal(response.status, 200);
+  const value = await response.json();
+  assert.equal(value.deployment, "global");
+  assert.equal(value.region, "north-america");
+  assert.equal(value.realm, "asteria");
+  assert.deepEqual(value.envelope.routing, {
+    deployment: "global", region: "north-america", "character-id": "3296036", realm: "asteria",
+  });
+  assert.equal(value.envelope.body.character.region.realm_id, "asteria");
+  assert.equal(value.envelope.body.character.region.world_id, null);
 });
 
 test("profile leaderboard ranks scores and exact dungeon-tier times from D1", async () => {

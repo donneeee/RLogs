@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { accountView, RLogsAuthState, tokenHash } from "../src/auth.js";
-import { canonicalJson, liveCaptureProof, profileLeaderboardProjection, reconcileCatalog, reconcilePublishedRouting } from "../src/profile.js";
+import { canonicalJson, canonicalPublishedRouting, liveCaptureProof, profileLeaderboardProjection, reconcileCatalog, reconcilePublishedRouting } from "../src/profile.js";
 
 function authFixture() {
   const durable = new Map();
@@ -232,6 +232,28 @@ test("a deployment fallback cannot erase a previously observed specific region",
     }).region,
     "europe",
   );
+  assert.equal(
+    reconcilePublishedRouting(existing, {
+      deployment: "global",
+      region: "europe",
+      realm: null,
+      world: null,
+    }).realm,
+    "bahamar",
+  );
+});
+
+test("published routing supplies reviewed Global realms and omits unresolved optional keys", () => {
+  assert.deepEqual(canonicalPublishedRouting({
+    deployment: "global", region: "north-america", realm: null, world: null,
+  }), {
+    deployment: "global", region: "north-america", realm: "asteria",
+  });
+  assert.deepEqual(canonicalPublishedRouting({
+    deployment: "sea", region: "unknown", realm: null, world: "  ",
+  }), {
+    deployment: "sea", region: "unknown",
+  });
 });
 
 test("account projection does not expose Discord IDs", () => {

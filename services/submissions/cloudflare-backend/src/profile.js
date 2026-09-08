@@ -94,7 +94,7 @@ export async function publishProfilePackage(env, packageValue, identity, deviceT
     loadouts,
     envelope: {
       ...structuredClone(packageValue.request.payload),
-      routing: { ...structuredClone(sourceRouting), ...routing },
+      routing: routingEnvelope(sourceRouting, routing),
       body: accumulatedBody,
     },
   };
@@ -323,17 +323,69 @@ function nonnegativeInteger(value) {
 }
 
 export function reconcilePublishedRouting(existing, incoming) {
-  const routing = structuredClone(incoming);
+  const routing = canonicalPublishedRouting(incoming);
   if (!existing || existing.deployment !== routing.deployment) return routing;
   const incomingRegion = String(routing.region ?? "").trim();
   const existingRegion = String(existing.region ?? "").trim();
   const incomingIsDeploymentFallback = incomingRegion === routing.deployment || incomingRegion === "unknown";
   const existingIsSpecific = existingRegion && existingRegion !== existing.deployment && existingRegion !== "unknown";
-  if (!incomingIsDeploymentFallback || !existingIsSpecific) return routing;
-  routing.region = existingRegion;
-  routing.realm = existing.realm ?? routing.realm ?? null;
-  routing.world = existing.world ?? routing.world ?? null;
+  if (incomingIsDeploymentFallback && existingIsSpecific) {
+    routing.region = existingRegion;
+    routing.realm = optionalRoutingValue(existing.realm) ?? routing.realm;
+    routing.world = optionalRoutingValue(existing.world) ?? routing.world;
+  }
+  return canonicalPublishedRouting(routing);
+}
+
+export function canonicalPublishedRouting(value) {
+  const routing = structuredClone(value);
+  routing.deployment = String(routing.deployment ?? "").trim();
+  routing.region = String(routing.region ?? "").trim();
+  const realm = optionalRoutingValue(routing.realm)
+    ?? reviewedGlobalRealm(routing.deployment, routing.region);
+  const world = optionalRoutingValue(routing.world);
+  if (realm) routing.realm = realm;
+  else delete routing.realm;
+  if (world) routing.world = world;
+  else delete routing.world;
   return routing;
+}
+
+export function normalizePublishedProfile(value) {
+  const profile = structuredClone(value);
+  const routing = canonicalPublishedRouting({
+    deployment: profile.deployment,
+    region: profile.region,
+    realm: profile.realm,
+    world: profile.world,
+    ...profile.envelope?.routing,
+  });
+  profile.deployment = routing.deployment;
+  profile.region = routing.region;
+  profile.realm = routing.realm ?? null;
+  profile.world = routing.world ?? null;
+  if (isObject(profile.envelope)) {
+    profile.envelope.routing = routingEnvelope(profile.envelope.routing ?? {}, routing);
+    normalizeProjectedCharacterRegion(profile.envelope.body, routing);
+  }
+  return profile;
+}
+
+function routingEnvelope(source, routing) {
+  return canonicalPublishedRouting({ ...structuredClone(source), ...routing });
+}
+
+function reviewedGlobalRealm(deployment, region) {
+  if (deployment !== "global") return null;
+  if (region === "north-america") return "asteria";
+  if (region === "europe") return "bahamar";
+  return null;
+}
+
+function optionalRoutingValue(value) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized && normalized.length <= 256 ? normalized : null;
 }
 
 function normalizeProjectedCharacterRegion(body, routing) {
