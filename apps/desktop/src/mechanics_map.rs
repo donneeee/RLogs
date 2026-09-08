@@ -6,12 +6,13 @@ use std::{
 
 use rlogs_events::{
     ActorKind, ActorState, CanonicalEvent, CastState, DungeonEventKind, DungeonFlowPhase,
-    DungeonObjectiveCatalogResolution, EntityAttributeUpdateKind, EntityAttributeValue, EntityRef,
-    EventEnvelope, LifeState, MapEventKind, PartyRosterObservation, StatusState, TimelineEventKind,
+    DungeonObjectiveCatalogResolution, EncounterState, EntityAttributeUpdateKind,
+    EntityAttributeValue, EntityRef, EventEnvelope, LifeState, MapEventKind,
+    PartyRosterObservation, StatusState, TimelineEventKind,
 };
 use serde::{Deserialize, Serialize};
 
-pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 10;
+pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 11;
 const ENTITY_STALE_AFTER_MICROS: u64 = 5_000_000;
 const CAST_STALE_AFTER_MICROS: u64 = 8_000_000;
 const MAX_ENTITIES: usize = 192;
@@ -236,6 +237,13 @@ pub struct DungeonHudSnapshot {
     pub flow_phase: Option<&'static str>,
     pub flow_state_id: Option<i32>,
     pub result_id: Option<i32>,
+    pub attempt_number: u32,
+    pub retry_count: u32,
+    pub encounter_state: Option<&'static str>,
+    /// Time since the authoritative encounter start. This freezes at a wipe,
+    /// clear, or end boundary instead of continuing while the boss is dead.
+    pub attempt_elapsed_micros: u64,
+    pub attempt_running: bool,
     pub objectives: Vec<DungeonObjectiveSnapshot>,
 }
 
@@ -392,6 +400,11 @@ struct DungeonHudState {
     difficulty_id: Option<i32>,
     state: DungeonEventKind,
     flow: Option<rlogs_events::DungeonFlowSnapshot>,
+    attempt_number: u32,
+    retry_count: u32,
+    encounter_state: Option<EncounterState>,
+    attempt_started_micros: Option<u64>,
+    attempt_elapsed_micros: u64,
     objectives: BTreeMap<i64, DungeonObjectiveSnapshot>,
 }
 
@@ -506,6 +519,11 @@ impl MechanicsMapProjector {
                             difficulty_id: event.difficulty_id,
                             state: event.kind,
                             flow: event.flow.clone(),
+                            attempt_number: 0,
+                            retry_count: 0,
+                            encounter_state: None,
+                            attempt_started_micros: None,
+                            attempt_elapsed_micros: 0,
                             objectives: BTreeMap::new(),
                         });
                         changed = true;
@@ -516,6 +534,11 @@ impl MechanicsMapProjector {
                         difficulty_id: event.difficulty_id,
                         state: event.kind,
                         flow: event.flow.clone(),
+                        attempt_number: 0,
+                        retry_count: 0,
+                        encounter_state: None,
+                        attempt_started_micros: None,
+                        attempt_elapsed_micros: 0,
                         objectives: BTreeMap::new(),
                     });
                     let before = state.clone();
@@ -598,6 +621,17 @@ impl MechanicsMapProjector {
                 MapEventKind::Entered | MapEventKind::Exited => {}
             },
             CanonicalEvent::Timeline(timeline) => match &timeline.kind {
+                TimelineEventKind::EncounterBoundary { state: next, .. } => {
+                    if let Some(dungeon) = self.dungeon.as_mut() {
+                        let before = dungeon.clone();
+                        observe_dungeon_encounter_boundary(
+                            dungeon,
+                            *next,
+                            envelope.time.observed_micros,
+                        );
+                        changed |= !dungeon_hud_state_equal(&before, dungeon);
+                    }
+                }
                 TimelineEventKind::Actor(event) => {
                     if event.state == ActorState::Despawned {
                         changed |= self.entities.remove(&event.actor.actor_id.0).is_some();
@@ -1183,7 +1217,10 @@ impl MechanicsMapProjector {
             player,
             party,
             action_controls,
-            dungeon: self.dungeon.as_ref().map(dungeon_hud_snapshot),
+            dungeon: self
+                .dungeon
+                .as_ref()
+                .map(|state| dungeon_hud_snapshot(state, now)),
             encounter_pack: pack,
             encounter_pack_reviewed: pack.is_some(),
             target,
@@ -1367,7 +1404,15 @@ impl MechanicsMapProjector {
     }
 }
 
-fn dungeon_hud_snapshot(state: &DungeonHudState) -> DungeonHudSnapshot {
+fn dungeon_hud_snapshot(state: &DungeonHudState, now_micros: u64) -> DungeonHudSnapshot {
+    let attempt_elapsed_micros =
+        state
+            .attempt_started_micros
+            .map_or(state.attempt_elapsed_micros, |started| {
+                state
+                    .attempt_elapsed_micros
+                    .saturating_add(now_micros.saturating_sub(started))
+            });
     DungeonHudSnapshot {
         dungeon_id: state.dungeon_id,
         instance_id: state.instance_id.clone(),
@@ -1380,6 +1425,11 @@ fn dungeon_hud_snapshot(state: &DungeonHudState) -> DungeonHudSnapshot {
             .map(dungeon_flow_phase),
         flow_state_id: state.flow.as_ref().and_then(|flow| flow.state_id),
         result_id: state.flow.as_ref().and_then(|flow| flow.result_id),
+        attempt_number: state.attempt_number,
+        retry_count: state.retry_count,
+        encounter_state: state.encounter_state.map(encounter_state),
+        attempt_elapsed_micros,
+        attempt_running: state.attempt_started_micros.is_some(),
         objectives: state
             .objectives
             .values()
@@ -1395,7 +1445,49 @@ fn dungeon_hud_state_equal(left: &DungeonHudState, right: &DungeonHudState) -> b
         && left.difficulty_id == right.difficulty_id
         && left.state == right.state
         && left.flow == right.flow
+        && left.attempt_number == right.attempt_number
+        && left.retry_count == right.retry_count
+        && left.encounter_state == right.encounter_state
+        && left.attempt_started_micros == right.attempt_started_micros
+        && left.attempt_elapsed_micros == right.attempt_elapsed_micros
         && left.objectives == right.objectives
+}
+
+fn observe_dungeon_encounter_boundary(
+    state: &mut DungeonHudState,
+    next: EncounterState,
+    observed_micros: u64,
+) {
+    match next {
+        EncounterState::Started => {
+            if state.encounter_state != Some(EncounterState::Started) {
+                state.attempt_number = state.attempt_number.saturating_add(1).max(1);
+                state.attempt_elapsed_micros = 0;
+                state.attempt_started_micros = Some(observed_micros);
+            }
+            state.encounter_state = Some(EncounterState::Started);
+        }
+        EncounterState::Cleared | EncounterState::Wiped | EncounterState::Ended => {
+            if let Some(started) = state.attempt_started_micros.take() {
+                state.attempt_elapsed_micros = state
+                    .attempt_elapsed_micros
+                    .saturating_add(observed_micros.saturating_sub(started));
+                if next == EncounterState::Wiped {
+                    state.retry_count = state.retry_count.saturating_add(1);
+                }
+            }
+            state.encounter_state = Some(next);
+        }
+    }
+}
+
+fn encounter_state(value: EncounterState) -> &'static str {
+    match value {
+        EncounterState::Started => "started",
+        EncounterState::Cleared => "cleared",
+        EncounterState::Wiped => "wiped",
+        EncounterState::Ended => "ended",
+    }
 }
 
 fn dungeon_event_state(value: DungeonEventKind) -> &'static str {
@@ -1840,6 +1932,29 @@ mod tests {
             actor_id: ActorId(actor_id),
             entity_uuid: EntityUuid(uuid),
         }
+    }
+
+    fn encounter_boundary(sequence: u64, state: EncounterState) -> CanonicalEvent {
+        CanonicalEvent::Timeline(TimelineEvent {
+            sequence,
+            time: EventTime {
+                observed_micros: sequence * 1_000,
+                game_time_millis: None,
+            },
+            provenance: EventProvenance {
+                confidence: EvidenceConfidence::Exact,
+                source: EvidenceSource::Wire {
+                    capture_sequence: sequence,
+                    connection_id: 1,
+                    stream_id: 1,
+                },
+            },
+            kind: TimelineEventKind::EncounterBoundary {
+                state,
+                encounter_id: None,
+                reason: rlogs_events::BoundaryReason::AuthoritativePacket,
+            },
+        })
     }
 
     fn actor_event(actor: EntityRef, kind: ActorKind, character_id: Option<&str>) -> ActorEvent {
@@ -2785,5 +2900,60 @@ mod tests {
             }),
         ));
         assert!(projector.snapshot().dungeon.is_none());
+    }
+
+    #[test]
+    fn packet_encounter_boundaries_drive_and_freeze_the_dungeon_attempt_clock() {
+        let mut projector = MechanicsMapProjector::default();
+        projector.observe(&envelope(
+            1,
+            CanonicalEvent::Dungeon(DungeonEvent {
+                kind: DungeonEventKind::Entered,
+                dungeon_id: Some(DungeonId(6513)),
+                instance_id: Some("run-1".into()),
+                difficulty_id: Some(6545),
+                objective_map_key: None,
+                objective_id: None,
+                objective_value: None,
+                objective_complete: None,
+                objective_catalog: None,
+                flow: None,
+            }),
+        ));
+
+        projector.observe(&envelope(
+            1_000,
+            encounter_boundary(1_000, EncounterState::Started),
+        ));
+        let started = projector.snapshot().dungeon.expect("started attempt");
+        assert_eq!(started.attempt_number, 1);
+        assert_eq!(started.retry_count, 0);
+        assert_eq!(started.encounter_state, Some("started"));
+        assert!(started.attempt_running);
+
+        projector.observe(&envelope(
+            3_500,
+            encounter_boundary(3_500, EncounterState::Wiped),
+        ));
+        let wiped = projector.snapshot().dungeon.expect("wiped attempt");
+        assert_eq!(wiped.attempt_elapsed_micros, 2_500_000);
+        assert_eq!(wiped.retry_count, 1);
+        assert_eq!(wiped.encounter_state, Some("wiped"));
+        assert!(!wiped.attempt_running);
+
+        projector.observe(&envelope(
+            5_000,
+            encounter_boundary(5_000, EncounterState::Started),
+        ));
+        projector.observe(&envelope(
+            7_000,
+            encounter_boundary(7_000, EncounterState::Cleared),
+        ));
+        let cleared = projector.snapshot().dungeon.expect("cleared retry");
+        assert_eq!(cleared.attempt_number, 2);
+        assert_eq!(cleared.retry_count, 1);
+        assert_eq!(cleared.attempt_elapsed_micros, 2_000_000);
+        assert_eq!(cleared.encounter_state, Some("cleared"));
+        assert!(!cleared.attempt_running);
     }
 }

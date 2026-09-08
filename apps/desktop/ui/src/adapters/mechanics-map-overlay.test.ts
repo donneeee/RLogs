@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDungeonObjectiveValue, parseMechanicsMapCanvasPreferences, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
+import { formatDungeonAttemptTime, formatDungeonObjectiveValue, parseMechanicsMapCanvasPreferences, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
 
 describe("Mechanics Map overlay canvas preferences", () => {
   it("does not rebuild the overlay after an unchanged long-poll timeout", () => {
@@ -127,5 +127,11 @@ describe("Mechanics Map overlay canvas preferences", () => {
     expect(formatDungeonObjectiveValue(275, false, 400)).toBe("275 / 400");
     expect(formatDungeonObjectiveValue(400, true, 400)).toBe("400 / 400 ✓");
     expect(formatDungeonObjectiveValue(null, false)).toBe("Observed");
+  });
+
+  it("formats the packet-bounded attempt clock with stable tenths", () => {
+    expect(formatDungeonAttemptTime(0)).toBe("0:00.0");
+    expect(formatDungeonAttemptTime(83_456_789)).toBe("1:23.4");
+    expect(formatDungeonAttemptTime(3_723_456_789)).toBe("1:02:03.4");
   });
 });

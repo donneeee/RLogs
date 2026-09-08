@@ -2,7 +2,8 @@
 
 Status: active product track. The screen-sized native Overlay Canvas, its
 packet-backed Mechanics Map, current-target frame, local-player frame with
-packet-backed status effects, action cooldowns, and party frames are implemented; additional HUD modules remain
+packet-backed status effects, action cooldowns, party frames, and a dungeon
+tracker with an authoritative pull clock are implemented; additional HUD modules remain
 disabled until their authoritative event and asset contracts pass the gates
 below.
 
@@ -132,13 +133,17 @@ editing. The same canvas/window contract is reserved for future target,
 status, action, party, objective, and chat modules rather than creating a new
 native window for each feature.
 
-The target frame, local-player frame, action-cooldown panel, and party frames
-share that canvas. Each has independent persisted position and width, while
+The target frame, local-player frame, action-cooldown panel, party frames, and
+dungeon tracker share that canvas. Each has independent persisted position and width, while
 canvas edit/click-through lock remains a single recovery-safe setting for the
 transparent native window. Target selection, player and roster identity, HP,
 shield, debuff and cooldown lifecycle, actor despawn, scene changes, and stale
 state are projected from the same bounded live feed as the map.
-Long-poll timeouts that carry no new revision do not rebuild any module, so
+The dungeon tracker starts its pull clock only on the canonical encounter-start
+boundary, resets it for the next pull, and freezes it at a packet-proven wipe,
+clear, or end boundary. Its retry total advances only for packet-proven wipes,
+so boss-death outro packets cannot extend the displayed time. Long-poll timeouts
+that carry no new revision do not rebuild any module, so
 their DOM, countdown anchors, and native overlay remain visually stable.
 
 The map uses the locally compiled in-game map as the visual base and keeps

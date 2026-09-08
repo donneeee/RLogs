@@ -32,7 +32,7 @@ export interface MechanicsMapSignal {
 }
 
 export interface MechanicsMapSnapshot {
-  schema_version: 10;
+  schema_version: 11;
   revision: number;
   session_id: string | null;
   client_build: string | null;
@@ -71,7 +71,7 @@ export interface MechanicsMapSnapshot {
 }
 
 export interface MechanicsMapUpdate {
-  schema_version: 10;
+  schema_version: 11;
   revision: number;
   snapshot: MechanicsMapSnapshot;
 }
@@ -97,6 +97,11 @@ export interface DungeonHudSnapshot {
   flow_phase: string | null;
   flow_state_id: number | null;
   result_id: number | null;
+  attempt_number: number;
+  retry_count: number;
+  encounter_state: "started" | "cleared" | "wiped" | "ended" | null;
+  attempt_elapsed_micros: number;
+  attempt_running: boolean;
   objectives: readonly DungeonObjectiveSnapshot[];
 }
 
@@ -378,7 +383,7 @@ function projectWorldRect(value: MechanicsMapSnapshot, x: number, z: number, hal
 }
 
 export function parseMechanicsMapUpdate(value: unknown): MechanicsMapUpdate {
-  if (!record(value) || value.schema_version !== 10 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
+  if (!record(value) || value.schema_version !== 11 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
     throw new Error("The local host returned an invalid Mechanics Map update.");
   }
   return value as unknown as MechanicsMapUpdate;
@@ -439,7 +444,7 @@ export function projectMechanicsMapPoint(
 }
 
 function snapshot(value: unknown): value is MechanicsMapSnapshot {
-  return record(value) && value.schema_version === 10 &&
+  return record(value) && value.schema_version === 11 &&
     nonnegativeInteger(value.revision) && nullableString(value.session_id) && nullableString(value.client_build) &&
     nullableInteger(value.scene_id) && nullableInteger(value.map_id) && nullableString(value.scene_name) &&
     ["player_relative_radar", "absolute_scene_map"].includes(String(value.map_model)) && finitePositive(value.world_radius) &&
@@ -461,8 +466,11 @@ function snapshot(value: unknown): value is MechanicsMapSnapshot {
 function dungeon(value: unknown): value is DungeonHudSnapshot {
   return record(value) && nullableInteger(value.dungeon_id) && nullableString(value.instance_id) &&
     nullableInteger(value.difficulty_id) && typeof value.state === "string" && nullableString(value.flow_phase) &&
-    nullableInteger(value.flow_state_id) && nullableInteger(value.result_id) && Array.isArray(value.objectives) &&
-    value.objectives.length <= 32 && value.objectives.every(dungeonObjective);
+    nullableInteger(value.flow_state_id) && nullableInteger(value.result_id) && nonnegativeInteger(value.attempt_number) &&
+    nonnegativeInteger(value.retry_count) &&
+    (value.encounter_state === null || ["started", "cleared", "wiped", "ended"].includes(String(value.encounter_state))) &&
+    nonnegativeInteger(value.attempt_elapsed_micros) && typeof value.attempt_running === "boolean" &&
+    Array.isArray(value.objectives) && value.objectives.length <= 32 && value.objectives.every(dungeonObjective);
 }
 
 function dungeonObjective(value: unknown): value is DungeonObjectiveSnapshot {

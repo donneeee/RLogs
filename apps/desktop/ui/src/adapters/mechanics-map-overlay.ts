@@ -138,6 +138,17 @@ export function formatDungeonObjectiveValue(
   return complete === true ? "Complete" : "Observed";
 }
 
+export function formatDungeonAttemptTime(micros: number): string {
+  const totalTenths = Math.max(0, Math.floor(micros / 100_000));
+  const hours = Math.floor(totalTenths / 36_000);
+  const minutes = Math.floor(totalTenths / 600) % 60;
+  const seconds = Math.floor(totalTenths / 10) % 60;
+  const tenths = totalTenths % 10;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${tenths}`
+    : `${minutes}:${String(seconds).padStart(2, "0")}.${tenths}`;
+}
+
 function humanizeDungeonState(value: string): string {
   return value.replaceAll("_", " ").toUpperCase();
 }
@@ -175,6 +186,8 @@ export function mountMechanicsMapOverlay(
   let playerRenderedAtMillis = 0;
   let actionsTimer: number | null = null;
   let actionsRenderedAtMillis = 0;
+  let objectivesTimer: number | null = null;
+  let objectivesRenderedAtMillis = 0;
 
   const root = element("main", "overlay-canvas-runtime");
   const panel = element("section", "mechanics-map-overlay-runtime");
@@ -460,6 +473,7 @@ export function mountMechanicsMapOverlay(
   }
 
   function renderDungeonObjectives(snapshot: MechanicsMapSnapshot): void {
+    stopObjectivesTimer();
     const dungeon = snapshot.dungeon;
     objectivesBody.replaceChildren();
     if (dungeon === null) {
@@ -471,13 +485,33 @@ export function mountMechanicsMapOverlay(
     }
     objectivesTitle.textContent = snapshot.scene_name ??
       (dungeon.dungeon_id === null ? "Dungeon objectives" : `Dungeon ${dungeon.dungeon_id}`);
-    objectivesStatus.textContent = humanizeDungeonState(dungeon.flow_phase ?? dungeon.state);
-    objectivesStatus.dataset.state = dungeon.state === "completed" ? "complete" : dungeon.state === "failed" ? "failed" : "live";
+    objectivesStatus.textContent = humanizeDungeonState(dungeon.encounter_state ?? dungeon.flow_phase ?? dungeon.state);
+    objectivesStatus.dataset.state = dungeon.encounter_state === "wiped" || dungeon.state === "failed"
+      ? "failed"
+      : dungeon.encounter_state === "cleared" || dungeon.state === "completed" ? "complete" : "live";
     const metadata = [
       dungeon.dungeon_id === null ? null : `Dungeon ${dungeon.dungeon_id}`,
       dungeon.difficulty_id === null ? null : `Difficulty ${dungeon.difficulty_id}`,
     ].filter((value): value is string => value !== null).join(" · ");
     if (metadata) objectivesBody.append(text("small", metadata, "dungeon-objectives-overlay-meta"));
+    if (dungeon.attempt_number > 0) {
+      const attempt = element("div", "dungeon-objectives-overlay-attempt");
+      const label = text("span", `Attempt ${dungeon.attempt_number}`);
+      const timer = text("b", formatDungeonAttemptTime(dungeon.attempt_elapsed_micros));
+      const retries = text("small", `${dungeon.retry_count} ${dungeon.retry_count === 1 ? "retry" : "retries"}`);
+      attempt.append(label, timer, retries);
+      objectivesBody.append(attempt);
+      objectivesRenderedAtMillis = performance.now();
+      const updateAttemptTimer = () => {
+        const localElapsedMillis = dungeon.attempt_running
+          ? Math.max(0, performance.now() - objectivesRenderedAtMillis)
+          : 0;
+        timer.textContent = formatDungeonAttemptTime(
+          dungeon.attempt_elapsed_micros + Math.round(localElapsedMillis * 1_000),
+        );
+      };
+      if (dungeon.attempt_running) objectivesTimer = window.setInterval(updateAttemptTimer, 100);
+    }
     if (dungeon.objectives.length === 0) {
       objectivesBody.append(text("p", "No packet-observed objectives yet.", "dungeon-objectives-overlay-empty"));
       return;
@@ -577,6 +611,12 @@ export function mountMechanicsMapOverlay(
     if (actionsTimer === null) return;
     window.clearInterval(actionsTimer);
     actionsTimer = null;
+  }
+
+  function stopObjectivesTimer(): void {
+    if (objectivesTimer === null) return;
+    window.clearInterval(objectivesTimer);
+    objectivesTimer = null;
   }
 
   function renderParty(snapshot: MechanicsMapSnapshot): void {
@@ -1127,6 +1167,7 @@ export function mountMechanicsMapOverlay(
       stopTargetTimer();
       stopPlayerTimer();
       stopActionsTimer();
+      stopObjectivesTimer();
       resizeObserver.disconnect();
       window.removeEventListener("resize", handleScreenResize);
       removeInteractivityListener?.();

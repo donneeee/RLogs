@@ -5804,6 +5804,10 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
 .dungeon-objectives-overlay-toolbar span[data-state="failed"] { color: #ff8d9d; }
 .dungeon-objectives-overlay-body { display: grid; gap: 6px; padding: 8px 10px 10px; }
 .dungeon-objectives-overlay-meta { color: #8fa8bb; font-size: 10px; }
+.dungeon-objectives-overlay-attempt { display: grid; grid-template-columns: 1fr auto auto; align-items: baseline; gap: 10px; padding: 6px 8px; border: 1px solid rgb(92 228 212 / 20%); border-radius: 7px; background: rgb(11 25 37 / 74%); }
+.dungeon-objectives-overlay-attempt span { color: #b7c8d6; font-size: 11px; font-weight: 700; }
+.dungeon-objectives-overlay-attempt b { min-width: 5.8ch; color: #63e2d6; font-variant-numeric: tabular-nums; text-align: right; }
+.dungeon-objectives-overlay-attempt small { color: #8fa8bb; font-size: 10px; white-space: nowrap; }
 .dungeon-objectives-overlay-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px 12px; min-width: 0; padding: 7px 8px; border: 1px solid rgb(110 153 181 / 20%); border-radius: 7px; background: rgb(10 24 36 / 78%); }
 .dungeon-objectives-overlay-row[data-complete="true"] { border-color: rgb(100 225 165 / 34%); background: rgb(20 66 56 / 42%); }
 .dungeon-objectives-overlay-identity { display: grid; min-width: 0; gap: 2px; }
