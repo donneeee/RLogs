@@ -754,14 +754,10 @@ mod tests {
         controller.arm();
 
         controller.observe(&emit(&mut factory, 10, damage(1, 2, 1_000)));
-        let nearby_same_target =
-            controller.observe(&emit(&mut factory, 11, damage(3, 2, 50_000)));
-        let nearby_other_target =
-            controller.observe(&emit(&mut factory, 12, damage(3, 4, 60_000)));
-        let local_other_target =
-            controller.observe(&emit(&mut factory, 13, damage(1, 4, 70_000)));
-        let local_locked_target =
-            controller.observe(&emit(&mut factory, 14, damage(1, 2, 500)));
+        let nearby_same_target = controller.observe(&emit(&mut factory, 11, damage(3, 2, 50_000)));
+        let nearby_other_target = controller.observe(&emit(&mut factory, 12, damage(3, 4, 60_000)));
+        let local_other_target = controller.observe(&emit(&mut factory, 13, damage(1, 4, 70_000)));
+        let local_locked_target = controller.observe(&emit(&mut factory, 14, damage(1, 2, 500)));
 
         assert!(!nearby_same_target.accept_damage);
         assert!(!nearby_other_target.accept_damage);
