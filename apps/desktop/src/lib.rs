@@ -2276,6 +2276,9 @@ struct AutomaticSubmissionStatusView {
     last_error: Option<String>,
     last_report_id: Option<String>,
     last_share_url: Option<String>,
+    recovered_after_restart_count: u64,
+    recovery_failure_count: u64,
+    last_recovery_error: Option<String>,
 }
 
 impl Default for AutomaticSubmissionStatusView {
@@ -2295,6 +2298,9 @@ impl Default for AutomaticSubmissionStatusView {
             last_error: None,
             last_report_id: None,
             last_share_url: None,
+            recovered_after_restart_count: 0,
+            recovery_failure_count: 0,
+            last_recovery_error: None,
         }
     }
 }
@@ -2411,6 +2417,19 @@ impl AutomaticSubmissionStatus {
         self.view.last_error = None;
         self.view.last_report_id = Some(result.report_id.clone());
         self.view.last_share_url = Some(result.share_url.clone());
+    }
+
+    fn recovered_after_restart(&mut self) {
+        self.view.recovered_after_restart_count =
+            self.view.recovered_after_restart_count.saturating_add(1);
+        self.view.last_activity_unix_millis = Some(unix_millis());
+        self.view.last_recovery_error = None;
+    }
+
+    fn recovery_failed(&mut self, error: impl Into<String>) {
+        self.view.recovery_failure_count = self.view.recovery_failure_count.saturating_add(1);
+        self.view.last_activity_unix_millis = Some(unix_millis());
+        self.view.last_recovery_error = Some(error.into());
     }
 
     fn clear_retry(&mut self) {
@@ -5555,6 +5574,8 @@ impl RuntimeController {
                 let mut last_attempted_queue_id: Option<String> = None;
                 let mut profile_failures = 0_u32;
                 let mut profile_retry_after = None;
+                let mut audited_completed_sessions = BTreeSet::new();
+                let mut legacy_recovery_audited = false;
                 loop {
                 if shutdown
                     .as_ref()
@@ -5584,8 +5605,23 @@ impl RuntimeController {
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .is_some();
-                let queue = controller.submission_queue();
-                let pending_eligible_count = queue
+                if !legacy_recovery_audited
+                    && policy.log_uploader.enabled
+                    && policy.log_uploader.automatic_combat_logs
+                    && controller.snapshot().phase != RuntimePhase::Processing
+                {
+                    legacy_recovery_audited = true;
+                    if let Err(error) = controller.record_legacy_recovery_intents() {
+                        controller
+                            .automatic_submission_status
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .recovery_failed(error.clone());
+                        eprintln!("legacy completed submission audit stopped: {error}");
+                    }
+                }
+                let mut queue = controller.submission_queue();
+                let mut pending_eligible_count = queue
                     .entries
                     .iter()
                     .filter(|entry| {
@@ -5595,6 +5631,49 @@ impl RuntimeController {
                             && entry.artifact_byte_length_matches
                     })
                     .count();
+                // A crash can happen after the canonical run and history were
+                // durably sealed but before the optional privacy export was
+                // inserted into the upload queue. Audit one proven-complete
+                // session only while the ordinary queue is empty and capture
+                // is idle, so recovery cannot contend with packet processing
+                // or delay an already-ready upload.
+                if policy.log_uploader.enabled
+                    && policy.log_uploader.automatic_combat_logs
+                    && pending_eligible_count == 0
+                    && controller.snapshot().phase != RuntimePhase::Processing
+                {
+                    match controller
+                        .recover_one_completed_submission(&mut audited_completed_sessions)
+                    {
+                        Some(Ok(())) => {
+                            controller
+                                .automatic_submission_status
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .recovered_after_restart();
+                            queue = controller.submission_queue();
+                            pending_eligible_count = queue
+                                .entries
+                                .iter()
+                                .filter(|entry| {
+                                    entry.state == SubmissionState::Draft
+                                        && entry.rejection_reason.is_none()
+                                        && entry.artifact_exists
+                                        && entry.artifact_byte_length_matches
+                                })
+                                .count();
+                        }
+                        Some(Err(error)) => {
+                            controller
+                                .automatic_submission_status
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .recovery_failed(error.clone());
+                            eprintln!("completed submission recovery skipped one session: {error}");
+                        }
+                        None => {}
+                    }
+                }
                 controller
                     .automatic_submission_status
                     .lock()
@@ -5774,6 +5853,105 @@ impl RuntimeController {
             })
             .map(|_| ())
             .map_err(|error| format!("could not start automatic submission uploader: {error}"))
+    }
+
+    fn recover_one_completed_submission(
+        &self,
+        audited_sessions: &mut BTreeSet<String>,
+    ) -> Option<Result<(), String>> {
+        let intent = self
+            .submission_queue
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .next_recovery_intent(audited_sessions)?;
+        audited_sessions.insert(intent.capture_session_id.clone());
+        let path = self
+            .install_root
+            .join("runtime-data/logs")
+            .join(format!("{}.rlog", intent.capture_session_id));
+        Some((|| {
+            let artifact = build_upload_artifact(&path).map_err(|error| {
+                format!(
+                    "{} could not be re-verified from its sealed log: {error}",
+                    intent.capture_session_id
+                )
+            })?;
+            if artifact.header.session_id != intent.capture_session_id {
+                return Err(format!(
+                    "{} resolved to a sealed log for another session ({})",
+                    intent.capture_session_id, artifact.header.session_id
+                ));
+            }
+            enqueue_verified_artifact(
+                &self.submission_queue,
+                &artifact,
+                path.display().to_string(),
+                intent.created_unix_millis,
+                intent.visibility,
+            )?;
+            Ok(())
+        })())
+    }
+
+    fn record_legacy_recovery_intents(&self) -> Result<(), String> {
+        let (authorized_since, visibility) = {
+            let policy = self
+                .submission_policy
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let Some(authorized_since) = policy.automatic_log_authorization_since()? else {
+                return Ok(());
+            };
+            (
+                authorized_since,
+                policy.policy().log_uploader.default_visibility,
+            )
+        };
+        let catalog = self
+            .combat_history
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .catalog();
+        let mut seen = BTreeSet::new();
+        let mut queue = self
+            .submission_queue
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for entry in catalog.entries {
+            if entry.terminal_state != "completed" || !seen.insert(entry.session_id.clone()) {
+                continue;
+            }
+            validate_session_id(&entry.session_id).map_err(|error| {
+                format!("completed history contains an invalid recovery session ID: {error}")
+            })?;
+            let path = self
+                .install_root
+                .join("runtime-data/logs")
+                .join(format!("{}.rlog", entry.session_id));
+            let modified = match std::fs::metadata(&path).and_then(|metadata| metadata.modified()) {
+                Ok(modified) => modified,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    return Err(format!(
+                        "could not inspect completed log {}: {error}",
+                        path.display()
+                    ));
+                }
+            };
+            // Existing releases did not persist per-run recovery intent. A
+            // completed log dated after the still-current opt-in settings is
+            // the only legacy case where authorization and visibility can be
+            // proven without asking the user to republish old history.
+            if modified < authorized_since {
+                continue;
+            }
+            queue.record_recovery_intent(
+                entry.session_id,
+                entry.captured_unix_millis,
+                visibility,
+            )?;
+        }
+        Ok(())
     }
 
     fn start_history_rdps_backfill_worker(
@@ -7507,8 +7685,30 @@ impl RuntimeController {
             .spawn(move || {
                 let result = process_offline_session(&install_root, &request).map(|mut result| {
                     let queue_warning = if automatic_submissions {
-                        queue_completed_session(&submission_queue, &mut result, default_visibility)
-                            .err()
+                        let recovery_warning = submission_queue
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .record_recovery_intent(
+                                result.session_id.clone(),
+                                unix_millis(),
+                                default_visibility,
+                            )
+                            .err();
+                        let queue_warning = queue_completed_session(
+                            &submission_queue,
+                            &mut result,
+                            default_visibility,
+                        )
+                        .err();
+                        match (recovery_warning, queue_warning) {
+                            (Some(recovery), Some(queue)) => Some(format!(
+                                "recovery authorization could not be saved: {recovery}; {queue}"
+                            )),
+                            (Some(recovery), None) => Some(format!(
+                                "recovery authorization could not be saved: {recovery}"
+                            )),
+                            (None, queue) => queue,
+                        }
                     } else {
                         result.verified_artifact = None;
                         result.submission_queue_status = "disabled".into();
@@ -9672,6 +9872,15 @@ fn postprocess_continuous_run(
 ) {
     let completed = log.is_completed();
     let session_id = log.session_id.clone();
+    let recovery_intent_warning = if completed && automatic_submissions {
+        submission_queue
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .record_recovery_intent(session_id.clone(), unix_millis(), default_visibility)
+            .err()
+    } else {
+        None
+    };
     projection.history.session_id.clone_from(&session_id);
     let mut history = projection.history.clone();
     if completed {
@@ -9760,6 +9969,15 @@ fn postprocess_continuous_run(
             }
         } else {
             None
+        };
+        let queue_warning = match (recovery_intent_warning, queue_warning) {
+            (Some(intent), Some(queue)) => Some(format!(
+                "recovery authorization could not be saved: {intent}; {queue}"
+            )),
+            (Some(intent), None) => Some(format!(
+                "recovery authorization could not be saved: {intent}"
+            )),
+            (None, queue) => queue,
         };
         let profile_warning = if build_profile {
             apply_profile_sync_policy(

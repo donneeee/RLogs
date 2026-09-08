@@ -43,6 +43,9 @@ describe("local submission queue", () => {
       lastError: "server rejected the draft",
       lastReportId: "rpt_123",
       lastShareUrl: "https://rlogs-app.github.io/parses/?report=rpt_123",
+      recoveredAfterRestartCount: 2,
+      recoveryFailureCount: 1,
+      lastRecoveryError: "one old log was unavailable",
     });
 
     expect(status.state).toBe("retrying");
@@ -66,6 +69,9 @@ describe("local submission queue", () => {
       lastError: "Cloudflare parse uploads are not enabled yet",
       lastReportId: null,
       lastShareUrl: null,
+      recoveredAfterRestartCount: 0,
+      recoveryFailureCount: 0,
+      lastRecoveryError: null,
     });
 
     expect(status.state).toBe("waiting_for_service");

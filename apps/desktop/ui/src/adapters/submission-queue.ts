@@ -58,6 +58,9 @@ export interface AutomaticSubmissionStatusView {
   lastError: string | null;
   lastReportId: string | null;
   lastShareUrl: string | null;
+  recoveredAfterRestartCount: number;
+  recoveryFailureCount: number;
+  lastRecoveryError: string | null;
 }
 
 export interface VerifiedArtifactView {
@@ -131,7 +134,10 @@ export function parseAutomaticSubmissionStatus(
     !isOptionalSafeCount(value.lastActivityUnixMillis) ||
     !isOptionalString(value.lastError) ||
     !isOptionalNonEmptyString(value.lastReportId) ||
-    !isOptionalHttpUrl(value.lastShareUrl)
+    !isOptionalHttpUrl(value.lastShareUrl) ||
+    !isSafeCount(value.recoveredAfterRestartCount) ||
+    !isSafeCount(value.recoveryFailureCount) ||
+    !isOptionalString(value.lastRecoveryError)
   ) {
     throw new Error("The local host returned an invalid automatic submission status.");
   }

@@ -7,18 +7,30 @@ use rlogs_submission::{
     QUEUED_SUBMISSION_SCHEMA_VERSION, QueuedSubmission, ReportVisibility, ServerReportReceipt,
     Sha256Digest, SubmissionRejection, SubmissionState,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 const QUEUE_VIEW_SCHEMA_VERSION: u16 = 1;
 const QUEUE_FILE_SUFFIX: &str = ".submission.json";
+const RECOVERY_FILE_SUFFIX: &str = ".submission-recovery.json";
 const MAXIMUM_QUEUE_ENTRIES: usize = 256;
 const MAXIMUM_QUEUE_ENTRY_BYTES: u64 = 4 * 1024 * 1024;
+const MAXIMUM_RECOVERY_INTENTS: usize = 2_048;
+const MAXIMUM_RECOVERY_INTENT_BYTES: u64 = 16 * 1024;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubmissionRecoveryIntent {
+    schema_version: u16,
+    pub capture_session_id: String,
+    pub created_unix_millis: u64,
+    pub visibility: ReportVisibility,
+}
 
 #[derive(Debug)]
 pub struct LocalSubmissionQueue {
     directory: PathBuf,
     entries: BTreeMap<String, QueuedSubmission>,
+    recovery_intents: BTreeMap<String, SubmissionRecoveryIntent>,
     issues: Vec<String>,
 }
 
@@ -29,6 +41,7 @@ impl LocalSubmissionQueue {
         let mut queue = Self {
             directory,
             entries: BTreeMap::new(),
+            recovery_intents: BTreeMap::new(),
             issues: Vec::new(),
         };
         queue.reload()?;
@@ -39,6 +52,7 @@ impl LocalSubmissionQueue {
         let directory_entries = std::fs::read_dir(&self.directory)
             .map_err(|error| format!("could not read submission queue directory: {error}"))?;
         let mut candidates = Vec::new();
+        let mut recovery_candidates = Vec::new();
         let mut issues = Vec::new();
         for directory_entry in directory_entries {
             let entry = match directory_entry {
@@ -60,6 +74,8 @@ impl LocalSubmissionQueue {
             };
             if file_type.is_file() && name.ends_with(QUEUE_FILE_SUFFIX) {
                 candidates.push((name, entry.path()));
+            } else if file_type.is_file() && name.ends_with(RECOVERY_FILE_SUFFIX) {
+                recovery_candidates.push((name, entry.path()));
             }
         }
         candidates.sort_by(|left, right| left.0.cmp(&right.0));
@@ -89,8 +105,94 @@ impl LocalSubmissionQueue {
                 Err(error) => issues.push(format!("{name}: {error}")),
             }
         }
+        recovery_candidates.sort_by(|left, right| left.0.cmp(&right.0));
+        if recovery_candidates.len() > MAXIMUM_RECOVERY_INTENTS {
+            issues.push(format!(
+                "Submission recovery has {} intents; only the first {} were loaded.",
+                recovery_candidates.len(),
+                MAXIMUM_RECOVERY_INTENTS
+            ));
+            recovery_candidates.truncate(MAXIMUM_RECOVERY_INTENTS);
+        }
+        let mut recovery_intents = BTreeMap::new();
+        for (name, path) in recovery_candidates {
+            match load_recovery_intent(&path, &name) {
+                Ok(intent) => {
+                    recovery_intents.insert(intent.capture_session_id.clone(), intent);
+                }
+                Err(error) => issues.push(format!("{name}: {error}")),
+            }
+        }
         self.entries = entries;
+        self.recovery_intents = recovery_intents;
         self.issues = issues;
+        Ok(())
+    }
+
+    pub fn record_recovery_intent(
+        &mut self,
+        capture_session_id: String,
+        created_unix_millis: u64,
+        visibility: ReportVisibility,
+    ) -> Result<(), String> {
+        validate_recovery_session_id(&capture_session_id)?;
+        if self
+            .entries
+            .values()
+            .any(|entry| entry.capture_session_id() == capture_session_id)
+            || self.recovery_intents.contains_key(&capture_session_id)
+        {
+            return Ok(());
+        }
+        if self.recovery_intents.len() >= MAXIMUM_RECOVERY_INTENTS {
+            return Err(format!(
+                "submission recovery reached its {MAXIMUM_RECOVERY_INTENTS}-intent safety limit"
+            ));
+        }
+        let intent = SubmissionRecoveryIntent {
+            schema_version: 1,
+            capture_session_id: capture_session_id.clone(),
+            created_unix_millis,
+            visibility,
+        };
+        persist_recovery_intent(&self.directory, &intent)?;
+        self.recovery_intents.insert(capture_session_id, intent);
+        Ok(())
+    }
+
+    pub fn next_recovery_intent(
+        &self,
+        audited_sessions: &std::collections::BTreeSet<String>,
+    ) -> Option<SubmissionRecoveryIntent> {
+        self.recovery_intents
+            .values()
+            .filter(|intent| {
+                !audited_sessions.contains(&intent.capture_session_id)
+                    && !self
+                        .entries
+                        .values()
+                        .any(|entry| entry.capture_session_id() == intent.capture_session_id)
+            })
+            .max_by_key(|intent| intent.created_unix_millis)
+            .cloned()
+    }
+
+    fn clear_recovery_intent(&mut self, capture_session_id: &str) -> Result<(), String> {
+        if !self.recovery_intents.contains_key(capture_session_id) {
+            return Ok(());
+        }
+        let path = self.directory.join(recovery_file_name(capture_session_id));
+        match std::fs::remove_file(&path) {
+            Ok(()) => sync_queue_directory(&self.directory)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!(
+                    "could not clear submission recovery intent {}: {error}",
+                    path.display()
+                ));
+            }
+        }
+        self.recovery_intents.remove(capture_session_id);
         Ok(())
     }
 
@@ -104,6 +206,7 @@ impl LocalSubmissionQueue {
                 && existing.canonical_content_sha256 == entry.canonical_content_sha256
                 && existing.session == entry.session
             {
+                self.clear_recovery_intent(entry.capture_session_id())?;
                 Ok(QueueInsertOutcome::AlreadyQueued)
             } else {
                 Err(format!(
@@ -179,7 +282,9 @@ impl LocalSubmissionQueue {
             return Err(error);
         }
 
+        let capture_session_id = entry.capture_session_id().to_owned();
         self.entries.insert(queue_id, entry);
+        self.clear_recovery_intent(&capture_session_id)?;
         Ok(QueueInsertOutcome::Queued)
     }
 
@@ -456,6 +561,86 @@ fn queue_file_name(queue_id: &str) -> String {
     format!("{queue_id}{QUEUE_FILE_SUFFIX}")
 }
 
+fn recovery_file_name(capture_session_id: &str) -> String {
+    format!("{capture_session_id}{RECOVERY_FILE_SUFFIX}")
+}
+
+fn validate_recovery_session_id(value: &str) -> Result<(), String> {
+    if value.is_empty()
+        || value.len() > 128
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    {
+        return Err("submission recovery session ID is invalid".into());
+    }
+    Ok(())
+}
+
+fn load_recovery_intent(path: &Path, file_name: &str) -> Result<SubmissionRecoveryIntent, String> {
+    let metadata = std::fs::metadata(path)
+        .map_err(|error| format!("could not inspect recovery intent: {error}"))?;
+    if !metadata.is_file() || metadata.len() > MAXIMUM_RECOVERY_INTENT_BYTES {
+        return Err("recovery intent is not a bounded regular file".into());
+    }
+    let bytes =
+        std::fs::read(path).map_err(|error| format!("could not read recovery intent: {error}"))?;
+    let intent: SubmissionRecoveryIntent = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("recovery intent is invalid: {error}"))?;
+    validate_recovery_session_id(&intent.capture_session_id)?;
+    if intent.schema_version != 1 {
+        return Err("recovery intent uses an unsupported schema".into());
+    }
+    if file_name != recovery_file_name(&intent.capture_session_id) {
+        return Err("recovery intent filename does not match its session ID".into());
+    }
+    Ok(intent)
+}
+
+fn persist_recovery_intent(
+    directory: &Path,
+    intent: &SubmissionRecoveryIntent,
+) -> Result<(), String> {
+    let final_path = directory.join(recovery_file_name(&intent.capture_session_id));
+    let partial_path = directory.join(format!(
+        ".{}.submission-recovery.partial",
+        intent.capture_session_id
+    ));
+    let mut encoded = serde_json::to_vec_pretty(intent)
+        .map_err(|error| format!("could not encode submission recovery intent: {error}"))?;
+    encoded.push(b'\n');
+    if encoded.len() as u64 > MAXIMUM_RECOVERY_INTENT_BYTES {
+        return Err("submission recovery intent exceeds its bounded file limit".into());
+    }
+    match std::fs::remove_file(&partial_path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("could not replace recovery partial: {error}")),
+    }
+    let file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&partial_path)
+        .map_err(|error| format!("could not create recovery partial: {error}"))?;
+    let write_result = (|| {
+        let mut writer = BufWriter::new(file);
+        writer.write_all(&encoded)?;
+        writer.flush()?;
+        writer.get_ref().sync_all()
+    })();
+    if let Err(error) = write_result {
+        let _ = std::fs::remove_file(&partial_path);
+        return Err(format!(
+            "could not persist submission recovery intent: {error}"
+        ));
+    }
+    std::fs::rename(&partial_path, &final_path).map_err(|error| {
+        let _ = std::fs::remove_file(&partial_path);
+        format!("could not publish submission recovery intent: {error}")
+    })?;
+    sync_queue_directory(directory)
+}
+
 fn persist_replacement(directory: &Path, entry: &QueuedSubmission) -> Result<(), String> {
     entry
         .validate()
@@ -659,6 +844,43 @@ mod tests {
         assert_eq!(snapshot.entries[0].queue_id, entry.queue_id.to_string());
         assert!(snapshot.entries[0].artifact_exists);
         assert!(snapshot.issues.is_empty());
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn authorized_recovery_intent_survives_restart_and_clears_only_after_queueing() {
+        let root = temporary_directory();
+        let queue_path = root.join("queue");
+        let artifact_path = root.join("capture-1.rlog");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(&artifact_path, b"fixture").unwrap();
+
+        let mut queue = LocalSubmissionQueue::open(queue_path.clone()).unwrap();
+        queue
+            .record_recovery_intent(
+                "capture-1".into(),
+                1_700_000_000_000,
+                ReportVisibility::Public,
+            )
+            .unwrap();
+        drop(queue);
+
+        let mut restored = LocalSubmissionQueue::open(queue_path.clone()).unwrap();
+        let intent = restored
+            .next_recovery_intent(&std::collections::BTreeSet::new())
+            .unwrap();
+        assert_eq!(intent.capture_session_id, "capture-1");
+        assert_eq!(intent.visibility, ReportVisibility::Public);
+        restored.enqueue(queued_submission(&artifact_path)).unwrap();
+        drop(restored);
+
+        let recovered = LocalSubmissionQueue::open(queue_path).unwrap();
+        assert!(
+            recovered
+                .next_recovery_intent(&std::collections::BTreeSet::new())
+                .is_none()
+        );
 
         std::fs::remove_dir_all(root).unwrap();
     }

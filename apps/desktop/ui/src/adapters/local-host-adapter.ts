@@ -3915,6 +3915,22 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
         uploader.pendingEligibleCount.toLocaleString(),
       ),
     );
+    if (uploader.recoveredAfterRestartCount > 0) {
+      uploaderRows.append(
+        fileRow(
+          "Recovered after restart",
+          uploader.recoveredAfterRestartCount.toLocaleString(),
+        ),
+      );
+    }
+    if (uploader.lastRecoveryError !== null) {
+      const recoveryFailure = fileRow(
+        "Last recovery audit issue",
+        uploader.lastRecoveryError,
+      );
+      recoveryFailure.classList.add("error");
+      uploaderRows.append(recoveryFailure);
+    }
     if (uploader.currentCaptureSessionId !== null) {
       uploaderRows.append(fileRow("Current session", uploader.currentCaptureSessionId));
     }

@@ -1,6 +1,7 @@
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use rlogs_submission::ReportVisibility;
 use serde::{Deserialize, Serialize};
@@ -127,6 +128,16 @@ impl SubmissionPolicyStore {
 
     pub fn policy(&self) -> &SubmissionPolicy {
         &self.policy
+    }
+
+    pub fn automatic_log_authorization_since(&self) -> Result<Option<SystemTime>, String> {
+        if !self.policy.log_uploader.enabled || !self.policy.log_uploader.automatic_combat_logs {
+            return Ok(None);
+        }
+        let modified = std::fs::metadata(&self.path)
+            .and_then(|metadata| metadata.modified())
+            .map_err(|error| format!("could not date the saved upload authorization: {error}"))?;
+        Ok(Some(modified))
     }
 
     pub fn snapshot(&self) -> SubmissionPolicyView {
@@ -309,6 +320,7 @@ mod tests {
         assert!(!store.policy().bpsr_profile_sync.enabled);
         assert!(!store.policy().bpsr_profile_sync.publish_photo_wall_images);
         assert_eq!(store.snapshot().transport_mode, "disconnected");
+        assert!(store.automatic_log_authorization_since().unwrap().is_none());
 
         let mut policy = store.policy().clone();
         policy.log_uploader.enabled = true;
@@ -322,6 +334,12 @@ mod tests {
             policy.log_uploader.default_visibility = visibility;
             store.update(policy.clone()).unwrap();
             let restored = SubmissionPolicyStore::open(path.clone()).unwrap();
+            assert!(
+                restored
+                    .automatic_log_authorization_since()
+                    .unwrap()
+                    .is_some()
+            );
             assert_eq!(restored.policy(), &policy);
             assert_eq!(
                 restored.policy().log_uploader.default_visibility,
