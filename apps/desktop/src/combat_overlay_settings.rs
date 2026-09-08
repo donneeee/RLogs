@@ -133,6 +133,7 @@ pub enum OverlayButtonAction {
     CycleTimer,
     CycleSegment,
     ResetEncounter,
+    ToggleTrainingDummy,
     ToggleVisibility,
     OpenHistory,
 }
@@ -419,6 +420,12 @@ impl Default for CombatOverlaySettings {
                         width: 0,
                     },
                     OverlayButton {
+                        id: "training-dummy".into(),
+                        label: "Dummy".into(),
+                        action: OverlayButtonAction::ToggleTrainingDummy,
+                        width: 0,
+                    },
+                    OverlayButton {
                         id: "force-reset".into(),
                         label: "Force reset".into(),
                         action: OverlayButtonAction::ResetEncounter,
@@ -495,6 +502,36 @@ fn ensure_live_switch_controls(settings: &mut CombatOverlaySettings) {
         for button in &mut layer.buttons {
             if button.action == OverlayButtonAction::CycleTimer {
                 button.width = FIXED_TIMER_CONTROL_WIDTH;
+            }
+        }
+        if layer.buttons.len() < 8
+            && !layer
+                .buttons
+                .iter()
+                .any(|button| button.action == OverlayButtonAction::ToggleTrainingDummy)
+        {
+            let id = unique_button_id(&layer.buttons, "training-dummy");
+            layer.buttons.push(OverlayButton {
+                id: id.clone(),
+                label: "Dummy".into(),
+                action: OverlayButtonAction::ToggleTrainingDummy,
+                width: 0,
+            });
+            if !layer.summary_item_order.is_empty() || !layer.summary_item_rows.is_empty() {
+                let key = format!("button:{id}");
+                let row = layer
+                    .buttons
+                    .iter()
+                    .filter(|button| button.id != id)
+                    .find_map(|button| {
+                        layer
+                            .summary_item_rows
+                            .get(&format!("button:{}", button.id))
+                            .copied()
+                    })
+                    .unwrap_or(0);
+                layer.summary_item_order.push(key.clone());
+                layer.summary_item_rows.insert(key, row);
             }
         }
         if layer.buttons.len() < 8
@@ -874,7 +911,13 @@ mod tests {
                 .get(&OverlaySummaryField::TeamDamage),
             Some(&1)
         );
-        assert_eq!(settings.layers[0].buttons.len(), 5);
+        assert_eq!(settings.layers[0].buttons.len(), 6);
+        assert!(
+            settings.layers[0]
+                .buttons
+                .iter()
+                .any(|button| button.action == OverlayButtonAction::ToggleTrainingDummy)
+        );
         assert!(
             settings.layers[0]
                 .buttons

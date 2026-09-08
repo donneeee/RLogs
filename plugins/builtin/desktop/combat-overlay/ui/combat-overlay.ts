@@ -73,6 +73,7 @@ export type OverlayButtonAction =
   | "cycle_timer"
   | "cycle_segment"
   | "reset_encounter"
+  | "toggle_training_dummy"
   | "toggle_visibility"
   | "open_history";
 
@@ -469,6 +470,17 @@ interface OverlayLiveUpdate {
   snapshot: OverlaySnapshot | null;
   actor_presentations?: Readonly<Record<string, OverlayActorPresentation>>;
   encounter_presentation?: OverlayEncounterPresentation;
+  training_dummy?: TrainingDummyState;
+}
+
+interface TrainingDummyState {
+  phase: "idle" | "armed" | "running" | "finished" | "invalid";
+  durationMicros: number;
+  remainingMicros: number;
+  totalDamage: number;
+  dps: number;
+  valid: boolean;
+  invalidReason?: string | null;
 }
 
 export function overlayActorsFromLiveUpdate(
@@ -548,6 +560,7 @@ interface RenderOptions {
   onCloseActor?: (layerId: string) => void;
   snapshot?: OverlaySnapshot | null;
   encounterPresentation?: OverlayEncounterPresentation | null;
+  trainingDummy?: TrainingDummyState | null;
 }
 
 type ContextTarget =
@@ -756,6 +769,7 @@ const ACTIONS: readonly OverlayButtonAction[] = [
   "cycle_timer",
   "cycle_segment",
   "reset_encounter",
+  "toggle_training_dummy",
   "toggle_visibility",
   "open_history",
 ];
@@ -1046,6 +1060,11 @@ export function mountCombatOverlayEditorSurface(
             : "Preview action: the live overlay would now be visible.";
           status.classList.remove("error");
           render();
+          return;
+        }
+        if (action === "toggle_training_dummy") {
+          status.textContent = "Preview action: the Dummy control arms or cancels the exact 3-minute Guild Hall test.";
+          status.classList.remove("error");
           return;
         }
         status.textContent = action === "reset_encounter"
@@ -1529,6 +1548,7 @@ export function mountCombatOverlayEditorSurface(
       { label: "Cycle timer", action: () => addButton(layerId, "cycle_timer", "Encounter") },
       { label: "Cycle segment", action: () => addButton(layerId, "cycle_segment", "Entire run") },
       { label: "Reset encounter", action: () => addButton(layerId, "reset_encounter", "Reset") },
+      { label: "Toggle 3-minute dummy", action: () => addButton(layerId, "toggle_training_dummy", "Dummy") },
       { label: "Hide overlay", action: () => addButton(layerId, "toggle_visibility", "Hide") },
       { label: "Open Combat History", action: () => addButton(layerId, "open_history", "History") },
     ];
@@ -2291,6 +2311,7 @@ export async function mountCombatOverlayRuntimeApp(
   let active = true;
   let latestSnapshot: OverlaySnapshot | null = null;
   let encounterPresentation: OverlayEncounterPresentation | null = null;
+  let trainingDummy: TrainingDummyState | null = null;
   let automaticallyHidden = !settings.liveOverlayEnabled || settings.autoHideOutsideCombat;
   let visibilityTimer: number | null = null;
   let visibilityTimerKey: string | null = null;
@@ -2449,6 +2470,7 @@ export async function mountCombatOverlayRuntimeApp(
       mode: "runtime",
       snapshot: applyOverlayTimerPause(latestSnapshot, timerSettings),
       encounterPresentation,
+      trainingDummy,
       selectedLayerId: activeLayerId,
       onSelectLayer(layerId) {
         activeLayerId = layerId;
@@ -2521,6 +2543,11 @@ export async function mountCombatOverlayRuntimeApp(
             .finally(() => {
               forceResetPending = false;
             });
+        } else if (action === "toggle_training_dummy") {
+          const enabled = trainingDummy === null
+            || (trainingDummy.phase !== "armed" && trainingDummy.phase !== "running");
+          void setTrainingDummy(enabled)
+            .catch((error) => reportWindowSyncFailure("training dummy toggle", error));
         }
       },
     });
@@ -2634,6 +2661,7 @@ export async function mountCombatOverlayRuntimeApp(
         );
         latestSnapshot = update.snapshot;
         encounterPresentation = update.encounter_presentation ?? null;
+        trainingDummy = update.training_dummy ?? null;
         const availableViewIds = new Set(
           [
             "live",
@@ -3378,6 +3406,7 @@ function runtimeControlLabel(
   presentation: OverlayEncounterPresentation | null | undefined,
   selectedTimers: ReadonlyMap<string, OverlaySummaryField> | undefined,
   selectedSegments: ReadonlyMap<string, string> | undefined,
+  trainingDummy: TrainingDummyState | null | undefined,
 ): string {
   if (control.action === "cycle_segment") {
     const views = availableSegmentViews(presentation);
@@ -3389,6 +3418,14 @@ function runtimeControlLabel(
   if (control.action === "cycle_timer") {
     const field = selectedTimerField(selectedTimers, layerId, presentation, snapshot);
     return `${timerFieldLabel(field)} ${summaryTimerValue(field, snapshot)}`;
+  }
+  if (control.action === "toggle_training_dummy") {
+    if (trainingDummy?.phase === "armed") return "Dummy armed";
+    if (trainingDummy?.phase === "running") {
+      return `Dummy ${formatOptionalOverlayTime(trainingDummy.remainingMicros)}`;
+    }
+    if (trainingDummy?.phase === "finished") return "Dummy done";
+    if (trainingDummy?.phase === "invalid") return "Dummy invalid";
   }
   return control.label;
 }
@@ -3871,6 +3908,7 @@ function renderSummaryControl(
       presentation,
       options.selectedTimerByLayer,
       options.selectedSegmentByLayer,
+      options.trainingDummy,
     ),
     "combat-overlay-control combat-overlay-summary-control",
   );
@@ -5348,6 +5386,14 @@ async function forceResetLiveCombat(): Promise<void> {
   });
 }
 
+async function setTrainingDummy(enabled: boolean): Promise<void> {
+  await apiJson<unknown>("/api/runtime/live/combat/training-dummy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 async function loadBarColorIdentities(): Promise<readonly BarColorIdentity[]> {
   const catalog = await apiJson<BarColorIdentityCatalog>(
     "/api/settings/combat-overlay/bar-color-identities",
@@ -5958,6 +6004,7 @@ function actionLabel(action: OverlayButtonAction): string {
     cycle_timer: "Cycle timer",
     cycle_segment: "Cycle segment",
     reset_encounter: "Reset encounter",
+    toggle_training_dummy: "Toggle 3-minute dummy mode",
     toggle_visibility: "Hide overlay",
     open_history: "Open Combat History",
   } as const)[action];
@@ -5969,6 +6016,7 @@ function defaultButtonLabel(action: OverlayButtonAction): string {
     cycle_timer: "Encounter",
     cycle_segment: "Entire run",
     reset_encounter: "Reset",
+    toggle_training_dummy: "Dummy",
     toggle_visibility: "Hide",
     open_history: "History",
   } as const)[action];

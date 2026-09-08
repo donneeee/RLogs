@@ -17,6 +17,7 @@ mod submission_policy;
 mod submission_queue;
 mod submission_transport;
 mod theme_settings;
+mod training_dummy;
 
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
@@ -141,6 +142,7 @@ use submission_transport::{
     SubmissionTransportResult,
 };
 use theme_settings::{ThemeSettings, ThemeSettingsStore};
+use training_dummy::{TrainingDummyController, TrainingDummyState};
 #[cfg(windows)]
 use windows_sys::Win32::{
     Foundation::{CloseHandle, INVALID_HANDLE_VALUE},
@@ -867,7 +869,7 @@ fn automatic_profile_package_ready(created_unix_millis: u64, now_unix_millis: u6
     created_unix_millis <= now_unix_millis.saturating_sub(settle_millis)
 }
 
-const LIVE_COMBAT_FEED_SCHEMA_VERSION: u16 = 1;
+const LIVE_COMBAT_FEED_SCHEMA_VERSION: u16 = 2;
 const DEFAULT_LIVE_COMBAT_WAIT_MILLIS: u64 = 1_000;
 const MAXIMUM_LIVE_COMBAT_WAIT_MILLIS: u64 = 5_000;
 const DEFAULT_LIVE_CHARACTER_STATS_WAIT_MILLIS: u64 = 5_000;
@@ -882,6 +884,7 @@ struct LiveCombatUpdate {
     revision: u64,
     snapshot: Option<CombatTimelineSnapshot>,
     run_projection: Option<CombatRunHistory>,
+    training_dummy: TrainingDummyState,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -891,6 +894,7 @@ struct PresentedLiveCombatUpdate {
     snapshot: Option<serde_json::Value>,
     actor_presentations: BTreeMap<String, LiveOverlayActorPresentation>,
     encounter_presentation: LiveOverlayEncounterPresentation,
+    training_dummy: TrainingDummyState,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -1575,6 +1579,7 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
         snapshot: update.snapshot.as_ref().map(compact_live_overlay_snapshot),
         actor_presentations,
         encounter_presentation,
+        training_dummy: update.training_dummy,
     }
 }
 
@@ -1600,9 +1605,24 @@ struct LiveCombatFeedState {
     run_projection: Option<CombatRunHistory>,
     ambient_active_micros: u64,
     ambient_last_damage_micros: Option<u64>,
+    training_dummy: TrainingDummyState,
 }
 
 impl LiveCombatFeed {
+    fn set_training_dummy(&self, training_dummy: TrainingDummyState) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.training_dummy == training_dummy {
+            return;
+        }
+        state.training_dummy = training_dummy;
+        state.revision = state.revision.saturating_add(1);
+        state.activity_revision = state.activity_revision.saturating_add(1);
+        self.changed.notify_all();
+    }
+
     fn publish(&self, snapshot: Option<CombatTimelineSnapshot>) {
         self.publish_with_projection(snapshot, None, false);
     }
@@ -1736,6 +1756,7 @@ impl LiveCombatFeed {
             revision: state.revision,
             snapshot: state.snapshot.clone(),
             run_projection: state.run_projection.clone(),
+            training_dummy: state.training_dummy.clone(),
         }
     }
 
@@ -1760,6 +1781,7 @@ impl LiveCombatFeed {
             revision: state.revision,
             snapshot: state.snapshot.clone(),
             run_projection: state.run_projection.clone(),
+            training_dummy: state.training_dummy.clone(),
         }
     }
 }
@@ -5366,8 +5388,9 @@ struct RuntimeController {
 
 #[cfg(windows)]
 #[derive(Debug, Clone, Copy)]
-struct LiveCombatControl {
-    requested_after_micros: u64,
+enum LiveCombatControl {
+    ForceReset { requested_after_micros: u64 },
+    SetTrainingDummy { enabled: bool },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -5375,6 +5398,20 @@ struct LiveCombatControl {
 struct LiveCombatForceResetResult {
     queued: bool,
     invalidated_active_run: bool,
+    message: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TrainingDummyToggleRequest {
+    enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TrainingDummyToggleResult {
+    queued: bool,
+    enabled: bool,
     message: String,
 }
 
@@ -6351,7 +6388,7 @@ impl RuntimeController {
         let sender = control
             .as_ref()
             .ok_or_else(|| "live packet monitoring is not running".to_owned())?;
-        match sender.try_send(LiveCombatControl {
+        match sender.try_send(LiveCombatControl::ForceReset {
             requested_after_micros,
         }) {
             Ok(()) => {}
@@ -6383,6 +6420,40 @@ impl RuntimeController {
                 "The live meter is being cleared; no active run was invalidated.".into()
             },
         })
+    }
+
+    #[cfg(windows)]
+    fn set_training_dummy(&self, enabled: bool) -> Result<TrainingDummyToggleResult, String> {
+        let control = self
+            .live_combat_control
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let sender = control
+            .as_ref()
+            .ok_or_else(|| "live packet monitoring is not running".to_owned())?;
+        match sender.try_send(LiveCombatControl::SetTrainingDummy { enabled }) {
+            Ok(()) => Ok(TrainingDummyToggleResult {
+                queued: true,
+                enabled,
+                message: if enabled {
+                    "Three-minute dummy mode is armed. It will start on the first hit against an elite Guild Hall training dummy."
+                        .into()
+                } else {
+                    "Three-minute dummy mode is off.".into()
+                },
+            }),
+            Err(TrySendError::Full(_)) => {
+                Err("the live combat control queue is busy; try the dummy-mode toggle again".into())
+            }
+            Err(TrySendError::Disconnected(_)) => {
+                Err("live packet monitoring stopped before dummy mode could be changed".into())
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn set_training_dummy(&self, _enabled: bool) -> Result<TrainingDummyToggleResult, String> {
+        Err("live packet monitoring is not available on this platform".into())
     }
 
     #[cfg(not(windows))]
@@ -8235,6 +8306,7 @@ impl RuntimeController {
                     let mut live_profile_projection = LiveProfileProjection::default();
                     let mut live_mechanics_map = MechanicsMapProjector::default();
                     live_mechanics_map.reset(&session_id, &live_header.region.client_build);
+                    let mut training_dummy = TrainingDummyController::default();
                     let live_profile_client_build = live_header.region.client_build.clone();
                     let live_profile_pack_digest = live_header.region.protocol_pack_digest.clone();
                     let mut last_live_profile_created_unix_millis = 0_u64;
@@ -8373,10 +8445,40 @@ impl RuntimeController {
                         else {
                             break;
                         };
-                        // Repeated clicks are coalesced. The boundary is
-                        // applied after this already-dequeued frame so older
-                        // ingress data cannot leak into the next attempt.
-                        let forced_reset_request = live_combat_control_receiver.try_iter().last();
+                        let mut forced_reset_request = None;
+                        for command in live_combat_control_receiver.try_iter() {
+                            match command {
+                                LiveCombatControl::ForceReset {
+                                    requested_after_micros,
+                                } => {
+                                    // Repeated manual resets are coalesced and
+                                    // applied after this already-dequeued frame.
+                                    forced_reset_request = Some(requested_after_micros);
+                                }
+                                LiveCombatControl::SetTrainingDummy { enabled } => {
+                                    if enabled {
+                                        training_dummy.arm();
+                                    } else {
+                                        training_dummy.disarm();
+                                    }
+                                    begin_live_combat_preserving_world(
+                                        &mut live_meter,
+                                        &live_header,
+                                        last_world_context_event.as_ref(),
+                                    );
+                                    begin_live_encounter_preserving_world(
+                                        &mut live_encounter,
+                                        &live_header,
+                                        last_world_context_event.as_ref(),
+                                    )?;
+                                    live_run_projection = None;
+                                    completed_run_identities = None;
+                                    live_dirty = true;
+                                    live_combat_feed
+                                        .set_training_dummy(training_dummy.state());
+                                }
+                            }
+                        }
                         let live_refresh_interval = Duration::from_millis(u64::from(
                             live_overlay_settings
                                 .lock()
@@ -8426,6 +8528,25 @@ impl RuntimeController {
                             .process_frame_with_inspection(frame, |event| {
                                 frame_event_observability.observe_event(event);
                                 mechanics_map_dirty |= live_mechanics_map.observe(event);
+                                let training_observation = training_dummy.observe(event);
+                                if training_observation.reset_meter {
+                                    begin_live_combat_preserving_world(
+                                        &mut live_meter,
+                                        &live_header,
+                                        last_world_context_event.as_ref(),
+                                    );
+                                    if let Err(error) = begin_live_encounter_preserving_world(
+                                        &mut live_encounter,
+                                        &live_header,
+                                        last_world_context_event.as_ref(),
+                                    ) {
+                                        live_snapshot_error = Some(error);
+                                    }
+                                    live_run_projection = None;
+                                    completed_run_identities = None;
+                                    freeze_history = false;
+                                    live_dirty = true;
+                                }
                                 // Region identity is established from the
                                 // early world-entry packet stream, before a
                                 // dungeon segment is opened. Keep the shared
@@ -8434,11 +8555,12 @@ impl RuntimeController {
                                 if live_header.region != event.region {
                                     live_header.region = event.region.clone();
                                 }
-                                if matches!(
+                                let is_damage = matches!(
                                     &event.event,
                                     CanonicalEvent::Timeline(timeline)
                                         if matches!(&timeline.kind, TimelineEventKind::Damage(_))
-                                ) {
+                                );
+                                if is_damage && training_observation.accept_damage {
                                     live_damage_activity.push((
                                         event.time.observed_micros,
                                         live_dungeon_active,
@@ -8540,7 +8662,7 @@ impl RuntimeController {
                                         | EventTopic::Encounter
                                         | EventTopic::Dungeon
                                         | EventTopic::DataQuality
-                                ) {
+                                ) && (!is_damage || training_observation.accept_damage) {
                                     live_meter.observe_live(event);
                                     if live_rdps_validation_enabled
                                         && (!live_meter.latest_exact_contributions().is_empty()
@@ -8566,7 +8688,8 @@ impl RuntimeController {
                                         | EventTopic::Encounter
                                         | EventTopic::Dungeon
                                         | EventTopic::DataQuality
-                                ) && let Err(error) = live_encounter.observe_live(event)
+                                ) && (!is_damage || training_observation.accept_damage)
+                                    && let Err(error) = live_encounter.observe_live(event)
                                 {
                                     live_snapshot_error = Some(format!(
                                         "live Encounter Recorder failed: {error}"
@@ -8665,12 +8788,13 @@ impl RuntimeController {
                             .map_err(|error| format!("live BPSR decoding failed: {error}"))?;
                         cast_observability.add(frame_protocol_observability);
                         cast_observability.add(frame_event_observability);
+                        live_combat_feed.set_training_dummy(training_dummy.state());
                         if live_header.region != *recorder.region_context() {
                             live_header.region = recorder.region_context().clone();
                         }
-                        if let Some(command) = forced_reset_request {
+                        if let Some(requested_after_micros) = forced_reset_request {
                             let reset = recorder
-                                .force_reset(command.requested_after_micros)
+                                .force_reset(requested_after_micros)
                                 .map_err(|error| {
                                     format!("could not persist the forced reset boundary: {error}")
                                 })?;
@@ -8699,7 +8823,7 @@ impl RuntimeController {
                                 }
                             }
                             sealed.extend(reset.sealed_logs);
-                            live_meter.force_reset_live_attempt(command.requested_after_micros);
+                            live_meter.force_reset_live_attempt(requested_after_micros);
                             begin_live_encounter_preserving_world(
                                 &mut live_encounter,
                                 &live_header,
@@ -12966,6 +13090,19 @@ fn handle_connection(
         }
         ("POST", "/api/runtime/live/combat/force-reset") => {
             match controller.force_reset_live_combat() {
+                Ok(result) => write_json(&mut stream, 200, &result)?,
+                Err(error) => write_api_error(&mut stream, 400, error)?,
+            }
+        }
+        ("POST", "/api/runtime/live/combat/training-dummy") => {
+            let request: TrainingDummyToggleRequest = match serde_json::from_slice(&request.body) {
+                Ok(request) => request,
+                Err(error) => {
+                    write_api_error(&mut stream, 400, format!("invalid request: {error}"))?;
+                    return Ok(());
+                }
+            };
+            match controller.set_training_dummy(request.enabled) {
                 Ok(result) => write_json(&mut stream, 200, &result)?,
                 Err(error) => write_api_error(&mut stream, 400, error)?,
             }
