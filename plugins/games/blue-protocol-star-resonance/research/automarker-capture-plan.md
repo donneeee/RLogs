@@ -92,8 +92,8 @@ window. Because the markers were reportedly placed once and then persisted
 through later pulls, start recording **before the first placement**, not at
 boss engagement.
 
-1. Capture two clients in the same party at the same time when possible: the
-   leader and one non-leader observer. Start already authenticated and inside
+1. Capture the leader client. A simultaneous non-leader observer is useful
+   corroboration but is not required. Start already authenticated and inside
    the chosen dungeon, and record its exact name, difficulty, and scene ID.
 2. Record 10-15 seconds of idle traffic before the first placement. Note the
    exact installed build, scene ID, both character and current actor/entity
@@ -113,12 +113,14 @@ boss engagement.
    JSONL protocol journal local. Do not upload them or include chat, login,
    account, or authentication traffic in any shareable artifact.
 
-One leader-side capture is enough to search for a client request, but the
-simultaneous observer capture is required to prove a server broadcast or
-resynchronization path. If the `1101..=1106` passive entries correlate on both
-clients, preserve the containing inbound route, passive instance ID, actor and
-target UUIDs, target position, and end notification in the private evidence.
-Do not promote the interpretation from IDs alone.
+One leader-side capture is sufficient to prove the client request schema when
+it also correlates the leader's inbound acknowledgement or marker-state update.
+A simultaneous observer capture can separately corroborate cross-client
+broadcast or resynchronization, but it is not a prerequisite for the native
+placement implementation. If the `1101..=1106` passive entries correlate,
+preserve the containing inbound route, passive instance ID, actor and target
+UUIDs, target position, and end notification in the private evidence. Do not
+promote the interpretation from IDs alone.
 
 ## Follow-up lifecycle controls
 
