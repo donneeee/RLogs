@@ -17,6 +17,7 @@ import {
   compactSpecializationName,
   displayedUnmappedRdpsSkill,
   filterAndSortHistoryEntries,
+  graphInspectionAtSecond,
   graphScaleMaximum,
   groupDisplayedAbilities,
   historyDamageInfluenceMatchesQuery,
@@ -843,6 +844,27 @@ describe("Combat History graph scaling", () => {
     expect(graphScaleMaximum(completeParty)).toBe(
       graphScaleMaximum(completeParty.filter((_, index) => index !== 1).concat([completeParty[1]!])),
     );
+  });
+
+  it("clamps exact graph inspection to the run and preserves visible actor identity", () => {
+    const actor = {
+      actor_id: "player-1",
+      display_name: "Alice",
+      death_seconds: [],
+      series: [
+        { second: 0, damage: 100, effective_healing: 0, damage_taken: 0 },
+        { second: 1, damage: 300, effective_healing: 0, damage_taken: 0 },
+      ],
+      targets: [],
+    } as unknown as HistoryActorSummary;
+    const series = [buildActorGraphSeries(actor, "damage", 2, "#abc", null)];
+
+    expect(graphInspectionAtSecond(series, 1.4, 2)).toEqual({
+      second: 1,
+      values: [{ actorId: "player-1", label: "Alice", color: "#abc", value: 200 }],
+    });
+    expect(graphInspectionAtSecond(series, 99, 2).second).toBe(2);
+    expect(graphInspectionAtSecond(series, -4, 2).second).toBe(0);
   });
 
   it("keeps a non-zero baseline for an empty or zero-only segment", () => {

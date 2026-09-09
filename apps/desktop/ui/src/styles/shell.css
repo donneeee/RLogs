@@ -8034,6 +8034,58 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
   background: rgb(2 6 11 / 38%);
 }
 
+.combat-history-chart-frame {
+  display: grid;
+  gap: 7px;
+}
+
+.combat-history-chart:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.combat-history-graph-inspection-line {
+  stroke: rgb(255 255 255 / 68%);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.combat-history-graph-inspection[hidden] {
+  display: none;
+}
+
+.combat-history-graph-inspection-point {
+  stroke: rgb(3 7 12 / 92%);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.combat-history-graph-inspection-readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  min-height: 25px;
+  color: var(--muted);
+  font-size: var(--history-metadata-font-size, 11px);
+}
+
+.combat-history-graph-inspection-readout strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.combat-history-graph-inspection-value::before {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--series-color);
+  content: "";
+}
+
 .combat-history-grid-line {
   stroke: rgb(255 255 255 / 9%);
   stroke-width: 1;

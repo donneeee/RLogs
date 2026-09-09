@@ -117,7 +117,7 @@ interface GraphDefinition {
   description: string;
 }
 
-interface ActorGraphSeries {
+export interface ActorGraphSeries {
   actor: HistoryActorSummary;
   color: string;
   values: number[];
@@ -3299,13 +3299,33 @@ function movingAverage(values: number[], windowSeconds: number): number[] {
   });
 }
 
+export function graphInspectionAtSecond(
+  series: readonly ActorGraphSeries[],
+  requestedSecond: number,
+  durationSeconds: number,
+): { second: number; values: Array<{ actorId: string; label: string; color: string; value: number }> } {
+  const second = Math.min(
+    Math.max(1, Math.floor(durationSeconds)),
+    Math.max(0, Math.round(requestedSecond)),
+  );
+  return {
+    second,
+    values: series.map((entry) => ({
+      actorId: entry.actor.actor_id,
+      label: actorLabel(entry.actor),
+      color: entry.color,
+      value: entry.values[second] ?? 0,
+    })),
+  };
+}
+
 function partyLineChart(
   series: ActorGraphSeries[],
   definition: GraphDefinition,
   durationSeconds: number,
   scaleMaximum: number,
   showDeathMarkers: boolean,
-): SVGSVGElement {
+): HTMLElement {
   const width = 1_120;
   const height = 330;
   const left = 78;
@@ -3322,8 +3342,9 @@ function partyLineChart(
   svg.setAttribute("role", "img");
   svg.setAttribute(
     "aria-label",
-    `${definition.title}, ${definition.rateLabel} by character over ${formatGraphTime(durationSeconds)}.`,
+    `${definition.title}, ${definition.rateLabel} by character over ${formatGraphTime(durationSeconds)}. Focus the chart and use the arrow keys to inspect exact seconds.`,
   );
+  svg.tabIndex = 0;
 
   const xFor = (second: number) =>
     left + (Math.min(durationSeconds, Math.max(0, second)) / durationSeconds) * plotWidth;
@@ -3388,7 +3409,88 @@ function partyLineChart(
       svg.append(deathMarker(xFor(second), yFor(value), actorLabel(entry.actor), second));
     }
   }
-  return svg;
+
+  const inspection = svgNode("g", "combat-history-graph-inspection", {});
+  inspection.setAttribute("hidden", "");
+  const inspectionLine = svgNode("line", "combat-history-graph-inspection-line", {
+    x1: left,
+    x2: left,
+    y1: top,
+    y2: top + plotHeight,
+  });
+  const inspectionPoints = series.map((entry) => {
+    const point = svgNode("circle", "combat-history-graph-inspection-point", {
+      cx: left,
+      cy: yFor(0),
+      r: 4,
+      fill: entry.color,
+    });
+    inspection.append(point);
+    return point;
+  });
+  inspection.prepend(inspectionLine);
+  svg.append(inspection);
+
+  const frame = element("div", "combat-history-chart-frame");
+  const readout = element(
+    "div",
+    "combat-history-graph-inspection-readout",
+    "Hover the chart, or focus it and use the arrow keys, to inspect exact values.",
+  );
+  readout.setAttribute("aria-live", "polite");
+  let inspectedSecond: number | null = null;
+  const renderInspection = (requestedSecond: number) => {
+    const snapshot = graphInspectionAtSecond(series, requestedSecond, durationSeconds);
+    inspectedSecond = snapshot.second;
+    const x = xFor(snapshot.second);
+    inspection.removeAttribute("hidden");
+    inspectionLine.setAttribute("x1", x.toFixed(2));
+    inspectionLine.setAttribute("x2", x.toFixed(2));
+    snapshot.values.forEach((value, index) => {
+      const point = inspectionPoints[index];
+      if (!point) return;
+      point.setAttribute("cx", x.toFixed(2));
+      point.setAttribute("cy", yFor(value.value).toFixed(2));
+    });
+    readout.replaceChildren(
+      element("strong", "", formatGraphTime(snapshot.second)),
+      ...snapshot.values.map((value) => {
+        const item = element(
+          "span",
+          "combat-history-graph-inspection-value",
+          `${value.label} ${NUMBER.format(value.value)} ${definition.rateLabel}`,
+        );
+        item.style.setProperty("--series-color", value.color);
+        return item;
+      }),
+    );
+  };
+  const clearInspection = () => {
+    inspectedSecond = null;
+    inspection.setAttribute("hidden", "");
+    readout.textContent = "Hover the chart, or focus it and use the arrow keys, to inspect exact values.";
+  };
+  svg.addEventListener("pointermove", (event) => {
+    const bounds = svg.getBoundingClientRect();
+    if (bounds.width <= 0) return;
+    const viewX = ((event.clientX - bounds.left) / bounds.width) * width;
+    renderInspection(((viewX - left) / plotWidth) * durationSeconds);
+  });
+  svg.addEventListener("pointerleave", clearInspection);
+  svg.addEventListener("focus", () => renderInspection(inspectedSecond ?? 0));
+  svg.addEventListener("blur", clearInspection);
+  svg.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? durationSeconds
+        : (inspectedSecond ?? 0) + (event.key === "ArrowLeft" ? -1 : 1);
+    renderInspection(next);
+  });
+  frame.append(svg, readout);
+  return frame;
 }
 
 export function graphScaleMaximum(
