@@ -5702,6 +5702,23 @@ body {
 body[data-surface="overlay-canvas"] { margin: 0; min-width: 0; min-height: 100vh; overflow: hidden; background: transparent; }
 body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw; height: 100vh; }
 .overlay-canvas-runtime { position: relative; overflow: hidden; background: transparent; }
+.overlay-canvas-runtime[data-locked="true"] :is(
+  .mechanics-map-overlay-toolbar,
+  .mechanics-map-overlay-footer,
+  .player-frame-overlay-toolbar,
+  .action-controls-overlay-toolbar,
+  .party-frame-overlay-toolbar,
+  .target-frame-overlay-toolbar,
+  .dungeon-objectives-overlay-toolbar,
+  .mechanic-alerts-overlay-toolbar,
+  .mechanics-map-overlay-resize,
+  .player-frame-overlay-resize,
+  .action-controls-overlay-resize,
+  .party-frame-overlay-resize,
+  .target-frame-overlay-resize,
+  .dungeon-objectives-overlay-resize,
+  .mechanic-alerts-overlay-resize
+) { display: none; }
 .mechanics-map-overlay-runtime { position: absolute; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; box-sizing: border-box; overflow: hidden; border: 1px solid rgb(92 228 212 / 38%); border-radius: 12px; color: #eef6fb; background: rgb(5 13 23 / 86%); box-shadow: 0 8px 28px rgb(0 0 0 / 38%); }
 .mechanics-map-overlay-runtime[data-expanded="true"] { border-radius: 8px; background: rgb(5 13 23 / 94%); }
 .mechanics-map-overlay-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 7px 8px; border-bottom: 1px solid rgb(92 228 212 / 18%); background: rgb(8 20 33 / 90%); user-select: none; }

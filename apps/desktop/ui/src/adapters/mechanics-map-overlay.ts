@@ -233,6 +233,7 @@ export function mountMechanicsMapOverlay(
   let alertsRenderedAtMillis = 0;
 
   const root = element("main", "overlay-canvas-runtime");
+  root.dataset.locked = String(preferences.locked);
   const panel = element("section", "mechanics-map-overlay-runtime");
   panel.dataset.locked = String(preferences.locked);
   panel.dataset.expanded = String(preferences.expanded);
@@ -1228,6 +1229,7 @@ export function mountMechanicsMapOverlay(
 
   async function setLocked(value: boolean): Promise<void> {
     preferences.locked = value;
+    root.dataset.locked = String(value);
     panel.dataset.locked = String(value);
     lock.textContent = value ? "Unlock" : "Lock";
     lock.dataset.active = String(value);
