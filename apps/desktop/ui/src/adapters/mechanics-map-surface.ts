@@ -11,6 +11,7 @@ export interface MechanicsMapDependencies {
 export interface LocalMapPreparationResult {
   clientBuild: string;
   preparedAssets: number;
+  preparedLocales: number;
   message: string;
 }
 

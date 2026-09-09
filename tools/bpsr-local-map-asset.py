@@ -19,7 +19,10 @@ from PIL import __version__ as pillow_version  # type: ignore
 
 DEFAULT_ADDRESS = "ui/textures/map/dungeon_map_bg"
 DEFAULT_OBJECT_NAME = "dungeon_map_bg"
-COMPILER_VERSION = "3"
+COMPILER_VERSION = "4"
+MAXIMUM_LOCALIZATION_PAYLOAD_BYTES = 64 * 1024 * 1024
+MAXIMUM_LOCALIZATION_ENTRIES = 1_000_000
+MAXIMUM_META_ENTRIES = 1_000_000
 
 
 def main() -> None:
@@ -27,6 +30,7 @@ def main() -> None:
     parser.add_argument("--version", action="store_true")
     parser.add_argument("--self-check", action="store_true")
     parser.add_argument("--reviewed-manifest", type=Path)
+    parser.add_argument("--localization-manifest", type=Path)
     parser.add_argument("--inventory-output", type=Path)
     parser.add_argument("--inventory-input", type=Path)
     parser.add_argument("--candidate-manifest-output", type=Path)
@@ -76,6 +80,8 @@ def main() -> None:
             args.candidate_manifest_output,
         )
         return
+    if args.localization_manifest is not None and args.reviewed_manifest is None:
+        parser.error("--localization-manifest requires --reviewed-manifest")
     if args.reviewed_manifest is not None:
         compile_reviewed_manifest(
             args.container,
@@ -83,6 +89,7 @@ def main() -> None:
             args.build,
             args.reviewed_build or args.build,
             args.reviewed_manifest,
+            args.localization_manifest,
         )
         return
     compile_asset(args)
@@ -238,12 +245,136 @@ def compile_asset(
     return manifest
 
 
+def compile_reviewed_localization(
+    container: Path,
+    build_root: Path,
+    build: str,
+    reviewed_build: str,
+    manifest_path: Path,
+    meta_entries: list[tuple[int, int, int, int, int]],
+) -> None:
+    if not is_safe_relative_identity(build, 128):
+        raise SystemExit("build must be a safe exact client-build identity")
+    manifest_bytes = manifest_path.read_bytes()
+    if len(manifest_bytes) > 32 * 1024:
+        raise SystemExit("reviewed localization manifest exceeds 32 KiB")
+    value = json.loads(manifest_bytes)
+    if not isinstance(value, dict) or set(value) != {"schema_version", "builds"}:
+        raise SystemExit("reviewed localization manifest has an invalid root")
+    if type(value["schema_version"]) is not int or value["schema_version"] != 1:
+        raise SystemExit("reviewed localization manifest has an unsupported schema")
+    if not isinstance(value["builds"], dict):
+        raise SystemExit("reviewed localization manifest has an unsupported schema")
+    entries = value["builds"].get(reviewed_build)
+    if not isinstance(entries, list) or not entries or len(entries) > 32:
+        raise SystemExit("reviewed localization manifest has an invalid entry count")
+
+    output_root = build_root / "localization"
+    output_root.mkdir(parents=True, exist_ok=True)
+    catalog_entries = []
+    seen_languages = set()
+    seen_locales = set()
+    seen_keys = set()
+    required = {
+        "language", "locale", "entry_key", "bytes", "sha256", "index_entries",
+        "string_entries", "populated_strings",
+    }
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != required:
+            raise SystemExit("reviewed localization entry has an invalid shape")
+        language = entry["language"]
+        locale = entry["locale"]
+        entry_key = entry["entry_key"]
+        if not isinstance(language, str) or not re.fullmatch(r"[a-z]{2,32}", language):
+            raise SystemExit("reviewed localization language is invalid")
+        if not isinstance(locale, str) or not re.fullmatch(r"[a-z]{2,3}(?:-[A-Z]{2})?", locale):
+            raise SystemExit("reviewed localization locale is invalid")
+        if not isinstance(entry_key, int) or isinstance(entry_key, bool):
+            raise SystemExit("reviewed localization entry key is invalid")
+        if entry_key < 0 or entry_key > 0xFFFFFFFF:
+            raise SystemExit("reviewed localization entry key is outside uint32")
+        if (
+            type(entry["bytes"]) is not int
+            or entry["bytes"] <= 0
+            or entry["bytes"] > MAXIMUM_LOCALIZATION_PAYLOAD_BYTES
+            or not isinstance(entry["sha256"], str)
+            or not re.fullmatch(r"[0-9a-f]{64}", entry["sha256"])
+            or any(
+                type(entry[field]) is not int
+                or entry[field] <= 0
+                or entry[field] > MAXIMUM_LOCALIZATION_ENTRIES
+                for field in ("index_entries", "string_entries", "populated_strings")
+            )
+        ):
+            raise SystemExit("reviewed localization expectation is invalid")
+        if language in seen_languages or locale in seen_locales or entry_key in seen_keys:
+            raise SystemExit("reviewed localization manifest contains a duplicate")
+        seen_languages.add(language)
+        seen_locales.add(locale)
+        seen_keys.add(entry_key)
+        matches = [row for row in meta_entries if row[0] == entry_key]
+        if len(matches) != 1:
+            raise SystemExit(
+                f"expected one exact localization entry {entry_key}, observed {len(matches)}"
+            )
+        _, entry_type, package_index, entry_offset, length = matches[0]
+        if entry_type != 1:
+            raise SystemExit(f"localization entry {entry_key} has unexpected type {entry_type}")
+        payload, source_package = read_container_payload(
+            container, package_index, entry_offset, length
+        )
+        summary = validate_localization_payload(payload)
+        digest = hashlib.sha256(payload).hexdigest()
+        if build == reviewed_build:
+            expected = {
+                "bytes": len(payload),
+                "sha256": digest,
+                "index_entries": summary["index_entries"],
+                "string_entries": summary["string_entries"],
+                "populated_strings": summary["populated_strings"],
+            }
+            for field, observed in expected.items():
+                if entry[field] != observed:
+                    raise SystemExit(
+                        f"reviewed localization {locale} {field} changed: "
+                        f"expected {entry[field]!r}, observed {observed!r}"
+                    )
+        asset = f"{locale}.bin"
+        (output_root / asset).write_bytes(payload)
+        catalog_entries.append({
+            "language": language,
+            "locale": locale,
+            "asset": asset,
+            "source_entry_key": entry_key,
+            "source_entry_type": entry_type,
+            "source_package": source_package.name,
+            "bytes": len(payload),
+            "sha256": digest,
+            **summary,
+        })
+
+    catalog_entries.sort(key=lambda row: row["locale"])
+    catalog = {
+        "schema_version": 1,
+        "game_build": build,
+        "presentation_only": True,
+        "mechanics_authority": False,
+        "upload_allowed": False,
+        "entries": catalog_entries,
+    }
+    (output_root / "catalog.v1.json").write_text(
+        json.dumps(catalog, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+
 def compile_reviewed_manifest(
     container: Path,
     runtime_root: Path,
     build: str,
     reviewed_build: str,
     manifest_path: Path,
+    localization_manifest_path: Optional[Path] = None,
 ) -> None:
     if not is_safe_relative_identity(build, 128):
         raise SystemExit("build must be a safe exact client-build identity")
@@ -265,12 +396,22 @@ def compile_reviewed_manifest(
         "span_z", "scene_ids",
     }
     runtime_root.mkdir(parents=True, exist_ok=True)
-    staging_root = Path(tempfile.mkdtemp(prefix=".rlogs-map-stage-", dir=runtime_root))
     target = runtime_root / build
     backup = runtime_root / f".{build}.previous"
+    if backup.exists():
+        if target.exists():
+            shutil.rmtree(backup)
+        else:
+            backup.replace(target)
+    staging_root = Path(tempfile.mkdtemp(prefix=".rlogs-map-stage-", dir=runtime_root))
     try:
         address_catalog = (container / "m0.pkg").read_bytes()
-        meta_entries = read_meta_entries((container / "meta.pkg").read_bytes())
+        all_meta_entries = read_all_meta_entries((container / "meta.pkg").read_bytes())
+        meta_entries = [
+            (key, package_index, entry_offset, length)
+            for key, entry_type, package_index, entry_offset, length in all_meta_entries
+            if entry_type == 0
+        ]
         for entry in entries:
             if not isinstance(entry, dict) or set(entry) != required:
                 raise SystemExit("reviewed map manifest entry has invalid fields")
@@ -290,6 +431,15 @@ def compile_reviewed_manifest(
                 address_catalog,
                 meta_entries,
                 strict_bundle_hashes=build == reviewed_build,
+            )
+        if localization_manifest_path is not None:
+            compile_reviewed_localization(
+                container,
+                staging_root / build,
+                build,
+                reviewed_build,
+                localization_manifest_path,
+                all_meta_entries,
             )
         staged = staging_root / build
         if backup.exists():
@@ -582,6 +732,124 @@ def exact_integer(value: object) -> Optional[int]:
     return None
 
 
+def read_container_payload(
+    container: Path,
+    package_index: int,
+    entry_offset: int,
+    length: int,
+) -> tuple[bytes, Path]:
+    if (
+        not isinstance(package_index, int)
+        or isinstance(package_index, bool)
+        or package_index < 0
+        or package_index > 0xFFFF
+    ):
+        raise SystemExit("container package index is invalid")
+    if (
+        not isinstance(entry_offset, int)
+        or isinstance(entry_offset, bool)
+        or entry_offset < 0
+    ):
+        raise SystemExit("container entry offset is invalid")
+    if (
+        not isinstance(length, int)
+        or isinstance(length, bool)
+        or length <= 0
+        or length > MAXIMUM_LOCALIZATION_PAYLOAD_BYTES
+    ):
+        raise SystemExit("container entry length is invalid")
+
+    package = container / f"m{package_index}.pkg"
+    if not package.is_file():
+        raise SystemExit(f"container package is missing: {package.name}")
+    package_bytes = package.stat().st_size
+    if entry_offset > package_bytes or length > package_bytes - entry_offset:
+        raise SystemExit(f"container entry exceeds {package.name}")
+    with package.open("rb") as handle:
+        handle.seek(entry_offset)
+        payload = handle.read(length)
+    if len(payload) != length:
+        raise SystemExit(f"container entry ended early in {package.name}")
+    return payload, package
+
+
+def read_7bit_uint32(data: bytes, offset: int, end: int) -> tuple[int, int]:
+    value = 0
+    for index in range(5):
+        if offset >= end:
+            raise SystemExit("localization string length ended early")
+        byte = data[offset]
+        offset += 1
+        if index == 4 and byte > 0x0F:
+            raise SystemExit("localization string length exceeds uint32")
+        value |= (byte & 0x7F) << (index * 7)
+        if byte < 0x80:
+            if index > 0 and value < 1 << (index * 7):
+                raise SystemExit("localization string length is not canonical")
+            return value, offset
+    raise SystemExit("localization string length exceeds five bytes")
+
+
+def validate_localization_payload(payload: bytes) -> dict:
+    if not payload or len(payload) > MAXIMUM_LOCALIZATION_PAYLOAD_BYTES:
+        raise SystemExit("localization payload has an invalid size")
+    if len(payload) < 16:
+        raise SystemExit("localization payload ended before its header and trailer")
+
+    (index_entries,) = struct.unpack_from("<I", payload, 0)
+    if index_entries == 0 or index_entries > MAXIMUM_LOCALIZATION_ENTRIES:
+        raise SystemExit("localization payload has an invalid index entry count")
+    index_end = 4 + index_entries * 8
+    if index_end + 12 > len(payload):
+        raise SystemExit("localization payload index ended early")
+
+    referenced_strings = []
+    previous_localization_id = None
+    for offset in range(4, index_end, 8):
+        localization_id, string_index = struct.unpack_from("<II", payload, offset)
+        if (
+            previous_localization_id is not None
+            and localization_id <= previous_localization_id
+        ):
+            raise SystemExit("localization payload IDs are not strictly increasing")
+        previous_localization_id = localization_id
+        referenced_strings.append(string_index)
+
+    (string_entries,) = struct.unpack_from("<I", payload, index_end)
+    if string_entries == 0 or string_entries > MAXIMUM_LOCALIZATION_ENTRIES:
+        raise SystemExit("localization payload has an invalid string entry count")
+    missing_text_references = sum(
+        1 for string_index in referenced_strings if string_index >= string_entries
+    )
+    if missing_text_references:
+        raise SystemExit(
+            f"localization payload has {missing_text_references} out-of-range text references"
+        )
+
+    cursor = index_end + 4
+    strings_end = len(payload) - 8
+    populated_strings = 0
+    for _index in range(string_entries):
+        length, cursor = read_7bit_uint32(payload, cursor, strings_end)
+        if length > strings_end - cursor:
+            raise SystemExit("localization string exceeds its payload")
+        try:
+            payload[cursor : cursor + length].decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise SystemExit(f"localization string is not valid UTF-8: {error}") from error
+        populated_strings += int(length > 0)
+        cursor += length
+    if cursor != strings_end or payload[strings_end:] != b"\0" * 8:
+        raise SystemExit("localization payload has an invalid trailer")
+
+    return {
+        "index_entries": index_entries,
+        "string_entries": string_entries,
+        "populated_strings": populated_strings,
+        "missing_text_references": 0,
+    }
+
+
 def run_self_check() -> None:
     """Exercise packaged imports and the binary parser without reading game files."""
     fixture = bytearray()
@@ -591,11 +859,72 @@ def run_self_check() -> None:
     fixture.extend(struct.pack("<H", 0))
     fixture.extend(struct.pack("<i", 1))
     fixture.extend(struct.pack("<IBHii", 1234, 0, 7, 89, 144))
-    fixture.extend(struct.pack("<i", 0))
+    fixture.extend(struct.pack("<i", 1))
+    fixture.extend(struct.pack("<IBHii", 5678, 1, 0, 233, 377))
     expected = [(1234, 7, 89, 144)]
     observed = read_meta_entries(bytes(fixture))
     if observed != expected:
         raise SystemExit(f"self-check meta parser mismatch: {observed!r}")
+    expected_all = [(1234, 0, 7, 89, 144), (5678, 1, 0, 233, 377)]
+    observed_all = read_all_meta_entries(bytes(fixture))
+    if observed_all != expected_all:
+        raise SystemExit(f"self-check full meta parser mismatch: {observed_all!r}")
+    localization_fixture = (
+        struct.pack("<I", 3)
+        + struct.pack("<IIIIII", 100, 0, 200, 1, 300, 1)
+        + struct.pack("<I", 2)
+        + b"\x00\x03\xe2\x98\x83"
+        + b"\0" * 8
+    )
+    localization_summary = validate_localization_payload(localization_fixture)
+    if localization_summary != {
+        "index_entries": 3,
+        "string_entries": 2,
+        "populated_strings": 1,
+        "missing_text_references": 0,
+    }:
+        raise SystemExit(
+            f"self-check localization parser mismatch: {localization_summary!r}"
+        )
+    malformed_localization_fixtures = {
+        "truncated trailer": localization_fixture[:-1],
+        "nonzero trailer": localization_fixture[:-1] + b"x",
+        "out-of-order IDs": (
+            struct.pack("<I", 2)
+            + struct.pack("<IIII", 200, 0, 100, 0)
+            + struct.pack("<I", 1)
+            + b"\x00"
+            + b"\0" * 8
+        ),
+        "out-of-range string reference": (
+            struct.pack("<I", 1)
+            + struct.pack("<II", 100, 1)
+            + struct.pack("<I", 1)
+            + b"\x00"
+            + b"\0" * 8
+        ),
+        "noncanonical string length": (
+            struct.pack("<I", 1)
+            + struct.pack("<II", 100, 0)
+            + struct.pack("<I", 1)
+            + b"\x80\x00"
+            + b"\0" * 8
+        ),
+        "invalid UTF-8": (
+            struct.pack("<I", 1)
+            + struct.pack("<II", 100, 0)
+            + struct.pack("<I", 1)
+            + b"\x01\xff"
+            + b"\0" * 8
+        ),
+    }
+    for label, malformed in malformed_localization_fixtures.items():
+        try:
+            validate_localization_payload(malformed)
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit(f"self-check accepted localization payload with {label}")
     if not is_safe_relative_identity("global/steam-24687926", 128):
         raise SystemExit("self-check rejected a valid client-build identity")
     for unsafe in ("/absolute", "../escape", "global//build", "global/./build"):
@@ -655,7 +984,7 @@ def read_address_bundle(container: Path, address: str) -> tuple[int, Path, bytes
     return bundle_hash, package, bundle
 
 
-def read_meta_entries(data: bytes) -> list[tuple[int, int, int, int]]:
+def read_all_meta_entries(data: bytes) -> list[tuple[int, int, int, int, int]]:
     offset = 0
 
     def take(fmt: str) -> tuple[int, ...]:
@@ -667,19 +996,38 @@ def read_meta_entries(data: bytes) -> list[tuple[int, int, int, int]]:
         offset += size
         return values
 
+    def skip(size: int) -> None:
+        nonlocal offset
+        if size < 0 or offset + size > len(data):
+            raise SystemExit("meta.pkg ended early")
+        offset += size
+
     take("<iii")
-    offset += 8
+    skip(8)
     take("<I")
     (header_count,) = take("<H")
-    offset += 16 * header_count
+    skip(16 * header_count)
     entries = []
     for _section in range(2):
         (count,) = take("<i")
+        if count < 0 or count > MAXIMUM_META_ENTRIES:
+            raise SystemExit("meta.pkg has an invalid entry count")
         for _index in range(count):
             key, entry_type, package_index, entry_offset, length = take("<IBHii")
-            if entry_type == 0:
-                entries.append((key, package_index, entry_offset, length))
+            if entry_type not in (0, 1):
+                raise SystemExit(f"meta.pkg has unsupported entry type {entry_type}")
+            if entry_offset < 0 or length <= 0:
+                raise SystemExit("meta.pkg has an invalid entry extent")
+            entries.append((key, entry_type, package_index, entry_offset, length))
     return entries
+
+
+def read_meta_entries(data: bytes) -> list[tuple[int, int, int, int]]:
+    return [
+        (key, package_index, entry_offset, length)
+        for key, entry_type, package_index, entry_offset, length in read_all_meta_entries(data)
+        if entry_type == 0
+    ]
 
 
 if __name__ == "__main__":

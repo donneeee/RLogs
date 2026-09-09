@@ -5420,11 +5420,18 @@ struct TrainingDummyToggleResult {
 struct LocalMapPreparationResult {
     client_build: String,
     prepared_assets: usize,
+    prepared_locales: usize,
     message: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct ReviewedMapAssetManifest {
+    schema_version: u16,
+    builds: BTreeMap<String, Vec<serde_json::Value>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReviewedLocalizationAssetManifest {
     schema_version: u16,
     builds: BTreeMap<String, Vec<serde_json::Value>>,
 }
@@ -6542,7 +6549,7 @@ impl RuntimeController {
             .install_root
             .join("runtime-data/game-assets")
             .join(client_build);
-        entries.iter().all(|entry| {
+        let maps_ready = entries.iter().all(|entry| {
             let Some(asset) = entry.get("asset").and_then(serde_json::Value::as_str) else {
                 return false;
             };
@@ -6580,7 +6587,90 @@ impl RuntimeController {
                     .get("upload_allowed")
                     .and_then(serde_json::Value::as_bool)
                     == Some(false)
-        })
+        });
+        if !maps_ready {
+            return false;
+        }
+
+        let localization_manifest_path = if packaged_root
+            .join("reviewed-localization-assets.v1.json")
+            .is_file()
+        {
+            packaged_root.join("reviewed-localization-assets.v1.json")
+        } else {
+            development_root.join("reviewed-localization-assets.v1.json")
+        };
+        let Ok(bytes) = std::fs::read(localization_manifest_path) else {
+            return false;
+        };
+        let Ok(localization_manifest) =
+            serde_json::from_slice::<ReviewedLocalizationAssetManifest>(&bytes)
+        else {
+            return false;
+        };
+        if localization_manifest.schema_version != 1 {
+            return false;
+        }
+        let Some(localization_entries) = localization_manifest.builds.get(&reviewed_build) else {
+            return false;
+        };
+        if localization_entries.is_empty() {
+            return false;
+        }
+        let localization_root = build_root.join("localization");
+        let Ok(catalog_bytes) = std::fs::read(localization_root.join("catalog.v1.json")) else {
+            return false;
+        };
+        let Ok(catalog) = serde_json::from_slice::<serde_json::Value>(&catalog_bytes) else {
+            return false;
+        };
+        let Some(catalog_entries) = catalog.get("entries").and_then(serde_json::Value::as_array)
+        else {
+            return false;
+        };
+        catalog
+            .get("schema_version")
+            .and_then(serde_json::Value::as_u64)
+            == Some(1)
+            && catalog
+                .get("game_build")
+                .and_then(serde_json::Value::as_str)
+                == Some(client_build)
+            && catalog
+                .get("presentation_only")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true)
+            && catalog
+                .get("mechanics_authority")
+                .and_then(serde_json::Value::as_bool)
+                == Some(false)
+            && catalog
+                .get("upload_allowed")
+                .and_then(serde_json::Value::as_bool)
+                == Some(false)
+            && catalog_entries.len() == localization_entries.len()
+            && localization_entries.iter().all(|expected| {
+                let Some(locale) = expected.get("locale").and_then(serde_json::Value::as_str)
+                else {
+                    return false;
+                };
+                let expected_asset = format!("{locale}.bin");
+                let Some(entry) = catalog_entries.iter().find(|entry| {
+                    entry.get("locale").and_then(serde_json::Value::as_str) == Some(locale)
+                        && entry.get("asset").and_then(serde_json::Value::as_str)
+                            == Some(expected_asset.as_str())
+                }) else {
+                    return false;
+                };
+                let Some(bytes) = entry.get("bytes").and_then(serde_json::Value::as_u64) else {
+                    return false;
+                };
+                bytes > 0
+                    && localization_root
+                        .join(expected_asset)
+                        .metadata()
+                        .is_ok_and(|metadata| metadata.len() == bytes)
+            })
     }
 
     #[cfg(windows)]
@@ -6723,6 +6813,14 @@ impl RuntimeController {
         } else {
             development_root.join("reviewed-map-assets.v1.json")
         };
+        let localization_manifest_path = if packaged_root
+            .join("reviewed-localization-assets.v1.json")
+            .is_file()
+        {
+            packaged_root.join("reviewed-localization-assets.v1.json")
+        } else {
+            development_root.join("reviewed-localization-assets.v1.json")
+        };
         let manifest: ReviewedMapAssetManifest =
             serde_json::from_slice(&std::fs::read(&manifest_path).map_err(|error| {
                 format!(
@@ -6746,6 +6844,31 @@ impl RuntimeController {
             .get(&reviewed_build)
             .map(Vec::len)
             .unwrap_or_default();
+        let localization_manifest: ReviewedLocalizationAssetManifest = serde_json::from_slice(
+            &std::fs::read(&localization_manifest_path).map_err(|error| {
+                format!(
+                    "could not read reviewed localization manifest {}: {error}",
+                    localization_manifest_path.display()
+                )
+            })?,
+        )
+        .map_err(|error| format!("reviewed localization manifest is invalid: {error}"))?;
+        if localization_manifest.schema_version != 1 {
+            return Err(format!(
+                "reviewed localization manifest schema {} is unsupported",
+                localization_manifest.schema_version
+            ));
+        }
+        let prepared_locales = localization_manifest
+            .builds
+            .get(&reviewed_build)
+            .filter(|entries| !entries.is_empty())
+            .map(Vec::len)
+            .ok_or_else(|| {
+                format!(
+                    "No compatible game localization assets are available for build {client_build}."
+                )
+            })?;
 
         let runtime_root = self.install_root.join("runtime-data/game-assets");
         std::fs::create_dir_all(&runtime_root).map_err(|error| {
@@ -6779,8 +6902,10 @@ impl RuntimeController {
             .arg("--reviewed-build")
             .arg(&reviewed_build)
             .arg("--reviewed-manifest")
-            .arg(&manifest_path);
-        let output = run_process_with_timeout(command, Duration::from_secs(120))
+            .arg(&manifest_path)
+            .arg("--localization-manifest")
+            .arg(&localization_manifest_path);
+        let output = run_process_with_timeout(command, Duration::from_secs(300))
             .map_err(|error| format!("Local map compiler could not complete: {error}"))?;
         if !output.status.success() {
             let detail = bounded_process_output(&output.stderr, &output.stdout);
@@ -6789,9 +6914,11 @@ impl RuntimeController {
         Ok(LocalMapPreparationResult {
             client_build,
             prepared_assets,
+            prepared_locales,
             message: format!(
-                "Prepared {prepared_assets} reviewed game map{} from local game files.",
-                if prepared_assets == 1 { "" } else { "s" }
+                "Prepared {prepared_assets} reviewed game map{} and {prepared_locales} official localization pack{} from local game files.",
+                if prepared_assets == 1 { "" } else { "s" },
+                if prepared_locales == 1 { "" } else { "s" }
             ),
         })
     }
@@ -18246,6 +18373,17 @@ kind = "content"
             .unwrap(),
         )
         .unwrap();
+        std::fs::write(
+            manifest_root.join("reviewed-localization-assets.v1.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "schema_version": 1,
+                "builds": {
+                    "24687926": [{"locale": "en-US"}]
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
         let controller = RuntimeController::new_with_developer_tools(root.clone(), false).unwrap();
         assert!(!controller.local_game_map_cache_ready("24687927"));
 
@@ -18263,7 +18401,33 @@ kind = "content"
             .unwrap(),
         )
         .unwrap();
+        assert!(!controller.local_game_map_cache_ready("24687927"));
+
+        let localization = cache.join("localization");
+        std::fs::create_dir_all(&localization).unwrap();
+        std::fs::write(localization.join("en-US.bin"), b"locale").unwrap();
+        std::fs::write(
+            localization.join("catalog.v1.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "schema_version": 1,
+                "game_build": "24687927",
+                "presentation_only": true,
+                "mechanics_authority": false,
+                "upload_allowed": false,
+                "entries": [{
+                    "locale": "en-US",
+                    "asset": "en-US.bin",
+                    "bytes": 6
+                }]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
         assert!(controller.local_game_map_cache_ready("24687927"));
+
+        std::fs::write(localization.join("en-US.bin"), b"").unwrap();
+        assert!(!controller.local_game_map_cache_ready("24687927"));
+        std::fs::write(localization.join("en-US.bin"), b"locale").unwrap();
 
         std::fs::write(cache.join("scene-1.png"), b"").unwrap();
         assert!(!controller.local_game_map_cache_ready("24687927"));
