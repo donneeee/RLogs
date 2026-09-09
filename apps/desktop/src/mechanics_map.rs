@@ -471,6 +471,14 @@ impl MechanicsMapProjector {
         self.last_event_sequence = Some(envelope.sequence);
         self.last_observed_micros = Some(envelope.time.observed_micros);
         let mut changed = false;
+        if self.client_build.as_deref() != Some(envelope.region.client_build.as_str()) {
+            self.client_build = Some(envelope.region.client_build.clone());
+            // A build transition changes every build-scoped presentation gate.
+            // Preserve packet positions, but discard old mechanic identities so
+            // an unreviewed update can never inherit guidance from its baseline.
+            self.signals.clear();
+            changed = true;
+        }
         match &envelope.event {
             CanonicalEvent::WorldChanged(world) => {
                 let next_scene = world.scene_id.map(|scene| scene.0);
@@ -2229,6 +2237,42 @@ mod tests {
             auxiliary_loadout: vec![],
             loadout_observation: ActorLoadoutObservation::default(),
         }
+    }
+
+    #[test]
+    fn packet_build_transition_replaces_a_bootstrap_map_identity() {
+        let mut projector = MechanicsMapProjector::default();
+        projector.reset("session", "unverified");
+        let mut event = envelope(
+            1,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 1,
+                time: EventTime {
+                    observed_micros: 1_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance {
+                    confidence: EvidenceConfidence::Exact,
+                    source: EvidenceSource::Wire {
+                        capture_sequence: 1,
+                        connection_id: 1,
+                        stream_id: 1,
+                    },
+                },
+                kind: TimelineEventKind::Actor(actor_event(
+                    entity(7, 70),
+                    ActorKind::Player,
+                    Some("7"),
+                )),
+            }),
+        );
+        event.region.client_build = "24687927".into();
+
+        assert!(projector.observe(&event));
+        assert_eq!(
+            projector.snapshot().client_build.as_deref(),
+            Some("24687927")
+        );
     }
 
     #[test]

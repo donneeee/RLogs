@@ -5379,6 +5379,10 @@ struct RuntimeController {
     #[cfg(windows)]
     live_process_id: Arc<Mutex<Option<u32>>>,
     #[cfg(windows)]
+    local_map_refresh_lock: Arc<Mutex<()>>,
+    #[cfg(windows)]
+    automatic_local_map_refresh_builds: Arc<Mutex<BTreeSet<String>>>,
+    #[cfg(windows)]
     live_combat_control: Arc<Mutex<Option<SyncSender<LiveCombatControl>>>>,
 }
 
@@ -5603,6 +5607,10 @@ impl RuntimeController {
             live_stop: Arc::new(Mutex::new(None)),
             #[cfg(windows)]
             live_process_id: Arc::new(Mutex::new(None)),
+            #[cfg(windows)]
+            local_map_refresh_lock: Arc::new(Mutex::new(())),
+            #[cfg(windows)]
+            automatic_local_map_refresh_builds: Arc::new(Mutex::new(BTreeSet::new())),
             #[cfg(windows)]
             live_combat_control: Arc::new(Mutex::new(None)),
         })
@@ -6496,6 +6504,125 @@ impl RuntimeController {
     }
 
     #[cfg(windows)]
+    fn local_game_map_cache_ready(&self, client_build: &str) -> bool {
+        let packaged_root = self.install_root.join("resources/map-compiler");
+        let development_root = self
+            .install_root
+            .join("apps/desktop-tauri/resources/map-compiler");
+        let manifest_path = if packaged_root.join("reviewed-map-assets.v1.json").is_file() {
+            packaged_root.join("reviewed-map-assets.v1.json")
+        } else {
+            development_root.join("reviewed-map-assets.v1.json")
+        };
+        let Ok(bytes) = std::fs::read(manifest_path) else {
+            return false;
+        };
+        let Ok(manifest) = serde_json::from_slice::<ReviewedMapAssetManifest>(&bytes) else {
+            return false;
+        };
+        let Some(reviewed_build) = reviewed_map_build_for_client(&manifest, client_build) else {
+            return false;
+        };
+        let Some(entries) = manifest.builds.get(&reviewed_build) else {
+            return false;
+        };
+        if entries.is_empty() {
+            return false;
+        }
+        let build_root = self
+            .install_root
+            .join("runtime-data/game-assets")
+            .join(client_build);
+        entries.iter().all(|entry| {
+            let Some(asset) = entry.get("asset").and_then(serde_json::Value::as_str) else {
+                return false;
+            };
+            if asset.contains(['/', '\\']) || asset.contains("..") || !asset.ends_with(".png") {
+                return false;
+            }
+            let image = build_root.join(asset);
+            if !image.metadata().is_ok_and(|metadata| metadata.len() > 0) {
+                return false;
+            }
+            let catalog = if asset == "dungeon_map_bg.png" {
+                build_root.join("catalog.v1.json")
+            } else {
+                build_root.join(format!(
+                    "{}.catalog.v1.json",
+                    asset.trim_end_matches(".png")
+                ))
+            };
+            let Ok(catalog_bytes) = std::fs::read(catalog) else {
+                return false;
+            };
+            let Ok(catalog) = serde_json::from_slice::<serde_json::Value>(&catalog_bytes) else {
+                return false;
+            };
+            catalog
+                .get("schema_version")
+                .and_then(serde_json::Value::as_u64)
+                == Some(1)
+                && catalog
+                    .get("game_build")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(client_build)
+                && catalog.get("asset").and_then(serde_json::Value::as_str) == Some(asset)
+                && catalog
+                    .get("upload_allowed")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+        })
+    }
+
+    #[cfg(windows)]
+    fn schedule_automatic_local_game_map_refresh(self: &Arc<Self>) {
+        let controller = Arc::clone(self);
+        let _ = thread::Builder::new()
+            .name("rlogs-local-map-refresh".into())
+            .spawn(move || {
+                loop {
+                    let client_build = controller
+                        .live_mechanics_map_feed
+                        .current()
+                        .snapshot
+                        .client_build;
+                    if let Some(client_build) = client_build.filter(|build| {
+                        !build.is_empty() && build.bytes().all(|byte| byte.is_ascii_digit())
+                    }) {
+                        let should_attempt = controller
+                            .automatic_local_map_refresh_builds
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .insert(client_build.clone());
+                        if !should_attempt || controller.local_game_map_cache_ready(&client_build) {
+                            return;
+                        }
+                        if let Err(error) = controller.prepare_local_game_maps() {
+                            eprintln!(
+                                "automatic local map refresh for build {client_build} failed: {error}"
+                            );
+                            controller
+                                .automatic_local_map_refresh_builds
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .remove(&client_build);
+                        }
+                        return;
+                    }
+                    if controller
+                        .live_process_id
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .is_none()
+                    {
+                        return;
+                    }
+                    thread::sleep(Duration::from_millis(200));
+                }
+            });
+    }
+
+    #[cfg(windows)]
     fn prepare_local_game_maps(&self) -> Result<LocalMapPreparationResult, String> {
         use std::os::windows::process::CommandExt;
 
@@ -6509,6 +6636,10 @@ impl RuntimeController {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .ok_or_else(|| "No supported running game process is attached.".to_owned())?;
+        let _refresh_guard = self
+            .local_map_refresh_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let executable_path = process_executable_path(process_id)?;
         let container = installed_container_for_executable(&executable_path)?;
 
@@ -7838,7 +7969,7 @@ impl RuntimeController {
     }
 
     #[cfg(windows)]
-    fn start_live(&self, request: LiveSessionRequest) -> Result<(), String> {
+    fn start_live(self: &Arc<Self>, request: LiveSessionRequest) -> Result<(), String> {
         validate_identifier("session_id", &request.session_id)?;
         if let Some(region_id) = &request.region_id {
             validate_identifier("region_id", region_id)?;
@@ -8194,6 +8325,7 @@ impl RuntimeController {
             .publish(LiveCharacterStatsSnapshot::default());
         self.live_mechanics_map_feed.reset();
         self.live_event_feed.reset(request.session_id.clone());
+        self.schedule_automatic_local_game_map_refresh();
 
         // UI controls cross into the ordered capture worker through a small,
         // bounded channel. This keeps manual boundaries serialized with packet
@@ -9686,7 +9818,7 @@ impl RuntimeController {
     }
 
     #[cfg(not(windows))]
-    fn start_live(&self, _: LiveSessionRequest) -> Result<(), String> {
+    fn start_live(self: &Arc<Self>, _: LiveSessionRequest) -> Result<(), String> {
         Err("live process-owned capture is not connected on this platform yet".into())
     }
 
@@ -13148,7 +13280,7 @@ struct HttpRequest {
 fn handle_connection(
     mut stream: TcpStream,
     ui_root: &Path,
-    controller: &RuntimeController,
+    controller: &Arc<RuntimeController>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     stream.set_write_timeout(Some(Duration::from_secs(10)))?;
@@ -18014,6 +18146,58 @@ kind = "content"
             reviewed_map_build_for_client(&manifest, "global/steam-24690000"),
             None
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn automatic_local_map_refresh_skips_only_a_complete_build_scoped_cache() {
+        let root = temporary_root();
+        let manifest_root = root.join("resources/map-compiler");
+        std::fs::create_dir_all(&manifest_root).unwrap();
+        std::fs::write(
+            manifest_root.join("reviewed-map-assets.v1.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "schema_version": 1,
+                "builds": {
+                    "24687926": [{"asset": "scene-1.png"}]
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let controller = RuntimeController::new_with_developer_tools(root.clone(), false).unwrap();
+        assert!(!controller.local_game_map_cache_ready("24687927"));
+
+        let cache = root.join("runtime-data/game-assets/24687927");
+        std::fs::create_dir_all(&cache).unwrap();
+        std::fs::write(cache.join("scene-1.png"), b"png").unwrap();
+        std::fs::write(
+            cache.join("scene-1.catalog.v1.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "schema_version": 1,
+                "game_build": "24687927",
+                "asset": "scene-1.png",
+                "upload_allowed": false
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(controller.local_game_map_cache_ready("24687927"));
+
+        std::fs::write(cache.join("scene-1.png"), b"").unwrap();
+        assert!(!controller.local_game_map_cache_ready("24687927"));
+
+        std::fs::write(
+            manifest_root.join("reviewed-map-assets.v1.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "schema_version": 1,
+                "builds": { "24687926": [] }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(!controller.local_game_map_cache_ready("24687927"));
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
