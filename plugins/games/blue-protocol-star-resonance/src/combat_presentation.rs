@@ -1035,6 +1035,131 @@ mod tests {
     }
 
     #[test]
+    fn current_build_observed_presentation_coverage_gate_is_exhaustive() {
+        use std::collections::{BTreeMap, BTreeSet};
+
+        use sha2::{Digest, Sha256};
+
+        const BUILD: &str = "24687926";
+        const LOCALES: &[&str] = &[
+            "de-DE", "en-US", "es-ES", "fr-FR", "id-ID", "ja-JP", "ko-KR", "pt-BR", "th-TH",
+            "zh-CN", "zh-TW",
+        ];
+        const TECHNICAL_PATH: &str = "observed-technical.v1.json";
+        const REVIEWED_PATH: &str = "reviewed-observed.v1.json";
+        const TECHNICAL: &str =
+            include_str!("../game-data/catalog/combat-actions/observed-technical.v1.json");
+        const REVIEWED: &str =
+            include_str!("../game-data/catalog/combat-actions/reviewed-observed.v1.json");
+
+        let coverage: serde_json::Value = serde_json::from_str(include_str!(
+            "../game-data/catalog/combat-actions/observed-presentation-coverage.v1.json"
+        ))
+        .unwrap();
+        assert_eq!(coverage["schema_version"], 1);
+        assert_eq!(coverage["deployment_id"], "global");
+        assert_eq!(coverage["channel"], "steam");
+        assert_eq!(coverage["game_build"], BUILD);
+        assert_eq!(
+            coverage["scope"],
+            "saved-history-observed-technical-and-reviewed-observed-actions"
+        );
+        assert_eq!(coverage["policy"]["exact_build_required"], true);
+        assert_eq!(coverage["policy"]["all_shipped_locales_required"], true);
+        assert_eq!(coverage["policy"]["technical_identity_is_allowed"], true);
+        assert_eq!(coverage["policy"]["invented_labels_are_forbidden"], true);
+        assert_eq!(coverage["policy"]["uncovered_ids_fail_ci"], true);
+
+        let sources = coverage["sources"].as_array().unwrap();
+        let source_by_path = sources
+            .iter()
+            .map(|source| (source["path"].as_str().unwrap(), source))
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(source_by_path.len(), 2);
+
+        let mut observed_ids = BTreeSet::new();
+        for (path, source) in [(TECHNICAL_PATH, TECHNICAL), (REVIEWED_PATH, REVIEWED)] {
+            let source_manifest: serde_json::Value = serde_json::from_str(source).unwrap();
+            assert_eq!(
+                source_manifest["game_build"], BUILD,
+                "{path} is not scoped to the current build"
+            );
+            let actions = source_manifest["actions"].as_array().unwrap();
+            let pinned = source_by_path
+                .get(path)
+                .unwrap_or_else(|| panic!("coverage gate does not pin {path}"));
+            assert_eq!(pinned["action_count"].as_u64(), Some(actions.len() as u64));
+            assert_eq!(
+                pinned["sha256"].as_str(),
+                Some(format!("{:x}", Sha256::digest(source.as_bytes())).as_str()),
+                "{path} changed; review its observed-ID coverage and refresh the gate"
+            );
+
+            for action in actions {
+                let ability_id = action["ability_id"].as_i64().unwrap();
+                assert!(
+                    ability_id > 0,
+                    "{path} contains invalid action {ability_id}"
+                );
+                assert!(
+                    observed_ids.insert(ability_id),
+                    "observed action {ability_id} is duplicated across coverage sources"
+                );
+            }
+        }
+
+        let mut uncovered = Vec::new();
+        for ability_id in &observed_ids {
+            match combat_action_presentation(*ability_id) {
+                Ok(Some(presentation)) if presentation.resolution != "unresolved" => {}
+                Ok(Some(_)) => uncovered.push(format!("{ability_id}: unresolved presentation")),
+                Ok(None) => uncovered.push(format!("{ability_id}: missing presentation")),
+                Err(error) => uncovered.push(format!("{ability_id}: presentation error: {error}")),
+            }
+
+            for locale in LOCALES {
+                match localized_combat_action_name(*ability_id, locale) {
+                    Ok(Some(name)) if !name.trim().is_empty() && !name.contains('\u{fffd}') => {
+                        if *locale == "en-US"
+                            && (name.contains("Unresolved")
+                                || name.chars().any(|character| {
+                                    ('\u{3400}'..='\u{9fff}').contains(&character)
+                                }))
+                        {
+                            uncovered.push(format!(
+                                "{ability_id}: en-US is not a user-facing English identity: {name}"
+                            ));
+                        }
+                    }
+                    Ok(Some(_)) => uncovered.push(format!("{ability_id}: corrupt {locale} name")),
+                    Ok(None) => uncovered.push(format!("{ability_id}: missing {locale} name")),
+                    Err(error) => {
+                        uncovered.push(format!("{ability_id}: {locale} lookup error: {error}"))
+                    }
+                }
+            }
+        }
+
+        assert!(
+            uncovered.is_empty(),
+            "current-build observed presentation gaps:\n{}",
+            uncovered.join("\n")
+        );
+        assert_eq!(
+            coverage["summary"]["observed_action_count"].as_u64(),
+            Some(observed_ids.len() as u64)
+        );
+        assert_eq!(
+            coverage["summary"]["localized_action_count"].as_u64(),
+            Some((observed_ids.len() - uncovered.len()) as u64)
+        );
+        assert_eq!(
+            coverage["summary"]["uncovered_action_ids"],
+            serde_json::json!([])
+        );
+    }
+
+    #[test]
     fn keeps_design_only_effects_exactly_identified_without_claiming_localization() {
         let presentation = status_effect_presentation(2_203_291).unwrap().unwrap();
         assert_eq!(presentation.resolution, "design-only");

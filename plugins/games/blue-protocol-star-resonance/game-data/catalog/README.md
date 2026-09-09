@@ -27,6 +27,12 @@ current-build DamageAttr action whose rows all resolve to one exact RecountTable
 group, not only actions seen in saved histories. These relations add aggregate
 parents while retaining each packet action ID, direct localized child name,
 and child metrics. Parent totals are sums of those still-visible child rows.
+`combat-actions/observed-presentation-coverage.v1.json` pins the exact source
+digests and counts for the union of the generated and reviewed observed-action
+layers. The `current_build_observed_presentation_coverage_gate_is_exhaustive`
+test requires every ID in that union to resolve in all shipped locales for the
+same build. Refreshing either source without reviewing every resulting gap
+therefore fails CI; the gate never supplies or invents a label itself.
 Regenerate it with `BPSR-UID-Extractors/GenerateRLogsObservedActions.gen`, then
 compile the catalog with `PromoteRLogsCombatPresentation.gen` and the
 `rlogs-bpsr-runtime-presentation` binary. RLogs loads only the resulting compact

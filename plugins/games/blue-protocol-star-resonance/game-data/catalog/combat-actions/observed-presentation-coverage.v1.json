@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "deployment_id": "global",
+  "channel": "steam",
+  "game_build": "24687926",
+  "scope": "saved-history-observed-technical-and-reviewed-observed-actions",
+  "sources": [
+    {
+      "path": "observed-technical.v1.json",
+      "sha256": "2582c01b2360e8bec378e8dc9e4b4f994cfe5c0fd36b853f18d1571d5630660e",
+      "action_count": 131
+    },
+    {
+      "path": "reviewed-observed.v1.json",
+      "sha256": "921e47887e0de55c35250d50399dab57bc2c13ffcd6e7cf8f96034d2070d6054",
+      "action_count": 40
+    }
+  ],
+  "summary": {
+    "observed_action_count": 171,
+    "localized_action_count": 171,
+    "uncovered_action_ids": []
+  },
+  "policy": {
+    "exact_build_required": true,
+    "all_shipped_locales_required": true,
+    "technical_identity_is_allowed": true,
+    "invented_labels_are_forbidden": true,
+    "uncovered_ids_fail_ci": true
+  }
+}
