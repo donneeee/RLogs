@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDungeonAttemptTime, formatDungeonObjectiveValue, nextMapDim, parseMechanicsMapCanvasPreferences, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
+import { formatDungeonAttemptTime, formatDungeonObjectiveValue, nextMapDim, parseMechanicsMapCanvasPreferences, shouldDrawRadarFallbackArena, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
 
 describe("Mechanics Map overlay canvas preferences", () => {
   it("does not rebuild the overlay after an unchanged long-poll timeout", () => {
@@ -188,5 +188,12 @@ describe("Mechanics Map overlay canvas preferences", () => {
     expect(nextMapDim(0.16)).toBe(0.32);
     expect(nextMapDim(0.48)).toBe(0.64);
     expect(nextMapDim(0.64)).toBe(0);
+  });
+
+  it("never draws the opaque fallback arena over a reviewed real map", () => {
+    expect(shouldDrawRadarFallbackArena({ map_model: "absolute_scene_map", map_layout: null })).toBe(false);
+    expect(shouldDrawRadarFallbackArena({ map_model: "absolute_scene_map", map_layout: "raid_ring" })).toBe(false);
+    expect(shouldDrawRadarFallbackArena({ map_model: "player_relative_radar", map_layout: null })).toBe(true);
+    expect(shouldDrawRadarFallbackArena({ map_model: "player_relative_radar", map_layout: "raid_grid" })).toBe(false);
   });
 });

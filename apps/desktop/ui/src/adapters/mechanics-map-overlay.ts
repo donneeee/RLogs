@@ -1561,7 +1561,7 @@ function drawArena(context: CanvasRenderingContext2D, snapshot: MechanicsMapSnap
   } else if (snapshot.map_layout === "raid_grid") {
     for (const x of [-30, -10, 10, 30]) drawWorldLine(context, snapshot, width, height, x, 22.5, x, -22.5);
     for (const z of [-22.5, -7.5, 7.5, 22.5]) drawWorldLine(context, snapshot, width, height, -30, z, 30, z);
-  } else {
+  } else if (shouldDrawRadarFallbackArena(snapshot)) {
     context.beginPath();
     context.arc(width / 2, height / 2, Math.min(width, height) * 0.25, 0, Math.PI * 2);
     context.stroke();
@@ -1570,6 +1570,12 @@ function drawArena(context: CanvasRenderingContext2D, snapshot: MechanicsMapSnap
     context.stroke();
   }
   context.restore();
+}
+
+export function shouldDrawRadarFallbackArena(
+  snapshot: Pick<MechanicsMapSnapshot, "map_model" | "map_layout">,
+): boolean {
+  return snapshot.map_model !== "absolute_scene_map" && snapshot.map_layout === null;
 }
 
 function drawRegions(
