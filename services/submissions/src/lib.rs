@@ -2743,10 +2743,11 @@ pub struct PublicRun {
     /// the referenced canonical event.
     #[serde(default)]
     pub local_state_witnesses: Vec<PublicLocalStateWitness>,
-    /// Human-readable, privacy-reviewed combat loadout phases. These are
-    /// emitted only from profile snapshots observed after combat began and
-    /// through the authoritative run completion, so lobby configuration can
-    /// never backfill a parse.
+    /// Human-readable, privacy-reviewed combat loadout phases. These retain
+    /// the latest exact personal profile observed before first combat as an
+    /// explicit baseline, followed by changes through authoritative run
+    /// completion. A baseline stays anchored to its actual observation time
+    /// and never silently rewrites a later phase.
     #[serde(default)]
     pub combat_loadout_phases: Vec<PublicCombatLoadoutPhase>,
     pub segments: Vec<PublicRunSegment>,
@@ -4798,9 +4799,9 @@ fn run_scoped_profile_witnesses(
 ) -> Vec<PublicLocalProfileWitness> {
     run_scoped_profile_observations(analysis, participant_character_ids, observations)
         .into_iter()
-        .map(|observation| PublicLocalProfileWitness {
+        .map(|(placement, observation)| PublicLocalProfileWitness {
             character_id: observation.character_id.clone(),
-            placement: LocalStateWitnessPlacement::InRun,
+            placement,
             event_sequence: observation.event_sequence,
             observed_micros: observation.observed_micros,
             game_time_millis: observation.game_time_millis,
@@ -4813,13 +4814,14 @@ fn run_scoped_profile_observations<'a>(
     analysis: &RunAnalysis,
     participant_character_ids: &BTreeSet<String>,
     observations: &'a [LocalProfileObservation],
-) -> Vec<&'a LocalProfileObservation> {
-    // A lobby/entry snapshot is not authoritative combat-loadout evidence:
-    // players can change class, specialization, modules, skills, or Imagines
-    // after entering and before the pull. Only snapshots strictly after the
-    // first observed combat window may fill a submitted run's state gaps.
-    // Every later snapshot remains ordered so mid-run and boss-specific swaps
-    // are replayed at their actual time instead of rewriting the whole run.
+) -> Vec<(LocalStateWitnessPlacement, &'a LocalProfileObservation)> {
+    // The segmented recorder deliberately carries the latest personal profile
+    // into a run as entry context. Retain exactly one such baseline per local
+    // participant, then every profile observed from first combat onward. The
+    // baseline remains explicitly pre-run and keeps its actual run-relative
+    // observation time (saturating at zero only when carried from earlier), so
+    // it cannot masquerade as an in-combat refresh; later observations stay
+    // ordered and supersede it at their actual times.
     let Some(first_combat_started_micros) = analysis
         .encounters
         .iter()
@@ -4833,16 +4835,46 @@ fn run_scoped_profile_observations<'a>(
         .timing
         .ended_micros
         .unwrap_or(analysis.timing.observed_until_micros);
-    let mut selected = observations
+    let eligible = observations
         .iter()
         .filter(|observation| {
             participant_character_ids.contains(observation.character_id.as_str())
-                && observation.observed_micros > first_combat_started_micros
                 && observation.observed_micros <= ended_micros
         })
         .collect::<Vec<_>>();
-    selected.sort_by_key(|observation| (observation.observed_micros, observation.event_sequence));
-    selected.dedup_by_key(|observation| observation.event_sequence);
+    let latest_baseline_by_character = eligible
+        .iter()
+        .copied()
+        .filter(|observation| observation.observed_micros < first_combat_started_micros)
+        .fold(
+            BTreeMap::<&str, &LocalProfileObservation>::new(),
+            |mut latest, observation| {
+                let replace =
+                    latest
+                        .get(observation.character_id.as_str())
+                        .is_none_or(|previous| {
+                            (observation.observed_micros, observation.event_sequence)
+                                > (previous.observed_micros, previous.event_sequence)
+                        });
+                if replace {
+                    latest.insert(observation.character_id.as_str(), observation);
+                }
+                latest
+            },
+        );
+    let mut selected = latest_baseline_by_character
+        .into_values()
+        .map(|observation| (LocalStateWitnessPlacement::PreRunBaseline, observation))
+        .chain(
+            eligible
+                .into_iter()
+                .filter(|observation| observation.observed_micros >= first_combat_started_micros)
+                .map(|observation| (LocalStateWitnessPlacement::InRun, observation)),
+        )
+        .collect::<Vec<_>>();
+    selected
+        .sort_by_key(|(_, observation)| (observation.observed_micros, observation.event_sequence));
+    selected.dedup_by_key(|(_, observation)| observation.event_sequence);
     selected
 }
 
@@ -4855,7 +4887,7 @@ fn run_scoped_combat_loadout_phases(
     let mut last_loadout_by_character = BTreeMap::<String, ProfileLoadoutObservation>::new();
     run_scoped_profile_observations(analysis, participant_character_ids, observations)
         .into_iter()
-        .filter_map(|observation| {
+        .filter_map(|(_, observation)| {
             if observation.loadout.is_empty()
                 || last_loadout_by_character
                     .get(&observation.character_id)
@@ -8342,7 +8374,23 @@ mod tests {
                 observed_micros: 15,
                 game_time_millis: None,
                 payload_sha256: "sha256:pre-pull".into(),
-                loadout: ProfileLoadoutObservation::default(),
+                loadout: ProfileLoadoutObservation {
+                    display_name: Some("Player".into()),
+                    class_id: Some(4),
+                    specialization_id: Some(1),
+                    equipped_module_count: Some(1),
+                    module_snapshot_disposition: PublicCombatModuleSnapshotDisposition::Complete,
+                    equipped_modules: vec![PublicCombatEquippedModule {
+                        equipped_slot: 1,
+                        config_id: 5_500_104,
+                        level: Some(6),
+                        effects: vec![PublicCombatModuleEffect {
+                            effect_id: 1110,
+                            initial_link_points: Some(20),
+                        }],
+                    }],
+                    ..Default::default()
+                },
             },
             LocalProfileObservation {
                 character_id: "character-a".into(),
@@ -8402,38 +8450,66 @@ mod tests {
                 .iter()
                 .map(|witness| witness.event_sequence)
                 .collect::<Vec<_>>(),
-            vec![3, 4]
+            vec![2, 3, 4]
         );
         assert_eq!(
             selected
                 .iter()
                 .map(|witness| witness.placement)
                 .collect::<Vec<_>>(),
-            vec![LocalStateWitnessPlacement::InRun; 2]
+            vec![
+                LocalStateWitnessPlacement::PreRunBaseline,
+                LocalStateWitnessPlacement::InRun,
+                LocalStateWitnessPlacement::InRun,
+            ]
         );
-        assert!(selected.iter().all(|witness| witness.event_sequence != 2));
+        assert!(selected.iter().all(|witness| witness.event_sequence != 1));
         assert!(selected.iter().all(|witness| witness.event_sequence != 6));
 
         let phases =
             run_scoped_combat_loadout_phases(&analysis, &participants, &observations, true);
-        assert_eq!(phases.len(), 2);
+        assert_eq!(phases.len(), 3);
         assert_eq!(
             phases
                 .iter()
                 .map(|phase| phase.class_id)
                 .collect::<Vec<_>>(),
-            vec![Some(5), Some(2)]
+            vec![Some(4), Some(5), Some(2)]
         );
         assert_eq!(
             phases
                 .iter()
                 .map(|phase| phase.run_elapsed_micros)
                 .collect::<Vec<_>>(),
-            vec![15, 25]
+            vec![5, 15, 25]
         );
-        assert!(phases.iter().all(|phase| phase.in_active_combat));
-        assert_eq!(phases[0].equipped_skill_ids, vec!["2203291"]);
-        assert_eq!(phases[1].equipped_skill_ids, vec!["1714"]);
+        assert!(!phases[0].in_active_combat);
+        assert!(phases[1..].iter().all(|phase| phase.in_active_combat));
+        assert_eq!(
+            phases[0].module_snapshot_disposition,
+            PublicCombatModuleSnapshotDisposition::Complete
+        );
+        assert_eq!(phases[0].equipped_modules[0].effects[0].effect_id, 1110);
+        assert_eq!(phases[1].equipped_skill_ids, vec!["2203291"]);
+        assert_eq!(phases[2].equipped_skill_ids, vec!["1714"]);
+
+        // A segmented run commonly contains only the carried entry profile.
+        // That exact baseline must still establish this POV's local identity
+        // and rune summary even when no redundant profile packet arrives in
+        // combat.
+        let baseline_only =
+            run_scoped_profile_witnesses(&analysis, &participants, &observations[..2]);
+        assert_eq!(baseline_only.len(), 1);
+        assert_eq!(baseline_only[0].event_sequence, 2);
+        assert_eq!(
+            baseline_only[0].placement,
+            LocalStateWitnessPlacement::PreRunBaseline
+        );
+        let baseline_phases =
+            run_scoped_combat_loadout_phases(&analysis, &participants, &observations[..2], true);
+        assert_eq!(baseline_phases.len(), 1);
+        assert_eq!(baseline_phases[0].run_elapsed_micros, 5);
+        assert_eq!(baseline_phases[0].equipped_modules.len(), 1);
     }
 
     #[test]
