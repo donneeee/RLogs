@@ -32,7 +32,7 @@ export interface MechanicsMapSignal {
 }
 
 export interface MechanicsMapSnapshot {
-  schema_version: 13;
+  schema_version: 14;
   revision: number;
   session_id: string | null;
   client_build: string | null;
@@ -61,6 +61,7 @@ export interface MechanicsMapSnapshot {
   mechanics: readonly MechanicsMapSignal[];
   markers: readonly {
     marker_id: number | null;
+    marker_number: number | null;
     related_actor_id: number | null;
     x: number | null;
     y: number | null;
@@ -72,7 +73,7 @@ export interface MechanicsMapSnapshot {
 }
 
 export interface MechanicsMapUpdate {
-  schema_version: 13;
+  schema_version: 14;
   revision: number;
   snapshot: MechanicsMapSnapshot;
 }
@@ -437,7 +438,7 @@ function projectWorldRect(value: MechanicsMapSnapshot, x: number, z: number, hal
 }
 
 export function parseMechanicsMapUpdate(value: unknown): MechanicsMapUpdate {
-  if (!record(value) || value.schema_version !== 13 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
+  if (!record(value) || value.schema_version !== 14 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
     throw new Error("The local host returned an invalid Mechanics Map update.");
   }
   return value as unknown as MechanicsMapUpdate;
@@ -550,7 +551,7 @@ export function projectMechanicsMapPoint(
 }
 
 function snapshot(value: unknown): value is MechanicsMapSnapshot {
-  return record(value) && value.schema_version === 13 &&
+  return record(value) && value.schema_version === 14 &&
     nonnegativeInteger(value.revision) && nullableString(value.session_id) && nullableString(value.client_build) &&
     nullableInteger(value.scene_id) && nullableInteger(value.map_id) && nullableString(value.scene_name) &&
     ["player_relative_radar", "absolute_scene_map"].includes(String(value.map_model)) && finitePositive(value.world_radius) &&
@@ -566,7 +567,8 @@ function snapshot(value: unknown): value is MechanicsMapSnapshot {
     typeof value.encounter_pack_reviewed === "boolean" && (value.target === null || target(value.target)) &&
     (value.dungeon === null || dungeon(value.dungeon)) &&
     Array.isArray(value.entities) && value.entities.every(entity) &&
-    Array.isArray(value.mechanics) && value.mechanics.every(signal) && Array.isArray(value.markers) &&
+    Array.isArray(value.mechanics) && value.mechanics.every(signal) &&
+    Array.isArray(value.markers) && value.markers.length <= 64 && value.markers.every(marker) &&
     nullableString(value.data_gap) && nullableInteger(value.last_event_sequence) && nullableInteger(value.last_observed_micros);
 }
 
@@ -650,6 +652,13 @@ function signal(value: unknown): boolean {
     nonnegativeInteger(value.target_actor_id) && nullableInteger(value.source_actor_id) && nullableInteger(value.stacks) &&
     nullableInteger(value.duration_millis) && nullableFinite(value.origin_x) && nullableFinite(value.origin_z) &&
     nullableFinite(value.facing_radians) && nonnegativeInteger(value.applied_at_micros);
+}
+
+function marker(value: unknown): boolean {
+  return record(value) && nullableInteger(value.marker_id) &&
+    (value.marker_number === null || (Number.isSafeInteger(value.marker_number) && (value.marker_number as number) >= 1 && (value.marker_number as number) <= 6)) &&
+    nullableNonnegativeInteger(value.related_actor_id) && nullableFinite(value.x) &&
+    nullableFinite(value.y) && nullableFinite(value.z);
 }
 
 function record(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }

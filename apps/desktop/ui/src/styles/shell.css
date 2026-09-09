@@ -5959,7 +5959,7 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
 .mechanics-map-point[data-mechanic-role="ring_outer"] { --point-color: #6da9ff; width: 19px; height: 19px; }
 .mechanics-map-point[data-dead="true"] { filter: grayscale(1); opacity: 0.45; }
 .mechanics-map-point[data-stale="true"] { opacity: 0.3; }
-.mechanics-map-marker { position: absolute; z-index: 7; display: grid; place-items: center; width: 21px; height: 21px; border: 2px solid rgb(4 12 20 / 92%); border-radius: 50%; color: #061018; background: #f4d76b; box-shadow: 0 0 0 2px rgb(244 215 107 / 32%), 0 0 12px rgb(244 215 107 / 70%); transform: translate(-50%, -50%); font-size: 10px; font-weight: 900; }
+.mechanics-map-marker { position: absolute; z-index: 7; display: grid; place-items: center; width: 23px; height: 23px; border: 3px solid rgb(4 12 20 / 96%); border-radius: 50%; color: #fff; background: #dcae24; box-shadow: 0 0 0 2px rgb(255 232 133 / 55%), 0 0 14px rgb(244 215 107 / 82%); transform: translate(-50%, -50%); font-size: 13px; font-weight: 950; text-shadow: -1px -1px 0 #061018, 1px -1px 0 #061018, -1px 1px 0 #061018, 1px 1px 0 #061018; }
 @keyframes mechanics-map-pulse { from { box-shadow: 0 0 0 2px color-mix(in srgb, var(--point-color) 38%, transparent), 0 0 8px var(--point-color); } to { box-shadow: 0 0 0 5px color-mix(in srgb, var(--point-color) 28%, transparent), 0 0 18px var(--point-color); } }
 @media (prefers-reduced-motion: reduce) { .mechanics-map-point[data-mechanic="true"] { animation: none; } }
 .mechanics-map-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 20%; color: var(--muted); background: rgb(4 11 20 / 40%); font-size: 12px; font-weight: 750; text-align: center; }

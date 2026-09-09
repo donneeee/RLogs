@@ -1729,16 +1729,17 @@ function drawEntities(
     context.strokeStyle = "rgba(4,12,20,.98)";
     context.lineWidth = readability.entityOutlineWidth;
     context.beginPath();
-    context.arc(x, y, 8, 0, Math.PI * 2);
+    context.arc(x, y, 11, 0, Math.PI * 2);
     context.fill();
     context.stroke();
     context.shadowBlur = 0;
-    if (marker.marker_id !== null) {
-      context.fillStyle = "#061018";
-      context.font = "800 9px system-ui";
+    const markerLabel = mechanicsMapMarkerLabel(marker);
+    if (markerLabel !== null) {
+      context.fillStyle = "#ffffff";
+      context.font = "950 13px system-ui";
       context.textAlign = "center";
       context.textBaseline = "middle";
-      context.fillText(String(marker.marker_id), x, y);
+      drawOutlinedText(context, markerLabel, x, y, 4);
     }
     context.restore();
   }
@@ -1775,6 +1776,15 @@ function drawEntities(
     }
     context.restore();
   }
+}
+
+export function mechanicsMapMarkerLabel(
+  marker: Pick<MechanicsMapSnapshot["markers"][number], "marker_id" | "marker_number">,
+): string | null {
+  if (Number.isSafeInteger(marker.marker_number) && marker.marker_number! >= 1 && marker.marker_number! <= 6) {
+    return String(marker.marker_number);
+  }
+  return marker.marker_id === null ? null : String(marker.marker_id);
 }
 
 function automarkersByActor(snapshot: MechanicsMapSnapshot): Map<number, string[]> {

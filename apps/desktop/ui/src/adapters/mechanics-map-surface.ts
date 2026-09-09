@@ -227,7 +227,7 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
       if (marker.x === null || marker.z === null) continue;
       const projectedMarker = projectMechanicsMapPoint(snapshot, marker.x, marker.z, sceneMap ? false : rotateWithPlayer);
       if (projectedMarker === null || !projectedMarker.visible) continue;
-      const point = text("span", marker.marker_id === null ? "•" : String(marker.marker_id), "mechanics-map-marker");
+      const point = text("span", marker.marker_number === null ? (marker.marker_id === null ? "•" : String(marker.marker_id)) : String(marker.marker_number), "mechanics-map-marker");
       point.style.left = `${projectedMarker.mapX}%`;
       point.style.top = `${projectedMarker.mapY}%`;
       point.title = marker.related_actor_id === null ? "Packet-observed map marker" : `Marker for actor ${marker.related_actor_id}`;

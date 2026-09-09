@@ -12,7 +12,7 @@ use rlogs_events::{
 };
 use serde::{Deserialize, Serialize};
 
-pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 13;
+pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 14;
 const ENTITY_STALE_AFTER_MICROS: u64 = 5_000_000;
 const CAST_STALE_AFTER_MICROS: u64 = 8_000_000;
 const MAX_ENTITIES: usize = 192;
@@ -158,6 +158,7 @@ pub struct MechanicsMapSignal {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MechanicsMapMarker {
     pub marker_id: Option<i64>,
+    pub marker_number: Option<u8>,
     pub related_actor_id: Option<u64>,
     pub x: Option<f32>,
     pub y: Option<f32>,
@@ -448,6 +449,7 @@ pub struct MechanicsMapProjector {
     dungeon: Option<DungeonHudState>,
     signals: BTreeMap<(u64, i64), SignalState>,
     markers: BTreeMap<Option<i64>, MechanicsMapMarker>,
+    local_markers: BTreeMap<i64, MechanicsMapMarker>,
     data_gap: Option<String>,
     last_event_sequence: Option<u64>,
     last_observed_micros: Option<u64>,
@@ -477,6 +479,7 @@ impl MechanicsMapProjector {
             // Preserve packet positions, but discard old mechanic identities so
             // an unreviewed update can never inherit guidance from its baseline.
             self.signals.clear();
+            self.local_markers.clear();
             changed = true;
         }
         match &envelope.event {
@@ -490,6 +493,7 @@ impl MechanicsMapProjector {
                     self.resource_values.clear();
                     self.signals.clear();
                     self.markers.clear();
+                    self.local_markers.clear();
                     self.dungeon = None;
                     self.data_gap = None;
                     changed = true;
@@ -643,6 +647,7 @@ impl MechanicsMapProjector {
                 | MapEventKind::ObjectiveUpdated => {
                     let marker = MechanicsMapMarker {
                         marker_id: event.marker_id,
+                        marker_number: None,
                         related_actor_id: event.related_entity.map(|entity| entity.actor_id.0),
                         x: event.x,
                         y: event.y,
@@ -1340,11 +1345,53 @@ impl MechanicsMapProjector {
             target,
             entities,
             mechanics,
-            markers: self.markers.values().take(64).cloned().collect(),
+            markers: self
+                .markers
+                .values()
+                .chain(self.local_markers.values())
+                .take(64)
+                .cloned()
+                .collect(),
             data_gap: self.data_gap.clone(),
             last_event_sequence: self.last_event_sequence,
             last_observed_micros: self.last_observed_micros,
         }
+    }
+
+    /// Replaces the provisional inspection-only marker layer. These values are
+    /// never fed back into canonical encounter or submission reducers.
+    pub fn replace_local_markers(
+        &mut self,
+        markers: impl IntoIterator<Item = rlogs_game_bpsr::LocalMapMarker>,
+    ) -> bool {
+        let next = markers
+            .into_iter()
+            .map(|marker| {
+                let related_actor_id = marker.related_entity_uuid.and_then(|uuid| {
+                    self.entities
+                        .values()
+                        .find(|entity| entity.actor.entity_uuid.0 == uuid)
+                        .map(|entity| entity.actor.actor_id.0)
+                });
+                (
+                    marker.passive_instance_id,
+                    MechanicsMapMarker {
+                        marker_id: None,
+                        marker_number: Some(marker.marker_number),
+                        related_actor_id,
+                        x: marker.x,
+                        y: marker.y,
+                        z: marker.z,
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        if self.local_markers == next {
+            return false;
+        }
+        self.local_markers = next;
+        self.revision = self.revision.saturating_add(1);
+        true
     }
 
     fn replace_party(&mut self, next: BTreeSet<String>) -> bool {
@@ -2160,6 +2207,24 @@ mod tests {
         EvidenceConfidence, EvidenceSource, GameProfileEvent, RegionContext, RegionIdentity,
         ResourceEvent, SceneId, StatusEffectId, StatusEffectInstanceId, StatusEvent, TimelineEvent,
     };
+
+    #[test]
+    fn local_marker_layer_preserves_number_and_removal() {
+        let mut projector = MechanicsMapProjector::default();
+        assert!(
+            projector.replace_local_markers([rlogs_game_bpsr::LocalMapMarker {
+                passive_instance_id: 77,
+                related_entity_uuid: None,
+                marker_number: 4,
+                x: Some(12.0),
+                y: Some(0.0),
+                z: Some(-8.0),
+            }])
+        );
+        assert_eq!(projector.snapshot().markers[0].marker_number, Some(4));
+        assert!(projector.replace_local_markers([]));
+        assert!(projector.snapshot().markers.is_empty());
+    }
 
     fn envelope(sequence: u64, event: CanonicalEvent) -> EventEnvelope {
         EventEnvelope {

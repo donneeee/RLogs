@@ -18,7 +18,7 @@ function snapshot(): MechanicsMapSnapshot {
     dead: false, stale: false, statuses: [],
   } as const;
   return {
-    schema_version: 13, revision: 1, session_id: "session", client_build: "24687926",
+    schema_version: 14, revision: 1, session_id: "session", client_build: "24687926",
     scene_id: 1150, map_id: 1150, scene_name: "Void Towering Ruin",
     map_model: "absolute_scene_map", map_layout: null, world_radius: 140,
     map_origin_x: 0, map_origin_z: 0, map_span_x: 100, map_span_z: 100,

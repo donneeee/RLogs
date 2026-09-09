@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDungeonAttemptTime, formatDungeonObjectiveValue, mechanicsMapReadabilityProfile, nextMapDim, parseMechanicsMapCanvasPreferences, shouldDrawRadarFallbackArena, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
+import { formatDungeonAttemptTime, formatDungeonObjectiveValue, mechanicsMapMarkerLabel, mechanicsMapReadabilityProfile, nextMapDim, parseMechanicsMapCanvasPreferences, shouldDrawRadarFallbackArena, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
 
 describe("Mechanics Map overlay canvas preferences", () => {
+  it("prefers the visible numbered marker label", () => {
+    expect(mechanicsMapMarkerLabel({ marker_id: null, marker_number: 4 })).toBe("4");
+    expect(mechanicsMapMarkerLabel({ marker_id: 77, marker_number: null })).toBe("77");
+    expect(mechanicsMapMarkerLabel({ marker_id: null, marker_number: null })).toBeNull();
+  });
   it("does not rebuild the overlay after an unchanged long-poll timeout", () => {
     const current = { revision: 12 };
     expect(shouldRenderMechanicsMapUpdate(current, current)).toBe(false);

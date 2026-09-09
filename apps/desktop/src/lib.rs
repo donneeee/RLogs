@@ -8760,6 +8760,8 @@ impl RuntimeController {
                     let mut live_profile_projection = LiveProfileProjection::default();
                     let mut live_mechanics_map = MechanicsMapProjector::default();
                     live_mechanics_map.reset(&session_id, &live_header.region.client_build);
+                    let mut live_local_markers =
+                        rlogs_game_bpsr::LocalMapMarkerProjection::default();
                     let mut training_dummy = TrainingDummyController::default();
                     let mut training_dummy_writer = TrainingDummyLogWriter::new(
                         &output_directory,
@@ -8993,6 +8995,7 @@ impl RuntimeController {
                         let mut sealed_training_logs = Vec::new();
                         let mut training_recording_error = None;
                         let mut mechanics_map_dirty = false;
+                        let mut local_markers_dirty = false;
                         let mut frame_protocol_observability =
                             CastObservabilityCounters::default();
                         let mut frame_event_observability = CastObservabilityCounters::default();
@@ -9270,6 +9273,7 @@ impl RuntimeController {
                             }, |photo| {
                                 local_photo_assets.push(photo.clone());
                             }, |record, status| {
+                                local_markers_dirty |= live_local_markers.observe(&pack, record);
                                 frame_protocol_observability
                                     .observe_protocol(&pack, record, status);
                                 if live_event_inspector_active
@@ -9280,6 +9284,10 @@ impl RuntimeController {
                                 }
                             })
                             .map_err(|error| format!("live BPSR decoding failed: {error}"))?;
+                        if local_markers_dirty {
+                            mechanics_map_dirty |= live_mechanics_map
+                                .replace_local_markers(live_local_markers.markers());
+                        }
                         if let Some(error) = training_recording_error {
                             return Err(error);
                         }

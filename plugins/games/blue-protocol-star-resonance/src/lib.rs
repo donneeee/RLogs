@@ -28,6 +28,7 @@ mod game_schema_v1;
 mod install;
 mod journal;
 mod loadout;
+mod local_marker;
 mod module_effect_resolution;
 mod monster_localization;
 mod offline_recording;
@@ -183,6 +184,7 @@ pub use install::{
 };
 pub use journal::{CaptureSession, GameBuild, JournalError, ProtocolJournal};
 pub use loadout::{normalize_auxiliary_imagine_tier, project_actor_loadouts};
+pub use local_marker::{LocalMapMarker, LocalMapMarkerProjection};
 pub use module_effect_resolution::{
     ActiveModuleEffect, ActiveModuleEffectSnapshot, ModuleEffectCatalog, ModuleEffectCatalogError,
     ModuleEffectLevel, ModuleEffectResolutionIssue, ModuleEffectSource,
