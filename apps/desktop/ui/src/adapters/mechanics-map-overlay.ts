@@ -38,6 +38,12 @@ export interface MechanicsMapCanvasPreferences {
   panY: number;
   rotateWithPlayer: boolean;
   showMonsters: boolean;
+  showPlayer: boolean;
+  showActions: boolean;
+  showParty: boolean;
+  showTarget: boolean;
+  showObjectives: boolean;
+  showAlerts: boolean;
   locked: boolean;
   expanded: boolean;
   moduleX: number;
@@ -70,6 +76,12 @@ const DEFAULT_PREFERENCES: MechanicsMapCanvasPreferences = {
   panY: 0,
   rotateWithPlayer: true,
   showMonsters: true,
+  showPlayer: true,
+  showActions: true,
+  showParty: true,
+  showTarget: true,
+  showObjectives: true,
+  showAlerts: true,
   locked: false,
   expanded: false,
   moduleX: 24,
@@ -107,6 +119,12 @@ export function parseMechanicsMapCanvasPreferences(value: unknown): MechanicsMap
     panY,
     rotateWithPlayer: typeof value.rotateWithPlayer === "boolean" ? value.rotateWithPlayer : true,
     showMonsters: typeof value.showMonsters === "boolean" ? value.showMonsters : true,
+    showPlayer: typeof value.showPlayer === "boolean" ? value.showPlayer : true,
+    showActions: typeof value.showActions === "boolean" ? value.showActions : true,
+    showParty: typeof value.showParty === "boolean" ? value.showParty : true,
+    showTarget: typeof value.showTarget === "boolean" ? value.showTarget : true,
+    showObjectives: typeof value.showObjectives === "boolean" ? value.showObjectives : true,
+    showAlerts: typeof value.showAlerts === "boolean" ? value.showAlerts : true,
     locked: typeof value.locked === "boolean" ? value.locked : false,
     expanded: typeof value.expanded === "boolean" ? value.expanded : false,
     moduleX: finiteBounded(value.moduleX) ? value.moduleX : 24,
@@ -339,6 +357,15 @@ export function mountMechanicsMapOverlay(
   alertsResizeHandle.title = "Resize mechanic alerts";
   alertsResizeHandle.setAttribute("aria-label", "Resize mechanic alerts");
   alertsPanel.append(alertsToolbar, alertsBody, alertsResizeHandle);
+  const moduleToggles = [
+    moduleVisibilityButton("Player", "showPlayer", playerPanel),
+    moduleVisibilityButton("Actions", "showActions", actionsPanel),
+    moduleVisibilityButton("Party", "showParty", partyPanel),
+    moduleVisibilityButton("Target", "showTarget", targetPanel),
+    moduleVisibilityButton("Objectives", "showObjectives", objectivesPanel),
+    moduleVisibilityButton("Alerts", "showAlerts", alertsPanel),
+  ];
+  actions.prepend(...moduleToggles);
   root.append(panel, playerPanel, actionsPanel, partyPanel, targetPanel, objectivesPanel, alertsPanel);
   container.replaceChildren(root);
   applyModuleGeometry();
@@ -494,6 +521,25 @@ export function mountMechanicsMapOverlay(
     playerPanel.dataset.focused = String(held);
   }).then((remove) => { removeFocusHeldListener = remove; });
   void connect();
+
+  function moduleVisibilityButton(
+    label: string,
+    preference: "showPlayer" | "showActions" | "showParty" | "showTarget" | "showObjectives" | "showAlerts",
+    module: HTMLElement,
+  ): HTMLButtonElement {
+    const control = button(label, preferences[preference], () => {
+      preferences[preference] = !preferences[preference];
+      control.dataset.active = String(preferences[preference]);
+      control.setAttribute("aria-pressed", String(preferences[preference]));
+      control.title = `${preferences[preference] ? "Hide" : "Show"} ${label.toLowerCase()} module`;
+      module.hidden = !preferences[preference];
+      savePreferences();
+    });
+    control.title = `${preferences[preference] ? "Hide" : "Show"} ${label.toLowerCase()} module`;
+    control.setAttribute("aria-pressed", String(preferences[preference]));
+    module.hidden = !preferences[preference];
+    return control;
+  }
 
   async function connect(): Promise<void> {
     try {
