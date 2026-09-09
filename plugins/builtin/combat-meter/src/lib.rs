@@ -438,6 +438,15 @@ pub struct HistorySeriesPoint {
     pub damage: i64,
     pub effective_healing: i64,
     pub damage_taken: i64,
+    /// Exact rDPS-adjusted damage assigned to this one-second bucket. Missing
+    /// means the selected history was produced without a reviewed attribution
+    /// model; consumers must not silently substitute ordinary damage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rdps_damage: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rdps_contribution_given: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rdps_contribution_received: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1108,6 +1117,15 @@ struct HistorySeriesAccumulator {
     damage: i64,
     effective_healing: i64,
     damage_taken: i64,
+    rdps_damage: Option<i64>,
+    rdps_contribution_given: Option<i64>,
+    rdps_contribution_received: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct HistorySeriesTransfer {
+    given: i64,
+    received: i64,
 }
 
 /// Restorable live presentation state captured at an authoritative phase
@@ -3077,17 +3095,23 @@ impl CombatTimelinePlugin {
             kind: "all".into(),
             segment_indices: all_segments,
             intervals: all_intervals,
+            series_origin_micros: started_micros,
             elapsed_micros: reviewed_game_time_micros,
             active_combat_micros: run.timing.active_combat_micros,
             compress_intervals: false,
         }];
         if let Some(projection) = projected_best {
+            let series_origin_micros = projection
+                .intervals
+                .first()
+                .map_or(started_micros, |(started, _)| *started);
             specs.push(HistoryViewSpec {
                 id: "true_time".into(),
                 label: "True Time".into(),
                 kind: "projected_best".into(),
                 segment_indices: projection.segment_indices,
                 intervals: projection.intervals,
+                series_origin_micros,
                 elapsed_micros: true_time_micros.unwrap_or_default(),
                 active_combat_micros: projection.active_combat_micros,
                 compress_intervals: true,
@@ -3115,6 +3139,9 @@ impl CombatTimelinePlugin {
             if intervals.is_empty() {
                 continue;
             }
+            let series_origin_micros = intervals
+                .first()
+                .map_or(started_micros, |(started, _)| *started);
             specs.push(HistoryViewSpec {
                 id: id.into(),
                 label: label.into(),
@@ -3125,6 +3152,7 @@ impl CombatTimelinePlugin {
                     .map(|(started, ended)| ended.saturating_sub(*started))
                     .sum(),
                 intervals,
+                series_origin_micros,
                 active_combat_micros: selected
                     .iter()
                     .map(|segment| history_segment_view_active_combat_micros(run, segment))
@@ -3154,6 +3182,7 @@ impl CombatTimelinePlugin {
                 kind: "retry".into(),
                 segment_indices: vec![encounter.segment_index],
                 intervals: vec![(encounter.started_micros, encounter.ended_micros)],
+                series_origin_micros: encounter.started_micros,
                 elapsed_micros: encounter.wall_time_micros,
                 active_combat_micros: encounter.active_combat_micros,
                 compress_intervals: false,
@@ -3168,6 +3197,7 @@ impl CombatTimelinePlugin {
                     kind: "segment".into(),
                     segment_indices: vec![segment.index],
                     intervals: vec![(segment.started_micros, segment.ended_micros)],
+                    series_origin_micros: segment.started_micros,
                     elapsed_micros: segment.wall_time_micros,
                     active_combat_micros: segment.active_combat_micros,
                     compress_intervals: false,
@@ -3377,12 +3407,7 @@ impl CombatTimelinePlugin {
     }
 
     fn build_history_view(&self, spec: &HistoryViewSpec) -> CombatHistoryView {
-        let origin_micros = spec
-            .intervals
-            .iter()
-            .map(|(started, _)| *started)
-            .min()
-            .unwrap_or_default();
+        let origin_micros = spec.series_origin_micros;
         let last_selected_micros = spec
             .intervals
             .iter()
@@ -3392,6 +3417,10 @@ impl CombatTimelinePlugin {
         let mut values = BTreeMap::<u64, HistoryValueAccumulator>::new();
         let mut damage_influences =
             BTreeMap::<HistoryDamageInfluenceKey, HistoryDamageInfluenceAccumulator>::new();
+        let mut rdps_series_transfers = BTreeMap::<(u64, u32), HistorySeriesTransfer>::new();
+        let mut rdps_rational_series =
+            BTreeMap::<(i64, u64, u64, u32), HistoryExactRational>::new();
+        let mut rdps_rational_series_valid = true;
         let mut attribution = DamageContributionReducer::new(self.contribution_rules.clone())
             .expect("combat plug-in stores only validated rDPS rules");
         for fact in &self.history_facts {
@@ -3445,13 +3474,32 @@ impl CombatTimelinePlugin {
                 }),
                 CombatFactKind::Damage { reported, .. } => {
                     if let Some((target_actor_id, _)) = fact.target {
-                        attribution.observe_damage(ContributionDamageEvent {
-                            observed_micros: fact.observed_micros,
-                            source_actor_id: fact.source_actor_id,
-                            target_actor_id,
-                            amount: reported,
-                            included: offset_micros.is_some(),
-                        });
+                        let transfers = attribution.observe_damage_with_contributions(
+                            ContributionDamageEvent {
+                                observed_micros: fact.observed_micros,
+                                source_actor_id: fact.source_actor_id,
+                                target_actor_id,
+                                amount: reported,
+                                included: offset_micros.is_some(),
+                            },
+                        );
+                        if let Some(offset_micros) = offset_micros {
+                            let second = offset_micros
+                                .saturating_div(1_000_000)
+                                .min(u64::from(u32::MAX))
+                                as u32;
+                            for transfer in transfers {
+                                let provider = rdps_series_transfers
+                                    .entry((transfer.provider_actor_id, second))
+                                    .or_default();
+                                provider.given = provider.given.saturating_add(transfer.amount);
+                                let recipient = rdps_series_transfers
+                                    .entry((transfer.recipient_actor_id, second))
+                                    .or_default();
+                                recipient.received =
+                                    recipient.received.saturating_add(transfer.amount);
+                            }
+                        }
                     }
                 }
                 CombatFactKind::ExactDamageContribution {
@@ -3466,16 +3514,37 @@ impl CombatTimelinePlugin {
                     affected_target,
                     critical,
                 } => {
-                    attribution.observe_exact_contribution(ExactDamageContributionEvent {
-                        observed_micros: fact.observed_micros,
-                        effect_id,
-                        provider_actor_id,
-                        recipient_actor_id,
-                        scope,
-                        amount,
-                        observed_damage,
-                        included: offset_micros.is_some(),
-                    });
+                    let accepted =
+                        attribution.observe_exact_contribution(ExactDamageContributionEvent {
+                            observed_micros: fact.observed_micros,
+                            effect_id,
+                            provider_actor_id,
+                            recipient_actor_id,
+                            scope,
+                            amount,
+                            observed_damage,
+                            included: offset_micros.is_some(),
+                        });
+                    if accepted {
+                        if let Some(offset_micros) = offset_micros {
+                            if damage_event_sequence.is_some() && affected_target.is_some() {
+                                let second = offset_micros
+                                    .saturating_div(1_000_000)
+                                    .min(u64::from(u32::MAX))
+                                    as u32;
+                                let provider = rdps_series_transfers
+                                    .entry((provider_actor_id, second))
+                                    .or_default();
+                                provider.given = provider.given.saturating_add(amount);
+                                let recipient = rdps_series_transfers
+                                    .entry((recipient_actor_id, second))
+                                    .or_default();
+                                recipient.received = recipient.received.saturating_add(amount);
+                            } else {
+                                rdps_rational_series_valid = false;
+                            }
+                        }
+                    }
                     if offset_micros.is_some() {
                         observe_history_damage_influence(
                             &mut damage_influences,
@@ -3514,7 +3583,7 @@ impl CombatTimelinePlugin {
                     affected_target,
                     critical,
                 } => {
-                    attribution.observe_exact_rational_contribution(
+                    let accepted = attribution.observe_exact_rational_contribution(
                         ExactRationalDamageContributionEvent {
                             observed_micros: fact.observed_micros,
                             effect_id,
@@ -3528,6 +3597,29 @@ impl CombatTimelinePlugin {
                             deferred_damage_context: None,
                         },
                     );
+                    if accepted {
+                        if let Some(offset_micros) = offset_micros {
+                            let second = offset_micros
+                                .saturating_div(1_000_000)
+                                .min(u64::from(u32::MAX))
+                                as u32;
+                            if damage_event_sequence.is_none()
+                                || affected_target.is_none()
+                                || rdps_rational_series
+                                    .entry((
+                                        effect_id,
+                                        provider_actor_id,
+                                        recipient_actor_id,
+                                        second,
+                                    ))
+                                    .or_default()
+                                    .add(numerator, denominator)
+                                    .is_none()
+                            {
+                                rdps_rational_series_valid = false;
+                            }
+                        }
+                    }
                     if offset_micros.is_some() {
                         observe_history_damage_influence(
                             &mut damage_influences,
@@ -3732,7 +3824,8 @@ impl CombatTimelinePlugin {
             }
         }
 
-        let damage_influences = if self.rdps_enabled() {
+        let rdps_enabled = self.rdps_enabled();
+        let damage_influences = if rdps_enabled {
             let contribution = attribution.summary();
             debug_assert!(contribution.is_conserved());
             for actor_id in contribution.actors.keys() {
@@ -3750,6 +3843,76 @@ impl CombatTimelinePlugin {
                 for actor_id in projector.incomplete_rdps_actor_ids() {
                     if let Some(value) = values.get_mut(&actor_id) {
                         value.rdps_incomplete = true;
+                    }
+                }
+            }
+            let mut rdps_series_complete = rdps_rational_series_valid;
+            let projected_totals = contribution
+                .rational_effect_projections
+                .iter()
+                .map(|projection| {
+                    (
+                        (
+                            projection.effect_id,
+                            projection.provider_actor_id,
+                            projection.recipient_actor_id,
+                        ),
+                        projection.amount,
+                    )
+                })
+                .collect::<BTreeMap<_, _>>();
+            let mut rational_groups =
+                BTreeMap::<(i64, u64, u64), Vec<(u32, HistoryExactRational)>>::new();
+            for ((effect_id, provider_actor_id, recipient_actor_id, second), exact) in
+                rdps_rational_series
+            {
+                rational_groups
+                    .entry((effect_id, provider_actor_id, recipient_actor_id))
+                    .or_default()
+                    .push((second, exact));
+            }
+            for ((effect_id, provider_actor_id, recipient_actor_id), rows) in rational_groups {
+                let target = projected_totals
+                    .get(&(effect_id, provider_actor_id, recipient_actor_id))
+                    .copied()
+                    .unwrap_or_default();
+                let Some(allocations) = allocate_history_rational_series_rows(&rows, target) else {
+                    rdps_series_complete = false;
+                    break;
+                };
+                for (second, amount) in allocations {
+                    let provider = rdps_series_transfers
+                        .entry((provider_actor_id, second))
+                        .or_default();
+                    provider.given = provider.given.saturating_add(amount);
+                    let recipient = rdps_series_transfers
+                        .entry((recipient_actor_id, second))
+                        .or_default();
+                    recipient.received = recipient.received.saturating_add(amount);
+                }
+            }
+            if rdps_series_complete {
+                for ((actor_id, second), transfer) in rdps_series_transfers {
+                    let point = values
+                        .entry(actor_id)
+                        .or_default()
+                        .series
+                        .entry(second)
+                        .or_default();
+                    point.rdps_contribution_given = Some(transfer.given);
+                    point.rdps_contribution_received = Some(transfer.received);
+                    point.rdps_damage = Some(
+                        point
+                            .damage
+                            .saturating_add(transfer.given)
+                            .saturating_sub(transfer.received),
+                    );
+                }
+                for value in values.values_mut() {
+                    for point in value.series.values_mut() {
+                        point.rdps_damage.get_or_insert(point.damage);
+                        point.rdps_contribution_given.get_or_insert(0);
+                        point.rdps_contribution_received.get_or_insert(0);
                     }
                 }
             }
@@ -4001,6 +4164,9 @@ impl CombatTimelinePlugin {
                             damage: point.damage,
                             effective_healing: point.effective_healing,
                             damage_taken: point.damage_taken,
+                            rdps_damage: None,
+                            rdps_contribution_given: None,
+                            rdps_contribution_received: None,
                         })
                         .collect(),
                 })
@@ -4033,6 +4199,9 @@ impl CombatTimelinePlugin {
                     damage: point.damage,
                     effective_healing: point.effective_healing,
                     damage_taken: point.damage_taken,
+                    rdps_damage: point.rdps_damage,
+                    rdps_contribution_given: point.rdps_contribution_given,
+                    rdps_contribution_received: point.rdps_contribution_received,
                 })
                 .collect(),
         }
@@ -4046,6 +4215,7 @@ struct HistoryViewSpec {
     kind: String,
     segment_indices: Vec<u32>,
     intervals: Vec<(u64, u64)>,
+    series_origin_micros: u64,
     elapsed_micros: u64,
     active_combat_micros: u64,
     compress_intervals: bool,
@@ -4263,6 +4433,17 @@ impl HistoryExactRational {
         self.denominator = next_denominator / divisor;
         Some(())
     }
+
+    fn add_exact(&mut self, other: &Self) {
+        let shared = self.denominator.gcd(&other.denominator);
+        let left_factor = &other.denominator / &shared;
+        let right_factor = &self.denominator / &shared;
+        let next_numerator = &self.numerator * &left_factor + &other.numerator * right_factor;
+        let next_denominator = &self.denominator * left_factor;
+        let divisor = next_numerator.gcd(&next_denominator);
+        self.numerator = next_numerator / &divisor;
+        self.denominator = next_denominator / divisor;
+    }
 }
 
 fn allocate_history_rational_rows(
@@ -4316,6 +4497,54 @@ fn allocate_history_rational_rows(
             amount = amount.checked_add(1)?;
         }
         allocations.push((row_index, amount));
+    }
+    Some(allocations)
+}
+
+fn allocate_history_rational_series_rows(
+    rows: &[(u32, HistoryExactRational)],
+    target: i64,
+) -> Option<Vec<(u32, i64)>> {
+    if target < 0 {
+        return None;
+    }
+    let mut ranked = Vec::with_capacity(rows.len());
+    let mut base_total = BigInt::from(0);
+    let mut exact_total = HistoryExactRational::default();
+    for (second, exact) in rows {
+        exact_total.add_exact(exact);
+        let floor = &exact.numerator / &exact.denominator;
+        let remainder = &exact.numerator % &exact.denominator;
+        base_total += &floor;
+        ranked.push((*second, floor, remainder, exact.denominator.clone()));
+    }
+    let (rounded_total, remainder) = exact_total.numerator.div_rem(&exact_total.denominator);
+    let rounded_total = if remainder * BigInt::from(2) >= exact_total.denominator {
+        rounded_total + 1
+    } else {
+        rounded_total
+    };
+    if rounded_total != BigInt::from(target) {
+        return None;
+    }
+    let remaining = usize::try_from(BigInt::from(target) - base_total).ok()?;
+    if remaining > ranked.len() {
+        return None;
+    }
+    ranked.sort_by(|left, right| {
+        let left_fraction = &left.2 * &right.3;
+        let right_fraction = &right.2 * &left.3;
+        right_fraction
+            .cmp(&left_fraction)
+            .then_with(|| left.0.cmp(&right.0))
+    });
+    let mut allocations = Vec::with_capacity(ranked.len());
+    for (rank, (second, floor, _, _)) in ranked.into_iter().enumerate() {
+        let mut amount = i64::try_from(floor).ok()?;
+        if rank < remaining {
+            amount = amount.checked_add(1)?;
+        }
+        allocations.push((second, amount));
     }
     Some(allocations)
 }
@@ -5205,6 +5434,124 @@ mod tests {
     }
 
     #[test]
+    fn rational_series_rows_allocate_once_and_conserve_each_transfer() {
+        let mut first = HistoryExactRational::default();
+        first.add(1, 3).unwrap();
+        let mut second = HistoryExactRational::default();
+        second.add(1, 3).unwrap();
+        let rows = vec![(1, first), (2, second)];
+
+        let allocations = allocate_history_rational_series_rows(&rows, 1).unwrap();
+
+        assert_eq!(allocations, vec![(1, 1), (2, 0)]);
+        assert_eq!(allocations.iter().map(|(_, amount)| amount).sum::<i64>(), 1);
+        assert!(allocate_history_rational_series_rows(&rows, 0).is_none());
+    }
+
+    #[test]
+    fn history_series_can_retain_run_origin_before_first_selected_combat() {
+        let mut plugin = CombatTimelinePlugin::new();
+        plugin.push_history_fact(CombatFact {
+            observed_micros: 2_250_000,
+            source_actor_id: 1,
+            source_entity_uuid: 101,
+            target: Some((2, 102)),
+            breakdown_ability_id: None,
+            ability_id: Some(55),
+            kind: CombatFactKind::Damage {
+                reported: 100,
+                effective: 100,
+                critical: false,
+            },
+        });
+
+        let history = plugin.build_history_view(&HistoryViewSpec {
+            id: "all".into(),
+            label: "Entire run".into(),
+            kind: "all".into(),
+            segment_indices: vec![0],
+            intervals: vec![(2_000_000, 5_000_000)],
+            series_origin_micros: 0,
+            elapsed_micros: 5_000_000,
+            active_combat_micros: 3_000_000,
+            compress_intervals: false,
+        });
+
+        let actor = history
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
+        assert_eq!(actor.series[0].second, 2);
+    }
+
+    #[test]
+    fn context_incomplete_contribution_fails_closed_for_every_rdps_bucket() {
+        let rule = DamageContributionRule {
+            effect_id: 99,
+            kind: rlogs_combat::DamageContributionKind::TargetVulnerability,
+            magnitude_basis_points: 1,
+            stacking: rlogs_combat::DamageContributionStacking::Fixed,
+        };
+        let mut plugin = CombatTimelinePlugin::with_damage_contribution_rules(vec![rule]).unwrap();
+        plugin.push_history_fact(CombatFact {
+            observed_micros: 1_000_000,
+            source_actor_id: 2,
+            source_entity_uuid: 102,
+            target: Some((3, 103)),
+            breakdown_ability_id: None,
+            ability_id: Some(55),
+            kind: CombatFactKind::Damage {
+                reported: 100,
+                effective: 100,
+                critical: false,
+            },
+        });
+        plugin.push_history_fact(CombatFact {
+            observed_micros: 1_000_000,
+            source_actor_id: 1,
+            source_entity_uuid: 101,
+            target: Some((2, 102)),
+            breakdown_ability_id: None,
+            ability_id: None,
+            kind: CombatFactKind::ExactDamageContribution {
+                effect_id: 88,
+                scope: DamageContributionScope::CompleteEffect,
+                provider_actor_id: 1,
+                recipient_actor_id: 2,
+                amount: 10,
+                observed_damage: 100,
+                damage_event_sequence: None,
+                affected_ability_id: None,
+                affected_target: None,
+                critical: None,
+            },
+        });
+
+        let history = plugin.build_history_view(&HistoryViewSpec {
+            id: "all".into(),
+            label: "Entire run".into(),
+            kind: "all".into(),
+            segment_indices: vec![0],
+            intervals: vec![(0, 2_000_000)],
+            series_origin_micros: 0,
+            elapsed_micros: 2_000_000,
+            active_combat_micros: 1_000_000,
+            compress_intervals: false,
+        });
+
+        assert!(
+            history
+                .actors
+                .iter()
+                .flat_map(|actor| actor.series.iter())
+                .all(|point| point.rdps_damage.is_none()
+                    && point.rdps_contribution_given.is_none()
+                    && point.rdps_contribution_received.is_none())
+        );
+    }
+
+    #[test]
     fn unproven_hp_scaled_damage_remains_in_the_meter_without_attribution() {
         #[derive(Debug)]
         struct NoProofProjector;
@@ -5299,6 +5646,7 @@ mod tests {
             kind: "all".into(),
             segment_indices: vec![0],
             intervals: vec![(0, 2_000_000)],
+            series_origin_micros: 0,
             elapsed_micros: 2_000_000,
             active_combat_micros: 1_000_000,
             compress_intervals: false,
@@ -5908,6 +6256,7 @@ mod tests {
             kind: "all".into(),
             segment_indices: vec![0],
             intervals: vec![(0, 5_000_000)],
+            series_origin_micros: 0,
             elapsed_micros: 5_000_000,
             active_combat_micros: 4_000_000,
             compress_intervals: false,
@@ -6025,6 +6374,7 @@ mod tests {
             kind: "all".into(),
             segment_indices: vec![0],
             intervals: vec![(0, 2_000_000)],
+            series_origin_micros: 0,
             elapsed_micros: 2_000_000,
             active_combat_micros: 1_000_000,
             compress_intervals: false,
@@ -6616,6 +6966,7 @@ mod tests {
             kind: "all".into(),
             segment_indices: vec![0],
             intervals: vec![(0, 6_000_000)],
+            series_origin_micros: 0,
             elapsed_micros: 6_000_000,
             active_combat_micros: 3_000_000,
             compress_intervals: false,
@@ -6713,6 +7064,7 @@ mod tests {
             kind: "all".into(),
             segment_indices: vec![0],
             intervals: vec![(0, 2_500)],
+            series_origin_micros: 0,
             elapsed_micros: 2_500,
             active_combat_micros: 1_000,
             compress_intervals: false,
@@ -6943,6 +7295,7 @@ mod tests {
             kind: "all".into(),
             segment_indices: vec![0],
             intervals: vec![(0, 6_000_000)],
+            series_origin_micros: 0,
             elapsed_micros: 6_000_000,
             active_combat_micros: 3_000_000,
             compress_intervals: false,
@@ -6961,6 +7314,37 @@ mod tests {
         assert_eq!(history_provider.rdps_contribution_given, Some(100));
         assert_eq!(history_recipient.rdps_damage, Some(2_100));
         assert_eq!(history_recipient.rdps_contribution_received, Some(100));
+        assert_eq!(
+            history_provider
+                .series
+                .iter()
+                .map(|point| (point.second, point.damage, point.rdps_damage))
+                .collect::<Vec<_>>(),
+            vec![(2, 0, Some(100))]
+        );
+        assert_eq!(
+            history_recipient
+                .series
+                .iter()
+                .map(|point| (point.second, point.damage, point.rdps_damage))
+                .collect::<Vec<_>>(),
+            vec![(2, 1_100, Some(1_000)), (5, 1_100, Some(1_100))]
+        );
+        assert_eq!(
+            history
+                .actors
+                .iter()
+                .flat_map(|actor| actor.series.iter())
+                .map(|point| point.damage)
+                .sum::<i64>(),
+            history
+                .actors
+                .iter()
+                .flat_map(|actor| actor.series.iter())
+                .map(|point| point.rdps_damage.unwrap())
+                .sum::<i64>(),
+            "one-second rDPS buckets must conserve the selected view's damage"
+        );
     }
 
     #[test]

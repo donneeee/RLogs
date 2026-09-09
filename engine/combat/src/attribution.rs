@@ -581,9 +581,20 @@ impl DamageContributionReducer {
     }
 
     pub fn observe_damage(&mut self, event: ContributionDamageEvent) {
+        let _ = self.observe_damage_with_contributions(event);
+    }
+
+    /// Applies one ordinary damage event and returns the exact integer
+    /// transfers attributed for that event. This is the reducer-owned source
+    /// for time-bucket projections; callers must not reconstruct transfers
+    /// from aggregate effect totals or status spans.
+    pub fn observe_damage_with_contributions(
+        &mut self,
+        event: ContributionDamageEvent,
+    ) -> Vec<EffectDamageContribution> {
         self.expire_at(event.observed_micros);
         if !event.included || event.amount <= 0 {
-            return;
+            return Vec::new();
         }
         self.damage_event_count = self.damage_event_count.saturating_add(1);
         let source = self.actors.entry(event.source_actor_id).or_default();
@@ -602,13 +613,13 @@ impl DamageContributionReducer {
             &mut contributors,
         );
         if contributors.is_empty() {
-            return;
+            return Vec::new();
         }
 
         let allocations = allocate_contributions(event.amount, &contributors);
         let total = allocations.iter().map(|(_, amount)| *amount).sum::<i64>();
         if total <= 0 {
-            return;
+            return Vec::new();
         }
         self.attributed_damage_event_count = self.attributed_damage_event_count.saturating_add(1);
         self.attributed_bonus_damage = self.attributed_bonus_damage.saturating_add(total);
@@ -616,6 +627,7 @@ impl DamageContributionReducer {
         recipient.contribution_received = recipient.contribution_received.saturating_add(total);
         recipient.rdps_damage = recipient.rdps_damage.saturating_sub(total);
 
+        let mut applied = Vec::new();
         for (contributor, amount) in allocations {
             if amount == 0 {
                 continue;
@@ -635,7 +647,14 @@ impl DamageContributionReducer {
                 ))
                 .or_default();
             *effect = effect.saturating_add(amount);
+            applied.push(EffectDamageContribution {
+                effect_id: contributor.effect_id,
+                provider_actor_id: contributor.provider_actor_id,
+                recipient_actor_id: event.source_actor_id,
+                amount,
+            });
         }
+        applied
     }
 
     /// Applies a game-specific exact counterfactual after its formula has been

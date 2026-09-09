@@ -73,10 +73,10 @@ use profiles::{
 use rlogs_profiles::LocalProfilePackage;
 
 pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 14;
-pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 4;
+pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 5;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 6;
 pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 15;
-pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 1;
+pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 2;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
@@ -1724,8 +1724,9 @@ impl SubmissionService {
                             Some(verified_state_input_digest(&reconciliation, &events)?);
                         match self.replay_cross_vantage_attribution(&reconciliation, events) {
                             Ok(result) => {
-                                populate_timeline_rdps_spans(
+                                populate_reconciled_timeline_combat_data(
                                     &mut reconciliation.timeline,
+                                    &result.participants,
                                     &result.rdps_influences,
                                     result.canonical_run_observed_bounds,
                                 );
@@ -2941,6 +2942,10 @@ pub struct PublicParticipant {
     pub hps: f64,
     pub tps: f64,
     pub rdps: Option<f64>,
+    /// True when rDPS values are conserved packet-proven known subtotals but
+    /// at least one external formula input is unresolved.
+    #[serde(default)]
+    pub rdps_incomplete: bool,
     pub deaths: u64,
     #[serde(default)]
     pub death_seconds: Vec<u32>,
@@ -2980,6 +2985,15 @@ pub struct PublicSeriesPoint {
     pub damage: i64,
     pub effective_healing: i64,
     pub damage_taken: i64,
+    /// Exact rDPS-adjusted damage assigned by the reducer to this one-second
+    /// run-elapsed bucket. Missing is authoritative unavailability, never an
+    /// instruction to substitute ordinary damage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rdps_damage: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rdps_contribution_given: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rdps_contribution_received: Option<i64>,
 }
 
 /// Public graph/timeline data shared by desktop and web clients.
@@ -2989,9 +3003,10 @@ pub struct PublicSeriesPoint {
 /// row names its clock. An rDPS influence span is aligned to run elapsed only
 /// when both affected-damage endpoints fall inside the exact observed bounds
 /// of the canonical run. Otherwise it remains explicitly `capture_observed`:
-/// clients must not infer an offset for that alignment gap. `attributed_rdps`
-/// remains an aggregate for the span and must not be interpolated into a
-/// time-varying rDPS curve.
+/// clients must not infer an offset for that alignment gap. Influence-row
+/// `attributed_rdps` remains an aggregate for the span and must not be
+/// interpolated. Time-varying rDPS comes only from each participant series'
+/// exact `rdps_damage` bucket and its auditable given/received transfers.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PublicCombatTimeline {
     pub schema_version: u16,
@@ -3061,10 +3076,11 @@ pub struct PublicTimelineParticipantTrack {
     pub character_id: Option<String>,
     pub observed_character_key: Option<String>,
     pub display_name: Option<String>,
-    /// Index into the canonical report/run's `participants` array. The first
-    /// `series_point_count` sparse points are this track's bucket data. This
-    /// keeps the versioned timeline directly resolvable without duplicating a
-    /// potentially large series inside the same response.
+    /// Index into the selected participant array: `participants` for a report
+    /// timeline or `reconciled_participants` for a reconciliation timeline.
+    /// The first `series_point_count` sparse points are this track's bucket
+    /// data. This keeps the versioned timeline directly resolvable without
+    /// duplicating a potentially large series inside the same response.
     pub canonical_participant_index: usize,
     pub series_point_count: usize,
 }
@@ -6061,8 +6077,9 @@ pub fn reconcile_hosted_run_group(
                 canonical_report,
             ) {
                 Ok(result) => {
-                    populate_timeline_rdps_spans(
+                    populate_reconciled_timeline_combat_data(
                         &mut reconciliation.timeline,
+                        &result.participants,
                         &result.rdps_influences,
                         result.canonical_run_observed_bounds,
                     );
@@ -6711,6 +6728,7 @@ fn public_participant(
         hps: actor.hps,
         tps: actor.tps,
         rdps: actor.rdps,
+        rdps_incomplete: actor.rdps_incomplete,
         deaths: actor.deaths,
         death_seconds: actor.death_seconds.clone(),
         abilities: actor
@@ -6751,6 +6769,9 @@ fn public_participant(
                 damage: point.damage,
                 effective_healing: point.effective_healing,
                 damage_taken: point.damage_taken,
+                rdps_damage: point.rdps_damage,
+                rdps_contribution_given: point.rdps_contribution_given,
+                rdps_contribution_received: point.rdps_contribution_received,
             })
             .collect(),
     }
@@ -6811,10 +6832,9 @@ fn public_combat_timeline(
         canonical_report_id: report_id.to_owned(),
         canonical_run_index: run.run_index,
         contributing_report_ids: vec![report_id.to_owned()],
-        duration_micros: run
-            .total_run_time_micros
-            .or(run.true_time_micros)
-            .unwrap_or(run.active_combat_micros),
+        duration_micros: canonical_run_observed_bounds(analysis).map_or(0, |bounds| {
+            bounds.ended_micros.saturating_sub(bounds.started_micros)
+        }),
         time_basis: PublicTimelineTimeBasis::RunElapsed,
         series_bucket_micros: 1_000_000,
         coverage: PublicTimelineCoverage {
@@ -6954,6 +6974,24 @@ fn populate_timeline_combat_data(
     });
 
     populate_timeline_rdps_spans(timeline, influences, canonical_run_observed_bounds);
+}
+
+fn populate_reconciled_timeline_combat_data(
+    timeline: &mut PublicCombatTimeline,
+    participants: &[PublicReconciledParticipant],
+    influences: &[PublicRdpsInfluence],
+    canonical_run_observed_bounds: Option<CanonicalRunObservedBounds>,
+) {
+    let participants = participants
+        .iter()
+        .map(|participant| participant.participant.clone())
+        .collect::<Vec<_>>();
+    populate_timeline_combat_data(
+        timeline,
+        &participants,
+        influences,
+        canonical_run_observed_bounds,
+    );
 }
 
 fn populate_timeline_rdps_spans(
@@ -7498,6 +7536,7 @@ mod tests {
             hps: 0.0,
             tps: 0.0,
             rdps: None,
+            rdps_incomplete: false,
             deaths: 0,
             death_seconds: Vec::new(),
             abilities: Vec::new(),
@@ -7535,9 +7574,16 @@ mod tests {
                 damage: 9_876_543_210,
                 effective_healing: 123,
                 damage_taken: 456,
+                rdps_damage: Some(9_876_543_210),
+                rdps_contribution_given: Some(0),
+                rdps_contribution_received: Some(0),
             })
             .collect();
         let run_series_bytes = serde_json::to_vec(&participant.series).unwrap().len();
+        let point_json = serde_json::to_value(&participant.series[0]).unwrap();
+        assert_eq!(point_json["rdps_damage"], 9_876_543_210_i64);
+        assert_eq!(point_json["rdps_contribution_given"], 0);
+        assert_eq!(point_json["rdps_contribution_received"], 0);
         let mut timeline = PublicCombatTimeline {
             schema_version: PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION,
             series_bucket_micros: 1_000_000,
@@ -7558,6 +7604,62 @@ mod tests {
     }
 
     #[test]
+    fn reconciled_timeline_indexes_provider_only_rdps_buckets_without_losing_loadouts() {
+        let recipient = timeline_participant("recipient");
+        let mut provider = timeline_participant("provider");
+        provider.damage = 0;
+        provider.rdps = Some(10.0);
+        provider.series = vec![PublicSeriesPoint {
+            second: 4,
+            damage: 0,
+            effective_healing: 0,
+            damage_taken: 0,
+            rdps_damage: Some(10),
+            rdps_contribution_given: Some(10),
+            rdps_contribution_received: Some(0),
+        }];
+        let reconciled = vec![
+            PublicReconciledParticipant {
+                participant: recipient,
+                rdps_damage: Some(90),
+                contribution_given: Some(0),
+                contribution_received: Some(10),
+                rdps_incomplete: false,
+            },
+            PublicReconciledParticipant {
+                participant: provider,
+                rdps_damage: Some(10),
+                contribution_given: Some(10),
+                contribution_received: Some(0),
+                rdps_incomplete: false,
+            },
+        ];
+        let mut timeline = PublicCombatTimeline {
+            schema_version: PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION,
+            series_bucket_micros: 1_000_000,
+            loadout_markers: vec![PublicTimelineLoadoutMarker {
+                character_id: "character-recipient".into(),
+                at_micros: 1_000_000,
+                phase_index: 0,
+                source_report_id: "report-a".into(),
+            }],
+            ..PublicCombatTimeline::default()
+        };
+
+        populate_reconciled_timeline_combat_data(&mut timeline, &reconciled, &[], None);
+
+        assert_eq!(timeline.participant_tracks.len(), 2);
+        assert_eq!(timeline.participant_tracks[1].actor_id, "provider");
+        assert_eq!(
+            timeline.participant_tracks[1].canonical_participant_index,
+            1
+        );
+        assert_eq!(timeline.participant_tracks[1].series_point_count, 1);
+        assert_eq!(timeline.loadout_markers.len(), 1);
+        assert_eq!(timeline.loadout_markers[0].source_report_id, "report-a");
+    }
+
+    #[test]
     fn public_timeline_bounds_rows_and_rejects_invalid_influence_spans() {
         let participants = (0..MAXIMUM_TIMELINE_PARTICIPANTS + 1)
             .map(|index| {
@@ -7568,6 +7670,9 @@ mod tests {
                     damage: 1,
                     effective_healing: 0,
                     damage_taken: 0,
+                    rdps_damage: None,
+                    rdps_contribution_given: None,
+                    rdps_contribution_received: None,
                 }];
                 participant
             })
@@ -8144,6 +8249,7 @@ mod tests {
                     hps: 0.0,
                     tps: 0.0,
                     rdps: None,
+                    rdps_incomplete: false,
                     deaths: 0,
                     death_seconds: Vec::new(),
                     abilities: Vec::new(),
@@ -10744,6 +10850,7 @@ mod tests {
             hps: 0.0,
             tps: 0.0,
             rdps: None,
+            rdps_incomplete: false,
             deaths: 0,
             death_seconds: Vec::new(),
             abilities: Vec::new(),
@@ -10878,6 +10985,7 @@ mod tests {
             hps: 0.0,
             tps: 0.0,
             rdps: None,
+            rdps_incomplete: false,
             deaths: 0,
             death_seconds: Vec::new(),
             abilities: Vec::new(),
