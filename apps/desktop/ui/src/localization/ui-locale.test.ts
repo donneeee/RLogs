@@ -64,12 +64,52 @@ describe("desktop UI locale packages", () => {
       "ui.combat_history.browser.previous",
       "ui.combat_history.browser.next",
       "ui.combat_history.browser.page",
+      "ui.combat_history.breakdown.party",
+      "ui.combat_history.breakdown.party_view_aria",
+      "ui.combat_history.breakdown.incoming_damage",
+      "ui.combat_history.breakdown.incoming_damage_description",
+      "ui.combat_history.breakdown.skills",
+      "ui.combat_history.breakdown.healing_and_shielding",
+      "ui.combat_history.breakdown.status_effects",
+      "ui.combat_history.breakdown.effect_count",
+      "ui.combat_history.breakdown.relative_damage_sources",
+      "ui.combat_history.breakdown.granted_by_support_effect",
+      "ui.combat_history.breakdown.influence_ledger",
+      "ui.combat_history.graph.gallery_title",
+      "ui.combat_history.graph.gallery_description",
+      "ui.combat_history.graph.damage_title",
+      "ui.combat_history.graph.damage_description",
+      "ui.combat_history.graph.healing_title",
+      "ui.combat_history.graph.healing_description",
+      "ui.combat_history.graph.damage_taken_title",
+      "ui.combat_history.graph.damage_taken_description",
+      "ui.combat_history.graph.dps",
+      "ui.combat_history.graph.hps",
+      "ui.combat_history.graph.tps",
+      "ui.combat_history.graph.metric_aria",
+      "ui.combat_history.graph.show_actor_aria",
+      "ui.combat_history.graph.hide_actor_aria",
+      "ui.combat_history.graph.npc",
+      "ui.combat_history.graph.no_values",
+      "ui.combat_history.graph.all_hidden",
+      "ui.combat_history.graph.average",
+      "ui.combat_history.graph.peak",
+      "ui.combat_history.graph.series_summary",
       "ui.combat_history.graph.aria",
       "ui.combat_history.graph.run_time",
       "ui.combat_history.graph.inspect_help",
+      "ui.combat_history.graph.inspect_value",
     ]) {
       expect(localizer.t(key), key).not.toBe(key);
     }
+    expect(localizer.t("ui.combat_history.graph.inspect_value", {
+      actor: "MarieRose",
+      value: "12,345.6",
+      rate: "DPS",
+    })).toBe("MarieRose 12,345.6 DPS");
+    expect(localizer.t("ui.combat_history.graph.hide_actor_aria", {
+      actor: "MarieRose",
+    })).toBe("Hide MarieRose in timelines");
   });
 
   it("uses exact, base-language, English, then stable-key fallback", async () => {

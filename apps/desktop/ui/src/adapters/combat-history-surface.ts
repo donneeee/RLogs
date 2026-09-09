@@ -90,32 +90,34 @@ const HEALING_ABILITY_SORT_COLUMNS: typeof ABILITY_SORT_COLUMNS = [
   { key: "hps", label: "HPS", numeric: true },
 ];
 
-const GRAPH_METRICS: readonly GraphDefinition[] = [
-  {
-    metric: "damage",
-    title: "Damage timeline",
-    rateLabel: "DPS",
-    description: "Five-second moving damage rate",
-  },
-  {
-    metric: "effective_healing",
-    title: "Healing timeline",
-    rateLabel: "HPS",
-    description: "Five-second moving effective-healing rate",
-  },
-  {
-    metric: "damage_taken",
-    title: "Damage taken timeline",
-    rateLabel: "TPS",
-    description: "Five-second moving damage-taken rate",
-  },
-];
-
 interface GraphDefinition {
   metric: GraphMetric;
   title: string;
   rateLabel: string;
   description: string;
+}
+
+function graphDefinitions(localizer: UiLocalizer): readonly GraphDefinition[] {
+  return [
+    {
+      metric: "damage",
+      title: localizer.t("ui.combat_history.graph.damage_title"),
+      rateLabel: localizer.t("ui.combat_history.graph.dps"),
+      description: localizer.t("ui.combat_history.graph.damage_description"),
+    },
+    {
+      metric: "effective_healing",
+      title: localizer.t("ui.combat_history.graph.healing_title"),
+      rateLabel: localizer.t("ui.combat_history.graph.hps"),
+      description: localizer.t("ui.combat_history.graph.healing_description"),
+    },
+    {
+      metric: "damage_taken",
+      title: localizer.t("ui.combat_history.graph.damage_taken_title"),
+      rateLabel: localizer.t("ui.combat_history.graph.tps"),
+      description: localizer.t("ui.combat_history.graph.damage_taken_description"),
+    },
+  ];
 }
 
 export interface ActorGraphSeries {
@@ -1522,7 +1524,7 @@ export function mountCombatHistorySurface(
     ) ?? settings.historyPartyViews[0]!;
     historyPartyViewId = partyView.id;
     const viewButtons = element("div", "combat-history-party-view-buttons");
-    viewButtons.setAttribute("aria-label", "Party table view");
+    viewButtons.setAttribute("aria-label", ui.t("ui.combat_history.breakdown.party_view_aria"));
     for (const candidate of settings.historyPartyViews) {
       const viewButton = button(candidate.label, "combat-history-party-view-button");
       viewButton.dataset.selected = String(candidate.id === partyView.id);
@@ -1537,7 +1539,7 @@ export function mountCombatHistorySurface(
     }
     card.append(
       element("div", "card-heading",
-        element("div", "", element("h2", "", "Party"), viewButtons),
+        element("div", "", element("h2", "", ui.t("ui.combat_history.breakdown.party")), viewButtons),
         element(
           "span", "",
           targetActorId ? "Damage filtered to one entity" : participantCountLabel(participants),
@@ -1721,8 +1723,8 @@ export function mountCombatHistorySurface(
       element(
         "div",
         "card-heading",
-        element("h2", "", "Incoming damage"),
-        element("span", "", "Exact packet total by source and ability"),
+        element("h2", "", ui.t("ui.combat_history.breakdown.incoming_damage")),
+        element("span", "", ui.t("ui.combat_history.breakdown.incoming_damage_description")),
       ),
     );
 
@@ -1976,7 +1978,9 @@ export function mountCombatHistorySurface(
     const card = element("section", "content-card combat-history-skill-card");
     card.append(
       element("div", "card-heading",
-        element("h2", "", detailMode === "healing" ? "Healing and shielding" : "Skills"),
+        element("h2", "", detailMode === "healing"
+          ? ui.t("ui.combat_history.breakdown.healing_and_shielding")
+          : ui.t("ui.combat_history.breakdown.skills")),
         element("span", "", targetActorId ? "Target-filtered" : `${skillActor.abilities.length} owned abilities`),
       ),
     );
@@ -2163,8 +2167,8 @@ export function mountCombatHistorySurface(
       element(
         "div",
         "card-heading",
-        element("h2", "", "Party timelines"),
-        element("span", "", "One-second source buckets · five-second moving rate"),
+        element("h2", "", ui.t("ui.combat_history.graph.gallery_title")),
+        element("span", "", ui.t("ui.combat_history.graph.gallery_description")),
       ),
     );
     const legend = element("div", "combat-history-graph-legend");
@@ -2179,14 +2183,16 @@ export function mountCombatHistorySurface(
       );
       control.setAttribute(
         "aria-label",
-        `${hidden ? "Show" : "Hide"} ${actorLabel(actor)} in timelines`,
+        ui.t(hidden
+          ? "ui.combat_history.graph.show_actor_aria"
+          : "ui.combat_history.graph.hide_actor_aria", { actor: actorLabel(actor) }),
       );
       control.append(
         element("span", "combat-history-series-swatch"),
         element("strong", "", actorLabel(actor)),
       );
       if (graphActorKind(actor) === "npc") {
-        control.append(element("span", "combat-history-legend-npc", "NPC"));
+        control.append(element("span", "combat-history-legend-npc", ui.t("ui.combat_history.graph.npc")));
       }
       control.addEventListener("click", () => {
         const next = new Set(hiddenGraphActors);
@@ -2198,9 +2204,10 @@ export function mountCombatHistorySurface(
       legend.append(control);
     }
     gallery.append(legend);
-    const definition = GRAPH_METRICS.find(
+    const definitions = graphDefinitions(ui);
+    const definition = definitions.find(
       (candidate) => candidate.metric === graphMetric,
-    ) ?? GRAPH_METRICS[0]!;
+    ) ?? definitions[0]!;
     gallery.append(
       renderMetricGraph(
         participants,
@@ -2225,7 +2232,9 @@ export function mountCombatHistorySurface(
       (effect) => targetActorId === null || effect.target_actor_id === targetActorId,
     );
     card.append(
-      element("div", "card-heading", element("h2", "", "Status effects"), element("span", "", `${effects.length} effect IDs`)),
+      element("div", "card-heading", element("h2", "", ui.t("ui.combat_history.breakdown.status_effects")), element("span", "", ui.t("ui.combat_history.breakdown.effect_count", {
+        count: ui.formatNumber(effects.length),
+      }))),
     );
     if (effects.length === 0) {
       card.append(element("p", "runtime-empty-result", "No attributed status events in this filter."));
@@ -2269,7 +2278,7 @@ export function mountCombatHistorySurface(
       element(
         "div",
         "card-heading",
-        element("h2", "", "Relative damage sources"),
+        element("h2", "", ui.t("ui.combat_history.breakdown.relative_damage_sources")),
         element(
           "span",
           "",
@@ -2304,7 +2313,7 @@ export function mountCombatHistorySurface(
     if (breakdown.grantedEffects.length > 0) {
       const section = element("section", "combat-history-rdps-summary-section");
       section.append(
-        element("h3", "", "Granted by support effect"),
+        element("h3", "", ui.t("ui.combat_history.breakdown.granted_by_support_effect")),
         element(
           "p",
           "card-copy",
@@ -2378,7 +2387,7 @@ export function mountCombatHistorySurface(
       element(
         "summary",
         "card-heading combat-history-influence-summary",
-        element("h2", "", "Exact influence audit ledger"),
+        element("h2", "", ui.t("ui.combat_history.breakdown.influence_ledger")),
         element(
           "span",
           "",
@@ -3203,7 +3212,7 @@ function renderMetricGraph(
       "div",
       "combat-history-graph-heading",
       element("div", "", element("h3", "", definition.title), element("p", "", definition.description)),
-      renderGraphMetricToggle(definition.metric, selectMetric),
+      renderGraphMetricToggle(definition.metric, selectMetric, localizer),
     ),
   );
   if (allSeries.length === 0) {
@@ -3211,7 +3220,7 @@ function renderMetricGraph(
       element(
         "p",
         "runtime-empty-result",
-        `No ${definition.rateLabel} values are available in this segment.`,
+        localizer.t("ui.combat_history.graph.no_values", { rate: definition.rateLabel }),
       ),
     );
     return card;
@@ -3221,7 +3230,7 @@ function renderMetricGraph(
       element(
         "p",
         "combat-history-graph-note",
-        "Every party line is hidden. The run-scale axes remain fixed so re-enabling a line does not change the measurements.",
+        localizer.t("ui.combat_history.graph.all_hidden"),
       ),
     );
   }
@@ -3245,13 +3254,13 @@ function renderMetricGraph(
       element(
         "span",
         "combat-history-graph-stat-metric",
-        element("span", "combat-history-graph-stat-label", "Avg."),
+        element("span", "combat-history-graph-stat-label", localizer.t("ui.combat_history.graph.average")),
         element("span", "combat-history-graph-stat-value", COMPACT.format(entry.average)),
       ),
       element(
         "span",
         "combat-history-graph-stat-metric",
-        element("span", "combat-history-graph-stat-label", "Peak"),
+        element("span", "combat-history-graph-stat-label", localizer.t("ui.combat_history.graph.peak")),
         element("span", "combat-history-graph-stat-value", COMPACT.format(entry.peak)),
       ),
     );
@@ -3264,11 +3273,12 @@ function renderMetricGraph(
 function renderGraphMetricToggle(
   selectedMetric: GraphMetric,
   selectMetric: (metric: GraphMetric) => void,
+  localizer: UiLocalizer,
 ): HTMLElement {
   const toggle = element("div", "combat-history-graph-metric-toggle");
   toggle.setAttribute("role", "group");
-  toggle.setAttribute("aria-label", "Timeline metric");
-  for (const definition of GRAPH_METRICS) {
+  toggle.setAttribute("aria-label", localizer.t("ui.combat_history.graph.metric_aria"));
+  for (const definition of graphDefinitions(localizer)) {
     const option = button(definition.rateLabel, "");
     const selected = definition.metric === selectedMetric;
     option.dataset.selected = String(selected);
@@ -3419,7 +3429,12 @@ function partyLineChart(
     }
     polyline.append(
       svgTitle(
-        `${actorLabel(entry.actor)} · avg ${NUMBER.format(entry.average)} · peak ${NUMBER.format(entry.peak)} ${definition.rateLabel}`,
+        localizer.t("ui.combat_history.graph.series_summary", {
+          actor: actorLabel(entry.actor),
+          average: localizer.formatNumber(entry.average, { maximumFractionDigits: 1 }),
+          peak: localizer.formatNumber(entry.peak, { maximumFractionDigits: 1 }),
+          rate: definition.rateLabel,
+        }),
       ),
     );
     svg.append(polyline);
@@ -3479,7 +3494,11 @@ function partyLineChart(
         const item = element(
           "span",
           "combat-history-graph-inspection-value",
-          `${value.label} ${NUMBER.format(value.value)} ${definition.rateLabel}`,
+          localizer.t("ui.combat_history.graph.inspect_value", {
+            actor: value.label,
+            value: localizer.formatNumber(value.value, { maximumFractionDigits: 1 }),
+            rate: definition.rateLabel,
+          }),
         );
         item.style.setProperty("--series-color", value.color);
         return item;
