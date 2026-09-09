@@ -62,7 +62,7 @@ export function reconciliationSourceIdentity(source) {
 }
 
 export function validateReconciliationOutput(value, runGroupId, sources) {
-  if (value?.schema_version !== 15 || value?.run_group_id !== runGroupId ||
+  if (value?.schema_version !== 16 || value?.run_group_id !== runGroupId ||
       !RECONCILIATION_ID.test(value?.reconciliation_id ?? "") ||
       !Array.isArray(value?.reports) || !value?.canonical_spine) return false;
   const expected = sources.map(reconciliationSourceIdentity).sort();

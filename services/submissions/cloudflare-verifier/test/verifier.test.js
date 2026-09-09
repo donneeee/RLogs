@@ -98,7 +98,7 @@ test("reconciliation output must preserve the exact source set and canonical spi
     { report_id: `rpt_${"b".repeat(32)}`, run_index: 1 },
   ];
   const output = {
-    schema_version: 15,
+    schema_version: 16,
     reconciliation_id: `rec_${"c".repeat(32)}`,
     run_group_id: "run_exact",
     status: "cross_vantage_evidence_available",
@@ -106,7 +106,7 @@ test("reconciliation output must preserve the exact source set and canonical spi
     reports: [...sources].reverse(),
   };
   assert.equal(validateReconciliationOutput(output, "run_exact", sources), true);
-  assert.equal(validateReconciliationOutput({ ...output, schema_version: 14 }, "run_exact", sources), false);
+  assert.equal(validateReconciliationOutput({ ...output, schema_version: 15 }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, reports: [sources[0]] }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, canonical_spine: {
     report_id: `rpt_${"d".repeat(32)}`, run_index: 0,

@@ -44,6 +44,7 @@ use rlogs_game_bpsr::{
 use rlogs_log_format::{RlogLimits, RlogReader};
 use rlogs_plugin_combat_meter::{
     CombatHistorySnapshot, CombatHistoryView, CombatTimelinePlugin, HistoryActorSummary,
+    HistoryRateClockPoint,
 };
 use rlogs_plugin_encounter_recorder::EncounterRecorderPlugin;
 use rlogs_submission::{
@@ -72,11 +73,11 @@ use profiles::{
 };
 use rlogs_profiles::LocalProfilePackage;
 
-pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 14;
-pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 5;
+pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 15;
+pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 6;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 6;
-pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 15;
-pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 2;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 16;
+pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 3;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
@@ -3006,7 +3007,9 @@ pub struct PublicSeriesPoint {
 /// clients must not infer an offset for that alignment gap. Influence-row
 /// `attributed_rdps` remains an aggregate for the span and must not be
 /// interpolated. Time-varying rDPS comes only from each participant series'
-/// exact `rdps_damage` bucket and its auditable given/received transfers.
+/// exact `rdps_damage` bucket and its auditable given/received transfers. The
+/// shared rate clock supplies reducer-authored cumulative eDPS/aDPS
+/// denominators; clients must not replace an incomplete clock with wall time.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PublicCombatTimeline {
     pub schema_version: u16,
@@ -3020,6 +3023,15 @@ pub struct PublicCombatTimeline {
     pub time_basis: PublicTimelineTimeBasis,
     pub series_bucket_micros: u64,
     pub coverage: PublicTimelineCoverage,
+    /// Shared cumulative rate denominators at each one-second playback
+    /// boundary. These are authored by the combat reducer from the same
+    /// selected intervals as the published participant totals.
+    #[serde(default)]
+    pub rate_clock: Vec<PublicTimelineRateClockPoint>,
+    /// False means exact interval evidence did not reproduce the reducer's
+    /// final denominators. Consumers must not synthesize a clock in that case.
+    #[serde(default)]
+    pub rate_clock_complete: bool,
     #[serde(default)]
     pub participant_tracks: Vec<PublicTimelineParticipantTrack>,
     #[serde(default)]
@@ -3030,6 +3042,13 @@ pub struct PublicCombatTimeline {
     pub rdps_influence_spans: Vec<PublicTimelineRdpsInfluenceSpan>,
     #[serde(default)]
     pub omitted: PublicTimelineOmittedCounts,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicTimelineRateClockPoint {
+    pub second: u32,
+    pub edps_elapsed_micros: u64,
+    pub adps_elapsed_micros: u64,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -3127,6 +3146,8 @@ pub struct PublicTimelineOmittedCounts {
     pub death_markers: usize,
     pub loadout_markers: usize,
     pub rdps_influence_spans: usize,
+    #[serde(default)]
+    pub rate_clock_points: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -4620,7 +4641,7 @@ fn public_runs(
                 },
                 timeline: PublicCombatTimeline::default(),
             };
-            public_run.timeline = public_combat_timeline(report_id, &public_run, analysis);
+            public_run.timeline = public_combat_timeline(report_id, &public_run, view, analysis);
             Some(public_run)
         })
         .collect()
@@ -6824,6 +6845,7 @@ fn public_rdps_influences(view: &CombatHistoryView) -> Vec<PublicRdpsInfluence> 
 fn public_combat_timeline(
     report_id: &str,
     run: &PublicRun,
+    view: Option<&CombatHistoryView>,
     analysis: &RunAnalysis,
 ) -> PublicCombatTimeline {
     let mut timeline = PublicCombatTimeline {
@@ -6847,6 +6869,8 @@ fn public_combat_timeline(
                 PublicTimelineGapTiming::CountOnly
             },
         },
+        rate_clock: Vec::new(),
+        rate_clock_complete: false,
         participant_tracks: Vec::new(),
         death_markers: Vec::new(),
         loadout_markers: Vec::new(),
@@ -6859,11 +6883,37 @@ fn public_combat_timeline(
         &run.rdps_influences,
         canonical_run_observed_bounds(analysis),
     );
+    if let Some(view) = view {
+        populate_timeline_rate_clock(&mut timeline, &view.rate_clock, view.rate_clock_complete);
+    }
     populate_timeline_loadouts(
         &mut timeline,
         combat_loadout_marker_sources(report_id, &run.combat_loadout_phases),
     );
     timeline
+}
+
+fn populate_timeline_rate_clock(
+    timeline: &mut PublicCombatTimeline,
+    points: &[HistoryRateClockPoint],
+    complete: bool,
+) {
+    timeline.rate_clock.clear();
+    timeline.rate_clock_complete = false;
+    let kept = points.len().min(MAXIMUM_TIMELINE_SERIES_POINTS);
+    timeline.omitted.rate_clock_points = points.len().saturating_sub(kept);
+    if !complete || timeline.omitted.rate_clock_points != 0 {
+        return;
+    }
+    timeline.rate_clock = points
+        .iter()
+        .map(|point| PublicTimelineRateClockPoint {
+            second: point.second,
+            edps_elapsed_micros: point.edps_elapsed_micros,
+            adps_elapsed_micros: point.adps_elapsed_micros,
+        })
+        .collect();
+    timeline.rate_clock_complete = true;
 }
 
 fn combat_loadout_marker_sources<'a>(
@@ -7601,6 +7651,35 @@ mod tests {
         let timeline_bytes = serde_json::to_vec(&timeline).unwrap().len();
         assert!(run_series_bytes > 50_000);
         assert!(timeline_bytes < 1_024);
+    }
+
+    #[test]
+    fn public_timeline_projects_only_complete_reducer_rate_clocks() {
+        let points = vec![
+            HistoryRateClockPoint {
+                second: 0,
+                edps_elapsed_micros: 1_000_000,
+                adps_elapsed_micros: 1_000_000,
+            },
+            HistoryRateClockPoint {
+                second: 1,
+                edps_elapsed_micros: 2_000_000,
+                adps_elapsed_micros: 1_000_000,
+            },
+        ];
+        let mut timeline = PublicCombatTimeline::default();
+
+        populate_timeline_rate_clock(&mut timeline, &points, true);
+
+        assert!(timeline.rate_clock_complete);
+        assert_eq!(timeline.rate_clock.len(), 2);
+        assert_eq!(timeline.rate_clock[1].edps_elapsed_micros, 2_000_000);
+        assert_eq!(timeline.rate_clock[1].adps_elapsed_micros, 1_000_000);
+        assert_eq!(timeline.omitted.rate_clock_points, 0);
+
+        populate_timeline_rate_clock(&mut timeline, &points, false);
+        assert!(!timeline.rate_clock_complete);
+        assert!(timeline.rate_clock.is_empty());
     }
 
     #[test]
@@ -10960,6 +11039,7 @@ mod tests {
         report.runs[0].timeline = public_combat_timeline(
             report_id,
             &report.runs[0],
+            None,
             &fixture_analysis("fixture-session", Some("instance-1")),
         );
         report

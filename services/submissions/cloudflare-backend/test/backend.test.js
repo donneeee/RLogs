@@ -379,7 +379,7 @@ test("new hosted reports and catalog rows are read from D1 and R2", async () => 
 test("run-group reconciliation reads the current public D1 pointer from R2", async () => {
   const runGroupId = "run_exact_group";
   const reconciliation = {
-    schema_version: 15, reconciliation_id: `rec_${"a".repeat(32)}`, run_group_id: runGroupId,
+    schema_version: 16, reconciliation_id: `rec_${"a".repeat(32)}`, run_group_id: runGroupId,
   };
   const env = environment({
     [`fs:reconciliations/${runGroupId}.json`]: JSON.stringify({ legacy: true }),
@@ -405,7 +405,7 @@ test("run-group reconciliation reads the current public D1 pointer from R2", asy
 
 test("run-group reconciliation falls back to the legacy object only without hosted bindings", async () => {
   const runGroupId = "run_legacy_group";
-  const legacy = { schema_version: 14, run_group_id: runGroupId };
+  const legacy = { schema_version: 15, run_group_id: runGroupId };
   const env = environment({ [`fs:reconciliations/${runGroupId}.json`]: JSON.stringify(legacy) });
   delete env.RLOGS_DB;
   const response = await backend.fetch(new Request(

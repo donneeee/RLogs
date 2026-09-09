@@ -39,6 +39,7 @@ const MAXIMUM_RUN_ENTRY_BOUNDARIES: usize = 256;
 /// capture runs for hours. History keeps its existing complete projection from
 /// compact facts; only the ephemeral overlay relationship ledger uses this cap.
 const MAXIMUM_LIVE_RDPS_INFLUENCE_RELATIONSHIPS: usize = 4_096;
+const MAXIMUM_HISTORY_RATE_CLOCK_POINTS: usize = 86_400;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CombatHistorySnapshot {
@@ -118,6 +119,16 @@ pub struct CombatHistoryView {
     pub segment_indices: Vec<u32>,
     pub elapsed_micros: u64,
     pub active_combat_micros: u64,
+    /// Reducer-authored cumulative denominators at each one-second playback
+    /// boundary. eDPS advances over selected encounter intervals (including
+    /// retry pulls but excluding their recovery gaps); aDPS advances only
+    /// over canonical combat windows. Empty with `rate_clock_complete=false`
+    /// means the clock could not be reconstructed exactly and must not be
+    /// inferred by consumers.
+    #[serde(default)]
+    pub rate_clock: Vec<HistoryRateClockPoint>,
+    #[serde(default)]
+    pub rate_clock_complete: bool,
     pub actors: Vec<HistoryActorSummary>,
     pub targets: Vec<HistoryTargetIdentity>,
     /// Compact, exact relationships projected from packet-proven damage
@@ -130,6 +141,13 @@ pub struct CombatHistoryView {
     /// Exact numeric effect IDs remain the join and attribution authority.
     #[serde(default)]
     pub rdps_effect_presentations: Vec<HistoryRdpsEffectPresentation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryRateClockPoint {
+    pub second: u32,
+    pub edps_elapsed_micros: u64,
+    pub adps_elapsed_micros: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1126,6 +1144,21 @@ struct HistorySeriesAccumulator {
 struct HistorySeriesTransfer {
     given: i64,
     received: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct HistoryRdpsDamageContext {
+    second: u32,
+    observed_damage: i64,
+    affected_ability_id: Option<i64>,
+    affected_target: (u64, i64),
+    critical: Option<bool>,
+}
+
+#[derive(Debug, Clone)]
+struct HistoryRdpsDamageEvent {
+    context: HistoryRdpsDamageContext,
+    exact_transfer: HistoryExactRational,
 }
 
 /// Restorable live presentation state captured at an authoritative phase
@@ -3018,9 +3051,11 @@ impl CombatTimelinePlugin {
         refreshed.presentation_scene_name = history.presentation_scene_name.clone();
         refreshed.views = std::mem::take(&mut history.views);
         for (view, spec) in refreshed.views.iter_mut().zip(specs) {
+            let rate_clock = history_rate_clock(&spec);
             view.label = spec.label;
             view.elapsed_micros = spec.elapsed_micros;
             view.active_combat_micros = spec.active_combat_micros;
+            (view.rate_clock, view.rate_clock_complete) = rate_clock;
         }
         *history = refreshed;
         true
@@ -3094,6 +3129,7 @@ impl CombatTimelinePlugin {
             label: "Entire run".into(),
             kind: "all".into(),
             segment_indices: all_segments,
+            active_intervals: history_active_intervals(run, &all_intervals),
             intervals: all_intervals,
             series_origin_micros: started_micros,
             elapsed_micros: reviewed_game_time_micros,
@@ -3105,12 +3141,14 @@ impl CombatTimelinePlugin {
                 .intervals
                 .first()
                 .map_or(started_micros, |(started, _)| *started);
+            let active_intervals = history_active_intervals(run, &projection.intervals);
             specs.push(HistoryViewSpec {
                 id: "true_time".into(),
                 label: "True Time".into(),
                 kind: "projected_best".into(),
                 segment_indices: projection.segment_indices,
                 intervals: projection.intervals,
+                active_intervals,
                 series_origin_micros,
                 elapsed_micros: true_time_micros.unwrap_or_default(),
                 active_combat_micros: projection.active_combat_micros,
@@ -3142,6 +3180,7 @@ impl CombatTimelinePlugin {
             let series_origin_micros = intervals
                 .first()
                 .map_or(started_micros, |(started, _)| *started);
+            let active_intervals = history_active_intervals(run, &intervals);
             specs.push(HistoryViewSpec {
                 id: id.into(),
                 label: label.into(),
@@ -3152,6 +3191,7 @@ impl CombatTimelinePlugin {
                     .map(|(started, ended)| ended.saturating_sub(*started))
                     .sum(),
                 intervals,
+                active_intervals,
                 series_origin_micros,
                 active_combat_micros: selected
                     .iter()
@@ -3176,12 +3216,14 @@ impl CombatTimelinePlugin {
         failed_boss_attempts
             .sort_unstable_by_key(|encounter| (encounter.started_micros, encounter.index));
         for (retry_index, encounter) in failed_boss_attempts.into_iter().enumerate() {
+            let intervals = vec![(encounter.started_micros, encounter.ended_micros)];
             specs.push(HistoryViewSpec {
                 id: format!("retry:{}", retry_index + 1),
                 label: format!("Retry #{}", retry_index + 1),
                 kind: "retry".into(),
                 segment_indices: vec![encounter.segment_index],
-                intervals: vec![(encounter.started_micros, encounter.ended_micros)],
+                active_intervals: history_active_intervals(run, &intervals),
+                intervals,
                 series_origin_micros: encounter.started_micros,
                 elapsed_micros: encounter.wall_time_micros,
                 active_combat_micros: encounter.active_combat_micros,
@@ -3191,12 +3233,14 @@ impl CombatTimelinePlugin {
 
         if run.segments.len() > 2 {
             for segment in &run.segments {
+                let intervals = vec![(segment.started_micros, segment.ended_micros)];
                 specs.push(HistoryViewSpec {
                     id: format!("segment:{}", segment.index),
                     label: format!("{} {}", segment_kind_label(segment.kind), segment.index + 1),
                     kind: "segment".into(),
                     segment_indices: vec![segment.index],
-                    intervals: vec![(segment.started_micros, segment.ended_micros)],
+                    active_intervals: history_active_intervals(run, &intervals),
+                    intervals,
                     series_origin_micros: segment.started_micros,
                     elapsed_micros: segment.wall_time_micros,
                     active_combat_micros: segment.active_combat_micros,
@@ -3420,6 +3464,7 @@ impl CombatTimelinePlugin {
         let mut rdps_series_transfers = BTreeMap::<(u64, u32), HistorySeriesTransfer>::new();
         let mut rdps_rational_series =
             BTreeMap::<(i64, u64, u64, u32), HistoryExactRational>::new();
+        let mut rdps_damage_events = BTreeMap::<(u64, u64), HistoryRdpsDamageEvent>::new();
         let mut rdps_rational_series_valid = true;
         let mut attribution = DamageContributionReducer::new(self.contribution_rules.clone())
             .expect("combat plug-in stores only validated rDPS rules");
@@ -3489,15 +3534,13 @@ impl CombatTimelinePlugin {
                                 .min(u64::from(u32::MAX))
                                 as u32;
                             for transfer in transfers {
-                                let provider = rdps_series_transfers
-                                    .entry((transfer.provider_actor_id, second))
-                                    .or_default();
-                                provider.given = provider.given.saturating_add(transfer.amount);
-                                let recipient = rdps_series_transfers
-                                    .entry((transfer.recipient_actor_id, second))
-                                    .or_default();
-                                recipient.received =
-                                    recipient.received.saturating_add(transfer.amount);
+                                rdps_rational_series_valid &= add_history_series_transfer(
+                                    &mut rdps_series_transfers,
+                                    transfer.provider_actor_id,
+                                    transfer.recipient_actor_id,
+                                    second,
+                                    transfer.amount,
+                                );
                             }
                         }
                     }
@@ -3527,19 +3570,34 @@ impl CombatTimelinePlugin {
                         });
                     if accepted {
                         if let Some(offset_micros) = offset_micros {
-                            if damage_event_sequence.is_some() && affected_target.is_some() {
+                            if let (Some(damage_event_sequence), Some(affected_target)) =
+                                (damage_event_sequence, affected_target)
+                            {
                                 let second = offset_micros
                                     .saturating_div(1_000_000)
                                     .min(u64::from(u32::MAX))
                                     as u32;
-                                let provider = rdps_series_transfers
-                                    .entry((provider_actor_id, second))
-                                    .or_default();
-                                provider.given = provider.given.saturating_add(amount);
-                                let recipient = rdps_series_transfers
-                                    .entry((recipient_actor_id, second))
-                                    .or_default();
-                                recipient.received = recipient.received.saturating_add(amount);
+                                rdps_rational_series_valid &= record_history_rdps_damage_event(
+                                    &mut rdps_damage_events,
+                                    recipient_actor_id,
+                                    damage_event_sequence,
+                                    HistoryRdpsDamageContext {
+                                        second,
+                                        observed_damage,
+                                        affected_ability_id,
+                                        affected_target,
+                                        critical,
+                                    },
+                                    i128::from(amount),
+                                    1,
+                                );
+                                rdps_rational_series_valid &= add_history_series_transfer(
+                                    &mut rdps_series_transfers,
+                                    provider_actor_id,
+                                    recipient_actor_id,
+                                    second,
+                                    amount,
+                                );
                             } else {
                                 rdps_rational_series_valid = false;
                             }
@@ -3603,9 +3661,24 @@ impl CombatTimelinePlugin {
                                 .saturating_div(1_000_000)
                                 .min(u64::from(u32::MAX))
                                 as u32;
-                            if damage_event_sequence.is_none()
-                                || affected_target.is_none()
-                                || rdps_rational_series
+                            if let (Some(damage_event_sequence), Some(affected_target)) =
+                                (damage_event_sequence, affected_target)
+                            {
+                                rdps_rational_series_valid &= record_history_rdps_damage_event(
+                                    &mut rdps_damage_events,
+                                    recipient_actor_id,
+                                    damage_event_sequence,
+                                    HistoryRdpsDamageContext {
+                                        second,
+                                        observed_damage,
+                                        affected_ability_id,
+                                        affected_target,
+                                        critical,
+                                    },
+                                    numerator,
+                                    denominator,
+                                );
+                                rdps_rational_series_valid &= rdps_rational_series
                                     .entry((
                                         effect_id,
                                         provider_actor_id,
@@ -3614,8 +3687,8 @@ impl CombatTimelinePlugin {
                                     ))
                                     .or_default()
                                     .add(numerator, denominator)
-                                    .is_none()
-                            {
+                                    .is_some();
+                            } else {
                                 rdps_rational_series_valid = false;
                             }
                         }
@@ -3881,16 +3954,24 @@ impl CombatTimelinePlugin {
                     break;
                 };
                 for (second, amount) in allocations {
-                    let provider = rdps_series_transfers
-                        .entry((provider_actor_id, second))
-                        .or_default();
-                    provider.given = provider.given.saturating_add(amount);
-                    let recipient = rdps_series_transfers
-                        .entry((recipient_actor_id, second))
-                        .or_default();
-                    recipient.received = recipient.received.saturating_add(amount);
+                    rdps_series_complete &= add_history_series_transfer(
+                        &mut rdps_series_transfers,
+                        provider_actor_id,
+                        recipient_actor_id,
+                        second,
+                        amount,
+                    );
                 }
             }
+            rdps_series_complete &= validate_history_rdps_series(
+                &values,
+                &rdps_series_transfers,
+                &contribution.actors,
+                |actor_id, entity_uuid| {
+                    self.history_identity_at(actor_id, entity_uuid, last_selected_micros)
+                        .is_some_and(|identity| identity.actor_kind.as_deref() == Some("player"))
+                },
+            );
             if rdps_series_complete {
                 for ((actor_id, second), transfer) in rdps_series_transfers {
                     let point = values
@@ -3901,12 +3982,10 @@ impl CombatTimelinePlugin {
                         .or_default();
                     point.rdps_contribution_given = Some(transfer.given);
                     point.rdps_contribution_received = Some(transfer.received);
-                    point.rdps_damage = Some(
-                        point
-                            .damage
-                            .saturating_add(transfer.given)
-                            .saturating_sub(transfer.received),
-                    );
+                    point.rdps_damage = point
+                        .damage
+                        .checked_add(transfer.given)
+                        .and_then(|damage| damage.checked_sub(transfer.received));
                 }
                 for value in values.values_mut() {
                     for point in value.series.values_mut() {
@@ -3979,6 +4058,7 @@ impl CombatTimelinePlugin {
             })
             .collect();
 
+        let (rate_clock, rate_clock_complete) = history_rate_clock(spec);
         CombatHistoryView {
             id: spec.id.clone(),
             label: spec.label.clone(),
@@ -3986,6 +4066,8 @@ impl CombatTimelinePlugin {
             segment_indices: spec.segment_indices.clone(),
             elapsed_micros: spec.elapsed_micros,
             active_combat_micros: spec.active_combat_micros,
+            rate_clock,
+            rate_clock_complete,
             actors,
             targets,
             damage_influences,
@@ -4215,6 +4297,7 @@ struct HistoryViewSpec {
     kind: String,
     segment_indices: Vec<u32>,
     intervals: Vec<(u64, u64)>,
+    active_intervals: Vec<(u64, u64)>,
     series_origin_micros: u64,
     elapsed_micros: u64,
     active_combat_micros: u64,
@@ -4444,6 +4527,116 @@ impl HistoryExactRational {
         self.numerator = next_numerator / &divisor;
         self.denominator = next_denominator / divisor;
     }
+}
+
+fn record_history_rdps_damage_event(
+    events: &mut BTreeMap<(u64, u64), HistoryRdpsDamageEvent>,
+    recipient_actor_id: u64,
+    damage_event_sequence: u64,
+    context: HistoryRdpsDamageContext,
+    numerator: i128,
+    denominator: i128,
+) -> bool {
+    let event = events
+        .entry((recipient_actor_id, damage_event_sequence))
+        .or_insert_with(|| HistoryRdpsDamageEvent {
+            context,
+            exact_transfer: HistoryExactRational::default(),
+        });
+    if event.context != context || event.exact_transfer.add(numerator, denominator).is_none() {
+        return false;
+    }
+    event.exact_transfer.numerator
+        <= BigInt::from(context.observed_damage) * &event.exact_transfer.denominator
+}
+
+fn add_history_series_transfer(
+    transfers: &mut BTreeMap<(u64, u32), HistorySeriesTransfer>,
+    provider_actor_id: u64,
+    recipient_actor_id: u64,
+    second: u32,
+    amount: i64,
+) -> bool {
+    if amount < 0 {
+        return false;
+    }
+    let provider = transfers.entry((provider_actor_id, second)).or_default();
+    let Some(given) = provider.given.checked_add(amount) else {
+        return false;
+    };
+    provider.given = given;
+    let recipient = transfers.entry((recipient_actor_id, second)).or_default();
+    let Some(received) = recipient.received.checked_add(amount) else {
+        return false;
+    };
+    recipient.received = received;
+    true
+}
+
+fn validate_history_rdps_series(
+    values: &BTreeMap<u64, HistoryValueAccumulator>,
+    transfers: &BTreeMap<(u64, u32), HistorySeriesTransfer>,
+    aggregate: &BTreeMap<u64, rlogs_combat::ActorDamageContribution>,
+    is_public_participant: impl Fn(u64, i64) -> bool,
+) -> bool {
+    let mut given_by_actor = BTreeMap::<u64, i64>::new();
+    let mut received_by_actor = BTreeMap::<u64, i64>::new();
+    let mut party_given = 0_i64;
+    let mut party_received = 0_i64;
+    for ((actor_id, second), transfer) in transfers {
+        if transfer.given < 0 || transfer.received < 0 {
+            return false;
+        }
+        let Some(value) = values.get(actor_id) else {
+            return false;
+        };
+        if !is_public_participant(*actor_id, value.entity_uuid) {
+            return false;
+        }
+        let damage = value.series.get(second).map_or(0, |point| point.damage);
+        if transfer.received > damage
+            || damage
+                .checked_add(transfer.given)
+                .and_then(|amount| amount.checked_sub(transfer.received))
+                .is_none()
+        {
+            return false;
+        }
+        let Some(actor_given) = given_by_actor
+            .get(actor_id)
+            .copied()
+            .unwrap_or_default()
+            .checked_add(transfer.given)
+        else {
+            return false;
+        };
+        given_by_actor.insert(*actor_id, actor_given);
+        let Some(actor_received) = received_by_actor
+            .get(actor_id)
+            .copied()
+            .unwrap_or_default()
+            .checked_add(transfer.received)
+        else {
+            return false;
+        };
+        received_by_actor.insert(*actor_id, actor_received);
+        let Some(next_party_given) = party_given.checked_add(transfer.given) else {
+            return false;
+        };
+        party_given = next_party_given;
+        let Some(next_party_received) = party_received.checked_add(transfer.received) else {
+            return false;
+        };
+        party_received = next_party_received;
+    }
+    if party_given != party_received {
+        return false;
+    }
+    aggregate.iter().all(|(actor_id, actor)| {
+        given_by_actor.get(actor_id).copied().unwrap_or_default() == actor.contribution_given
+            && received_by_actor.get(actor_id).copied().unwrap_or_default()
+                == actor.contribution_received
+    })
 }
 
 fn allocate_history_rational_rows(
@@ -4682,6 +4875,120 @@ fn history_fact_offset(
         projected_offset = projected_offset.saturating_add(ended.saturating_sub(*started));
     }
     None
+}
+
+fn history_active_intervals(
+    run: &RunAnalysis,
+    selected_intervals: &[(u64, u64)],
+) -> Vec<(u64, u64)> {
+    let mut intervals = run
+        .encounters
+        .iter()
+        .flat_map(|encounter| &encounter.combat_windows)
+        .flat_map(|window| {
+            selected_intervals
+                .iter()
+                .filter_map(move |(started, ended)| {
+                    let overlap = (
+                        window.started_micros.max(*started),
+                        window.ended_micros.min(*ended),
+                    );
+                    (overlap.1 > overlap.0).then_some(overlap)
+                })
+        })
+        .collect::<Vec<_>>();
+    intervals.sort_unstable();
+    intervals
+}
+
+fn history_rate_clock(spec: &HistoryViewSpec) -> (Vec<HistoryRateClockPoint>, bool) {
+    let projected_duration = if spec.compress_intervals {
+        spec.intervals
+            .iter()
+            .map(|(started, ended)| ended.saturating_sub(*started))
+            .sum()
+    } else {
+        spec.intervals
+            .iter()
+            .map(|(_, ended)| ended.saturating_sub(spec.series_origin_micros))
+            .max()
+            .unwrap_or_default()
+    };
+    let point_count = projected_duration
+        .saturating_add(999_999)
+        .saturating_div(1_000_000)
+        .min(u64::from(u32::MAX)) as usize;
+    if point_count == 0 || point_count > MAXIMUM_HISTORY_RATE_CLOCK_POINTS {
+        return (
+            Vec::new(),
+            point_count == 0 && spec.elapsed_micros == 0 && spec.active_combat_micros == 0,
+        );
+    }
+
+    let points = (0..point_count)
+        .map(|index| {
+            let projected_end = ((index as u64).saturating_add(1))
+                .saturating_mul(1_000_000)
+                .min(projected_duration);
+            let (edps_elapsed_micros, adps_elapsed_micros) =
+                history_rate_clock_at(projected_end, spec);
+            HistoryRateClockPoint {
+                second: index as u32,
+                edps_elapsed_micros,
+                adps_elapsed_micros,
+            }
+        })
+        .collect::<Vec<_>>();
+    let complete = points.last().is_some_and(|point| {
+        point.edps_elapsed_micros == spec.elapsed_micros
+            && point.adps_elapsed_micros == spec.active_combat_micros
+    });
+    if complete {
+        (points, true)
+    } else {
+        // Final totals are reducer authority. If independently retained
+        // interval evidence cannot reproduce them, publishing a plausible
+        // curve would turn an evidence gap into invented timing.
+        (Vec::new(), false)
+    }
+}
+
+fn history_rate_clock_at(projected_end: u64, spec: &HistoryViewSpec) -> (u64, u64) {
+    if !spec.compress_intervals {
+        let observed_end = spec.series_origin_micros.saturating_add(projected_end);
+        let elapsed =
+            interval_overlap_micros((spec.series_origin_micros, observed_end), &spec.intervals);
+        let active = spec
+            .active_intervals
+            .iter()
+            .map(|window| {
+                let bounded = (
+                    window.0.max(spec.series_origin_micros),
+                    window.1.min(observed_end),
+                );
+                interval_overlap_micros(bounded, &spec.intervals)
+            })
+            .sum();
+        return (elapsed, active);
+    }
+
+    let mut remaining = projected_end;
+    let mut elapsed = 0_u64;
+    let mut active = 0_u64;
+    for (started, ended) in &spec.intervals {
+        let selected = remaining.min(ended.saturating_sub(*started));
+        let selected_end = started.saturating_add(selected);
+        elapsed = elapsed.saturating_add(selected);
+        active = active.saturating_add(interval_overlap_micros(
+            (*started, selected_end),
+            &spec.active_intervals,
+        ));
+        remaining = remaining.saturating_sub(selected);
+        if remaining == 0 {
+            break;
+        }
+    }
+    (elapsed, active)
 }
 
 fn history_segment_interval(run: &RunAnalysis, segment: &RunSegmentSummary) -> (u64, u64) {
@@ -5449,6 +5756,173 @@ mod tests {
     }
 
     #[test]
+    fn rdps_damage_event_rejects_combined_transfers_above_observed_damage() {
+        let context = HistoryRdpsDamageContext {
+            second: 4,
+            observed_damage: 100,
+            affected_ability_id: Some(55),
+            affected_target: (9, 909),
+            critical: Some(false),
+        };
+        let mut events = BTreeMap::new();
+
+        assert!(record_history_rdps_damage_event(
+            &mut events,
+            2,
+            77,
+            context,
+            60,
+            1,
+        ));
+        assert!(!record_history_rdps_damage_event(
+            &mut events,
+            2,
+            77,
+            context,
+            41,
+            1,
+        ));
+    }
+
+    #[test]
+    fn rdps_damage_event_rejects_mismatched_join_context() {
+        let context = HistoryRdpsDamageContext {
+            second: 4,
+            observed_damage: 100,
+            affected_ability_id: Some(55),
+            affected_target: (9, 909),
+            critical: Some(false),
+        };
+        let mut events = BTreeMap::new();
+        assert!(record_history_rdps_damage_event(
+            &mut events,
+            2,
+            77,
+            context,
+            10,
+            1,
+        ));
+        assert!(!record_history_rdps_damage_event(
+            &mut events,
+            2,
+            77,
+            HistoryRdpsDamageContext {
+                affected_target: (10, 910),
+                ..context
+            },
+            10,
+            1,
+        ));
+    }
+
+    #[test]
+    fn rdps_series_validation_fails_closed_for_negative_or_nonparticipant_buckets() {
+        let mut values = BTreeMap::new();
+        let mut recipient = HistoryValueAccumulator::default();
+        recipient.series.entry(4).or_default().damage = 100;
+        values.insert(1, HistoryValueAccumulator::default());
+        values.insert(2, recipient);
+        let transfers = BTreeMap::from([
+            (
+                (1, 4),
+                HistorySeriesTransfer {
+                    given: 101,
+                    received: 0,
+                },
+            ),
+            (
+                (2, 4),
+                HistorySeriesTransfer {
+                    given: 0,
+                    received: 101,
+                },
+            ),
+        ]);
+        let aggregate = BTreeMap::from([
+            (
+                1,
+                rlogs_combat::ActorDamageContribution {
+                    raw_damage: 0,
+                    contribution_given: 101,
+                    contribution_received: 0,
+                    rdps_damage: 101,
+                },
+            ),
+            (
+                2,
+                rlogs_combat::ActorDamageContribution {
+                    raw_damage: 100,
+                    contribution_given: 0,
+                    contribution_received: 101,
+                    rdps_damage: -1,
+                },
+            ),
+        ]);
+
+        assert!(!validate_history_rdps_series(
+            &values,
+            &transfers,
+            &aggregate,
+            |_, _| true,
+        ));
+
+        let valid_transfers = BTreeMap::from([
+            (
+                (1, 4),
+                HistorySeriesTransfer {
+                    given: 10,
+                    received: 0,
+                },
+            ),
+            (
+                (2, 4),
+                HistorySeriesTransfer {
+                    given: 0,
+                    received: 10,
+                },
+            ),
+        ]);
+        let valid_aggregate = BTreeMap::from([
+            (
+                1,
+                rlogs_combat::ActorDamageContribution {
+                    raw_damage: 0,
+                    contribution_given: 10,
+                    contribution_received: 0,
+                    rdps_damage: 10,
+                },
+            ),
+            (
+                2,
+                rlogs_combat::ActorDamageContribution {
+                    raw_damage: 100,
+                    contribution_given: 0,
+                    contribution_received: 10,
+                    rdps_damage: 90,
+                },
+            ),
+        ]);
+        assert!(!validate_history_rdps_series(
+            &values,
+            &valid_transfers,
+            &valid_aggregate,
+            |actor_id, _| actor_id == 2,
+        ));
+    }
+
+    #[test]
+    fn rdps_series_transfer_rejects_integer_overflow() {
+        let mut transfers = BTreeMap::from([(
+            (1, 4),
+            HistorySeriesTransfer {
+                given: i64::MAX,
+                received: 0,
+            },
+        )]);
+        assert!(!add_history_series_transfer(&mut transfers, 1, 2, 4, 1,));
+    }
+
+    #[test]
     fn history_series_can_retain_run_origin_before_first_selected_combat() {
         let mut plugin = CombatTimelinePlugin::new();
         plugin.push_history_fact(CombatFact {
@@ -5471,6 +5945,7 @@ mod tests {
             kind: "all".into(),
             segment_indices: vec![0],
             intervals: vec![(2_000_000, 5_000_000)],
+            active_intervals: Vec::new(),
             series_origin_micros: 0,
             elapsed_micros: 5_000_000,
             active_combat_micros: 3_000_000,
@@ -5534,6 +6009,7 @@ mod tests {
             kind: "all".into(),
             segment_indices: vec![0],
             intervals: vec![(0, 2_000_000)],
+            active_intervals: Vec::new(),
             series_origin_micros: 0,
             elapsed_micros: 2_000_000,
             active_combat_micros: 1_000_000,
@@ -5646,6 +6122,7 @@ mod tests {
             kind: "all".into(),
             segment_indices: vec![0],
             intervals: vec![(0, 2_000_000)],
+            active_intervals: Vec::new(),
             series_origin_micros: 0,
             elapsed_micros: 2_000_000,
             active_combat_micros: 1_000_000,
@@ -6256,6 +6733,7 @@ mod tests {
             kind: "all".into(),
             segment_indices: vec![0],
             intervals: vec![(0, 5_000_000)],
+            active_intervals: Vec::new(),
             series_origin_micros: 0,
             elapsed_micros: 5_000_000,
             active_combat_micros: 4_000_000,
@@ -6374,6 +6852,7 @@ mod tests {
             kind: "all".into(),
             segment_indices: vec![0],
             intervals: vec![(0, 2_000_000)],
+            active_intervals: Vec::new(),
             series_origin_micros: 0,
             elapsed_micros: 2_000_000,
             active_combat_micros: 1_000_000,
@@ -6966,6 +7445,7 @@ mod tests {
             kind: "all".into(),
             segment_indices: vec![0],
             intervals: vec![(0, 6_000_000)],
+            active_intervals: Vec::new(),
             series_origin_micros: 0,
             elapsed_micros: 6_000_000,
             active_combat_micros: 3_000_000,
@@ -7064,6 +7544,7 @@ mod tests {
             kind: "all".into(),
             segment_indices: vec![0],
             intervals: vec![(0, 2_500)],
+            active_intervals: Vec::new(),
             series_origin_micros: 0,
             elapsed_micros: 2_500,
             active_combat_micros: 1_000,
@@ -7295,6 +7776,7 @@ mod tests {
             kind: "all".into(),
             segment_indices: vec![0],
             intervals: vec![(0, 6_000_000)],
+            active_intervals: Vec::new(),
             series_origin_micros: 0,
             elapsed_micros: 6_000_000,
             active_combat_micros: 3_000_000,
@@ -7976,6 +8458,61 @@ mod tests {
     }
 
     #[test]
+    fn historical_rate_clock_keeps_recovery_and_inactivity_pauses_distinct() {
+        let spec = HistoryViewSpec {
+            id: "all".into(),
+            label: "Entire run".into(),
+            kind: "all".into(),
+            segment_indices: vec![0, 1],
+            intervals: vec![(0, 5_000_000), (10_000_000, 14_000_000)],
+            active_intervals: vec![
+                (0, 2_000_000),
+                (4_000_000, 5_000_000),
+                (11_000_000, 14_000_000),
+            ],
+            series_origin_micros: 0,
+            elapsed_micros: 9_000_000,
+            active_combat_micros: 6_000_000,
+            compress_intervals: false,
+        };
+        let (clock, complete) = history_rate_clock(&spec);
+
+        assert!(complete);
+        assert_eq!(clock.len(), 14);
+        assert_eq!(clock[1].edps_elapsed_micros, 2_000_000);
+        assert_eq!(clock[1].adps_elapsed_micros, 2_000_000);
+        assert_eq!(clock[3].edps_elapsed_micros, 4_000_000);
+        assert_eq!(clock[3].adps_elapsed_micros, 2_000_000);
+        assert_eq!(clock[7].edps_elapsed_micros, 5_000_000);
+        assert_eq!(clock[7].adps_elapsed_micros, 3_000_000);
+        assert_eq!(clock[10].edps_elapsed_micros, 6_000_000);
+        assert_eq!(clock[10].adps_elapsed_micros, 3_000_000);
+        assert_eq!(clock[13].edps_elapsed_micros, 9_000_000);
+        assert_eq!(clock[13].adps_elapsed_micros, 6_000_000);
+    }
+
+    #[test]
+    fn historical_rate_clock_fails_closed_when_windows_do_not_conserve_final_clock() {
+        let spec = HistoryViewSpec {
+            id: "all".into(),
+            label: "Entire run".into(),
+            kind: "all".into(),
+            segment_indices: vec![0],
+            intervals: vec![(0, 2_000_000)],
+            active_intervals: vec![(0, 1_000_000)],
+            series_origin_micros: 0,
+            elapsed_micros: 2_000_000,
+            active_combat_micros: 2_000_000,
+            compress_intervals: false,
+        };
+
+        let (clock, complete) = history_rate_clock(&spec);
+
+        assert!(!complete);
+        assert!(clock.is_empty());
+    }
+
+    #[test]
     fn history_separates_failed_boss_pulls_from_the_winning_boss_view() {
         let run = RunAnalysis {
             schema_version: 1,
@@ -8068,7 +8605,12 @@ mod tests {
                     ended_micros: 10_000_000,
                     wall_time_micros: 10_000_000,
                     active_combat_micros: 8_000_000,
-                    combat_windows: vec![],
+                    combat_windows: vec![rlogs_combat::CombatWindowSummary {
+                        started_micros: 0,
+                        ended_micros: 8_000_000,
+                        duration_micros: 8_000_000,
+                        closed_at_boundary: true,
+                    }],
                     closed_at_run_end: false,
                 },
                 EncounterSummary {
@@ -8084,7 +8626,12 @@ mod tests {
                     ended_micros: 30_000_000,
                     wall_time_micros: 10_000_000,
                     active_combat_micros: 10_000_000,
-                    combat_windows: vec![],
+                    combat_windows: vec![rlogs_combat::CombatWindowSummary {
+                        started_micros: 20_000_000,
+                        ended_micros: 30_000_000,
+                        duration_micros: 10_000_000,
+                        closed_at_boundary: true,
+                    }],
                     closed_at_run_end: false,
                 },
                 EncounterSummary {
@@ -8100,7 +8647,12 @@ mod tests {
                     ended_micros: 50_000_000,
                     wall_time_micros: 10_000_000,
                     active_combat_micros: 9_000_000,
-                    combat_windows: vec![],
+                    combat_windows: vec![rlogs_combat::CombatWindowSummary {
+                        started_micros: 40_000_000,
+                        ended_micros: 49_000_000,
+                        duration_micros: 9_000_000,
+                        closed_at_boundary: true,
+                    }],
                     closed_at_run_end: false,
                 },
             ],
@@ -8133,6 +8685,12 @@ mod tests {
             .unwrap();
 
         assert_eq!(entire_run.elapsed_micros, 30_000_000);
+        assert!(entire_run.rate_clock_complete);
+        assert_eq!(entire_run.rate_clock.len(), 50);
+        assert_eq!(entire_run.rate_clock[34].edps_elapsed_micros, 20_000_000);
+        assert_eq!(entire_run.rate_clock[34].adps_elapsed_micros, 18_000_000);
+        assert_eq!(entire_run.rate_clock[49].edps_elapsed_micros, 30_000_000);
+        assert_eq!(entire_run.rate_clock[49].adps_elapsed_micros, 27_000_000);
         assert_eq!(history.game_time_micros, Some(30_000_000));
         assert_eq!(bossing.label, "Bossing");
         assert_eq!(bossing.elapsed_micros, 10_000_000);

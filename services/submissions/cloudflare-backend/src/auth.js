@@ -8,8 +8,8 @@ const LOGIN_CODE_LIFETIME_MILLIS = 5 * 60 * 1000;
 const MAXIMUM_QUERY_LIMIT = 250;
 const REPORT_ID_PATTERN = /^rpt_[a-f0-9]{32}$/;
 const VISIBILITIES = new Set(["public", "unlisted", "private"]);
-const CURRENT_PUBLIC_PARSE_SCHEMA_VERSION = 14;
-const CURRENT_PUBLIC_PARSE_PROJECTION_REVISION = 4;
+const CURRENT_PUBLIC_PARSE_SCHEMA_VERSION = 15;
+const CURRENT_PUBLIC_PARSE_PROJECTION_REVISION = 6;
 
 function json(value, status = 200) {
   return Response.json(value, {
