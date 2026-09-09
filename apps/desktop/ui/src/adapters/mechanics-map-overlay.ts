@@ -1632,7 +1632,7 @@ function drawEntities(
     context.shadowColor = colors[entity.kind] ?? "#8aa2ba";
     context.fillStyle = colors[entity.kind] ?? "#8aa2ba";
     context.strokeStyle = "rgba(4,12,20,.95)";
-    context.lineWidth = 2;
+    context.lineWidth = 3;
     context.beginPath();
     if (entity.kind === "local" && entity.facing_radians !== null) {
       context.translate(x, y);
@@ -1687,22 +1687,23 @@ function drawEntities(
       context.fillStyle = "#ff765f";
       context.strokeStyle = "rgba(4, 12, 20, .95)";
       context.beginPath();
-      context.arc(0, 0, 8, 0, Math.PI * 2);
+      context.arc(0, 0, 11, 0, Math.PI * 2);
       context.fill();
       context.stroke();
       context.fillStyle = "#071019";
-      context.font = "950 11px system-ui";
+      context.font = "950 15px system-ui";
       context.fillText("!", 0, 1);
     } else {
       const correct = annotation.kind === "correct_portal";
       context.fillStyle = correct ? "#61e69a" : "#9b8abd";
       context.strokeStyle = "rgba(4, 12, 20, .95)";
       context.rotate(Math.PI / 4);
-      context.fillRect(-7, -7, 14, 14);
-      context.strokeRect(-7, -7, 14, 14);
+      const halfSize = correct ? 10 : 9;
+      context.fillRect(-halfSize, -halfSize, halfSize * 2, halfSize * 2);
+      context.strokeRect(-halfSize, -halfSize, halfSize * 2, halfSize * 2);
       context.rotate(-Math.PI / 4);
       context.fillStyle = "#071019";
-      context.font = "950 10px system-ui";
+      context.font = "950 14px system-ui";
       context.fillText(correct ? "✓" : "×", 0, 1);
     }
     context.restore();
