@@ -509,3 +509,7 @@ path = "tools/action-speed-damage-time-state-proof.rs"
 [[bin]]
 name = "rlogs-bpsr-controlled-formula-capture-receipt"
 path = "tools/controlled-formula-capture-receipt.rs"
+
+[[bin]]
+name = "rlogs-bpsr-marker-journal-audit"
+path = "tools/marker-journal-audit.rs"
