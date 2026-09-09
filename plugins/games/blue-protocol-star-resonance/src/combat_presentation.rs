@@ -1080,6 +1080,7 @@ mod tests {
         let mut observed_ids = BTreeSet::new();
         for (path, source) in [(TECHNICAL_PATH, TECHNICAL), (REVIEWED_PATH, REVIEWED)] {
             let source_manifest: serde_json::Value = serde_json::from_str(source).unwrap();
+            let normalized_source = source.replace("\r\n", "\n");
             assert_eq!(
                 source_manifest["game_build"], BUILD,
                 "{path} is not scoped to the current build"
@@ -1091,7 +1092,7 @@ mod tests {
             assert_eq!(pinned["action_count"].as_u64(), Some(actions.len() as u64));
             assert_eq!(
                 pinned["sha256"].as_str(),
-                Some(format!("{:x}", Sha256::digest(source.as_bytes())).as_str()),
+                Some(format!("{:x}", Sha256::digest(normalized_source.as_bytes())).as_str()),
                 "{path} changed; review its observed-ID coverage and refresh the gate"
             );
 

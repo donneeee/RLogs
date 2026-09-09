@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "deployment_id": "global",
+  "channel": "steam",
+  "game_build": "24687926",
+  "scope": "scene-ids-with-reviewed-current-build-map-assets",
+  "source": {
+    "path": "../../../../../../apps/desktop-tauri/resources/map-compiler/reviewed-map-assets.v1.json",
+    "sha256": "f25acf2ead3cf8645a817946603f2ab8dc7a1ebe21a946bb4b830552fed8bdd6",
+    "map_asset_count": 57,
+    "scene_id_reference_count": 580
+  },
+  "summary": {
+    "reviewed_map_scene_count": 580,
+    "localized_scene_count": 577,
+    "uncovered_scene_ids": [
+      6615,
+      14001,
+      14002
+    ]
+  },
+  "policy": {
+    "exact_build_required": true,
+    "all_shipped_locales_required": true,
+    "raw_id_fallback_is_preserved": true,
+    "invented_labels_are_forbidden": true,
+    "unreported_coverage_drift_fails_ci": true
+  }
+}

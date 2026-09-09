@@ -203,7 +203,13 @@ mod tests {
         );
         assert_eq!(
             gate["source"]["sha256"].as_str(),
-            Some(format!("{:x}", Sha256::digest(OBSERVED.as_bytes())).as_str()),
+            Some(
+                format!(
+                    "{:x}",
+                    Sha256::digest(OBSERVED.replace("\r\n", "\n").as_bytes())
+                )
+                .as_str()
+            ),
             "observed action inventory changed; review every packet-derived monster ID"
         );
 

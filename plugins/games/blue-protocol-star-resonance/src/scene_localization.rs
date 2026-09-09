@@ -199,6 +199,11 @@ pub fn localized_scene_name_for_build(
 mod tests {
     use super::*;
 
+    const SHIPPED_LOCALES: &[&str] = &[
+        "de-DE", "en-US", "es-ES", "fr-FR", "id-ID", "ja-JP", "ko-KR", "pt-BR", "th-TH", "zh-CN",
+        "zh-TW",
+    ];
+
     #[test]
     fn resolves_verified_guild_hunt_scene() {
         let normal = scene_presentation(12_022).unwrap().unwrap();
@@ -297,5 +302,137 @@ mod tests {
                 source.locale
             );
         }
+    }
+
+    #[test]
+    fn current_build_reviewed_map_scene_coverage_gate_reports_every_gap() {
+        use std::collections::BTreeSet;
+
+        use sha2::{Digest, Sha256};
+
+        const BUILD: &str = "24687926";
+        const REVIEWED_MAPS: &str = include_str!(
+            "../../../../apps/desktop-tauri/resources/map-compiler/reviewed-map-assets.v1.json"
+        );
+
+        let gate: serde_json::Value = serde_json::from_str(include_str!(
+            "../game-data/catalog/coverage/reviewed-map-scenes.v1.json"
+        ))
+        .unwrap();
+        assert_eq!(gate["schema_version"], 1);
+        assert_eq!(gate["deployment_id"], "global");
+        assert_eq!(gate["channel"], "steam");
+        assert_eq!(gate["game_build"], BUILD);
+        assert_eq!(
+            gate["scope"],
+            "scene-ids-with-reviewed-current-build-map-assets"
+        );
+        assert_eq!(gate["policy"]["exact_build_required"], true);
+        assert_eq!(gate["policy"]["all_shipped_locales_required"], true);
+        assert_eq!(gate["policy"]["raw_id_fallback_is_preserved"], true);
+        assert_eq!(gate["policy"]["invented_labels_are_forbidden"], true);
+        assert_eq!(gate["policy"]["unreported_coverage_drift_fails_ci"], true);
+        assert_eq!(
+            gate["source"]["path"],
+            "../../../../../../apps/desktop-tauri/resources/map-compiler/reviewed-map-assets.v1.json"
+        );
+        assert_eq!(
+            gate["source"]["sha256"].as_str(),
+            Some(
+                format!(
+                    "{:x}",
+                    Sha256::digest(REVIEWED_MAPS.replace("\r\n", "\n").as_bytes())
+                )
+                .as_str()
+            ),
+            "reviewed map inventory changed; review every map-backed scene ID"
+        );
+
+        let reviewed_maps: serde_json::Value = serde_json::from_str(REVIEWED_MAPS).unwrap();
+        assert_eq!(reviewed_maps["schema_version"], 1);
+        let maps = reviewed_maps["builds"][BUILD].as_array().unwrap();
+        let mut reference_count = 0_u64;
+        let mut reviewed_scene_ids = BTreeSet::new();
+        for map in maps {
+            for scene_id in map["scene_ids"].as_array().unwrap() {
+                let scene_id = scene_id.as_i64().unwrap();
+                assert!(scene_id > 0, "reviewed map has invalid scene ID {scene_id}");
+                reference_count += 1;
+                assert!(
+                    reviewed_scene_ids.insert(scene_id),
+                    "scene {scene_id} is assigned to more than one reviewed map asset"
+                );
+            }
+        }
+
+        let expected_uncovered = gate["summary"]["uncovered_scene_ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|id| id.as_i64().unwrap())
+            .collect::<BTreeSet<_>>();
+        let mut actual_uncovered = BTreeSet::new();
+        let mut malformed = Vec::new();
+        for scene_id in &reviewed_scene_ids {
+            let mut localized_locale_count = 0;
+            for locale in SHIPPED_LOCALES {
+                match localized_scene_name_for_build("global", BUILD, *scene_id, locale) {
+                    Ok(Some(name)) if !name.trim().is_empty() && !name.contains('\u{fffd}') => {
+                        if *locale == "en-US"
+                            && (name.contains("Unresolved")
+                                || name.chars().any(|character| {
+                                    ('\u{3400}'..='\u{9fff}').contains(&character)
+                                }))
+                        {
+                            malformed.push(format!(
+                                "{scene_id}: en-US is not a user-facing English identity: {name}"
+                            ));
+                        }
+                        localized_locale_count += 1;
+                    }
+                    Ok(Some(_)) => malformed.push(format!("{scene_id}: corrupt {locale} name")),
+                    Ok(None) => {}
+                    Err(error) => {
+                        malformed.push(format!("{scene_id}: {locale} lookup error: {error}"));
+                    }
+                }
+            }
+            match localized_locale_count {
+                0 => {
+                    actual_uncovered.insert(*scene_id);
+                }
+                count if count == SHIPPED_LOCALES.len() => {}
+                count => malformed.push(format!(
+                    "{scene_id}: localized in only {count}/{} shipped locales",
+                    SHIPPED_LOCALES.len()
+                )),
+            }
+        }
+
+        assert!(
+            malformed.is_empty(),
+            "reviewed map scene presentation errors:\n{}",
+            malformed.join("\n")
+        );
+        assert_eq!(
+            actual_uncovered, expected_uncovered,
+            "reviewed map scene coverage changed; resolve or explicitly review every gap"
+        );
+        assert_eq!(
+            gate["source"]["map_asset_count"].as_u64(),
+            Some(maps.len() as u64)
+        );
+        assert_eq!(
+            gate["source"]["scene_id_reference_count"].as_u64(),
+            Some(reference_count)
+        );
+        assert_eq!(
+            gate["summary"]["reviewed_map_scene_count"].as_u64(),
+            Some(reviewed_scene_ids.len() as u64)
+        );
+        assert_eq!(
+            gate["summary"]["localized_scene_count"].as_u64(),
+            Some((reviewed_scene_ids.len() - actual_uncovered.len()) as u64)
+        );
     }
 }
