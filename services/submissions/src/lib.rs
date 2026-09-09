@@ -46,9 +46,9 @@ use rlogs_plugin_combat_meter::{
 };
 use rlogs_plugin_encounter_recorder::EncounterRecorderPlugin;
 use rlogs_submission::{
-    ArtifactBuildLimits, LocalLogArtifact, ReportVisibility, Sha256Digest, SubmissionMetadata,
-    SubmissionPurpose, SubmissionSession, UploadManifest, VerificationTier,
-    build_privacy_verified_submission_artifact, submission_privacy_policy_digest,
+    ArtifactBuildLimits, DEFAULT_MAXIMUM_LOG_BYTES, LocalLogArtifact, ReportVisibility,
+    Sha256Digest, SubmissionMetadata, SubmissionPurpose, SubmissionSession, UploadManifest,
+    VerificationTier, build_privacy_verified_submission_artifact, submission_privacy_policy_digest,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -91,6 +91,8 @@ const LIFE_WAVE_DURATION_MILLIS: u64 = 5_000;
 const MAXIMUM_PROFILE_MODULE_INVENTORY: usize = 4_096;
 const MAXIMUM_COMBAT_EQUIPPED_MODULES: usize = 16;
 const MAXIMUM_COMBAT_MODULE_EFFECTS: usize = 16;
+const MAXIMUM_HOSTED_RECONCILIATION_ARTIFACTS: usize = 64;
+const MAXIMUM_HOSTED_RECONCILIATION_BYTES: u64 = 64 * 1024 * 1024 * 1024;
 
 #[derive(Clone)]
 pub enum SubmissionAuthentication {
@@ -1068,6 +1070,21 @@ impl SubmissionService {
         &self,
         reconciliation: &PublicRunReconciliation,
     ) -> Result<Vec<VerifiedCrossVantageStateEvent>, ServiceError> {
+        let artifact_paths = reconciliation
+            .reports
+            .iter()
+            .map(|report| {
+                let digest = Sha256Digest::parse(report.artifact_sha256.clone())?;
+                Ok((report.report_id.clone(), self.artifact_path(&digest)?))
+            })
+            .collect::<Result<BTreeMap<_, _>, ServiceError>>()?;
+        Self::load_verified_cross_vantage_state_events_from_paths(reconciliation, &artifact_paths)
+    }
+
+    fn load_verified_cross_vantage_state_events_from_paths(
+        reconciliation: &PublicRunReconciliation,
+        artifact_paths: &BTreeMap<String, PathBuf>,
+    ) -> Result<Vec<VerifiedCrossVantageStateEvent>, ServiceError> {
         let mut selected_by_report = BTreeMap::<String, SelectedArtifactWitnesses>::new();
         for character in &reconciliation.characters {
             let Some(selected_report_id) = character.selected_report_id.as_deref() else {
@@ -1111,7 +1128,7 @@ impl SubmissionService {
             selected
                 .states
                 .dedup_by_key(|(_, witness)| witness.event_sequence);
-            let report = reconciliation
+            let _report = reconciliation
                 .reports
                 .iter()
                 .find(|report| report.report_id == report_id)
@@ -1120,10 +1137,13 @@ impl SubmissionService {
                         "selected report {report_id} is absent from the reconciliation manifest"
                     ))
                 })?;
-            let digest = Sha256Digest::parse(report.artifact_sha256.clone())?;
-            let path = self.artifact_path(&digest)?;
-            let character_id_by_entity_uuid = artifact_character_id_by_entity_uuid(&path)?;
-            let file = File::open(&path).map_err(|error| {
+            let path = artifact_paths.get(&report_id).ok_or_else(|| {
+                ServiceError::CrossVantageReplay(format!(
+                    "selected report {report_id} has no supplied artifact path"
+                ))
+            })?;
+            let character_id_by_entity_uuid = artifact_character_id_by_entity_uuid(path)?;
+            let file = File::open(path).map_err(|error| {
                 ServiceError::CrossVantageReplay(format!(
                     "could not open selected artifact {} for report {report_id}: {error}",
                     path.display()
@@ -1217,12 +1237,28 @@ impl SubmissionService {
     fn replay_cross_vantage_attribution(
         &self,
         reconciliation: &PublicRunReconciliation,
-        mut imported_events: Vec<VerifiedCrossVantageStateEvent>,
+        imported_events: Vec<VerifiedCrossVantageStateEvent>,
     ) -> Result<CrossVantageReplayResult, ServiceError> {
         let canonical_digest =
             Sha256Digest::parse(reconciliation.canonical_spine.artifact_sha256.clone())?;
         let canonical_path = self.artifact_path(&canonical_digest)?;
-        let canonical_entities = canonical_character_entities(&canonical_path)?;
+        let canonical_report: PublicParseReport =
+            read_json(&self.projection_path(&reconciliation.canonical_spine.report_id)?)?;
+        Self::replay_cross_vantage_attribution_from_path(
+            reconciliation,
+            imported_events,
+            &canonical_path,
+            &canonical_report,
+        )
+    }
+
+    fn replay_cross_vantage_attribution_from_path(
+        reconciliation: &PublicRunReconciliation,
+        mut imported_events: Vec<VerifiedCrossVantageStateEvent>,
+        canonical_path: &Path,
+        canonical_report: &PublicParseReport,
+    ) -> Result<CrossVantageReplayResult, ServiceError> {
+        let canonical_entities = canonical_character_entities(canonical_path)?;
         remap_cross_vantage_state_entities(&mut imported_events, &canonical_entities)?;
 
         let mut remote_factor_learner =
@@ -1231,7 +1267,7 @@ impl SubmissionService {
         let mut stat_resonance_learner =
             BpsrStatResonanceTransitionLearner::new().map_err(ServiceError::Replay)?;
         replay_canonical_with_cross_vantage_state(
-            &canonical_path,
+            canonical_path,
             reconciliation.canonical_spine.run_index,
             &imported_events,
             |envelope, imported| {
@@ -1266,14 +1302,14 @@ impl SubmissionService {
             bundled_run_reducer_config()
                 .map_err(|error| ServiceError::Replay(error.to_string()))?,
         );
-        let header_file = File::open(&canonical_path)?;
+        let header_file = File::open(canonical_path)?;
         let header_reader = RlogReader::new(BufReader::new(header_file), RlogLimits::default())?;
         let header = header_reader.header().clone();
         meter.begin_live(&header);
         encounter.begin_live(&header);
         let mut swift_vortex_audit = SwiftVortexCandidateAuditAnalyzer::new();
         replay_canonical_with_cross_vantage_state(
-            &canonical_path,
+            canonical_path,
             reconciliation.canonical_spine.run_index,
             &imported_events,
             |envelope, imported| {
@@ -1323,8 +1359,6 @@ impl SubmissionService {
             .or_else(|| run.views.first())
             .ok_or_else(|| ServiceError::CrossVantageReplay("canonical run has no view".into()))?;
 
-        let canonical_report: PublicParseReport =
-            read_json(&self.projection_path(&reconciliation.canonical_spine.report_id)?)?;
         let canonical_run = canonical_report
             .runs
             .iter()
@@ -3485,6 +3519,19 @@ pub struct PublicRunReconciliation {
     pub attribution_replay_completed: bool,
 }
 
+/// One current server-produced projection and its immutable sealed artifact.
+///
+/// The entry point rechecks the projection schema, replay tier, report/digest
+/// identity, file digest, and selected run identity. The caller must keep each
+/// path immutable for the duration of the call; paths are rehashed immediately
+/// before replay to detect ordinary replacement races, but hostile storage
+/// mutation requires a content-addressed or descriptor-held hosted adapter.
+pub struct HostedRunArtifact<'a> {
+    pub report: &'a PublicParseReport,
+    pub run_index: u32,
+    pub artifact_path: &'a Path,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicReconciledParticipant {
     #[serde(flatten)]
@@ -5507,6 +5554,254 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
     }
 }
 
+/// Reconciles one exact run group from caller-supplied immutable artifact
+/// paths. This is filesystem-neutral orchestration for hosted workers: object
+/// retrieval stays outside this API, while witness verification, canonical
+/// replay, no-double-counting checks, and conservation remain shared here.
+pub fn reconcile_hosted_run_group(
+    run_group_id: &str,
+    artifacts: &[HostedRunArtifact<'_>],
+) -> Result<PublicRunReconciliation, ServiceError> {
+    validate_identifier(run_group_id, "run group")?;
+    if artifacts.is_empty() || artifacts.len() > MAXIMUM_HOSTED_RECONCILIATION_ARTIFACTS {
+        return Err(ServiceError::CrossVantageReplay(format!(
+            "hosted reconciliation requires 1..={MAXIMUM_HOSTED_RECONCILIATION_ARTIFACTS} artifacts"
+        )));
+    }
+
+    let artifact_lengths = artifacts
+        .iter()
+        .map(|artifact| artifact_file_length(artifact.artifact_path))
+        .collect::<Result<Vec<_>, ServiceError>>()?;
+    validate_hosted_artifact_lengths(&artifact_lengths)?;
+
+    let mut seen_reports = BTreeSet::new();
+    let mut seen_artifact_digests = BTreeSet::new();
+    let mut artifact_paths = BTreeMap::new();
+    let mut reports = BTreeMap::new();
+    let mut group: Option<CatalogRunGroup> = None;
+    for artifact in artifacts {
+        if artifact.report.visibility != ReportVisibility::Public {
+            return Err(ServiceError::CrossVantageReplay(format!(
+                "non-public report {} cannot enter hosted reconciliation",
+                artifact.report.report_id
+            )));
+        }
+        if artifact.report.schema_version != PUBLIC_PARSE_SCHEMA_VERSION
+            || artifact.report.projection_revision != PUBLIC_PARSE_PROJECTION_REVISION
+        {
+            return Err(ServiceError::CrossVantageReplay(format!(
+                "report {} is not on the current public projection contract",
+                artifact.report.report_id
+            )));
+        }
+        if artifact.report.game_plugin_id != BPSR_GAME_PLUGIN_ID {
+            return Err(ServiceError::CrossVantageReplay(format!(
+                "report {} belongs to unsupported game plug-in {}",
+                artifact.report.report_id, artifact.report.game_plugin_id
+            )));
+        }
+        if artifact.report.verification.tier != VerificationTier::Replayed {
+            return Err(ServiceError::CrossVantageReplay(format!(
+                "report {} is not replay verified",
+                artifact.report.report_id
+            )));
+        }
+        validate_identifier(&artifact.report.report_id, "report")?;
+        let mut run_indexes = BTreeSet::new();
+        if artifact
+            .report
+            .runs
+            .iter()
+            .any(|run| !run_indexes.insert(run.run_index))
+        {
+            return Err(ServiceError::CrossVantageReplay(format!(
+                "report {} contains duplicate run indexes",
+                artifact.report.report_id
+            )));
+        }
+        let expected_digest =
+            Sha256Digest::parse(artifact.report.verification.artifact_sha256.clone())?;
+        if artifact.report.report_id != report_id(&expected_digest) {
+            return Err(ServiceError::CrossVantageReplay(format!(
+                "report {} is not bound to its artifact digest",
+                artifact.report.report_id
+            )));
+        }
+        if !seen_artifact_digests.insert(expected_digest.clone()) {
+            return Err(ServiceError::CrossVantageReplay(format!(
+                "artifact digest {expected_digest} was supplied more than once"
+            )));
+        }
+        if !seen_reports.insert(artifact.report.report_id.clone()) {
+            return Err(ServiceError::CrossVantageReplay(format!(
+                "report {} was supplied more than once",
+                artifact.report.report_id
+            )));
+        }
+        let actual_digest = digest_file(artifact.artifact_path)?;
+        if actual_digest != expected_digest {
+            return Err(ServiceError::CrossVantageReplay(format!(
+                "artifact {} does not match report {} digest",
+                artifact.artifact_path.display(),
+                artifact.report.report_id
+            )));
+        }
+        validate_hosted_artifact_header(artifact.report, artifact.artifact_path)?;
+        let run = artifact
+            .report
+            .runs
+            .iter()
+            .find(|run| run.run_index == artifact.run_index)
+            .ok_or_else(|| {
+                ServiceError::CrossVantageReplay(format!(
+                    "report {} has no run index {}",
+                    artifact.report.report_id, artifact.run_index
+                ))
+            })?;
+        if run.run_group_id != run_group_id {
+            return Err(ServiceError::CrossVantageReplay(format!(
+                "report {} run {} belongs to {}, not {run_group_id}",
+                artifact.report.report_id, artifact.run_index, run.run_group_id
+            )));
+        }
+        if run.correlation_method != RunCorrelationMethod::ExactInstanceId {
+            return Err(ServiceError::CrossVantageReplay(format!(
+                "report {} run {} lacks exact-instance correlation",
+                artifact.report.report_id, artifact.run_index
+            )));
+        }
+        let membership = build_private_parse_membership(artifact.artifact_path, artifact.report)?;
+        let private_run_membership = membership
+            .runs
+            .iter()
+            .find(|membership| membership.run_index == artifact.run_index)
+            .ok_or_else(|| {
+                ServiceError::CrossVantageReplay(format!(
+                    "report {} private membership has no run index {}",
+                    artifact.report.report_id, artifact.run_index
+                ))
+            })?;
+        let entry = PublicParseCatalogEntry::from_report(artifact.report, run);
+        let quality = CanonicalSpineQuality::from_report(artifact.report, run);
+        let source = ReconciliationRunSource::from_report(
+            artifact.report,
+            run,
+            Some(private_run_membership),
+        );
+        let milestone_source = MilestoneSource {
+            entry: entry.clone(),
+            authoritative_completion: run.authoritative_completion,
+            participants: run.participants.clone(),
+        };
+        let submitter = artifact.report.submission_provenance.submitter_id.clone();
+        match &mut group {
+            None => {
+                let mut submitters = BTreeSet::new();
+                if let Some(submitter) = submitter {
+                    submitters.insert(submitter);
+                }
+                group = Some(CatalogRunGroup {
+                    representative: entry,
+                    representative_quality: quality,
+                    submitters,
+                    local_profile_witnesses: run
+                        .local_profile_character_ids
+                        .iter()
+                        .cloned()
+                        .collect(),
+                    reconciliation_sources: vec![source],
+                    milestone_source,
+                });
+            }
+            Some(group) => {
+                group
+                    .local_profile_witnesses
+                    .extend(run.local_profile_character_ids.iter().cloned());
+                group.reconciliation_sources.push(source);
+                if let Some(submitter) = submitter {
+                    group.submitters.insert(submitter);
+                }
+                if quality.is_better_than(&group.representative_quality) {
+                    group.representative = entry;
+                    group.representative_quality = quality;
+                    group.milestone_source = milestone_source;
+                }
+            }
+        }
+        artifact_paths.insert(
+            artifact.report.report_id.clone(),
+            artifact.artifact_path.to_path_buf(),
+        );
+        reports.insert(artifact.report.report_id.clone(), artifact.report);
+    }
+
+    let mut group = group.expect("non-empty input creates a reconciliation group");
+    let mut report_ids = reports.keys().cloned().collect::<Vec<_>>();
+    report_ids.sort();
+    group.representative.report_ids = report_ids;
+    group.representative.contribution_count = reports.len();
+    group.representative.distinct_submitter_count = group.submitters.len();
+    let mut reconciliation = build_public_reconciliation(&group);
+    let replay_ready = matches!(
+        reconciliation.state_replay_readiness,
+        CrossVantageStateReplayReadiness::PartialCoverageReady
+            | CrossVantageStateReplayReadiness::FullCoverageReady
+    );
+    if !replay_ready {
+        return Ok(reconciliation);
+    }
+
+    verify_hosted_artifact_digests(artifacts)?;
+
+    match SubmissionService::load_verified_cross_vantage_state_events_from_paths(
+        &reconciliation,
+        &artifact_paths,
+    ) {
+        Ok(events) => {
+            reconciliation.verified_state_input_sha256 =
+                Some(verified_state_input_digest(&reconciliation, &events)?);
+            let canonical_path = artifact_paths
+                .get(&reconciliation.canonical_spine.report_id)
+                .expect("canonical report came from supplied artifacts");
+            let canonical_report = reports
+                .get(&reconciliation.canonical_spine.report_id)
+                .expect("canonical report came from supplied artifacts");
+            match SubmissionService::replay_cross_vantage_attribution_from_path(
+                &reconciliation,
+                events,
+                canonical_path,
+                canonical_report,
+            ) {
+                Ok(result) => {
+                    reconciliation.status = RunAttributionReconciliationStatus::Reconciled;
+                    reconciliation.reconciled_participants = result.participants;
+                    reconciliation.conservation = Some(result.conservation);
+                    reconciliation.rdps_effects = result.rdps_effects;
+                    reconciliation.rdps_influences = result.rdps_influences;
+                    reconciliation.swift_vortex_candidate_audit =
+                        result.swift_vortex_candidate_audit;
+                    reconciliation.attribution_replay_completed = true;
+                }
+                Err(error) => {
+                    reconciliation.state_replay_readiness =
+                        CrossVantageStateReplayReadiness::Blocked;
+                    reconciliation
+                        .state_replay_blockers
+                        .push(format!("conserved_replay_failed:{error}"));
+                }
+            }
+        }
+        Err(error) => {
+            reconciliation.state_replay_readiness = CrossVantageStateReplayReadiness::Blocked;
+            reconciliation
+                .state_replay_blockers
+                .push(format!("sealed_witness_verification_failed:{error}"));
+        }
+    }
+    Ok(reconciliation)
+}
+
 fn cross_vantage_state_readiness(
     reports: &[PublicReconciliationReport],
     characters: &[PublicReconciliationCharacter],
@@ -6290,6 +6585,86 @@ fn upload_id(digest: &Sha256Digest) -> String {
 
 fn digest_bytes(bytes: &[u8]) -> Result<Sha256Digest, ServiceError> {
     Ok(Sha256Digest::parse(format!("{:x}", Sha256::digest(bytes)))?)
+}
+
+fn digest_file(path: &Path) -> Result<Sha256Digest, ServiceError> {
+    let mut file = BufReader::new(File::open(path)?);
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(Sha256Digest::parse(format!("{:x}", hasher.finalize()))?)
+}
+
+fn artifact_file_length(path: &Path) -> Result<u64, ServiceError> {
+    let metadata = std::fs::metadata(path)?;
+    if !metadata.is_file() {
+        return Err(ServiceError::CrossVantageReplay(format!(
+            "artifact path {} is not a regular file",
+            path.display()
+        )));
+    }
+    Ok(metadata.len())
+}
+
+fn validate_hosted_artifact_lengths(lengths: &[u64]) -> Result<(), ServiceError> {
+    let mut aggregate = 0_u64;
+    for &bytes in lengths {
+        if bytes == 0 || bytes > DEFAULT_MAXIMUM_LOG_BYTES {
+            return Err(ServiceError::CrossVantageReplay(format!(
+                "hosted artifact has {bytes} bytes; expected 1..={DEFAULT_MAXIMUM_LOG_BYTES}"
+            )));
+        }
+        aggregate = aggregate
+            .checked_add(bytes)
+            .ok_or(ServiceError::SizeOverflow)?;
+        if aggregate > MAXIMUM_HOSTED_RECONCILIATION_BYTES {
+            return Err(ServiceError::CrossVantageReplay(format!(
+                "hosted reconciliation artifacts exceed {MAXIMUM_HOSTED_RECONCILIATION_BYTES} aggregate bytes"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn verify_hosted_artifact_digests(artifacts: &[HostedRunArtifact<'_>]) -> Result<(), ServiceError> {
+    for artifact in artifacts {
+        let expected = Sha256Digest::parse(artifact.report.verification.artifact_sha256.clone())?;
+        if artifact_file_length(artifact.artifact_path)? > DEFAULT_MAXIMUM_LOG_BYTES
+            || digest_file(artifact.artifact_path)? != expected
+        {
+            return Err(ServiceError::CrossVantageReplay(format!(
+                "artifact {} changed before hosted replay",
+                artifact.artifact_path.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_hosted_artifact_header(
+    report: &PublicParseReport,
+    path: &Path,
+) -> Result<(), ServiceError> {
+    let file = File::open(path)?;
+    let reader = RlogReader::new(BufReader::new(file), RlogLimits::default())?;
+    let header = reader.header();
+    if header.region.identity.deployment_id != report.deployment_id
+        || header.region.client_build != report.client_build
+        || header.region.protocol_pack_digest != report.protocol_pack_digest
+    {
+        return Err(ServiceError::CrossVantageReplay(format!(
+            "artifact {} header does not match report {} build/protocol identity",
+            path.display(),
+            report.report_id
+        )));
+    }
+    Ok(())
 }
 
 fn unix_millis() -> Result<u64, ServiceError> {
@@ -7418,6 +7793,326 @@ mod tests {
                     == report.local_profile_witnesses[0].character_id
         }));
         assert!(!reconciliation.attribution_replay_completed);
+    }
+
+    fn write_empty_hosted_artifact(path: &Path, session_id: &str) -> Sha256Digest {
+        let mut region = cross_vantage_test_region();
+        region.protocol_pack_digest = "sha256:pack".into();
+        let header =
+            rlogs_log_format::RlogHeader::new(session_id, region, "hosted-reconciliation-test");
+        let writer = rlogs_log_format::RlogWriter::new(Vec::new(), header).unwrap();
+        let bytes = writer.finish().unwrap();
+        std::fs::write(path, &bytes).unwrap();
+        digest_bytes(&bytes).unwrap()
+    }
+
+    #[test]
+    fn hosted_manifest_groups_two_exact_artifacts_without_summing_participants() {
+        let root = tempfile::tempdir().unwrap();
+        let path_a = root.path().join("a.rlog");
+        let path_b = root.path().join("b.rlog");
+        let digest_a = write_empty_hosted_artifact(&path_a, "hosted-a");
+        let digest_b = write_empty_hosted_artifact(&path_b, "hosted-b");
+        let mut report_a =
+            fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 1);
+        let mut report_b =
+            fixture_public_report("rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "character-b", 0);
+        report_a.report_id = report_id(&digest_a);
+        report_b.report_id = report_id(&digest_b);
+        report_a.verification.artifact_sha256 = digest_a.to_string();
+        report_b.verification.artifact_sha256 = digest_b.to_string();
+        report_a.runs[0].local_state_witnesses.clear();
+        report_b.runs[0].local_state_witnesses.clear();
+
+        let reconciliation = reconcile_hosted_run_group(
+            "run_exact000000000000000000000000000",
+            &[
+                HostedRunArtifact {
+                    report: &report_a,
+                    run_index: 0,
+                    artifact_path: &path_a,
+                },
+                HostedRunArtifact {
+                    report: &report_b,
+                    run_index: 0,
+                    artifact_path: &path_b,
+                },
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(reconciliation.reports.len(), 2);
+        assert_eq!(reconciliation.participant_character_count, 2);
+        assert_eq!(reconciliation.reconciled_participants.len(), 0);
+        assert_eq!(
+            reconciliation.status,
+            RunAttributionReconciliationStatus::CrossVantageEvidenceAvailable
+        );
+        assert!(!reconciliation.attribution_replay_completed);
+    }
+
+    #[test]
+    fn hosted_reconciliation_rejects_private_alias_mismatch_and_non_exact_inputs() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("input.rlog");
+        let digest = write_empty_hosted_artifact(&path, "hosted-input");
+        let mut report =
+            fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
+        report.report_id = report_id(&digest);
+        report.verification.artifact_sha256 = digest.to_string();
+
+        let mut private = report.clone();
+        private.visibility = ReportVisibility::Private;
+        assert!(
+            reconcile_hosted_run_group(
+                "run_exact000000000000000000000000000",
+                &[HostedRunArtifact {
+                    report: &private,
+                    run_index: 0,
+                    artifact_path: &path,
+                }],
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("non-public report")
+        );
+
+        let mut unlisted = report.clone();
+        unlisted.visibility = ReportVisibility::Unlisted;
+        assert!(
+            reconcile_hosted_run_group(
+                "run_exact000000000000000000000000000",
+                &[HostedRunArtifact {
+                    report: &unlisted,
+                    run_index: 0,
+                    artifact_path: &path,
+                }],
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("non-public report")
+        );
+
+        let mut alias = report.clone();
+        alias.report_id = "rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into();
+        assert!(
+            reconcile_hosted_run_group(
+                "run_exact000000000000000000000000000",
+                &[HostedRunArtifact {
+                    report: &alias,
+                    run_index: 0,
+                    artifact_path: &path,
+                }],
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("not bound to its artifact digest")
+        );
+
+        let mut wrong_group = report.clone();
+        wrong_group.runs[0].run_group_id = "run_other000000000000000000000000000".into();
+        assert!(
+            reconcile_hosted_run_group(
+                "run_exact000000000000000000000000000",
+                &[HostedRunArtifact {
+                    report: &wrong_group,
+                    run_index: 0,
+                    artifact_path: &path,
+                }],
+            )
+            .is_err()
+        );
+
+        let mut non_exact = report.clone();
+        non_exact.runs[0].correlation_method = RunCorrelationMethod::IsolatedArtifact;
+        assert!(
+            reconcile_hosted_run_group(
+                "run_exact000000000000000000000000000",
+                &[HostedRunArtifact {
+                    report: &non_exact,
+                    run_index: 0,
+                    artifact_path: &path,
+                }],
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("lacks exact-instance correlation")
+        );
+    }
+
+    #[test]
+    fn hosted_reconciliation_rejects_hash_alias_count_and_projection_contract_violations() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("input.rlog");
+        let other_path = root.path().join("other.rlog");
+        let digest = write_empty_hosted_artifact(&path, "hosted-input");
+        write_empty_hosted_artifact(&other_path, "hosted-other");
+        let mut report =
+            fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
+        report.report_id = report_id(&digest);
+        report.verification.artifact_sha256 = digest.to_string();
+
+        assert!(
+            reconcile_hosted_run_group(
+                "run_exact000000000000000000000000000",
+                &[HostedRunArtifact {
+                    report: &report,
+                    run_index: 0,
+                    artifact_path: &other_path,
+                }],
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("does not match")
+        );
+
+        assert!(
+            reconcile_hosted_run_group(
+                "run_exact000000000000000000000000000",
+                &[
+                    HostedRunArtifact {
+                        report: &report,
+                        run_index: 0,
+                        artifact_path: &path,
+                    },
+                    HostedRunArtifact {
+                        report: &report,
+                        run_index: 0,
+                        artifact_path: &path,
+                    },
+                ],
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("artifact digest")
+        );
+
+        let too_many = (0..=MAXIMUM_HOSTED_RECONCILIATION_ARTIFACTS)
+            .map(|_| HostedRunArtifact {
+                report: &report,
+                run_index: 0,
+                artifact_path: &path,
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            reconcile_hosted_run_group("run_exact000000000000000000000000000", &too_many,)
+                .unwrap_err()
+                .to_string()
+                .contains("1..=")
+        );
+
+        let mut stale = report.clone();
+        stale.projection_revision = PUBLIC_PARSE_PROJECTION_REVISION - 1;
+        assert!(
+            reconcile_hosted_run_group(
+                "run_exact000000000000000000000000000",
+                &[HostedRunArtifact {
+                    report: &stale,
+                    run_index: 0,
+                    artifact_path: &path,
+                }],
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("current public projection contract")
+        );
+
+        let mut future_schema = report.clone();
+        future_schema.schema_version = PUBLIC_PARSE_SCHEMA_VERSION + 1;
+        assert!(
+            reconcile_hosted_run_group(
+                "run_exact000000000000000000000000000",
+                &[HostedRunArtifact {
+                    report: &future_schema,
+                    run_index: 0,
+                    artifact_path: &path,
+                }],
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("current public projection contract")
+        );
+
+        let mut future_projection = report.clone();
+        future_projection.projection_revision = PUBLIC_PARSE_PROJECTION_REVISION + 1;
+        assert!(
+            reconcile_hosted_run_group(
+                "run_exact000000000000000000000000000",
+                &[HostedRunArtifact {
+                    report: &future_projection,
+                    run_index: 0,
+                    artifact_path: &path,
+                }],
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("current public projection contract")
+        );
+
+        let mut wrong_plugin = report.clone();
+        wrong_plugin.game_plugin_id = "another-game".into();
+        assert!(
+            reconcile_hosted_run_group(
+                "run_exact000000000000000000000000000",
+                &[HostedRunArtifact {
+                    report: &wrong_plugin,
+                    run_index: 0,
+                    artifact_path: &path,
+                }],
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("unsupported game plug-in")
+        );
+
+        let mut duplicate_run_index = report.clone();
+        duplicate_run_index
+            .runs
+            .push(duplicate_run_index.runs[0].clone());
+        assert!(
+            reconcile_hosted_run_group(
+                "run_exact000000000000000000000000000",
+                &[HostedRunArtifact {
+                    report: &duplicate_run_index,
+                    run_index: 0,
+                    artifact_path: &path,
+                }],
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("duplicate run indexes")
+        );
+
+        let mut unverified = report.clone();
+        unverified.verification.tier = VerificationTier::Uploaded;
+        assert!(
+            reconcile_hosted_run_group(
+                "run_exact000000000000000000000000000",
+                &[HostedRunArtifact {
+                    report: &unverified,
+                    run_index: 0,
+                    artifact_path: &path,
+                }],
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("not replay verified")
+        );
+
+        assert!(validate_hosted_artifact_lengths(&[0]).is_err());
+        assert!(validate_hosted_artifact_lengths(&[DEFAULT_MAXIMUM_LOG_BYTES + 1]).is_err());
+        assert!(
+            validate_hosted_artifact_lengths(&[
+                DEFAULT_MAXIMUM_LOG_BYTES,
+                DEFAULT_MAXIMUM_LOG_BYTES,
+                DEFAULT_MAXIMUM_LOG_BYTES,
+                DEFAULT_MAXIMUM_LOG_BYTES,
+                1,
+            ])
+            .unwrap_err()
+            .to_string()
+            .contains("aggregate bytes")
+        );
     }
 
     #[test]
