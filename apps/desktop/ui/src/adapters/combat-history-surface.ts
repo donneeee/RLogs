@@ -961,7 +961,7 @@ export function mountCombatHistorySurface(
     if (selectedEntries.length > 0) {
       const protectedCount = selectedEntries.filter((entry) => entry.is_favorite).length;
       const deletableCount = selectedEntries.length - protectedCount;
-      const clearSelection = button("Clear selection", "quiet-button");
+      const clearSelection = button(ui.t("ui.combat_history.mutation.clear_selection"), "quiet-button");
       clearSelection.disabled = historyMutationInFlight;
       clearSelection.addEventListener("click", () => {
         selectedHistoryIds = new Set();
@@ -969,7 +969,11 @@ export function mountCombatHistorySurface(
         render();
       });
       const deleteSelected = button(
-        `Delete selected${deletableCount > 0 ? ` (${deletableCount})` : ""}`,
+        deletableCount > 0
+          ? ui.t("ui.combat_history.mutation.delete_selected_count", {
+              count: ui.formatNumber(deletableCount),
+            })
+          : ui.t("ui.combat_history.mutation.delete_selected"),
         "quiet-button combat-history-delete-selected",
       );
       deleteSelected.disabled =
@@ -985,14 +989,20 @@ export function mountCombatHistorySurface(
           element(
             "div",
             "",
-            element("strong", "", `${selectedEntries.length} selected`),
+            element("strong", "", ui.t("ui.combat_history.mutation.selected_count", {
+              count: ui.formatNumber(selectedEntries.length),
+            })),
             protectedCount > 0
               ? element(
                   "small",
                   "",
-                  `${protectedCount} favorite${protectedCount === 1 ? " is" : "s are"} protected from deletion.`,
+                  ui.t(protectedCount === 1
+                    ? "ui.combat_history.mutation.favorite_protected"
+                    : "ui.combat_history.mutation.favorites_protected", {
+                    count: ui.formatNumber(protectedCount),
+                  }),
                 )
-              : element("small", "", "Select runs across pages, then delete them together."),
+              : element("small", "", ui.t("ui.combat_history.mutation.selection_help")),
           ),
           element("div", "combat-history-selection-actions", clearSelection, deleteSelected),
         ),
@@ -1018,7 +1028,7 @@ export function mountCombatHistorySurface(
     selectPage.className = "combat-history-selection-checkbox";
     selectPage.checked = pageEntries.length > 0 && selectedOnPage === pageEntries.length;
     selectPage.indeterminate = selectedOnPage > 0 && selectedOnPage < pageEntries.length;
-    selectPage.setAttribute("aria-label", "Select all runs on this page");
+    selectPage.setAttribute("aria-label", ui.t("ui.combat_history.mutation.select_page_aria"));
     selectPage.addEventListener("change", () => {
       const next = new Set(selectedHistoryIds);
       for (const historyId of pageHistoryIds) {
@@ -1054,7 +1064,9 @@ export function mountCombatHistorySurface(
       selection.type = "checkbox";
       selection.className = "combat-history-selection-checkbox";
       selection.checked = selectedHistoryIds.has(entry.history_id);
-      selection.setAttribute("aria-label", `Select ${activityLabel(entry)}`);
+      selection.setAttribute("aria-label", ui.t("ui.combat_history.mutation.select_run_aria", {
+        run: activityLabel(entry),
+      }));
       selection.addEventListener("click", (event) => event.stopPropagation());
       selection.addEventListener("change", () => {
         const next = new Set(selectedHistoryIds);
@@ -1071,9 +1083,9 @@ export function mountCombatHistorySurface(
       favorite.setAttribute("aria-pressed", String(entry.is_favorite));
       favorite.setAttribute(
         "aria-label",
-        `${entry.is_favorite ? "Remove" : "Add"} ${activityLabel(entry)} ${
-          entry.is_favorite ? "from" : "to"
-        } favorites`,
+        ui.t(entry.is_favorite
+          ? "ui.combat_history.mutation.remove_favorite_aria"
+          : "ui.combat_history.mutation.add_favorite_aria", { run: activityLabel(entry) }),
       );
       favorite.disabled = historyMutationInFlight || !actions;
       favorite.addEventListener("click", (event) => {
@@ -1082,8 +1094,8 @@ export function mountCombatHistorySurface(
         historyMutationInFlight = true;
         status.classList.remove("error");
         status.textContent = entry.is_favorite
-          ? "Removing favorite…"
-          : "Saving favorite…";
+          ? ui.t("ui.combat_history.mutation.removing_favorite")
+          : ui.t("ui.combat_history.mutation.saving_favorite");
         render();
         void actions
           .setFavorite(entry.history_id, !entry.is_favorite)
@@ -1199,14 +1211,18 @@ export function mountCombatHistorySurface(
       return;
     }
 
-    const cancel = button("Cancel", "quiet-button");
+    const cancel = button(ui.t("ui.combat_history.mutation.cancel"), "quiet-button");
     cancel.disabled = historyMutationInFlight;
     cancel.addEventListener("click", () => {
       deleteConfirmationOpen = false;
       render();
     });
     const confirm = button(
-      `Delete ${deletableCount} run${deletableCount === 1 ? "" : "s"}`,
+      ui.t(deletableCount === 1
+        ? "ui.combat_history.mutation.delete_run"
+        : "ui.combat_history.mutation.delete_runs", {
+        count: ui.formatNumber(deletableCount),
+      }),
       "quiet-button combat-history-delete-selected",
     );
     confirm.disabled = historyMutationInFlight || deletableCount === 0 || !actions;
@@ -1215,7 +1231,11 @@ export function mountCombatHistorySurface(
       const requestedIds = [...selectedHistoryIds];
       historyMutationInFlight = true;
       status.classList.remove("error");
-      status.textContent = `Deleting ${deletableCount} saved run${deletableCount === 1 ? "" : "s"}…`;
+      status.textContent = ui.t(deletableCount === 1
+        ? "ui.combat_history.mutation.deleting_run"
+        : "ui.combat_history.mutation.deleting_runs", {
+        count: ui.formatNumber(deletableCount),
+      });
       render();
       void actions
         .deleteEntries(requestedIds)
@@ -1226,19 +1246,27 @@ export function mountCombatHistorySurface(
           selectedHistoryIds = new Set();
           deleteConfirmationOpen = false;
           const notes = [
-            `${result.deleted_count} run${result.deleted_count === 1 ? "" : "s"} deleted`,
+            ui.t(result.deleted_count === 1
+              ? "ui.combat_history.mutation.run_deleted"
+              : "ui.combat_history.mutation.runs_deleted", {
+              count: ui.formatNumber(result.deleted_count),
+            }),
           ];
           if (result.preserved_favorite_count > 0) {
             notes.push(
-              `${result.preserved_favorite_count} favorite${
-                result.preserved_favorite_count === 1 ? "" : "s"
-              } preserved`,
+              ui.t(result.preserved_favorite_count === 1
+                ? "ui.combat_history.mutation.favorite_preserved"
+                : "ui.combat_history.mutation.favorites_preserved", {
+                count: ui.formatNumber(result.preserved_favorite_count),
+              }),
             );
           }
           if (result.cleanup_warnings.length > 0) {
-            notes.push(`${result.cleanup_warnings.length} storage cleanup warning${
-              result.cleanup_warnings.length === 1 ? "" : "s"
-            }`);
+            notes.push(ui.t(result.cleanup_warnings.length === 1
+              ? "ui.combat_history.mutation.cleanup_warning"
+              : "ui.combat_history.mutation.cleanup_warnings", {
+              count: ui.formatNumber(result.cleanup_warnings.length),
+            }));
           }
           status.textContent = notes.join(" · ");
         })
@@ -1262,11 +1290,15 @@ export function mountCombatHistorySurface(
     const dialog = element(
       "section",
       "combat-history-delete-dialog",
-      element("h2", "", "Delete selected history?"),
+      element("h2", "", ui.t("ui.combat_history.mutation.delete_dialog_title")),
       element(
         "p",
         "",
-        `${deletableCount} saved run${deletableCount === 1 ? "" : "s"} will be permanently removed from this device.`,
+        ui.t(deletableCount === 1
+          ? "ui.combat_history.mutation.delete_dialog_body_one"
+          : "ui.combat_history.mutation.delete_dialog_body_many", {
+          count: ui.formatNumber(deletableCount),
+        }),
       ),
     );
     if (protectedCount > 0) {
@@ -1274,7 +1306,11 @@ export function mountCombatHistorySurface(
         element(
           "p",
           "combat-history-delete-protected",
-          `${protectedCount} favorited run${protectedCount === 1 ? " is" : "s are"} protected and will remain in history.`,
+          ui.t(protectedCount === 1
+            ? "ui.combat_history.mutation.delete_dialog_protected_one"
+            : "ui.combat_history.mutation.delete_dialog_protected_many", {
+            count: ui.formatNumber(protectedCount),
+          }),
         ),
       );
     }
@@ -1283,7 +1319,7 @@ export function mountCombatHistorySurface(
     );
     dialog.setAttribute("role", "dialog");
     dialog.setAttribute("aria-modal", "true");
-    dialog.setAttribute("aria-label", "Confirm deletion of selected combat history");
+    dialog.setAttribute("aria-label", ui.t("ui.combat_history.mutation.delete_dialog_aria"));
     backdrop.append(dialog);
     owner.append(backdrop);
   }
@@ -1324,7 +1360,7 @@ export function mountCombatHistorySurface(
       context,
     );
     navigation.dataset.sticky = String(metadata.length > 0);
-    navigation.setAttribute("aria-label", "Combat history navigation");
+    navigation.setAttribute("aria-label", ui.t("ui.combat_history.navigation.aria"));
     return navigation;
   };
 
@@ -1348,8 +1384,8 @@ export function mountCombatHistorySurface(
     if (retryViews.length > 0) {
       const retrySelect = document.createElement("select");
       retrySelect.className = "combat-history-retry-select";
-      retrySelect.setAttribute("aria-label", "Boss retry attempt");
-      retrySelect.append(new Option("Retries", ""));
+      retrySelect.setAttribute("aria-label", ui.t("ui.combat_history.filter.retry_aria"));
+      retrySelect.append(new Option(ui.t("ui.combat_history.filter.retries"), ""));
       for (const retryView of retryViews) {
         retrySelect.append(new Option(retryView.label, retryView.id));
       }
@@ -1365,7 +1401,7 @@ export function mountCombatHistorySurface(
     }
     const targetSelect = document.createElement("select");
     targetSelect.className = "combat-history-target-select";
-    targetSelect.append(new Option("All targets", ""));
+    targetSelect.append(new Option(ui.t("ui.combat_history.filter.all_targets"), ""));
     for (const target of view.targets) {
       targetSelect.append(new Option(historyTargetLabel(target), target.actor_id));
     }
@@ -1375,8 +1411,8 @@ export function mountCombatHistorySurface(
       render();
     });
     filters.append(
-      element("div", "combat-history-segment-controls", element("span", "field-label", "Segment"), viewButtons),
-      element("label", "combat-history-target-filter", element("span", "field-label", "Target entity"), targetSelect),
+      element("div", "combat-history-segment-controls", element("span", "field-label", ui.t("ui.combat_history.filter.segment")), viewButtons),
+      element("label", "combat-history-target-filter", element("span", "field-label", ui.t("ui.combat_history.filter.target_entity")), targetSelect),
     );
     return filters;
   };
@@ -1394,17 +1430,17 @@ export function mountCombatHistorySurface(
   const renderSelectedRun = (): HTMLElement => {
     const pane = element("div", "combat-history-detail");
     if (!selectedEntry || !detail) {
-      pane.append(element("p", "runtime-empty-result", "Select a dungeon run."));
+      pane.append(element("p", "runtime-empty-result", ui.t("ui.combat_history.empty.select_run")));
       return pane;
     }
     const run = detail.runs.find((run) => run.run_index === selectedEntry?.run_index);
     if (!run) {
-      pane.append(element("p", "runtime-empty-result", "The selected run is missing from its detail artifact."));
+      pane.append(element("p", "runtime-empty-result", ui.t("ui.combat_history.empty.missing_detail")));
       return pane;
     }
     const view = run.views.find((view) => view.id === viewId) ?? run.views[0];
     if (!view) {
-      pane.append(element("p", "runtime-empty-result", "This run has no combat views."));
+      pane.append(element("p", "runtime-empty-result", ui.t("ui.combat_history.empty.no_views")));
       return pane;
     }
     viewId = view.id;
@@ -1422,25 +1458,28 @@ export function mountCombatHistorySurface(
           element("h2", "", activityLabel(run)),
           element("p", "", runStatusLabel(run, run.terminal_state)),
         ),
-        element("span", "state-pill", "Saved locally"),
+        element("span", "state-pill", ui.t("ui.combat_history.summary.saved_locally")),
       ),
       metricGrid([
         [
           formatDuration(run.total_run_time_micros ?? totalRunTime(run)),
-          "Total run: entry → completion",
+          ui.t("ui.combat_history.summary.total_run"),
         ],
-        [formatDuration(run.game_time_micros), "Game time: reviewed intervals"],
-        [formatDuration(entireRun.active_combat_micros), "Active combat / aDPS"],
-        [formatDuration(run.true_time_micros ?? trueTime?.elapsed_micros ?? null), "True Time: projected best"],
+        [formatDuration(run.game_time_micros), ui.t("ui.combat_history.summary.game_time")],
+        [formatDuration(entireRun.active_combat_micros), ui.t("ui.combat_history.summary.active_combat")],
+        [formatDuration(run.true_time_micros ?? trueTime?.elapsed_micros ?? null), ui.t("ui.combat_history.summary.true_time")],
         [
-          `${run.retry_count} total · ${run.boss_retry_count} boss`,
-          "Retries",
+          ui.t("ui.combat_history.summary.retry_count", {
+            total: ui.formatNumber(run.retry_count),
+            boss: ui.formatNumber(run.boss_retry_count),
+          }),
+          ui.t("ui.combat_history.summary.retries"),
         ],
       ]),
     );
 
     const navigation = renderPageNavigation(
-        "← Past runs",
+        ui.t("ui.combat_history.navigation.past_runs"),
         activityContextLabel(run),
         () => {
           selectedEntry = null;
@@ -1483,7 +1522,7 @@ export function mountCombatHistorySurface(
     const pane = element("div", "combat-history-detail combat-history-player-layer");
     if (!selectedEntry || !detail || detailActorId === null) {
       detailActorId = null;
-      pane.append(element("p", "runtime-empty-result", "Player details are unavailable."));
+      pane.append(element("p", "runtime-empty-result", ui.t("ui.combat_history.empty.player_unavailable")));
       return pane;
     }
     const run = detail.runs.find((candidate) => candidate.run_index === selectedEntry?.run_index);
@@ -1498,8 +1537,11 @@ export function mountCombatHistorySurface(
       return pane;
     }
     const navigation = renderPageNavigation(
-        "← Run summary",
-        `${activityContextLabel(run)} · ${actorLabel(actor)} skills`,
+        ui.t("ui.combat_history.navigation.run_summary"),
+        ui.t("ui.combat_history.navigation.actor_skills", {
+          run: activityContextLabel(run),
+          actor: actorLabel(actor),
+        }),
         () => {
           detailActorId = null;
           render();
@@ -1542,7 +1584,9 @@ export function mountCombatHistorySurface(
         element("div", "", element("h2", "", ui.t("ui.combat_history.breakdown.party")), viewButtons),
         element(
           "span", "",
-          targetActorId ? "Damage filtered to one entity" : participantCountLabel(participants),
+          targetActorId
+            ? ui.t("ui.combat_history.filter.damage_one_entity")
+            : participantCountLabel(participants, ui),
         ),
       ),
     );
@@ -1736,8 +1780,8 @@ export function mountCombatHistorySurface(
           "p",
           "runtime-empty-result",
           targetActorId === null
-            ? "No incoming damage was recorded for this player in the selected segment."
-            : "No incoming damage from the selected entity was recorded for this player.",
+            ? ui.t("ui.combat_history.empty.no_incoming_damage")
+            : ui.t("ui.combat_history.empty.no_target_incoming_damage"),
         ),
       );
       return card;
@@ -1820,7 +1864,9 @@ export function mountCombatHistorySurface(
       parent.append(
         treeCell,
         sourceCell,
-        element("td", "", `${sourceEntry.abilities.length} mapped abilities`),
+        element("td", "", ui.t("ui.combat_history.count.mapped_abilities", {
+          count: ui.formatNumber(sourceEntry.abilities.length),
+        })),
         numeric(sourceEntry.total, true),
         numeric(sourceEntry.abilities.reduce((sum, entry) => sum + entry.hits, 0), true),
         numeric(perSecond(sourceEntry.total, view.elapsed_micros)),
@@ -1981,7 +2027,11 @@ export function mountCombatHistorySurface(
         element("h2", "", detailMode === "healing"
           ? ui.t("ui.combat_history.breakdown.healing_and_shielding")
           : ui.t("ui.combat_history.breakdown.skills")),
-        element("span", "", targetActorId ? "Target-filtered" : `${skillActor.abilities.length} owned abilities`),
+        element("span", "", targetActorId
+          ? ui.t("ui.combat_history.filter.target_filtered")
+          : ui.t("ui.combat_history.count.owned_abilities", {
+              count: ui.formatNumber(skillActor.abilities.length),
+            })),
       ),
     );
     const scroller = element("div", "meter-table-scroll");
@@ -2237,7 +2287,7 @@ export function mountCombatHistorySurface(
       }))),
     );
     if (effects.length === 0) {
-      card.append(element("p", "runtime-empty-result", "No attributed status events in this filter."));
+      card.append(element("p", "runtime-empty-result", ui.t("ui.combat_history.empty.no_status_events")));
       return card;
     }
     const list = element("div", "combat-history-effect-list");
@@ -2283,8 +2333,12 @@ export function mountCombatHistorySurface(
           "span",
           "",
           targetActorId === null
-            ? `${relationshipCount} summarized relationship${relationshipCount === 1 ? "" : "s"}`
-            : "Target-filtered",
+            ? ui.t(relationshipCount === 1
+              ? "ui.combat_history.count.relationship_one"
+              : "ui.combat_history.count.relationships", {
+                count: ui.formatNumber(relationshipCount),
+              })
+            : ui.t("ui.combat_history.filter.target_filtered"),
         ),
       ),
     );
@@ -2294,7 +2348,7 @@ export function mountCombatHistorySurface(
         element(
           "p",
           "runtime-empty-result",
-          "No conserved rDPS relationship has been calculated for this player in this view. This is not proof that no party support affected them.",
+          ui.t("ui.combat_history.rdps.no_relationship"),
         ),
       );
       return card;
@@ -2305,7 +2359,7 @@ export function mountCombatHistorySurface(
         element(
           "p",
           "card-copy",
-          "Received rDMG and rDPS are nested into the normal skill table. Hover either value to see the contributing players, effects, components, and event totals.",
+          ui.t("ui.combat_history.rdps.received_explanation"),
         ),
       );
     }
@@ -2317,7 +2371,7 @@ export function mountCombatHistorySurface(
         element(
           "p",
           "card-copy",
-          "Outgoing relative damage is grouped by the support effect that earned the credit.",
+          ui.t("ui.combat_history.rdps.granted_explanation"),
         ),
       );
       const scroller = element("div", "meter-table-scroll");
@@ -2392,8 +2446,15 @@ export function mountCombatHistorySurface(
           "span",
           "",
           influenceQuery.trim()
-            ? `${influences.length} of ${actorInfluences.length} exact relationships`
-            : `${influences.length} exact relationship${influences.length === 1 ? "" : "s"}`,
+            ? ui.t("ui.combat_history.count.filtered_relationships", {
+                visible: ui.formatNumber(influences.length),
+                total: ui.formatNumber(actorInfluences.length),
+              })
+            : ui.t(influences.length === 1
+              ? "ui.combat_history.count.exact_relationship_one"
+              : "ui.combat_history.count.exact_relationships", {
+                count: ui.formatNumber(influences.length),
+              }),
         ),
       ),
     );
@@ -2409,8 +2470,8 @@ export function mountCombatHistorySurface(
     search.type = "search";
     search.className = "combat-history-influence-search";
     search.value = influenceQuery;
-    search.placeholder = "Filter UID, effect ID, skill ID, player, or target…";
-    search.setAttribute("aria-label", "Filter damage influences");
+    search.placeholder = ui.t("ui.combat_history.filter.influence_placeholder");
+    search.setAttribute("aria-label", ui.t("ui.combat_history.filter.influence_aria"));
     search.addEventListener("input", () => {
       influenceQuery = search.value;
       render();
@@ -2429,7 +2490,7 @@ export function mountCombatHistorySurface(
         element(
           "p",
           "runtime-empty-result",
-          "No matching-build packet-proven damage influence is available in this filter.",
+          ui.t("ui.combat_history.empty.no_influences"),
         ),
       );
       return card;
@@ -2611,11 +2672,18 @@ export function participantRows(view: CombatHistoryView): HistoryActorSummary[] 
     .sort((left, right) => right.encounter_dps - left.encounter_dps || actorLabel(left).localeCompare(actorLabel(right)));
 }
 
-function participantCountLabel(participants: HistoryActorSummary[]): string {
+function participantCountLabel(participants: HistoryActorSummary[], localizer: UiLocalizer): string {
   const npcCount = participants.filter((actor) => graphActorKind(actor) === "npc").length;
   const playerCount = participants.length - npcCount;
-  if (npcCount === 0) return `${playerCount} combatants`;
-  return `${playerCount} players · ${npcCount} party NPCs`;
+  if (npcCount === 0) {
+    return localizer.t("ui.combat_history.count.combatants", {
+      count: localizer.formatNumber(playerCount),
+    });
+  }
+  return localizer.t("ui.combat_history.count.players_and_npcs", {
+    players: localizer.formatNumber(playerCount),
+    npcs: localizer.formatNumber(npcCount),
+  });
 }
 
 function displayedMetrics(

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 
 import { loadUiLocalizer, localeFallbackChain, parseUiMessageShard, type UiMessageLoaders } from "./ui-locale";
 
@@ -110,6 +111,14 @@ describe("desktop UI locale packages", () => {
     expect(localizer.t("ui.combat_history.graph.hide_actor_aria", {
       actor: "MarieRose",
     })).toBe("Hide MarieRose in timelines");
+  });
+
+  it("keeps every migrated combat-history key present in the shipped English package", async () => {
+    const source = readFileSync(new URL("../adapters/combat-history-surface.ts", import.meta.url), "utf8");
+    const keys = new Set(source.match(/ui\.combat_history\.[a-z0-9_.]+/g) ?? []);
+    const localizer = await loadUiLocalizer("en-US");
+    expect(keys.size).toBeGreaterThan(0);
+    for (const key of keys) expect(localizer.t(key), key).not.toBe(key);
   });
 
   it("uses exact, base-language, English, then stable-key fallback", async () => {
