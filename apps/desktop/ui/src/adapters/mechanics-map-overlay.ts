@@ -1,4 +1,5 @@
 import type { MountedSurface } from "../shell/types";
+import { planAutomarkerPreview } from "./automarker-plan";
 import {
   actionControlRemainingMillis,
   fitMechanicsMapCanvasRect,
@@ -833,6 +834,7 @@ export function mountMechanicsMapOverlay(
   }
 
   function renderParty(snapshot: MechanicsMapSnapshot): void {
+    const markersByActor = automarkersByActor(snapshot);
     partyBody.replaceChildren();
     partyStatus.textContent = snapshot.party.length === 0 ? "WAITING" : `${snapshot.party.length} JOINED`;
     partyStatus.dataset.state = snapshot.party.length === 0 ? "waiting" : "live";
@@ -845,8 +847,11 @@ export function mountMechanicsMapOverlay(
       row.dataset.dead = String(member.dead);
       row.dataset.stale = String(member.stale);
       const identity = element("div", "party-frame-overlay-identity");
+      const name = element("div", "party-frame-overlay-name");
+      name.append(...automarkerBadges(markersByActor.get(member.actor_id) ?? []));
+      name.append(text("strong", member.display_name ?? `Player ${member.actor_id}`));
       identity.append(
-        text("strong", member.display_name ?? `Player ${member.actor_id}`),
+        name,
         text("span", member.dead ? "DEFEATED" : member.stale ? "STALE" : formatTargetHealth(member.current_hp, member.max_hp)),
       );
       const health = element("div", "party-frame-overlay-health");
@@ -950,7 +955,12 @@ export function mountMechanicsMapOverlay(
       resources.append(resourceRow);
     }
     resources.hidden = snapshot.resources.length === 0;
-    playerBody.replaceChildren(identity, vitals, statuses, resources);
+    const automarkerPreview = element("div", "automarker-preview-strip");
+    automarkerPreview.title = "RLogs preview only — native party marker placement is not yet protocol-verified";
+    const playerAutomarkers = automarkerBadges(automarkersByActor(snapshot).get(player.actor_id) ?? []);
+    automarkerPreview.append(...playerAutomarkers, text("span", "PREVIEW"));
+    automarkerPreview.hidden = playerAutomarkers.length === 0;
+    playerBody.replaceChildren(automarkerPreview, identity, vitals, statuses, resources);
     playerRenderedAtMillis = performance.now();
     updatePlayerTimers();
     if (player.statuses.some((effect) => effect.remaining_millis !== null)) {
@@ -1615,6 +1625,7 @@ function drawEntities(
   height: number,
   preferences: MechanicsMapCanvasPreferences,
 ): void {
+  const automarkers = new Map(planAutomarkerPreview(snapshot).assignments.map((assignment) => [assignment.actorId, assignment]));
   const sceneMap = snapshot.map_model === "absolute_scene_map";
   const entities = projectMechanicsMapEntities(snapshot, sceneMap ? false : preferences.rotateWithPlayer)
     .filter((entity) => entity.visible && (preferences.showMonsters || !["monster", "npc", "object"].includes(entity.kind)));
@@ -1649,6 +1660,26 @@ function drawEntities(
     context.fill();
     context.stroke();
     context.shadowBlur = 0;
+    const automarker = automarkers.get(entity.actor_id);
+    if (automarker) {
+      if (entity.kind === "local" && entity.facing_radians !== null) {
+        context.rotate(-entity.facing_radians);
+      }
+      const badgeX = entity.kind === "local" && entity.facing_radians !== null ? 0 : x;
+      const badgeY = entity.kind === "local" && entity.facing_radians !== null ? -radius - 14 : y - radius - 12;
+      context.fillStyle = "#ffd65c";
+      context.strokeStyle = "rgba(4,12,20,.98)";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.arc(badgeX, badgeY, 10, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#071019";
+      context.font = "950 8px system-ui";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText(automarker.label, badgeX, badgeY + 0.5);
+    }
     if (entity.display_name && ["party", "boss"].includes(entity.kind)) {
       context.fillStyle = "rgba(242,246,251,.92)";
       context.font = "600 10px system-ui";
@@ -1708,6 +1739,25 @@ function drawEntities(
     }
     context.restore();
   }
+}
+
+function automarkersByActor(snapshot: MechanicsMapSnapshot): Map<number, string[]> {
+  const result = new Map<number, string[]>();
+  for (const assignment of planAutomarkerPreview(snapshot).assignments) {
+    const labels = result.get(assignment.actorId) ?? [];
+    labels.push(assignment.label);
+    result.set(assignment.actorId, labels);
+  }
+  return result;
+}
+
+function automarkerBadges(labels: readonly string[]): HTMLElement[] {
+  return labels.map((label) => {
+    const badge = text("span", label, "automarker-preview-badge");
+    badge.title = "RLogs preview only — not a native party-visible game marker";
+    badge.setAttribute("aria-label", `${label} automarker preview`);
+    return badge;
+  });
 }
 
 function drawFloorRegion(context: CanvasRenderingContext2D, region: MechanicsMapProjectedRegion, width: number, height: number, highContrast: boolean): void {

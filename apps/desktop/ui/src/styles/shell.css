@@ -5879,6 +5879,10 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
 .party-frame-overlay-member[data-stale="true"] { opacity: .68; }
 .party-frame-overlay-member[data-dead="true"] { border-color: rgb(255 111 131 / 36%); background: rgb(39 17 29 / 72%); }
 .party-frame-overlay-identity { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+.party-frame-overlay-name { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.party-frame-overlay-name strong { min-width: 0; }
+.automarker-preview-badge { display: inline-grid; flex: none; place-items: center; min-width: 24px; height: 20px; padding: 0 5px; border: 2px solid rgb(4 12 20 / 96%); border-radius: 999px; color: #071019 !important; background: #ffd65c; box-shadow: 0 0 0 2px rgb(255 214 92 / 34%), 0 0 12px rgb(255 214 92 / 72%); font-size: 8px !important; font-weight: 950 !important; letter-spacing: .04em; }
+.automarker-preview-strip { display: flex; align-items: center; gap: 7px; margin-top: 5px; color: #ffd65c; font-size: 8px; font-weight: 900; letter-spacing: .12em; }
 .party-frame-overlay-identity strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .party-frame-overlay-identity span { flex: none; color: #c9d5e0; font-size: 8px; font-variant-numeric: tabular-nums; font-weight: 800; }
 .party-frame-overlay-health { height: 7px; overflow: hidden; border: 1px solid rgb(92 228 212 / 30%); border-radius: 999px; background: rgb(10 42 42 / 76%); }

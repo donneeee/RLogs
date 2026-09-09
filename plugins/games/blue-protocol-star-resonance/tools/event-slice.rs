@@ -26,6 +26,8 @@ struct Arguments {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EventKindFilter {
     Dungeon,
+    Map,
+    PartyRoster,
     RunBoundary,
     EncounterBoundary,
     CombatBoundary,
@@ -42,6 +44,8 @@ impl EventKindFilter {
     fn parse(value: OsString) -> Result<Self, String> {
         match value.to_string_lossy().as_ref() {
             "dungeon" => Ok(Self::Dungeon),
+            "map" => Ok(Self::Map),
+            "party_roster" => Ok(Self::PartyRoster),
             "run_boundary" => Ok(Self::RunBoundary),
             "encounter_boundary" => Ok(Self::EncounterBoundary),
             "combat_boundary" => Ok(Self::CombatBoundary),
@@ -52,13 +56,15 @@ impl EventKindFilter {
             "cast" => Ok(Self::Cast),
             "cooldown" => Ok(Self::Cooldown),
             "data_gap" => Ok(Self::DataGap),
-            _ => Err("--event-kind must be dungeon, run_boundary, encounter_boundary, combat_boundary, actor, entity_attributes, life, damage, cast, cooldown, or data_gap".to_owned()),
+            _ => Err("--event-kind must be dungeon, map, party_roster, run_boundary, encounter_boundary, combat_boundary, actor, entity_attributes, life, damage, cast, cooldown, or data_gap".to_owned()),
         }
     }
 
     fn matches(self, event: &CanonicalEvent) -> bool {
         match (self, event) {
             (Self::Dungeon, CanonicalEvent::Dungeon(_)) => true,
+            (Self::Map, CanonicalEvent::Map(_)) => true,
+            (Self::PartyRoster, CanonicalEvent::PartyRosterObserved(_)) => true,
             (Self::RunBoundary, CanonicalEvent::Timeline(timeline)) => {
                 matches!(timeline.kind, TimelineEventKind::RunBoundary { .. })
             }
