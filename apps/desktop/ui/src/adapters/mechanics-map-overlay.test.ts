@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDungeonAttemptTime, formatDungeonObjectiveValue, nextMapDim, parseMechanicsMapCanvasPreferences, shouldDrawRadarFallbackArena, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
+import { formatDungeonAttemptTime, formatDungeonObjectiveValue, mechanicsMapReadabilityProfile, nextMapDim, parseMechanicsMapCanvasPreferences, shouldDrawRadarFallbackArena, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
 
 describe("Mechanics Map overlay canvas preferences", () => {
   it("does not rebuild the overlay after an unchanged long-poll timeout", () => {
@@ -134,7 +134,7 @@ describe("Mechanics Map overlay canvas preferences", () => {
       panY: 0,
       rotateWithPlayer: true,
       showMonsters: true,
-      mapDim: 0.16,
+      mapDim: 0.32,
       highContrastMechanics: true,
       showPlayer: true,
       showActions: true,
@@ -188,6 +188,23 @@ describe("Mechanics Map overlay canvas preferences", () => {
     expect(nextMapDim(0.16)).toBe(0.32);
     expect(nextMapDim(0.48)).toBe(0.64);
     expect(nextMapDim(0.64)).toBe(0);
+  });
+
+  it("strengthens mechanic foreground separation without hiding the real map", () => {
+    expect(mechanicsMapReadabilityProfile(0.32, true)).toEqual({
+      mapDim: 0.32,
+      entityOutlineWidth: 4,
+      entityGlowBlur: 14,
+      labelHaloWidth: 5,
+    });
+    expect(mechanicsMapReadabilityProfile(0, false)).toEqual({
+      mapDim: 0,
+      entityOutlineWidth: 3,
+      entityGlowBlur: 10,
+      labelHaloWidth: 3,
+    });
+    expect(mechanicsMapReadabilityProfile(2, true).mapDim).toBe(0.8);
+    expect(mechanicsMapReadabilityProfile(Number.NaN, true).mapDim).toBe(0.32);
   });
 
   it("never draws the opaque fallback arena over a reviewed real map", () => {

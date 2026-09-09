@@ -80,7 +80,7 @@ const DEFAULT_PREFERENCES: MechanicsMapCanvasPreferences = {
   panY: 0,
   rotateWithPlayer: true,
   showMonsters: true,
-  mapDim: 0.16,
+  mapDim: 0.32,
   highContrastMechanics: true,
   showPlayer: true,
   showActions: true,
@@ -125,7 +125,7 @@ export function parseMechanicsMapCanvasPreferences(value: unknown): MechanicsMap
     panY,
     rotateWithPlayer: typeof value.rotateWithPlayer === "boolean" ? value.rotateWithPlayer : true,
     showMonsters: typeof value.showMonsters === "boolean" ? value.showMonsters : true,
-    mapDim: finiteUnitInterval(value.mapDim) ? Math.min(0.8, value.mapDim) : 0.16,
+    mapDim: finiteUnitInterval(value.mapDim) ? Math.min(0.8, value.mapDim) : 0.32,
     highContrastMechanics: typeof value.highContrastMechanics === "boolean" ? value.highContrastMechanics : true,
     showPlayer: typeof value.showPlayer === "boolean" ? value.showPlayer : true,
     showActions: typeof value.showActions === "boolean" ? value.showActions : true,
@@ -257,10 +257,10 @@ export function mountMechanicsMapOverlay(
     savePreferences();
     scheduleDraw();
   });
-  const dim = button(`Dim ${Math.round(preferences.mapDim * 100)}%`, preferences.mapDim > 0.16, () => {
+  const dim = button(`Dim ${Math.round(preferences.mapDim * 100)}%`, preferences.mapDim > 0, () => {
     preferences.mapDim = nextMapDim(preferences.mapDim);
     dim.textContent = `Dim ${Math.round(preferences.mapDim * 100)}%`;
-    dim.dataset.active = String(preferences.mapDim > 0.16);
+    dim.dataset.active = String(preferences.mapDim > 0);
     dim.title = "Cycle the real game-map dimming so mechanic layers remain readable";
     savePreferences();
     scheduleDraw();
@@ -1164,7 +1164,8 @@ export function mountMechanicsMapOverlay(
     context.translate(-width / 2, -height / 2);
     const activeImage = imageReady ? image : null;
     const content = mechanicsMapContentRect(snapshot, width, height, activeImage);
-    drawBackdrop(context, snapshot, content, activeImage, preferences.mapDim);
+    const readability = mechanicsMapReadabilityProfile(preferences.mapDim, preferences.highContrastMechanics);
+    drawBackdrop(context, snapshot, content, activeImage, readability.mapDim);
     context.save();
     context.translate(content.x, content.y);
     context.scale(content.width / width, content.height / height);
@@ -1603,7 +1604,7 @@ function drawRegions(
     drawPolygon(context, projectCursedTombChargeRegion(snapshot, signal), width, height,
       signal.mechanic_kind === "clone_charge_right" ? "rgba(179,138,255,.38)" : "rgba(255,91,111,.38)", outline);
     const beam = projectCoralMatrixBeam(snapshot, signal);
-    if (beam.length === 2) drawLine(context, beam[0]!, beam[1]!, width, height, "rgba(242,195,107,.98)", highContrast ? 5 : 3);
+    if (beam.length === 2) drawLine(context, beam[0]!, beam[1]!, width, height, "rgba(242,195,107,.98)", highContrast ? 5 : 3, highContrast);
   }
   for (const entity of snapshot.entities) {
     drawPolygon(context, projectTinaPizzaRegion(snapshot, entity), width, height,
@@ -1633,17 +1634,18 @@ function drawEntities(
     local: "#5ce4d4", party: "#6da9ff", boss: "#ff6f83", player: "#8aa2ba",
     monster: "#f2c36b", pet: "#b38aff", npc: "#8aa2ba", object: "#8aa2ba",
   };
+  const readability = mechanicsMapReadabilityProfile(preferences.mapDim, preferences.highContrastMechanics);
   for (const entity of entities) {
     const x = entity.mapX / 100 * width;
     const y = entity.mapY / 100 * height;
     const radius = entity.kind === "boss" ? 8 : entity.kind === "local" ? 7 : 5;
     context.save();
     context.globalAlpha = entity.stale ? 0.32 : entity.dead ? 0.48 : 1;
-    context.shadowBlur = 10;
+    context.shadowBlur = readability.entityGlowBlur;
     context.shadowColor = colors[entity.kind] ?? "#8aa2ba";
     context.fillStyle = colors[entity.kind] ?? "#8aa2ba";
     context.strokeStyle = "rgba(4,12,20,.95)";
-    context.lineWidth = 3;
+    context.lineWidth = readability.entityOutlineWidth;
     context.beginPath();
     if (entity.kind === "local" && entity.facing_radians !== null) {
       context.translate(x, y);
@@ -1684,7 +1686,14 @@ function drawEntities(
       context.fillStyle = "rgba(242,246,251,.92)";
       context.font = "600 10px system-ui";
       context.textAlign = "center";
-      context.fillText(entity.display_name, entity.kind === "local" ? 0 : x, entity.kind === "local" ? radius + 14 : y + radius + 13);
+      context.textBaseline = "alphabetic";
+      drawOutlinedText(
+        context,
+        entity.display_name,
+        entity.kind === "local" ? 0 : x,
+        entity.kind === "local" ? radius + 14 : y + radius + 13,
+        readability.labelHaloWidth,
+      );
     }
     context.restore();
   }
@@ -1694,10 +1703,17 @@ function drawEntities(
     if (!point?.visible) continue;
     const x = point.mapX / 100 * width;
     const y = point.mapY / 100 * height;
+    context.save();
+    context.shadowBlur = readability.entityGlowBlur;
+    context.shadowColor = "#f4d76b";
     context.fillStyle = "#f4d76b";
+    context.strokeStyle = "rgba(4,12,20,.98)";
+    context.lineWidth = readability.entityOutlineWidth;
     context.beginPath();
     context.arc(x, y, 8, 0, Math.PI * 2);
     context.fill();
+    context.stroke();
+    context.shadowBlur = 0;
     if (marker.marker_id !== null) {
       context.fillStyle = "#061018";
       context.font = "800 9px system-ui";
@@ -1705,6 +1721,7 @@ function drawEntities(
       context.textBaseline = "middle";
       context.fillText(String(marker.marker_id), x, y);
     }
+    context.restore();
   }
   for (const annotation of projectVoidTowerMapAnnotations(snapshot)) {
     const x = annotation.mapX / 100 * width;
@@ -1769,7 +1786,8 @@ function drawFloorRegion(context: CanvasRenderingContext2D, region: MechanicsMap
   context.fillStyle = "#f2f6fb";
   context.font = "800 12px system-ui";
   context.textAlign = "center";
-  context.fillText(region.label, x, y);
+  context.textBaseline = "middle";
+  drawOutlinedText(context, region.label, x, y, highContrast ? 5 : 3);
 }
 
 function drawActiveRaidRings(context: CanvasRenderingContext2D, snapshot: MechanicsMapSnapshot, width: number, height: number, highContrast: boolean): void {
@@ -1801,18 +1819,44 @@ function drawPolygon(context: CanvasRenderingContext2D, points: readonly Mechani
   context.closePath();
   context.fillStyle = fill;
   context.fill();
+  if (outline) {
+    context.strokeStyle = "rgba(3,9,16,.96)";
+    context.lineWidth = 7;
+    context.stroke();
+  }
   context.strokeStyle = outline ?? fill;
-  context.lineWidth = outline ? 3 : 1.5;
+  context.lineWidth = outline ? 2.5 : 1.5;
   context.stroke();
 }
 
-function drawLine(context: CanvasRenderingContext2D, start: MechanicsMapViewPoint, end: MechanicsMapViewPoint, width: number, height: number, stroke: string, lineWidth: number): void {
+function drawLine(context: CanvasRenderingContext2D, start: MechanicsMapViewPoint, end: MechanicsMapViewPoint, width: number, height: number, stroke: string, lineWidth: number, halo = false): void {
   context.beginPath();
   context.moveTo(start.mapX / 100 * width, start.mapY / 100 * height);
   context.lineTo(end.mapX / 100 * width, end.mapY / 100 * height);
+  if (halo) {
+    context.strokeStyle = "rgba(3,9,16,.96)";
+    context.lineWidth = lineWidth + 6;
+    context.stroke();
+  }
   context.strokeStyle = stroke;
   context.lineWidth = lineWidth;
   context.stroke();
+}
+
+function drawOutlinedText(
+  context: CanvasRenderingContext2D,
+  value: string,
+  x: number,
+  y: number,
+  haloWidth: number,
+): void {
+  const fill = context.fillStyle;
+  context.strokeStyle = "rgba(3,9,16,.98)";
+  context.lineWidth = haloWidth;
+  context.lineJoin = "round";
+  context.strokeText(value, x, y);
+  context.fillStyle = fill;
+  context.fillText(value, x, y);
 }
 
 function drawWorldLine(context: CanvasRenderingContext2D, snapshot: MechanicsMapSnapshot, width: number, height: number, x1: number, z1: number, x2: number, z2: number): void {
@@ -1848,6 +1892,25 @@ function formatMechanicsMapZoom(value: number): string {
 export function nextMapDim(value: number): number {
   const levels = [0, 0.16, 0.32, 0.48, 0.64] as const;
   return levels.find((level) => level > value + 0.001) ?? levels[0];
+}
+
+export interface MechanicsMapReadabilityProfile {
+  mapDim: number;
+  entityOutlineWidth: number;
+  entityGlowBlur: number;
+  labelHaloWidth: number;
+}
+
+export function mechanicsMapReadabilityProfile(
+  mapDim: number,
+  highContrastMechanics: boolean,
+): MechanicsMapReadabilityProfile {
+  return {
+    mapDim: Math.min(0.8, Math.max(0, Number.isFinite(mapDim) ? mapDim : 0.32)),
+    entityOutlineWidth: highContrastMechanics ? 4 : 3,
+    entityGlowBlur: highContrastMechanics ? 14 : 10,
+    labelHaloWidth: highContrastMechanics ? 5 : 3,
+  };
 }
 
 function formatTargetHealth(current: number | null, maximum: number | null): string {
