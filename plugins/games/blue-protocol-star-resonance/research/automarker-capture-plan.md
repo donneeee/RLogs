@@ -21,6 +21,16 @@ the game protocol below is proven from a controlled capture.
   slices. It does **not** prove that no native-marker action occurred before
   the slice, that no unknown/opaque route was present, or that the marker was
   not implemented locally by the game UI.
+- The player reports one native party-visible marker-placement sequence per
+  recorded log/run, at the start immediately before the boss was first
+  engaged. The markers were not reapplied or reset after wipes; they reportedly
+  persisted into later pulls. Treat the four initial placements as high-value
+  search timestamps and any later marker traffic as a possible persistence or
+  resynchronization notification, not a second user action. This remains user
+  observation rather than protocol proof. The retained run scope should
+  include each pre-engagement interval, so the absence of canonical `Map`
+  events is consistent with an undecoded route or non-`Map` game state; it is
+  not evidence that the reported action did not occur.
 - Submission `.rlog` files contain canonical events, not packet/link headers or
   unknown route bodies. They cannot recover an undecoded marker request.
 - No private PCAP/PCAPNG or selective research journal for these runs is
