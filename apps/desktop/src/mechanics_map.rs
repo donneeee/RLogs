@@ -1894,7 +1894,7 @@ fn raid_arena_spec(
     scene_id: Option<i32>,
     local_y: Option<f32>,
 ) -> Option<SceneMapSpec> {
-    if build != Some("global/steam-24687926") || !matches!(scene_id, Some(13021..=13023)) {
+    if build != Some("24687926") || !matches!(scene_id, Some(13021..=13023)) {
         return None;
     }
     Some(if local_y.is_some_and(|y| y >= 275.0) {
@@ -1920,9 +1920,18 @@ fn raid_arena_spec(
 
 fn scene_map_spec(build: Option<&str>, scene_id: Option<i32>) -> Option<SceneMapSpec> {
     let scene_id = scene_id?;
-    let entry = packaged_scene_maps()
-        .builds
-        .get(build?)?
+    let build = build?;
+    let maps = packaged_scene_maps();
+    let entries = maps.builds.get(build).or_else(|| {
+        let requested = build.parse::<u64>().ok()?;
+        maps.builds
+            .iter()
+            .filter_map(|(candidate, entries)| Some((candidate.parse::<u64>().ok()?, entries)))
+            .filter(|(candidate, _)| *candidate <= requested)
+            .max_by_key(|(candidate, _)| *candidate)
+            .map(|(_, entries)| entries)
+    });
+    let entry = entries?
         .iter()
         .find(|entry| entry.scene_ids.contains(&scene_id))?;
     Some(SceneMapSpec {
@@ -1936,7 +1945,7 @@ fn scene_map_spec(build: Option<&str>, scene_id: Option<i32>) -> Option<SceneMap
 }
 
 fn encounter_pack(client_build: Option<&str>, scene_id: Option<i32>) -> Option<&'static str> {
-    if client_build != Some("global/steam-24687926") {
+    if client_build != Some("24687926") {
         return None;
     }
     match scene_id? {
@@ -1955,7 +1964,7 @@ fn is_reviewed_mechanic_effect(
     scene_id: Option<i32>,
     effect_id: i64,
 ) -> bool {
-    if client_build != Some("global/steam-24687926") {
+    if client_build != Some("24687926") {
         return false;
     }
     let ids: &[i64] = match scene_id {
@@ -1987,7 +1996,7 @@ fn reviewed_mechanic_entity_role(
     scene_id: Option<i32>,
     monster_id: Option<i64>,
 ) -> Option<&'static str> {
-    if client_build != Some("global/steam-24687926") {
+    if client_build != Some("24687926") {
         return None;
     }
     match (scene_id?, monster_id?) {
@@ -2017,7 +2026,7 @@ fn reviewed_mechanic_signal_kind(
     scene_id: Option<i32>,
     effect_id: i64,
 ) -> Option<&'static str> {
-    if client_build != Some("global/steam-24687926") {
+    if client_build != Some("24687926") {
         return None;
     }
     match (scene_id?, effect_id) {
@@ -2112,7 +2121,7 @@ fn is_reviewed_mechanic_cast(
     scene_id: Option<i32>,
     ability_id: i64,
 ) -> bool {
-    if client_build != Some("global/steam-24687926") {
+    if client_build != Some("24687926") {
         return false;
     }
     let ids: &[i64] = match scene_id {
@@ -2149,7 +2158,7 @@ mod tests {
                     realm_id: None,
                     world_id: None,
                 },
-                client_build: "global/steam-24687926".into(),
+                client_build: "24687926".into(),
                 protocol_pack_digest: "digest".into(),
                 evidence: vec![],
             },
@@ -2971,7 +2980,7 @@ mod tests {
 
     #[test]
     fn mechanic_effects_are_scene_scoped_and_fail_closed() {
-        let build = Some("global/steam-24687926");
+        let build = Some("24687926");
         assert!(is_reviewed_mechanic_effect(build, Some(6615), 884609));
         assert!(!is_reviewed_mechanic_effect(build, Some(6615), 821076));
         assert!(!is_reviewed_mechanic_effect(build, Some(999_999), 884609));
@@ -2985,61 +2994,68 @@ mod tests {
 
     #[test]
     fn full_scene_map_is_exact_build_and_scene_scoped() {
-        let tower = scene_map_spec(Some("global/steam-24687926"), Some(1151))
-            .expect("reviewed Towering Ruin map");
+        let tower =
+            scene_map_spec(Some("24687926"), Some(1151)).expect("reviewed Towering Ruin map");
         assert_eq!(tower.asset_file, Some("scene-1150-towering-ruin.png"));
         assert!((tower.origin_x - -275.674).abs() < 0.001);
         assert!((tower.origin_z - -472.974).abs() < 0.001);
         assert!((tower.span_x - 297.348).abs() < 0.001);
         assert!((tower.span_z - 297.348).abs() < 0.001);
 
-        let tina = scene_map_spec(Some("global/steam-24687926"), Some(1632))
-            .expect("reviewed Tina Mindrealm map");
+        let tina =
+            scene_map_spec(Some("24687926"), Some(1632)).expect("reviewed Tina Mindrealm map");
         assert_eq!(tina.asset_file, Some("scene-1631-tina-mindrealm.png"));
         assert_eq!((tina.origin_x, tina.origin_z), (-640.0, -523.0));
         assert_eq!((tina.span_x, tina.span_z), (800.0, 800.0));
 
-        let coral = scene_map_spec(Some("global/steam-24687926"), Some(6565))
-            .expect("reviewed Coral Sea map");
+        let coral = scene_map_spec(Some("24687926"), Some(6565)).expect("reviewed Coral Sea map");
         assert_eq!(coral.asset_file, Some("scene-6563-coral-sea.png"));
         assert_eq!((coral.origin_x, coral.origin_z), (-600.0, -500.0));
         assert_eq!((coral.span_x, coral.span_z), (1000.0, 1000.0));
 
-        let map = scene_map_spec(Some("global/steam-24687926"), Some(6513))
-            .expect("reviewed Cursed Tomb map");
+        let map = scene_map_spec(Some("24687926"), Some(6513)).expect("reviewed Cursed Tomb map");
         assert_eq!(map.asset_file, Some("scene-6513-cursed-tomb.png"));
         assert_eq!((map.origin_x, map.origin_z), (-149.0, -377.0));
         assert_eq!((map.span_x, map.span_z), (450.0, 450.0));
         assert!(scene_map_spec(Some("global/steam-newer"), Some(6513)).is_none());
-        let raid = scene_map_spec(Some("global/steam-24687926"), Some(13023))
-            .expect("reviewed Season 3 raid map");
+        let raid =
+            scene_map_spec(Some("24687926"), Some(13023)).expect("reviewed Season 3 raid map");
         assert_eq!(raid.asset_file, Some("scene-13021-s3-raid.png"));
         assert_eq!((raid.origin_x, raid.origin_z), (-500.0, -400.0));
         assert_eq!((raid.span_x, raid.span_z), (1000.0, 1000.0));
 
-        let wasteland = scene_map_spec(Some("global/steam-24687926"), Some(6615))
-            .expect("reviewed Wasteland Court map");
+        let wasteland =
+            scene_map_spec(Some("24687926"), Some(6615)).expect("reviewed Wasteland Court map");
         assert_eq!(wasteland.asset_file, Some("scene-6615-wasteland-court.png"));
         assert_eq!((wasteland.origin_x, wasteland.origin_z), (-180.0, -250.0));
         assert_eq!((wasteland.span_x, wasteland.span_z), (500.0, 500.0));
     }
 
     #[test]
+    fn full_scene_map_reuses_latest_reviewed_numeric_build_after_a_client_update() {
+        let map = scene_map_spec(Some("24687927"), Some(6513))
+            .expect("new numeric builds reuse the latest reviewed map identity");
+        assert_eq!(map.asset_file, Some("scene-6513-cursed-tomb.png"));
+        assert!(scene_map_spec(Some("global/steam-24687927"), Some(6513)).is_none());
+        assert!(scene_map_spec(Some("24600000"), Some(6513)).is_none());
+    }
+
+    #[test]
     fn season_three_raid_uses_packet_height_to_select_its_verified_arena() {
-        let ring = raid_arena_spec(Some("global/steam-24687926"), Some(13021), Some(150.0))
-            .expect("raid ring arena");
+        let ring =
+            raid_arena_spec(Some("24687926"), Some(13021), Some(150.0)).expect("raid ring arena");
         assert_eq!(ring.layout, Some("raid_ring"));
         assert_eq!((ring.origin_x, ring.origin_z), (-55.0, -55.0));
         assert_eq!((ring.span_x, ring.span_z), (110.0, 110.0));
 
-        let grid = raid_arena_spec(Some("global/steam-24687926"), Some(13023), Some(400.0))
-            .expect("raid grid arena");
+        let grid =
+            raid_arena_spec(Some("24687926"), Some(13023), Some(400.0)).expect("raid grid arena");
         assert_eq!(grid.layout, Some("raid_grid"));
         assert_eq!((grid.origin_x, grid.origin_z), (-30.0, -27.0));
         assert_eq!((grid.span_x, grid.span_z), (60.0, 54.0));
 
         assert!(raid_arena_spec(Some("global/steam-newer"), Some(13021), Some(150.0)).is_none());
-        assert!(raid_arena_spec(Some("global/steam-24687926"), Some(6615), Some(150.0)).is_none());
+        assert!(raid_arena_spec(Some("24687926"), Some(6615), Some(150.0)).is_none());
     }
 
     #[test]
@@ -3049,7 +3065,7 @@ mod tests {
         let value: serde_json::Value =
             serde_json::from_slice(&std::fs::read(path).expect("reviewed map manifest"))
                 .expect("valid reviewed map manifest");
-        let entries = value["builds"]["global/steam-24687926"]
+        let entries = value["builds"]["24687926"]
             .as_array()
             .expect("current build map entries");
         assert_eq!(entries.len(), 57);
@@ -3063,7 +3079,7 @@ mod tests {
                     "a scene ID may resolve to only one reviewed map"
                 );
                 let spec = scene_map_spec(
-                    Some("global/steam-24687926"),
+                    Some("24687926"),
                     Some(scene_id.as_i64().expect("numeric scene ID") as i32),
                 )
                 .expect("manifest scene has a runtime map spec");
@@ -3084,12 +3100,12 @@ mod tests {
     #[test]
     fn mechanic_casts_are_exact_build_and_scene_scoped() {
         assert!(is_reviewed_mechanic_cast(
-            Some("global/steam-24687926"),
+            Some("24687926"),
             Some(6513),
             3390117,
         ));
         assert!(!is_reviewed_mechanic_cast(
-            Some("global/steam-24687926"),
+            Some("24687926"),
             Some(6513),
             1701,
         ));
@@ -3102,7 +3118,7 @@ mod tests {
 
     #[test]
     fn cursed_tomb_semantics_are_exact_build_and_scene_scoped() {
-        let build = Some("global/steam-24687926");
+        let build = Some("24687926");
         assert_eq!(
             reviewed_mechanic_entity_role(build, Some(6513), Some(33904)),
             Some("tower")
@@ -3131,7 +3147,7 @@ mod tests {
 
     #[test]
     fn reviewed_scene_families_expose_named_roles_effects_and_casts() {
-        let build = Some("global/steam-24687926");
+        let build = Some("24687926");
         for (scene, monster, role) in [
             (1151, 2106, "correct_portal"),
             (1632, 300089, "pizza_fast"),

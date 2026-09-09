@@ -4,9 +4,9 @@ import { actionControlRemainingMillis, fitMechanicsMapCanvasRect, mechanicSignal
 
 function snapshot(): MechanicsMapSnapshot {
   return {
-    schema_version: 13, revision: 3, session_id: "s", client_build: "global/steam-24687926",
+    schema_version: 13, revision: 3, session_id: "s", client_build: "24687926",
     scene_id: 6615, map_id: 6615, scene_name: null, map_model: "player_relative_radar", map_layout: null,
-    world_radius: 140, background_asset_url: "/local-game-assets/global/steam-24687926/dungeon_map_bg.png",
+    world_radius: 140, background_asset_url: "/local-game-assets/24687926/dungeon_map_bg.png",
     map_origin_x: null, map_origin_z: null, map_span_x: null, map_span_z: null,
     local_actor_id: 1, local_position_observed: true,
     player: {
@@ -41,7 +41,7 @@ function snapshot(): MechanicsMapSnapshot {
 describe("Mechanics Map", () => {
   it("automatically prepares each missing exact-build map only once", () => {
     const attempts = new Set<string>();
-    const map = "/local-game-assets/global/steam-24687926/scene-6513-cursed-tomb.png";
+    const map = "/local-game-assets/24687926/scene-6513-cursed-tomb.png";
     expect(claimAutomaticMapPreparation(map, attempts)).toBe(true);
     expect(claimAutomaticMapPreparation(map, attempts)).toBe(false);
     expect(claimAutomaticMapPreparation(`${map}?revision=2`, attempts)).toBe(true);

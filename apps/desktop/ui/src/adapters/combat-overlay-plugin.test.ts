@@ -28,6 +28,7 @@ import {
   projectOverlayRatesForTimer,
   runtimeOverlayNeedsRender,
   runtimeOverlayRenderDelay,
+  runtimeEmptyMessage,
   shouldIgnoreCombatOverlayCursor,
   shouldKeepCombatVisibilityTimer,
 } from "../../../../../plugins/builtin/desktop/combat-overlay/ui/combat-overlay";
@@ -74,6 +75,29 @@ function editableSummarySettings() {
 }
 
 describe("Combat Overlay plug-in settings", () => {
+  it("explains that an armed dummy capture is waiting for its qualifying first hit", () => {
+    expect(runtimeEmptyMessage({
+      phase: "armed",
+      durationMicros: 180_000_000,
+      remainingMicros: 180_000_000,
+      totalDamage: 0,
+      dps: 0,
+      valid: true,
+    })).toContain("Dummy armed");
+  });
+
+  it("makes an armed training-dummy capture explicit before the first hit", () => {
+    expect(runtimeEmptyMessage({
+      phase: "armed",
+      durationMicros: 180_000_000,
+      remainingMicros: 180_000_000,
+      totalDamage: 0,
+      dps: 0,
+      valid: true,
+    })).toContain("Dummy armed");
+    expect(runtimeEmptyMessage(null)).toBe("Waiting for combat...");
+  });
+
   it("preserves user-owned summary widths independently from table columns", () => {
     const settings = editableSummarySettings();
 

@@ -6,7 +6,7 @@ import { customTriggerRuleMenuGroups } from "./custom-triggers-workspace-surface
 describe("development desktop workspaces", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("keeps the design-only Overlay and Custom Triggers menus locally testable", async () => {
+  it("keeps the Overlay and design-only Custom Triggers menus locally testable", async () => {
     vi.stubGlobal("window", { location: { search: "" } });
     const workspaces = await createDevelopmentAdapter().loadWorkspaces();
     const overlay = workspaces.find(({ id }) => id === "app.rlogs.overlay");
@@ -17,7 +17,7 @@ describe("development desktop workspaces", () => {
       "Setups",
       "Editor",
       "Trackers",
-      "Mechanics Map",
+      "Map",
       "Settings",
     ]);
     expect(triggers?.tabs.map(({ label }) => label)).toEqual([
@@ -27,7 +27,7 @@ describe("development desktop workspaces", () => {
       "Library",
       "Settings",
     ]);
-    expect(overlay?.version).toBe("0.1.1");
+    expect(overlay?.version).toBe("0.1.7");
     expect(triggers?.version).toBe("0.1.2");
   });
 

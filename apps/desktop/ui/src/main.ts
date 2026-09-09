@@ -146,7 +146,7 @@ if (isCombatOverlayRuntime) {
   } catch (error) {
     const failure = document.createElement("main");
     failure.className = "mechanics-map-overlay-failure";
-    failure.textContent = `Mechanics Map overlay could not start: ${error instanceof Error ? error.message : String(error)}`;
+    failure.textContent = `Map overlay could not start: ${error instanceof Error ? error.message : String(error)}`;
     root.replaceChildren(failure);
     await invoke("overlay_canvas_ready").catch(() => undefined);
   }

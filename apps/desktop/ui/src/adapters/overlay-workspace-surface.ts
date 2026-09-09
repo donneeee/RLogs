@@ -49,8 +49,8 @@ const PAGE_DEFINITIONS: Record<OverlayWorkspacePage, PageDefinition> = {
         destination: destination(OVERLAY_WORKSPACE_ID, "trackers"),
       },
       {
-        title: "Mechanics Map",
-        description: "Configure the game-like map and encounter guidance layer.",
+        title: "Map",
+        description: "Open the in-game map as an overlay and add encounter guidance on top.",
         items: ["Live map", "Encounter guides", "Markers"],
         destination: destination(OVERLAY_WORKSPACE_ID, "mechanics-map"),
       },
@@ -148,7 +148,7 @@ const PAGE_DEFINITIONS: Record<OverlayWorkspacePage, PageDefinition> = {
   },
   "mechanics-map": {
     eyebrow: "SPATIAL OVERLAY",
-    title: "Mechanics Map",
+    title: "Map",
     description:
       "Keep the familiar feel of the in-game map while adding encounter information and configurable guidance.",
     items: [

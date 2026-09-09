@@ -33,7 +33,7 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
   const root = el("div", "plugin-surface overlay-workspace-surface mechanics-map-surface");
   const header = el("section", "content-card overlay-workspace-intro");
   const heading = el("div", "overlay-workspace-heading");
-  heading.append(text("span", "SPATIAL OVERLAY", "eyebrow"), text("h2", "Mechanics Map"), text("p", "An exact player-relative radar using packet-observed positions and current-build encounter signals.", "card-copy"));
+  heading.append(text("span", "MAP OVERLAY", "eyebrow"), text("h2", "Map"), text("p", "The current in-game map, reproduced from this game installation and augmented with live positions and encounter mechanics.", "card-copy"));
   const badge = text("span", "CONNECTING", "overlay-menu-preview-badge");
   header.append(heading, badge);
 
@@ -48,14 +48,31 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
   openOverlay.type = "button";
   openOverlay.addEventListener("click", () => {
     openOverlay.disabled = true;
-    void dependencies.openOverlay().finally(() => { openOverlay.disabled = false; });
+    preparationMessage = "Opening the map overlay…";
+    preparationError = false;
+    render();
+    void dependencies.openOverlay()
+      .then(() => {
+        preparationMessage = "Map overlay opened. Hold the overlay interaction key to move or resize it.";
+      })
+      .catch((error) => {
+        preparationMessage = error instanceof Error ? error.message : String(error);
+        preparationError = true;
+      })
+      .finally(() => {
+        openOverlay.disabled = false;
+        if (alive) render();
+      });
   });
+  const refreshMaps = text("button", "Refresh maps from game files", "quiet-button mechanics-map-refresh-assets");
+  refreshMaps.type = "button";
+  refreshMaps.addEventListener("click", () => { void prepareReviewedMaps(); });
   const rotate = check("Rotate with player", true, (checked) => { rotateWithPlayer = checked; render(); });
   const monsters = check("Monsters", true, (checked) => { showMonsters = checked; render(); });
   const resetView = text("button", "Reset view", "quiet-button mechanics-map-reset-view");
   resetView.type = "button";
   resetView.addEventListener("click", resetMapView);
-  controls.append(openOverlay, rotate, monsters, resetView);
+  controls.append(openOverlay, refreshMaps, rotate, monsters, resetView);
   mapHeading.append(mapCopy, controls);
   const radar = el("div", "mechanics-radar");
   radar.setAttribute("role", "img");
@@ -315,6 +332,8 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
   async function prepareReviewedMaps(): Promise<void> {
     if (preparingMaps) return;
     preparingMaps = true;
+    refreshMaps.disabled = true;
+    refreshMaps.textContent = "Refreshing maps…";
     preparationMessage = null;
     preparationError = false;
     render();
@@ -332,6 +351,8 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
       render();
     } finally {
       preparingMaps = false;
+      refreshMaps.disabled = false;
+      refreshMaps.textContent = "Refresh maps from game files";
       if (alive) render();
     }
   }

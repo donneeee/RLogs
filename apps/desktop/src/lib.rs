@@ -158,18 +158,14 @@ use windows_sys::Win32::{
 const DEFAULT_BIND: &str = "127.0.0.1:7419";
 const PUBLIC_SUBMISSION_SERVICE_URL: &str = "https://rlogs-submissions.pages.dev";
 const SESSION_RECORDER_PLUGIN_ID: &str = "app.rlogs.session-recorder";
-const FUTURE_OVERLAY_PLUGIN_ID: &str = "app.rlogs.overlay";
 const CUSTOM_TRIGGERS_PLUGIN_ID: &str = "app.rlogs.custom-triggers";
 /// Bundled features that are not production-ready yet.
 ///
 /// Removing an ID from this registry promotes a wholly unfinished plug-in back
 /// into the ordinary catalog. Mixed plug-ins declare unfinished tabs with the
 /// manifest's `developer_only` field so the release boundary stays auditable.
-const DEVELOPER_ONLY_PLUGIN_IDS: [&str; 3] = [
-    SESSION_RECORDER_PLUGIN_ID,
-    FUTURE_OVERLAY_PLUGIN_ID,
-    CUSTOM_TRIGGERS_PLUGIN_ID,
-];
+const DEVELOPER_ONLY_PLUGIN_IDS: [&str; 2] =
+    [SESSION_RECORDER_PLUGIN_ID, CUSTOM_TRIGGERS_PLUGIN_ID];
 const MAX_REQUEST_HEADER_BYTES: usize = 64 * 1024;
 const MAX_REQUEST_BODY_BYTES: usize = 1024 * 1024;
 const MAX_OVERLAY_BACKGROUND_BYTES: usize = 8 * 1024 * 1024;
@@ -5429,6 +5425,23 @@ struct ReviewedMapAssetManifest {
     builds: BTreeMap<String, Vec<serde_json::Value>>,
 }
 
+fn reviewed_map_build_for_client(
+    manifest: &ReviewedMapAssetManifest,
+    client_build: &str,
+) -> Option<String> {
+    if manifest.builds.contains_key(client_build) {
+        return Some(client_build.to_owned());
+    }
+    let observed = client_build.parse::<u64>().ok()?;
+    manifest
+        .builds
+        .keys()
+        .filter_map(|build| build.parse::<u64>().ok().map(|numeric| (numeric, build)))
+        .filter(|(numeric, _)| *numeric <= observed)
+        .max_by_key(|(numeric, _)| *numeric)
+        .map(|(_, build)| build.clone())
+}
+
 impl RuntimeController {
     fn new(install_root: PathBuf) -> Result<Self, String> {
         Self::new_with_application_version(install_root, env!("CARGO_PKG_VERSION"))
@@ -6522,15 +6535,15 @@ impl RuntimeController {
                 manifest.schema_version
             ));
         }
+        let reviewed_build =
+            reviewed_map_build_for_client(&manifest, &client_build).ok_or_else(|| {
+                format!("No compatible game maps are available for build {client_build}.")
+            })?;
         let prepared_assets = manifest
             .builds
-            .get(&client_build)
+            .get(&reviewed_build)
             .map(Vec::len)
-            .ok_or_else(|| {
-                format!(
-                    "No reviewed game maps are approved for packet-observed build {client_build}."
-                )
-            })?;
+            .unwrap_or_default();
 
         let runtime_root = self.install_root.join("runtime-data/game-assets");
         std::fs::create_dir_all(&runtime_root).map_err(|error| {
@@ -6561,6 +6574,8 @@ impl RuntimeController {
             .arg(&runtime_root)
             .arg("--build")
             .arg(&client_build)
+            .arg("--reviewed-build")
+            .arg(&reviewed_build)
             .arg("--reviewed-manifest")
             .arg(&manifest_path);
         let output = run_process_with_timeout(command, Duration::from_secs(120))
@@ -17925,6 +17940,20 @@ kind = "content"
                     .all(|tab| tab.contributor_plugin_id != plugin_id)
             );
         }
+        assert!(
+            catalog
+                .packages
+                .iter()
+                .any(|package| package.id == "app.rlogs.overlay"),
+            "the usable overlay must remain available outside developer mode"
+        );
+        assert!(
+            catalog
+                .workspaces
+                .iter()
+                .any(|workspace| workspace.id == "app.rlogs.overlay"),
+            "the usable overlay workspace must remain available outside developer mode"
+        );
 
         let developer_catalog = manager.snapshot(true);
         for plugin_id in DEVELOPER_ONLY_PLUGIN_IDS {
@@ -17937,6 +17966,54 @@ kind = "content"
         }
 
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn local_map_refresh_selects_the_latest_compatible_numeric_review() {
+        let manifest = ReviewedMapAssetManifest {
+            schema_version: 1,
+            builds: BTreeMap::from([
+                ("24600000".into(), vec![serde_json::json!({})]),
+                ("24687926".into(), vec![serde_json::json!({})]),
+            ]),
+        };
+
+        assert_eq!(
+            reviewed_map_build_for_client(&manifest, "24687926").as_deref(),
+            Some("24687926")
+        );
+        assert_eq!(
+            reviewed_map_build_for_client(&manifest, "24687927").as_deref(),
+            Some("24687926")
+        );
+        assert!(reviewed_map_build_for_client(&manifest, "24599999").is_none());
+        assert!(reviewed_map_build_for_client(&manifest, "global/steam-24687927").is_none());
+    }
+
+    #[test]
+    fn map_assets_select_the_latest_reviewed_numeric_build_without_crossing_forward() {
+        let manifest = ReviewedMapAssetManifest {
+            schema_version: 1,
+            builds: BTreeMap::from([
+                ("24600000".to_owned(), vec![]),
+                ("24687926".to_owned(), vec![]),
+                ("24700000".to_owned(), vec![]),
+            ]),
+        };
+
+        assert_eq!(
+            reviewed_map_build_for_client(&manifest, "24687926").as_deref(),
+            Some("24687926")
+        );
+        assert_eq!(
+            reviewed_map_build_for_client(&manifest, "24690000").as_deref(),
+            Some("24687926")
+        );
+        assert_eq!(reviewed_map_build_for_client(&manifest, "24599999"), None);
+        assert_eq!(
+            reviewed_map_build_for_client(&manifest, "global/steam-24690000"),
+            None
+        );
     }
 
     #[test]

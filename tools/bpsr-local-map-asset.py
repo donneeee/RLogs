@@ -8,7 +8,9 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import struct
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -17,7 +19,7 @@ from PIL import __version__ as pillow_version  # type: ignore
 
 DEFAULT_ADDRESS = "ui/textures/map/dungeon_map_bg"
 DEFAULT_OBJECT_NAME = "dungeon_map_bg"
-COMPILER_VERSION = "2"
+COMPILER_VERSION = "3"
 
 
 def main() -> None:
@@ -33,6 +35,7 @@ def main() -> None:
     parser.add_argument("--container", type=Path)
     parser.add_argument("--runtime-root", type=Path)
     parser.add_argument("--build")
+    parser.add_argument("--reviewed-build")
     parser.add_argument("--address", default=DEFAULT_ADDRESS)
     parser.add_argument("--object-name", default=DEFAULT_OBJECT_NAME)
     parser.add_argument("--asset", default="dungeon_map_bg.png")
@@ -75,7 +78,11 @@ def main() -> None:
         return
     if args.reviewed_manifest is not None:
         compile_reviewed_manifest(
-            args.container, args.runtime_root, args.build, args.reviewed_manifest
+            args.container,
+            args.runtime_root,
+            args.build,
+            args.reviewed_build or args.build,
+            args.reviewed_manifest,
         )
         return
     compile_asset(args)
@@ -86,6 +93,7 @@ def compile_asset(
     expected: Optional[dict] = None,
     address_catalog: Optional[bytes] = None,
     meta_entries: Optional[list[tuple[int, int, int, int]]] = None,
+    strict_bundle_hashes: bool = True,
 ) -> dict:
     if not is_safe_relative_identity(args.build, 128):
         raise SystemExit("build must be a safe exact client-build identity")
@@ -110,7 +118,7 @@ def compile_asset(
     if len(hashes) != 1:
         raise SystemExit(f"expected one exact address row for {args.address}, observed {len(hashes)}")
     bundle_hash = hashes.pop()
-    if expected is not None and bundle_hash != expected["source_bundle_hash"]:
+    if expected is not None and strict_bundle_hashes and bundle_hash != expected["source_bundle_hash"]:
         raise SystemExit(
             f"reviewed source bundle changed for {args.asset}: "
             f"expected {expected['source_bundle_hash']}, observed {bundle_hash}"
@@ -172,7 +180,7 @@ def compile_asset(
         region_bundle_hash, region_package, region_bundle = read_address_bundle(
             args.container, args.region_address
         )
-        if expected is not None and region_bundle_hash != expected["region_bundle_hash"]:
+        if expected is not None and strict_bundle_hashes and region_bundle_hash != expected["region_bundle_hash"]:
             raise SystemExit(
                 f"reviewed region bundle changed for {args.asset}: "
                 f"expected {expected['region_bundle_hash']}, observed {region_bundle_hash}"
@@ -231,10 +239,16 @@ def compile_asset(
 
 
 def compile_reviewed_manifest(
-    container: Path, runtime_root: Path, build: str, manifest_path: Path
+    container: Path,
+    runtime_root: Path,
+    build: str,
+    reviewed_build: str,
+    manifest_path: Path,
 ) -> None:
     if not is_safe_relative_identity(build, 128):
         raise SystemExit("build must be a safe exact client-build identity")
+    if not is_safe_relative_identity(reviewed_build, 128):
+        raise SystemExit("reviewed build must be a safe exact client-build identity")
     if manifest_path.stat().st_size > 128 * 1024:
         raise SystemExit("reviewed map manifest exceeds 128 KiB")
     value = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -242,35 +256,57 @@ def compile_reviewed_manifest(
         raise SystemExit("reviewed map manifest has an invalid root")
     if value["schema_version"] != 1 or not isinstance(value["builds"], dict):
         raise SystemExit("reviewed map manifest has an unsupported schema")
-    entries = value["builds"].get(build)
+    entries = value["builds"].get(reviewed_build)
     if not isinstance(entries, list) or not entries:
-        raise SystemExit(f"no reviewed local map assets match exact build {build}")
+        raise SystemExit(f"no reviewed local map assets match reviewed build {reviewed_build}")
     required = {
         "address", "object_name", "asset", "region_address", "source_bundle_hash",
         "region_bundle_hash", "width", "height", "origin_x", "origin_z", "span_x",
         "span_z", "scene_ids",
     }
-    address_catalog = (container / "m0.pkg").read_bytes()
-    meta_entries = read_meta_entries((container / "meta.pkg").read_bytes())
-    for entry in entries:
-        if not isinstance(entry, dict) or set(entry) != required:
-            raise SystemExit("reviewed map manifest entry has invalid fields")
-        if not isinstance(entry["scene_ids"], list) or not entry["scene_ids"]:
-            raise SystemExit("reviewed map manifest entry has no scene IDs")
-        compile_asset(
-            argparse.Namespace(
-                container=container,
-                runtime_root=runtime_root,
-                build=build,
-                address=entry["address"],
-                object_name=entry["object_name"],
-                asset=entry["asset"],
-                region_address=entry["region_address"],
-            ),
-            entry,
-            address_catalog,
-            meta_entries,
-        )
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    staging_root = Path(tempfile.mkdtemp(prefix=".rlogs-map-stage-", dir=runtime_root))
+    target = runtime_root / build
+    backup = runtime_root / f".{build}.previous"
+    try:
+        address_catalog = (container / "m0.pkg").read_bytes()
+        meta_entries = read_meta_entries((container / "meta.pkg").read_bytes())
+        for entry in entries:
+            if not isinstance(entry, dict) or set(entry) != required:
+                raise SystemExit("reviewed map manifest entry has invalid fields")
+            if not isinstance(entry["scene_ids"], list) or not entry["scene_ids"]:
+                raise SystemExit("reviewed map manifest entry has no scene IDs")
+            compile_asset(
+                argparse.Namespace(
+                    container=container,
+                    runtime_root=staging_root,
+                    build=build,
+                    address=entry["address"],
+                    object_name=entry["object_name"],
+                    asset=entry["asset"],
+                    region_address=entry["region_address"],
+                ),
+                entry,
+                address_catalog,
+                meta_entries,
+                strict_bundle_hashes=build == reviewed_build,
+            )
+        staged = staging_root / build
+        if backup.exists():
+            shutil.rmtree(backup)
+        if target.exists():
+            target.replace(backup)
+        try:
+            staged.replace(target)
+        except BaseException:
+            if backup.exists() and not target.exists():
+                backup.replace(target)
+            raise
+        if backup.exists():
+            shutil.rmtree(backup)
+    finally:
+        if staging_root.exists():
+            shutil.rmtree(staging_root)
     print(f"prepared {len(entries)} reviewed map assets for {build}")
 
 

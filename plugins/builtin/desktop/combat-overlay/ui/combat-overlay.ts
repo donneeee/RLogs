@@ -483,6 +483,11 @@ interface TrainingDummyState {
   invalidReason?: string | null;
 }
 
+interface TrainingDummyToggleResult {
+  enabled: boolean;
+  message: string;
+}
+
 export function overlayActorsFromLiveUpdate(
   update: OverlayLiveUpdate | null | undefined,
 ): OverlayActor[] {
@@ -2468,6 +2473,7 @@ export async function mountCombatOverlayRuntimeApp(
     nextCanvas.style.setProperty("--summary-opacity", String(runtimeSettings.summaryOpacityPercent / 100));
     renderOverlayCanvas(nextCanvas, runtimeSettings, actors, {
       mode: "runtime",
+      emptyMessage: runtimeEmptyMessage(trainingDummy),
       snapshot: applyOverlayTimerPause(latestSnapshot, timerSettings),
       encounterPresentation,
       trainingDummy,
@@ -2546,7 +2552,20 @@ export async function mountCombatOverlayRuntimeApp(
         } else if (action === "toggle_training_dummy") {
           const enabled = trainingDummy === null
             || (trainingDummy.phase !== "armed" && trainingDummy.phase !== "running");
-          void setTrainingDummy(enabled)
+          void setTrainingDummy(enabled).then((result) => {
+            trainingDummy = enabled
+              ? {
+                  phase: "armed",
+                  durationMicros: 180_000_000,
+                  remainingMicros: 180_000_000,
+                  totalDamage: 0,
+                  dps: 0,
+                  valid: true,
+                }
+              : null;
+            root.title = result.message;
+            render();
+          })
             .catch((error) => reportWindowSyncFailure("training dummy toggle", error));
         }
       },
@@ -3428,6 +3447,20 @@ function runtimeControlLabel(
     if (trainingDummy?.phase === "invalid") return "Dummy invalid";
   }
   return control.label;
+}
+
+export function runtimeEmptyMessage(trainingDummy: TrainingDummyState | null | undefined): string {
+  if (trainingDummy?.phase === "armed") {
+    return "Dummy armed — waiting for the first qualifying Guild Hall dummy hit.";
+  }
+  if (trainingDummy?.phase === "running") {
+    return "Dummy test running — waiting for observed damage.";
+  }
+  if (trainingDummy?.phase === "finished") return "Three-minute dummy test finished.";
+  if (trainingDummy?.phase === "invalid") {
+    return trainingDummy.invalidReason ?? "Dummy test invalidated.";
+  }
+  return "Waiting for combat...";
 }
 
 function timerFieldLabel(field: OverlaySummaryField): string {
@@ -5386,8 +5419,8 @@ async function forceResetLiveCombat(): Promise<void> {
   });
 }
 
-async function setTrainingDummy(enabled: boolean): Promise<void> {
-  await apiJson<unknown>("/api/runtime/live/combat/training-dummy", {
+async function setTrainingDummy(enabled: boolean): Promise<TrainingDummyToggleResult> {
+  return apiJson<TrainingDummyToggleResult>("/api/runtime/live/combat/training-dummy", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled }),
@@ -6261,7 +6294,7 @@ function installStyles(): void {
     .combat-overlay-summary-stat:last-child { border-right:0; }
     .combat-overlay-summary-stat small { overflow:hidden; color:#7f93aa; font-size:8px; font-weight:800; letter-spacing:.05em; text-overflow:ellipsis; text-transform:uppercase; white-space:nowrap; }
     .combat-overlay-summary-stat strong { color:#edf5ff; font-size:11px; font-variant-numeric:tabular-nums; white-space:nowrap; }
-    .combat-overlay-summary-stat.label-hidden { gap:0; }
+    .combat-overlay-summary-stat.label-hidden { align-items:center; justify-content:center; gap:0; padding-block:0; }
     .combat-overlay-summary-stat.label-hidden small { display:none; }
     .combat-overlay-summary-draggable { cursor:grab; touch-action:none; user-select:none; }
     .combat-overlay-summary-draggable.is-dragging { cursor:grabbing; }
@@ -6299,11 +6332,11 @@ function installStyles(): void {
     }
     .combat-overlay-layer-drag { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; user-select:none; }
     .combat-overlay-layer-controls { display:flex; min-width:0; align-items:center; gap:5px; }
-    .combat-overlay-view-controls { display:flex; min-width:0; align-items:center; gap:3px; padding-right:5px; border-right:1px solid #8aa0b82f; }
+    .combat-overlay-view-controls { display:flex; min-width:0; height:27px; align-self:center; align-items:center; gap:3px; padding-right:5px; border-right:1px solid #8aa0b82f; box-sizing:border-box; }
     .combat-overlay-control { display:inline-flex; min-height:23px; align-items:center; gap:4px; padding:2px 7px; border:1px solid #8aa0b82f; border-radius:5px; color:#bcd0e4; background:#0d1724; font:700 10px/1 system-ui; }
     .combat-overlay-control:hover { color:#63e5d6; border-color:#63e5d688; }
     .combat-overlay-view-control[data-active='true'] { color:#08141d; border-color:#63e5d6; background:#63e5d6; text-shadow:none; }
-    .combat-overlay-view-control { position:relative; }
+    .combat-overlay-view-control { position:relative; height:23px; box-sizing:border-box; }
     .combat-overlay-view-control[data-active='true'] .combat-overlay-reorder-grip { color:#17343c; }
     .combat-overlay-reorder-grip { color:#687b91; cursor:grab; touch-action:none; user-select:none; letter-spacing:-2px; }
     .combat-overlay-canvas-preview .combat-overlay-view-control > .combat-overlay-reorder-grip,

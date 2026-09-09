@@ -276,15 +276,22 @@ fn show_overlay_canvas(
     focus_state: tauri::State<'_, OverlayFocusWindowState>,
 ) -> Result<(), String> {
     state.requested.store(true, Ordering::Release);
-    if state.ready.load(Ordering::Acquire) && focus_state.allows_visibility() {
-        let window = app
-            .get_webview_window("overlay-canvas")
-            .ok_or_else(|| "Overlay Canvas is unavailable; restart rLogs".to_owned())?;
-        show_combat_overlay_without_activation(&window)?;
-        window
-            .emit("overlay-canvas-show-requested", ())
-            .map_err(|error| error.to_string())?;
+    if !focus_state.allows_visibility() {
+        return Err(
+            "The map overlay cannot open while rLogs is automatically hiding overlays.".into(),
+        );
     }
+    let window = app
+        .get_webview_window("overlay-canvas")
+        .ok_or_else(|| "Overlay Canvas is unavailable; restart rLogs".to_owned())?;
+    // Showing is safe before the WebView reports ready: the window is already
+    // transparent and the ready callback will reconcile the same request. The
+    // previous ready guard silently accepted clicks while leaving the window
+    // hidden whenever startup was delayed or the runtime had failed.
+    show_combat_overlay_without_activation(&window)?;
+    window
+        .emit("overlay-canvas-show-requested", ())
+        .map_err(|error| error.to_string())?;
     Ok(())
 }
 
