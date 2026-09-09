@@ -165,4 +165,130 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn current_build_observed_monster_coverage_gate_reports_every_gap() {
+        use std::collections::BTreeSet;
+
+        use sha2::{Digest, Sha256};
+
+        const BUILD: &str = "24687926";
+        const OBSERVED: &str =
+            include_str!("../game-data/catalog/combat-actions/observed-technical.v1.json");
+        const LOCALES: &[&str] = &[
+            "de-DE", "en-US", "es-ES", "fr-FR", "id-ID", "ja-JP", "ko-KR", "pt-BR", "th-TH",
+            "zh-CN", "zh-TW",
+        ];
+
+        let gate: serde_json::Value = serde_json::from_str(include_str!(
+            "../game-data/catalog/coverage/observed-monsters.v1.json"
+        ))
+        .unwrap();
+        assert_eq!(gate["schema_version"], 1);
+        assert_eq!(gate["deployment_id"], "global");
+        assert_eq!(gate["channel"], "steam");
+        assert_eq!(gate["game_build"], BUILD);
+        assert_eq!(
+            gate["scope"],
+            "packet-derived-static-monster-ids-in-saved-history-observed-actions"
+        );
+        assert_eq!(gate["policy"]["exact_build_required"], true);
+        assert_eq!(gate["policy"]["all_shipped_locales_required"], true);
+        assert_eq!(gate["policy"]["raw_id_fallback_is_preserved"], true);
+        assert_eq!(gate["policy"]["invented_labels_are_forbidden"], true);
+        assert_eq!(gate["policy"]["unreported_coverage_drift_fails_ci"], true);
+        assert_eq!(
+            gate["source"]["path"],
+            "../combat-actions/observed-technical.v1.json"
+        );
+        assert_eq!(
+            gate["source"]["sha256"].as_str(),
+            Some(format!("{:x}", Sha256::digest(OBSERVED.as_bytes())).as_str()),
+            "observed action inventory changed; review every packet-derived monster ID"
+        );
+
+        let observed: serde_json::Value = serde_json::from_str(OBSERVED).unwrap();
+        assert_eq!(observed["game_build"], BUILD);
+        let mut reference_count = 0_u64;
+        let mut observed_ids = BTreeSet::new();
+        for action in observed["actions"].as_array().unwrap() {
+            for monster_id in action["observed_monster_ids"].as_array().unwrap() {
+                let monster_id = monster_id.as_i64().unwrap();
+                assert!(monster_id > 0, "observed invalid monster ID {monster_id}");
+                reference_count += 1;
+                observed_ids.insert(monster_id);
+            }
+        }
+
+        let expected_uncovered = gate["summary"]["uncovered_monster_ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|id| id.as_i64().unwrap())
+            .collect::<BTreeSet<_>>();
+        let mut actual_uncovered = BTreeSet::new();
+        let mut malformed = Vec::new();
+        for monster_id in &observed_ids {
+            let mut names = Vec::new();
+            for locale in LOCALES {
+                match localized_monster_name(*monster_id, locale) {
+                    Ok(Some(name)) if !name.trim().is_empty() && !name.contains('\u{fffd}') => {
+                        if *locale == "en-US"
+                            && (name.contains("Unresolved")
+                                || name.chars().any(|character| {
+                                    ('\u{3400}'..='\u{9fff}').contains(&character)
+                                }))
+                        {
+                            malformed.push(format!(
+                                "{monster_id}: en-US is not a user-facing English identity: {name}"
+                            ));
+                        }
+                        names.push(Some(name));
+                    }
+                    Ok(Some(_)) => {
+                        malformed.push(format!("{monster_id}: corrupt {locale} name"));
+                        names.push(None);
+                    }
+                    Ok(None) => names.push(None),
+                    Err(error) => {
+                        malformed.push(format!("{monster_id}: {locale} lookup error: {error}"));
+                        names.push(None);
+                    }
+                }
+            }
+            let localized_locale_count = names.iter().filter(|name| name.is_some()).count();
+            match localized_locale_count {
+                0 => {
+                    actual_uncovered.insert(*monster_id);
+                }
+                count if count == LOCALES.len() => {}
+                count => malformed.push(format!(
+                    "{monster_id}: localized in only {count}/{} shipped locales",
+                    LOCALES.len()
+                )),
+            }
+        }
+
+        assert!(
+            malformed.is_empty(),
+            "observed monster presentation errors:\n{}",
+            malformed.join("\n")
+        );
+        assert_eq!(
+            actual_uncovered, expected_uncovered,
+            "observed monster coverage changed; resolve or explicitly review every gap"
+        );
+        assert_eq!(
+            gate["source"]["monster_id_reference_count"].as_u64(),
+            Some(reference_count)
+        );
+        assert_eq!(
+            gate["summary"]["observed_monster_count"].as_u64(),
+            Some(observed_ids.len() as u64)
+        );
+        assert_eq!(
+            gate["summary"]["localized_monster_count"].as_u64(),
+            Some((observed_ids.len() - actual_uncovered.len()) as u64)
+        );
+    }
 }

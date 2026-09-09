@@ -33,6 +33,12 @@ layers. The `current_build_observed_presentation_coverage_gate_is_exhaustive`
 test requires every ID in that union to resolve in all shipped locales for the
 same build. Refreshing either source without reviewing every resulting gap
 therefore fails CI; the gate never supplies or invents a label itself.
+The companion `coverage/observed-monsters.v1.json` gate derives packet monster
+IDs from that same exact-build observed-action source. It requires complete
+cross-locale coverage for every resolved ID and keeps the remaining raw-ID
+fallbacks as an explicit reviewed gap list. A newly observed or newly resolved
+monster therefore requires a deliberate coverage review rather than silently
+changing presentation.
 Regenerate it with `BPSR-UID-Extractors/GenerateRLogsObservedActions.gen`, then
 compile the catalog with `PromoteRLogsCombatPresentation.gen` and the
 `rlogs-bpsr-runtime-presentation` binary. RLogs loads only the resulting compact

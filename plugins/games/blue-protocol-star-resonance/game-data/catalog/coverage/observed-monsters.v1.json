@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "deployment_id": "global",
+  "channel": "steam",
+  "game_build": "24687926",
+  "scope": "packet-derived-static-monster-ids-in-saved-history-observed-actions",
+  "source": {
+    "path": "../combat-actions/observed-technical.v1.json",
+    "sha256": "2582c01b2360e8bec378e8dc9e4b4f994cfe5c0fd36b853f18d1571d5630660e",
+    "monster_id_reference_count": 142
+  },
+  "summary": {
+    "observed_monster_count": 40,
+    "localized_monster_count": 37,
+    "uncovered_monster_ids": [
+      700017,
+      3340245,
+      3350218
+    ]
+  },
+  "policy": {
+    "exact_build_required": true,
+    "all_shipped_locales_required": true,
+    "raw_id_fallback_is_preserved": true,
+    "invented_labels_are_forbidden": true,
+    "unreported_coverage_drift_fails_ci": true
+  }
+}
