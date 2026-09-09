@@ -192,6 +192,11 @@ export interface MechanicsMapProjectedRegion {
   label?: string;
 }
 
+export interface VoidTowerMapAnnotation extends MechanicsMapViewPoint {
+  kind: "correct_portal" | "other_portal" | "sticky_bomb_target";
+  actorId: number;
+}
+
 export interface MechanicsMapTransform {
   scale: number;
   panX: number;
@@ -474,6 +479,47 @@ export function projectMechanicsMapEntities(
     const point = projectMechanicsMapPoint(value, entity.x, entity.z, rotateWithPlayer);
     return point === null ? [] : [{ ...entity, ...point }];
   });
+}
+
+/**
+ * Project only already-reviewed Void Towering Ruin identities. These are
+ * fixed-size map glyphs at packet-observed actor positions: no range, blast
+ * radius, safe area, or portal geometry is inferred here.
+ */
+export function projectVoidTowerMapAnnotations(
+  value: MechanicsMapSnapshot,
+): VoidTowerMapAnnotation[] {
+  if (
+    value.client_build !== "24687926" ||
+    value.scene_id === null ||
+    value.scene_id < 1150 ||
+    value.scene_id > 1152 ||
+    value.map_model !== "absolute_scene_map"
+  ) return [];
+
+  const annotations: VoidTowerMapAnnotation[] = [];
+  for (const entity of value.entities) {
+    if (
+      entity.stale ||
+      (entity.mechanic_role !== "correct_portal" && entity.mechanic_role !== "other_portal")
+    ) continue;
+    const point = projectMechanicsMapPoint(value, entity.x, entity.z, false);
+    if (point?.visible) {
+      annotations.push({ ...point, kind: entity.mechanic_role, actorId: entity.actor_id });
+    }
+  }
+
+  const stickyTargets = new Set<number>();
+  for (const signal of value.mechanics) {
+    if (signal.mechanic_kind !== "sticky_bomb" || stickyTargets.has(signal.target_actor_id)) continue;
+    const target = value.entities.find((entity) => entity.actor_id === signal.target_actor_id);
+    if (target === undefined || target.stale) continue;
+    const point = projectMechanicsMapPoint(value, target.x, target.z, false);
+    if (!point?.visible) continue;
+    stickyTargets.add(signal.target_actor_id);
+    annotations.push({ ...point, kind: "sticky_bomb_target", actorId: signal.target_actor_id });
+  }
+  return annotations;
 }
 
 export function projectMechanicsMapPoint(

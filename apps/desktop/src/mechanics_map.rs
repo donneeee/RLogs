@@ -3276,6 +3276,31 @@ mod tests {
     }
 
     #[test]
+    fn void_towering_ruin_exposes_only_packet_position_annotations() {
+        let build = Some("24687926");
+        let scene = Some(1151);
+        let map = scene_map_spec(build, scene).expect("reviewed Void Towering Ruin map");
+        assert_eq!(map.asset_file, Some("scene-1150-towering-ruin.png"));
+        assert_eq!(
+            reviewed_mechanic_entity_role(build, scene, Some(2106)),
+            Some("correct_portal")
+        );
+        assert_eq!(
+            reviewed_mechanic_entity_role(build, scene, Some(2107)),
+            Some("other_portal")
+        );
+        assert_eq!(
+            reviewed_mechanic_signal_kind(build, scene, 821076),
+            Some("sticky_bomb")
+        );
+        assert_eq!(
+            reviewed_mechanic_signal_kind(build, scene, -111103),
+            Some("gravity_blast")
+        );
+        assert!(is_reviewed_mechanic_cast(build, scene, 111103));
+    }
+
+    #[test]
     fn feed_keeps_revisions_monotonic_across_reset() {
         let feed = MechanicsMapFeed::default();
         feed.publish(MechanicsMapSnapshot {

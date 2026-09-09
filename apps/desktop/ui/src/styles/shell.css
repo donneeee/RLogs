@@ -5926,6 +5926,12 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
 .mechanics-crosshair::before { top: 50%; left: 8%; right: 8%; height: 1px; }
 .mechanics-crosshair::after { top: 8%; bottom: 8%; left: 50%; width: 1px; }
 .mechanics-map-point { --point-color: #8aa2ba; position: absolute; width: 11px; height: 11px; border: 2px solid rgb(4 12 20 / 90%); border-radius: 50%; background: var(--point-color); box-shadow: 0 0 0 2px color-mix(in srgb, var(--point-color) 38%, transparent), 0 0 10px var(--point-color); transform: translate(-50%, -50%); }
+.mechanics-map-void-annotation { position: absolute; z-index: 4; display: grid; place-items: center; width: 16px; height: 16px; border: 2px solid rgb(4 12 20 / 92%); color: #071019; font: 950 11px/1 system-ui; transform: translate(-50%, -50%); pointer-events: none; }
+.mechanics-map-void-annotation[data-kind="correct_portal"], .mechanics-map-void-annotation[data-kind="other_portal"] { border-radius: 2px; transform: translate(-50%, -50%) rotate(45deg); }
+.mechanics-map-void-annotation[data-kind="correct_portal"] { background: #61e69a; box-shadow: 0 0 10px rgb(97 230 154 / 72%); }
+.mechanics-map-void-annotation[data-kind="other_portal"] { background: #9b8abd; box-shadow: 0 0 8px rgb(155 138 189 / 55%); }
+.mechanics-map-void-annotation[data-kind="correct_portal"] > span, .mechanics-map-void-annotation[data-kind="other_portal"] > span { transform: rotate(-45deg); }
+.mechanics-map-void-annotation[data-kind="sticky_bomb_target"] { border-radius: 50%; background: #ff765f; box-shadow: 0 0 10px rgb(255 118 95 / 72%); }
 .mechanics-map-point[data-kind="local"] { --point-color: #5ce4d4; z-index: 5; width: 15px; height: 15px; }
 .mechanics-map-point[data-kind="party"] { --point-color: #6da9ff; z-index: 4; }
 .mechanics-map-point[data-kind="boss"] { --point-color: #ff6f83; z-index: 3; width: 17px; height: 17px; border-radius: 3px; }

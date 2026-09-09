@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { claimAutomaticMapPreparation } from "./mechanics-map-surface";
-import { actionControlRemainingMillis, fitMechanicsMapCanvasRect, mechanicSignalRemainingMillis, parseMechanicsMapUpdate, projectCoralMatrixBeam, projectCoralPizzaRegions, projectCoralWaveRegion, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectRaidFloorRegions, projectTinaPizzaRegion, targetDebuffRemainingMillis, zoomMechanicsMapAt, type MechanicsMapSignal, type MechanicsMapSnapshot } from "./mechanics-map";
+import { actionControlRemainingMillis, fitMechanicsMapCanvasRect, mechanicSignalRemainingMillis, parseMechanicsMapUpdate, projectCoralMatrixBeam, projectCoralPizzaRegions, projectCoralWaveRegion, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectRaidFloorRegions, projectTinaPizzaRegion, projectVoidTowerMapAnnotations, targetDebuffRemainingMillis, zoomMechanicsMapAt, type MechanicsMapSignal, type MechanicsMapSnapshot } from "./mechanics-map";
 
 function snapshot(): MechanicsMapSnapshot {
   return {
@@ -233,6 +233,50 @@ describe("Mechanics Map", () => {
     expect(right).toHaveLength(4);
     expect(Math.max(...left.map((point) => point.mapX))).toBeCloseTo(48.44444444444444);
     expect(Math.min(...right.map((point) => point.mapX))).toBeCloseTo(48.44444444444444);
+  });
+
+  it("projects reviewed Void Tower portal roles and sticky targets without geometry", () => {
+    const value: MechanicsMapSnapshot = {
+      ...snapshot(),
+      scene_id: 1151,
+      map_id: 1151,
+      map_model: "absolute_scene_map",
+      map_origin_x: 0,
+      map_origin_z: 0,
+      map_span_x: 100,
+      map_span_z: 100,
+      entities: [
+        { ...snapshot().entities[0]!, actor_id: 10, x: 25, z: 75 },
+        { ...snapshot().entities[1]!, actor_id: 11, mechanic_role: "correct_portal", x: 40, z: 60 },
+        { ...snapshot().entities[1]!, actor_id: 12, mechanic_role: "other_portal", x: 70, z: 20 },
+        { ...snapshot().entities[1]!, actor_id: 13, mechanic_role: null, x: 50, z: 50 },
+      ],
+      mechanics: [{
+        effect_id: 821076,
+        mechanic_kind: "sticky_bomb",
+        presentation_name: "Sticky bomb",
+        instance_id: 9,
+        target_actor_id: 13,
+        source_actor_id: 11,
+        stacks: null,
+        duration_millis: 8_000,
+        origin_x: null,
+        origin_z: null,
+        facing_radians: null,
+        applied_at_micros: 1,
+      }],
+    };
+
+    expect(projectVoidTowerMapAnnotations(value)).toEqual([
+      { kind: "correct_portal", actorId: 11, mapX: 40, mapY: 40, visible: true },
+      { kind: "other_portal", actorId: 12, mapX: 70, mapY: 80, visible: true },
+      { kind: "sticky_bomb_target", actorId: 13, mapX: 50, mapY: 50, visible: true },
+    ]);
+    expect(projectVoidTowerMapAnnotations({ ...value, client_build: "24687927" })).toEqual([]);
+    expect(projectVoidTowerMapAnnotations({
+      ...value,
+      entities: value.entities.map((entity) => entity.actor_id === 13 ? { ...entity, stale: true } : entity),
+    })).not.toContainEqual(expect.objectContaining({ kind: "sticky_bomb_target" }));
   });
 
   it("projects Tina's packet-facing pizza wedge without guessing a safe sector", () => {

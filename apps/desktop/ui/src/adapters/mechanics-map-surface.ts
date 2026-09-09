@@ -1,5 +1,5 @@
 import type { MountedSurface } from "../shell/types";
-import { projectCoralMatrixBeam, projectCoralPizzaRegions, projectCoralWaveRegion, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectRaidFloorRegions, projectTinaPizzaRegion, zoomMechanicsMapAt, type MechanicsMapUpdate } from "./mechanics-map";
+import { projectCoralMatrixBeam, projectCoralPizzaRegions, projectCoralWaveRegion, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectRaidFloorRegions, projectTinaPizzaRegion, projectVoidTowerMapAnnotations, zoomMechanicsMapAt, type MechanicsMapUpdate } from "./mechanics-map";
 
 export interface MechanicsMapDependencies {
   loadSnapshot(): Promise<MechanicsMapUpdate>;
@@ -231,6 +231,23 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
       point.style.left = `${projectedMarker.mapX}%`;
       point.style.top = `${projectedMarker.mapY}%`;
       point.title = marker.related_actor_id === null ? "Packet-observed map marker" : `Marker for actor ${marker.related_actor_id}`;
+      points.append(point);
+    }
+    for (const annotation of projectVoidTowerMapAnnotations(snapshot)) {
+      const point = el("span", "mechanics-map-void-annotation");
+      point.append(text(
+        "span",
+        annotation.kind === "correct_portal" ? "✓" : annotation.kind === "other_portal" ? "×" : "!",
+      ));
+      point.dataset.kind = annotation.kind;
+      point.dataset.actorId = String(annotation.actorId);
+      point.style.left = `${annotation.mapX}%`;
+      point.style.top = `${annotation.mapY}%`;
+      point.title = annotation.kind === "correct_portal"
+        ? "Packet-observed correct portal"
+        : annotation.kind === "other_portal"
+          ? "Packet-observed other portal"
+          : "Packet-observed sticky-bomb target";
       points.append(point);
     }
     empty.hidden = snapshot.local_position_observed;

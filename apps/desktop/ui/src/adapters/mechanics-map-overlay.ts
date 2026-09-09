@@ -11,6 +11,7 @@ import {
   projectMechanicsMapPoint,
   projectRaidFloorRegions,
   projectTinaPizzaRegion,
+  projectVoidTowerMapAnnotations,
   targetDebuffRemainingMillis,
   zoomMechanicsMapAt,
   type MechanicsMapProjectedRegion,
@@ -1673,6 +1674,38 @@ function drawEntities(
       context.textBaseline = "middle";
       context.fillText(String(marker.marker_id), x, y);
     }
+  }
+  for (const annotation of projectVoidTowerMapAnnotations(snapshot)) {
+    const x = annotation.mapX / 100 * width;
+    const y = annotation.mapY / 100 * height;
+    context.save();
+    context.translate(x, y);
+    context.lineWidth = 2;
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    if (annotation.kind === "sticky_bomb_target") {
+      context.fillStyle = "#ff765f";
+      context.strokeStyle = "rgba(4, 12, 20, .95)";
+      context.beginPath();
+      context.arc(0, 0, 8, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#071019";
+      context.font = "950 11px system-ui";
+      context.fillText("!", 0, 1);
+    } else {
+      const correct = annotation.kind === "correct_portal";
+      context.fillStyle = correct ? "#61e69a" : "#9b8abd";
+      context.strokeStyle = "rgba(4, 12, 20, .95)";
+      context.rotate(Math.PI / 4);
+      context.fillRect(-7, -7, 14, 14);
+      context.strokeRect(-7, -7, 14, 14);
+      context.rotate(-Math.PI / 4);
+      context.fillStyle = "#071019";
+      context.font = "950 10px system-ui";
+      context.fillText(correct ? "✓" : "×", 0, 1);
+    }
+    context.restore();
   }
 }
 
