@@ -5446,6 +5446,15 @@ fn reviewed_map_build_for_client(
         .map(|(_, build)| build.clone())
 }
 
+fn automatic_local_map_retry_delay(failed_attempts: usize) -> Duration {
+    Duration::from_secs(match failed_attempts {
+        0 | 1 => 2,
+        2 => 5,
+        3 => 15,
+        _ => 30,
+    })
+}
+
 impl RuntimeController {
     fn new(install_root: PathBuf) -> Result<Self, String> {
         Self::new_with_application_version(install_root, env!("CARGO_PKG_VERSION"))
@@ -6580,15 +6589,38 @@ impl RuntimeController {
         let _ = thread::Builder::new()
             .name("rlogs-local-map-refresh".into())
             .spawn(move || {
+                let mut claimed_build: Option<String> = None;
+                let mut failed_attempts = 0_usize;
                 loop {
-                    let client_build = controller
+                    let observed_build = controller
                         .live_mechanics_map_feed
                         .current()
                         .snapshot
-                        .client_build;
-                    if let Some(client_build) = client_build.filter(|build| {
-                        !build.is_empty() && build.bytes().all(|byte| byte.is_ascii_digit())
-                    }) {
+                        .client_build
+                        .filter(|build| {
+                            !build.is_empty() && build.bytes().all(|byte| byte.is_ascii_digit())
+                        });
+                    let Some(client_build) = observed_build else {
+                        if controller
+                            .live_process_id
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .is_none()
+                        {
+                            return;
+                        }
+                        thread::sleep(Duration::from_millis(200));
+                        continue;
+                    };
+
+                    if claimed_build.as_deref() != Some(client_build.as_str()) {
+                        if let Some(previous) = claimed_build.take() {
+                            controller
+                                .automatic_local_map_refresh_builds
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .remove(&previous);
+                        }
                         let should_attempt = controller
                             .automatic_local_map_refresh_builds
                             .lock()
@@ -6597,30 +6629,69 @@ impl RuntimeController {
                         if !should_attempt || controller.local_game_map_cache_ready(&client_build) {
                             return;
                         }
-                        if let Err(error) = controller.prepare_local_game_maps() {
+                        claimed_build = Some(client_build.clone());
+                        failed_attempts = 0;
+                    }
+
+                    if controller.local_game_map_cache_ready(&client_build) {
+                        return;
+                    }
+
+                    match controller.prepare_local_game_maps() {
+                        Ok(_) => return,
+                        Err(error) => {
+                            failed_attempts = failed_attempts.saturating_add(1);
+                            let delay = automatic_local_map_retry_delay(failed_attempts);
                             eprintln!(
-                                "automatic local map refresh for build {client_build} failed: {error}"
+                                "automatic local map refresh for build {client_build} failed (attempt {failed_attempts}); retrying in {}s: {error}",
+                                delay.as_secs()
                             );
-                            controller
-                                .automatic_local_map_refresh_builds
-                                .lock()
-                                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                                .remove(&client_build);
+                            if !controller.wait_for_local_map_refresh_retry(&client_build, delay) {
+                                if let Some(previous) = claimed_build.take() {
+                                    controller
+                                        .automatic_local_map_refresh_builds
+                                        .lock()
+                                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                        .remove(&previous);
+                                }
+                                return;
+                            }
                         }
-                        return;
                     }
-                    if controller
-                        .live_process_id
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .is_none()
-                    {
-                        return;
-                    }
-                    thread::sleep(Duration::from_millis(200));
                 }
             });
     }
+
+    #[cfg(windows)]
+    fn wait_for_local_map_refresh_retry(&self, expected_build: &str, delay: Duration) -> bool {
+        let deadline = Instant::now() + delay;
+        while Instant::now() < deadline {
+            if self
+                .live_process_id
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_none()
+            {
+                return false;
+            }
+            let observed_build = self.live_mechanics_map_feed.current().snapshot.client_build;
+            if observed_build.as_deref().is_some_and(|build| {
+                !build.is_empty()
+                    && build.bytes().all(|byte| byte.is_ascii_digit())
+                    && build != expected_build
+            }) {
+                return true;
+            }
+            if self.local_game_map_cache_ready(expected_build) {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(200));
+        }
+        true
+    }
+
+    #[cfg(not(windows))]
+    fn schedule_automatic_local_game_map_refresh(self: &Arc<Self>) {}
 
     #[cfg(windows)]
     fn prepare_local_game_maps(&self) -> Result<LocalMapPreparationResult, String> {
@@ -18120,6 +18191,16 @@ kind = "content"
         );
         assert!(reviewed_map_build_for_client(&manifest, "24599999").is_none());
         assert!(reviewed_map_build_for_client(&manifest, "global/steam-24687927").is_none());
+    }
+
+    #[test]
+    fn automatic_local_map_refresh_uses_a_capped_bounded_backoff() {
+        assert_eq!(automatic_local_map_retry_delay(0), Duration::from_secs(2));
+        assert_eq!(automatic_local_map_retry_delay(1), Duration::from_secs(2));
+        assert_eq!(automatic_local_map_retry_delay(2), Duration::from_secs(5));
+        assert_eq!(automatic_local_map_retry_delay(3), Duration::from_secs(15));
+        assert_eq!(automatic_local_map_retry_delay(4), Duration::from_secs(30));
+        assert_eq!(automatic_local_map_retry_delay(50), Duration::from_secs(30));
     }
 
     #[test]
