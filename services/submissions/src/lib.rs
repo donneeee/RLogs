@@ -71,10 +71,10 @@ use profiles::{
 };
 use rlogs_profiles::LocalProfilePackage;
 
-pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 12;
-pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 2;
+pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 13;
+pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 3;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 6;
-pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 13;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 14;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
@@ -88,6 +88,9 @@ const LIFE_WAVE_SOURCE_TYPE_ID: i32 = 1;
 const LIFE_WAVE_SOURCE_CONFIG_ID: i64 = 2_302_420;
 const LIFE_WAVE_EFFECT_ID: i64 = 2_302_421;
 const LIFE_WAVE_DURATION_MILLIS: u64 = 5_000;
+const MAXIMUM_PROFILE_MODULE_INVENTORY: usize = 4_096;
+const MAXIMUM_COMBAT_EQUIPPED_MODULES: usize = 16;
+const MAXIMUM_COMBAT_MODULE_EFFECTS: usize = 16;
 
 #[derive(Clone)]
 pub enum SubmissionAuthentication {
@@ -218,6 +221,8 @@ struct ProfileLoadoutObservation {
     equipped_imagines: Vec<PublicCombatImagineLoadout>,
     equipment_count: Option<usize>,
     equipped_module_count: Option<usize>,
+    module_snapshot_disposition: PublicCombatModuleSnapshotDisposition,
+    equipped_modules: Vec<PublicCombatEquippedModule>,
     talent_count: Option<usize>,
 }
 
@@ -229,6 +234,8 @@ impl ProfileLoadoutObservation {
             && self.equipped_imagines.is_empty()
             && self.equipment_count.is_none()
             && self.equipped_module_count.is_none()
+            && self.module_snapshot_disposition == PublicCombatModuleSnapshotDisposition::Missing
+            && self.equipped_modules.is_empty()
             && self.talent_count.is_none()
     }
 }
@@ -2721,6 +2728,15 @@ pub struct PublicCombatLoadoutPhase {
     pub equipped_imagines: Vec<PublicCombatImagineLoadout>,
     pub equipment_count: Option<usize>,
     pub equipped_module_count: Option<usize>,
+    /// Whether the authoritative profile omitted module evidence, supplied a
+    /// complete equipped set, or supplied internally inconsistent data. An
+    /// invalid snapshot never exposes a partial equipped set.
+    #[serde(default)]
+    pub module_snapshot_disposition: PublicCombatModuleSnapshotDisposition,
+    /// Raw, privacy-safe equipped module facts. Persistent inventory instance
+    /// IDs are used only for the trusted slot join and are never published.
+    #[serde(default)]
+    pub equipped_modules: Vec<PublicCombatEquippedModule>,
     pub talent_count: Option<usize>,
 }
 
@@ -2729,6 +2745,36 @@ pub struct PublicCombatImagineLoadout {
     pub skill_id: String,
     pub tier: Option<u32>,
     pub equipped_slot: i32,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicCombatModuleSnapshotDisposition {
+    #[default]
+    Missing,
+    Complete,
+    Invalid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicCombatEquippedModule {
+    pub equipped_slot: i32,
+    pub config_id: i32,
+    /// Raw profile level for display only. It is not module-effect or rDPS
+    /// authority.
+    pub level: Option<u32>,
+    #[serde(default)]
+    pub effects: Vec<PublicCombatModuleEffect>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicCombatModuleEffect {
+    /// Exact `ModulePartProfile.part_id`; names and active thresholds require
+    /// a separately verified exact-build catalog.
+    pub effect_id: i32,
+    /// The packet's current per-part value. Missing is distinct from zero and
+    /// prevents the equipped snapshot from being marked complete.
+    pub initial_link_points: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -4379,6 +4425,8 @@ fn profile_loadout_observation(
 ) -> Result<ProfileLoadoutObservation, String> {
     let patch = CharacterProfilePatch::from_game_event(profile)
         .map_err(|error| format!("could not decode privacy-reviewed combat loadout: {error}"))?;
+    let (module_snapshot_disposition, equipped_modules) =
+        combat_equipped_modules(patch.modules.as_ref());
     let mut equipped_skill_ids = patch
         .equipped_action_slots
         .as_ref()
@@ -4416,8 +4464,77 @@ fn profile_loadout_observation(
             .modules
             .as_ref()
             .map(|modules| modules.equipped_slots.len()),
+        module_snapshot_disposition,
+        equipped_modules,
         talent_count: patch.talents.as_ref().map(Vec::len),
     })
+}
+
+fn combat_equipped_modules(
+    modules: Option<&rlogs_game_bpsr::ModuleProfile>,
+) -> (
+    PublicCombatModuleSnapshotDisposition,
+    Vec<PublicCombatEquippedModule>,
+) {
+    let Some(modules) = modules else {
+        return (PublicCombatModuleSnapshotDisposition::Missing, Vec::new());
+    };
+    if modules.inventory.len() > MAXIMUM_PROFILE_MODULE_INVENTORY
+        || modules.equipped_slots.len() > MAXIMUM_COMBAT_EQUIPPED_MODULES
+    {
+        return (PublicCombatModuleSnapshotDisposition::Invalid, Vec::new());
+    }
+
+    let mut inventory = BTreeMap::new();
+    for module in &modules.inventory {
+        if module.instance_id.trim().is_empty() {
+            continue;
+        }
+        match inventory.entry(module.instance_id.as_str()) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(Some(module));
+            }
+            std::collections::btree_map::Entry::Occupied(mut entry) => {
+                entry.insert(None);
+            }
+        }
+    }
+
+    let mut equipped_instance_ids = BTreeSet::new();
+    let mut equipped = Vec::with_capacity(modules.equipped_slots.len());
+    for (&equipped_slot, instance_id) in &modules.equipped_slots {
+        if equipped_slot <= 0 || !equipped_instance_ids.insert(instance_id.as_str()) {
+            return (PublicCombatModuleSnapshotDisposition::Invalid, Vec::new());
+        }
+        let Some(module) = inventory.get(instance_id.as_str()).copied().flatten() else {
+            return (PublicCombatModuleSnapshotDisposition::Invalid, Vec::new());
+        };
+        if module.config_id <= 0
+            || module.parts.len() > MAXIMUM_COMBAT_MODULE_EFFECTS
+            || module.parts.iter().any(|part| {
+                part.part_id <= 0 || part.initial_link_points.is_none_or(|points| points < 0)
+            })
+        {
+            return (PublicCombatModuleSnapshotDisposition::Invalid, Vec::new());
+        }
+        let mut effects = module
+            .parts
+            .iter()
+            .map(|part| PublicCombatModuleEffect {
+                effect_id: part.part_id,
+                initial_link_points: part.initial_link_points,
+            })
+            .collect::<Vec<_>>();
+        effects.sort_unstable_by_key(|effect| (effect.effect_id, effect.initial_link_points));
+        equipped.push(PublicCombatEquippedModule {
+            equipped_slot,
+            config_id: module.config_id,
+            level: module.level,
+            effects,
+        });
+    }
+    equipped.sort_unstable_by_key(|module| module.equipped_slot);
+    (PublicCombatModuleSnapshotDisposition::Complete, equipped)
 }
 
 fn run_scoped_profile_witnesses(
@@ -4537,6 +4654,8 @@ fn run_scoped_combat_loadout_phases(
                 equipped_imagines: observation.loadout.equipped_imagines.clone(),
                 equipment_count: observation.loadout.equipment_count,
                 equipped_module_count: observation.loadout.equipped_module_count,
+                module_snapshot_disposition: observation.loadout.module_snapshot_disposition,
+                equipped_modules: observation.loadout.equipped_modules.clone(),
                 talent_count: observation.loadout.talent_count,
             })
         })
@@ -5664,6 +5783,8 @@ fn combat_loadout_phase_sets_semantically_equal(
                 && left.specialization_id == right.specialization_id
                 && left.equipment_count == right.equipment_count
                 && left.equipped_module_count == right.equipped_module_count
+                && left.module_snapshot_disposition == right.module_snapshot_disposition
+                && left.equipped_modules == right.equipped_modules
                 && left.talent_count == right.talent_count
                 && sorted_strings(&left.equipped_skill_ids)
                     == sorted_strings(&right.equipped_skill_ids)
@@ -6419,6 +6540,149 @@ impl IntoResponse for ApiError {
 mod tests {
     use super::*;
 
+    fn module_item(
+        instance_id: &str,
+        config_id: i32,
+        level: Option<u32>,
+        effects: &[(i32, Option<i32>)],
+    ) -> rlogs_game_bpsr::ModuleItemProfile {
+        rlogs_game_bpsr::ModuleItemProfile {
+            instance_id: instance_id.into(),
+            config_id,
+            count: Some(1),
+            quality: Some(4),
+            load_flag: Some(1),
+            module_type: Some(1),
+            level,
+            parts: effects
+                .iter()
+                .map(
+                    |(effect_id, initial_link_points)| rlogs_game_bpsr::ModulePartProfile {
+                        part_id: *effect_id,
+                        initial_link_points: *initial_link_points,
+                    },
+                )
+                .collect(),
+            upgrade_records: Vec::new(),
+            success_rate: None,
+        }
+    }
+
+    #[test]
+    fn combat_module_projection_preserves_large_string_join_and_hides_instance_ids() {
+        let first = "9007199254740993";
+        let second = "9007199254740995";
+        let modules = rlogs_game_bpsr::ModuleProfile {
+            equipped_slots: BTreeMap::from([(2, second.into()), (1, first.into())]),
+            inventory: vec![
+                module_item(second, 5_500_204, Some(7), &[(2406, Some(16))]),
+                module_item(
+                    first,
+                    5_500_104,
+                    Some(6),
+                    &[(2105, Some(4)), (1110, Some(20))],
+                ),
+            ],
+        };
+
+        let (disposition, equipped) = combat_equipped_modules(Some(&modules));
+
+        assert_eq!(disposition, PublicCombatModuleSnapshotDisposition::Complete);
+        assert_eq!(
+            equipped
+                .iter()
+                .map(|module| (module.equipped_slot, module.config_id, module.level))
+                .collect::<Vec<_>>(),
+            vec![(1, 5_500_104, Some(6)), (2, 5_500_204, Some(7))]
+        );
+        assert_eq!(equipped[0].effects[0].effect_id, 1110);
+        let encoded = serde_json::to_string(&equipped).unwrap();
+        assert!(!encoded.contains(first));
+        assert!(!encoded.contains(second));
+        assert!(!encoded.contains("instance_id"));
+    }
+
+    #[test]
+    fn combat_module_projection_distinguishes_missing_empty_and_invalid_snapshots() {
+        assert_eq!(
+            combat_equipped_modules(None),
+            (PublicCombatModuleSnapshotDisposition::Missing, Vec::new())
+        );
+        let empty = rlogs_game_bpsr::ModuleProfile {
+            equipped_slots: BTreeMap::new(),
+            inventory: Vec::new(),
+        };
+        assert_eq!(
+            combat_equipped_modules(Some(&empty)),
+            (PublicCombatModuleSnapshotDisposition::Complete, Vec::new())
+        );
+        assert!(ProfileLoadoutObservation::default().is_empty());
+        assert!(
+            !ProfileLoadoutObservation {
+                module_snapshot_disposition: PublicCombatModuleSnapshotDisposition::Complete,
+                ..Default::default()
+            }
+            .is_empty()
+        );
+
+        let missing_inventory = rlogs_game_bpsr::ModuleProfile {
+            equipped_slots: BTreeMap::from([(1, "missing".into())]),
+            inventory: Vec::new(),
+        };
+        assert_eq!(
+            combat_equipped_modules(Some(&missing_inventory)),
+            (PublicCombatModuleSnapshotDisposition::Invalid, Vec::new())
+        );
+
+        let missing_link_points = rlogs_game_bpsr::ModuleProfile {
+            equipped_slots: BTreeMap::from([(1, "module".into())]),
+            inventory: vec![module_item("module", 5_500_104, None, &[(1110, None)])],
+        };
+        assert_eq!(
+            combat_equipped_modules(Some(&missing_link_points)),
+            (PublicCombatModuleSnapshotDisposition::Invalid, Vec::new())
+        );
+
+        let too_many_equipped = rlogs_game_bpsr::ModuleProfile {
+            equipped_slots: (1..=MAXIMUM_COMBAT_EQUIPPED_MODULES + 1)
+                .map(|slot| (i32::try_from(slot).unwrap(), format!("module-{slot}")))
+                .collect(),
+            inventory: Vec::new(),
+        };
+        assert_eq!(
+            combat_equipped_modules(Some(&too_many_equipped)),
+            (PublicCombatModuleSnapshotDisposition::Invalid, Vec::new())
+        );
+
+        let too_many_effects = rlogs_game_bpsr::ModuleProfile {
+            equipped_slots: BTreeMap::from([(1, "module".into())]),
+            inventory: vec![module_item(
+                "module",
+                5_500_104,
+                None,
+                &(0..MAXIMUM_COMBAT_MODULE_EFFECTS + 1)
+                    .map(|index| (i32::try_from(index).unwrap() + 1, Some(1)))
+                    .collect::<Vec<_>>(),
+            )],
+        };
+        assert_eq!(
+            combat_equipped_modules(Some(&too_many_effects)),
+            (PublicCombatModuleSnapshotDisposition::Invalid, Vec::new())
+        );
+
+        let duplicate_inventory = rlogs_game_bpsr::ModuleProfile {
+            equipped_slots: BTreeMap::from([(1, "duplicate".into())]),
+            inventory: vec![
+                module_item("duplicate", 5_500_104, None, &[(1110, Some(4))]),
+                module_item("duplicate", 5_500_104, None, &[(1110, Some(4))]),
+            ],
+        };
+        assert_eq!(
+            combat_equipped_modules(Some(&duplicate_inventory)),
+            (PublicCombatModuleSnapshotDisposition::Invalid, Vec::new())
+        );
+    }
+
     #[test]
     fn legacy_report_without_projection_revision_is_stale() {
         let report =
@@ -7162,8 +7426,22 @@ mod tests {
             fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
         let mut report_b =
             fixture_public_report("rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "character-a", 0);
-        report_a.runs[0].combat_loadout_phases[0].equipped_skill_ids = vec!["skill-a".into()];
-        report_b.runs[0].combat_loadout_phases[0].equipped_skill_ids = vec!["skill-b".into()];
+        for report in [&mut report_a, &mut report_b] {
+            report.runs[0].combat_loadout_phases[0].module_snapshot_disposition =
+                PublicCombatModuleSnapshotDisposition::Complete;
+            report.runs[0].combat_loadout_phases[0].equipped_modules =
+                vec![PublicCombatEquippedModule {
+                    equipped_slot: 1,
+                    config_id: 5_500_104,
+                    level: Some(6),
+                    effects: vec![PublicCombatModuleEffect {
+                        effect_id: 1110,
+                        initial_link_points: Some(20),
+                    }],
+                }];
+        }
+        report_b.runs[0].combat_loadout_phases[0].equipped_modules[0].effects[0]
+            .initial_link_points = Some(16);
         let group = CatalogRunGroup {
             representative: PublicParseCatalogEntry::from_report(&report_a, &report_a.runs[0]),
             representative_quality: CanonicalSpineQuality::from_report(
@@ -7200,12 +7478,14 @@ mod tests {
         );
         assert!(character.selected_combat_loadout_phases.is_empty());
         assert_eq!(
-            reconciliation
-                .reports
-                .iter()
-                .map(|report| report.combat_loadout_phases[0].equipped_skill_ids[0].as_str())
-                .collect::<Vec<_>>(),
-            vec!["skill-a", "skill-b"]
+            reconciliation.reports[0].combat_loadout_phases[0].equipped_modules[0].effects[0]
+                .initial_link_points,
+            Some(20)
+        );
+        assert_eq!(
+            reconciliation.reports[1].combat_loadout_phases[0].equipped_modules[0].effects[0]
+                .initial_link_points,
+            Some(16)
         );
     }
 
@@ -7310,6 +7590,24 @@ mod tests {
                 .selected_combat_loadout_phases
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn legacy_combat_loadout_phase_defaults_module_snapshot_fields() {
+        let report =
+            fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
+        let mut value = serde_json::to_value(&report.runs[0].combat_loadout_phases[0]).unwrap();
+        let phase = value.as_object_mut().unwrap();
+        phase.remove("module_snapshot_disposition");
+        phase.remove("equipped_modules");
+
+        let decoded: PublicCombatLoadoutPhase = serde_json::from_value(value).unwrap();
+
+        assert_eq!(
+            decoded.module_snapshot_disposition,
+            PublicCombatModuleSnapshotDisposition::Missing
+        );
+        assert!(decoded.equipped_modules.is_empty());
     }
 
     #[test]
@@ -8831,6 +9129,8 @@ mod tests {
                     }],
                     equipment_count: Some(8),
                     equipped_module_count: Some(5),
+                    module_snapshot_disposition: PublicCombatModuleSnapshotDisposition::Missing,
+                    equipped_modules: Vec::new(),
                     talent_count: Some(12),
                 }],
                 segments: Vec::new(),
