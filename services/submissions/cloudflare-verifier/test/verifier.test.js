@@ -134,9 +134,10 @@ test("reconciled catalog entries expose one group source set and authority statu
 
 test("reconciliation workers acquire one conditional lease before starting a container", async () => {
   const source = await readFile(new URL("../src/index.js", import.meta.url), "utf8");
-  assert.match(source, /lease_token=excluded\.lease_token[\s\S]+WHERE reconciliation_jobs\.state IN \('retryable_failure','superseded'\)/u);
+  assert.match(source, /lease_token=excluded\.lease_token[\s\S]+reconciliation_jobs\.state='running'[\s\S]+updated_unix_millis<=\?6/u);
   assert.match(source, /WHERE job_id=\?1 AND lease_token=\?2 AND state='running'/u);
   assert.match(source, /job\?\.state === "running"[\s\S]+in_progress: true/u);
+  assert.match(source, /lease\.job_id=\?1 AND lease\.lease_token=\?4 AND lease\.state='running'/u);
   assert.match(source, /getByName\(jobId\)/u);
   assert.ok(source.indexOf("lease_token=?2 AND state='running'") < source.indexOf("getByName(jobId)"));
 });

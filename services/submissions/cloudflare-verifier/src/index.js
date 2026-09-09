@@ -34,6 +34,7 @@ async function sha256(bytes) {
 const RUN_GROUP_ID = /^[A-Za-z0-9_-]{1,96}$/;
 const DIGEST = /^[a-f0-9]{64}$/;
 const REPORT_ID = /^rpt_[a-f0-9]{32}$/;
+const RECONCILIATION_LEASE_MILLIS = 15 * 60 * 1000;
 
 async function reconciliationSources(env, runGroupId) {
   const rows = await all(env, `SELECT r.report_id, r.upload_id, rr.run_index,
@@ -103,7 +104,9 @@ function currentSourceGuard() {
       AND r.projection_object_key=js.projection_object_key)=?3
     AND (SELECT COUNT(*) FROM report_runs rr JOIN reports r ON r.report_id=rr.report_id
       WHERE rr.run_group_id=?2
-        AND r.visibility='public' AND r.verification_tier='replayed')=?3`;
+        AND r.visibility='public' AND r.verification_tier='replayed')=?3
+    AND EXISTS (SELECT 1 FROM reconciliation_jobs lease
+      WHERE lease.job_id=?1 AND lease.lease_token=?4 AND lease.state='running')`;
 }
 
 async function reconciliationFailure(env, jobId, leaseToken, state, code, detail) {
@@ -133,8 +136,10 @@ export async function reconcileRunGroup(env, runGroupId) {
       ON CONFLICT(run_group_id,source_set_sha256) DO UPDATE SET state='running',
         attempt_count=attempt_count+1,lease_token=excluded.lease_token,failure_code=NULL,
         failure_detail=NULL,completed_unix_millis=NULL,updated_unix_millis=excluded.updated_unix_millis
-      WHERE reconciliation_jobs.state IN ('retryable_failure','superseded')`)
-    .bind(jobId, runGroupId, sourceSetSha256, started, leaseToken).run();
+      WHERE reconciliation_jobs.state IN ('retryable_failure','superseded')
+        OR (reconciliation_jobs.state='running' AND reconciliation_jobs.updated_unix_millis<=?6)`)
+    .bind(jobId, runGroupId, sourceSetSha256, started, leaseToken,
+      started - RECONCILIATION_LEASE_MILLIS).run();
   const acquired = await first(env, `SELECT state FROM reconciliation_jobs
     WHERE job_id=?1 AND lease_token=?2 AND state='running'`, jobId, leaseToken);
   if (!acquired) {
@@ -196,17 +201,17 @@ export async function reconcileRunGroup(env, runGroupId) {
     env.RLOGS_DB.prepare(`INSERT INTO reconciliation_versions
       (reconciliation_id,run_group_id,source_set_sha256,projection_sha256,projection_object_key,
        source_count,reconciliation_status,created_unix_millis)
-      SELECT ?4,?2,?5,?6,?7,?3,?8,?9 WHERE ${guard}
+      SELECT ?5,?2,?6,?7,?8,?3,?9,?10 WHERE ${guard}
       ON CONFLICT(reconciliation_id) DO NOTHING`).bind(
-      jobId, runGroupId, sources.length, result.reconciliation_id, sourceSetSha256,
+      jobId, runGroupId, sources.length, leaseToken, result.reconciliation_id, sourceSetSha256,
       projectionSha256, projectionKey, result.status, completed,
     ),
     env.RLOGS_DB.prepare(`INSERT INTO reconciliation_current
       (run_group_id,reconciliation_id,source_set_sha256,updated_unix_millis)
-      SELECT ?2,?4,?5,?6 WHERE ${guard}
+      SELECT ?2,?5,?6,?7 WHERE ${guard}
       ON CONFLICT(run_group_id) DO UPDATE SET reconciliation_id=excluded.reconciliation_id,
         source_set_sha256=excluded.source_set_sha256,updated_unix_millis=excluded.updated_unix_millis`)
-      .bind(jobId, runGroupId, sources.length, result.reconciliation_id, sourceSetSha256, completed),
+      .bind(jobId, runGroupId, sources.length, leaseToken, result.reconciliation_id, sourceSetSha256, completed),
   ];
   const distinctSubmitters = new Set(sources.map((source) => source.submitter_id).filter(Boolean)).size;
   for (const source of sources) {
@@ -215,18 +220,18 @@ export async function reconcileRunGroup(env, runGroupId) {
     let entry;
     try { entry = JSON.parse(row?.catalog_entry_json); } catch { entry = null; }
     if (!entry) continue;
-    statements.push(env.RLOGS_DB.prepare(`UPDATE report_runs SET catalog_entry_json=?4
-      WHERE report_id=?5 AND run_index=?6 AND EXISTS (
+    statements.push(env.RLOGS_DB.prepare(`UPDATE report_runs SET catalog_entry_json=?5
+      WHERE report_id=?6 AND run_index=?7 AND EXISTS (
         SELECT 1 FROM reconciliation_current WHERE run_group_id=?2
-          AND reconciliation_id=?7 AND source_set_sha256=?8) AND ${guard}`).bind(
-      jobId, runGroupId, sources.length,
+          AND reconciliation_id=?8 AND source_set_sha256=?9) AND ${guard}`).bind(
+      jobId, runGroupId, sources.length, leaseToken,
       JSON.stringify(reconcileCatalogEntry(entry, result, sources.length, distinctSubmitters)),
       source.report_id, source.run_index, result.reconciliation_id, sourceSetSha256,
     ));
   }
   statements.push(env.RLOGS_DB.prepare(`UPDATE reconciliation_jobs SET state='published',
-    completed_unix_millis=?4,updated_unix_millis=?4 WHERE job_id=?1 AND ${guard}`)
-    .bind(jobId, runGroupId, sources.length, completed));
+    completed_unix_millis=?5,updated_unix_millis=?5 WHERE job_id=?1 AND ${guard}`)
+    .bind(jobId, runGroupId, sources.length, leaseToken, completed));
   await env.RLOGS_DB.batch(statements);
   const published = await first(env, `SELECT reconciliation_id FROM reconciliation_current
     WHERE run_group_id=?1 AND reconciliation_id=?2 AND source_set_sha256=?3`,

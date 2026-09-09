@@ -8,6 +8,7 @@ function authFixture() {
   const durable = new Map();
   const kv = new Map();
   const d1 = [];
+  const backgroundTasks = [];
   durable.set("user:usr_owner", {
     submitter_id: "usr_owner",
     account_id: 100000000001,
@@ -67,9 +68,9 @@ function authFixture() {
       },
     },
   };
-  const auth = new RLogsAuthState({ storage }, env);
+  const auth = new RLogsAuthState({ storage, waitUntil(task) { backgroundTasks.push(task); } }, env);
   auth.authenticateWeb = async () => ({ submitter_id: "usr_owner" });
-  return { auth, durable, kv, d1 };
+  return { auth, durable, kv, d1, backgroundTasks };
 }
 
 test("token hashes remain compatible with the Rust authentication domain separator", async () => {
@@ -383,6 +384,80 @@ test("only the uploader can change visibility and the override changes authorize
   assert.equal(durable.get(`visibility:${reportId}`), "private");
   const report = await auth.accountParse(new Request(`https://backend/v1/auth/parses/${reportId}`), Date.now(), reportId);
   assert.equal((await report.json()).visibility, "private");
+});
+
+test("promoting a current hosted replay publishes a public projection and wakes each exact run group", async () => {
+  const { auth, d1, backgroundTasks } = authFixture();
+  const reportId = `rpt_${"e".repeat(32)}`;
+  const report = {
+    schema_version: 14,
+    projection_revision: 4,
+    report_id: reportId,
+    visibility: "unlisted",
+  };
+  auth.hostedReport = async () => ({ report, visibility: "unlisted", submitterId: "usr_owner" });
+  const puts = [];
+  auth.env.RLOGS_ARTIFACTS = { async put(key, bytes) { puts.push({ key, value: JSON.parse(new TextDecoder().decode(bytes)) }); } };
+  auth.env.RLOGS_DB.prepare = (query) => ({ bind(...bindings) {
+    return {
+      query, bindings,
+      async run() { d1.push({ query, bindings }); return { success: true }; },
+      async all() {
+        assert.match(query, /r\.visibility='public'.*r\.verification_tier='replayed'/su);
+        return { results: [{ run_group_id: "run_one" }, { run_group_id: "run_two" }] };
+      },
+    };
+  } });
+  const wakeups = [];
+  auth.env.RLOGS_VERIFIER = { async fetch(request) {
+    wakeups.push({ path: new URL(request.url).pathname, body: await request.json() });
+    return Response.json({ accepted: true });
+  } };
+  const response = await auth.updateParseVisibility(new Request(
+    `https://backend/v1/auth/parses/${reportId}/visibility`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visibility: "public" }),
+    },
+  ), 100, reportId);
+  assert.equal(response.status, 200);
+  assert.equal(puts.length, 1);
+  assert.equal(puts[0].value.visibility, "public");
+  assert.match(puts[0].key, new RegExp(`^reports/${reportId}/projection-[a-f0-9]{64}\\.json$`, "u"));
+  assert.match(d1[0].query, /projection_sha256=COALESCE/u);
+  assert.equal(d1[0].bindings[1], "public");
+  assert.equal(d1[0].bindings[3], puts[0].key.slice(-69, -5));
+  assert.equal(d1[0].bindings[4], puts[0].key);
+  assert.equal(backgroundTasks.length, 1);
+  await Promise.all(backgroundTasks);
+  assert.deepEqual(wakeups, ["run_one", "run_two"].map((runGroupId) => ({
+    path: `/v1/reconciliation-jobs/${runGroupId}/run`,
+    body: { schema_version: 1, run_group_id: runGroupId },
+  })));
+});
+
+test("private transitions and stale hosted projections never schedule reconciliation", async () => {
+  for (const { visibility, schemaVersion, projectionRevision } of [
+    { visibility: "private", schemaVersion: 14, projectionRevision: 4 },
+    { visibility: "unlisted", schemaVersion: 14, projectionRevision: 4 },
+    { visibility: "public", schemaVersion: 13, projectionRevision: 3 },
+  ]) {
+    const { auth, backgroundTasks } = authFixture();
+    const reportId = `rpt_${"f".repeat(32)}`;
+    auth.hostedReport = async () => ({
+      report: { schema_version: schemaVersion, projection_revision: projectionRevision, report_id: reportId, visibility: "unlisted" },
+      visibility: "unlisted", submitterId: "usr_owner",
+    });
+    auth.env.RLOGS_ARTIFACTS = { async put() {} };
+    auth.env.RLOGS_VERIFIER = { async fetch() { throw new Error("must not schedule"); } };
+    const response = await auth.updateParseVisibility(new Request(
+      `https://backend/v1/auth/parses/${reportId}/visibility`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visibility }),
+      },
+    ), 100, reportId);
+    assert.equal(response.status, 200);
+    assert.equal(backgroundTasks.length, 0);
+  }
 });
 
 test("a device-bound profile package claims and publishes a profile in Cloudflare storage", async () => {

@@ -8,6 +8,8 @@ const LOGIN_CODE_LIFETIME_MILLIS = 5 * 60 * 1000;
 const MAXIMUM_QUERY_LIMIT = 250;
 const REPORT_ID_PATTERN = /^rpt_[a-f0-9]{32}$/;
 const VISIBILITIES = new Set(["public", "unlisted", "private"]);
+const CURRENT_PUBLIC_PARSE_SCHEMA_VERSION = 14;
+const CURRENT_PUBLIC_PARSE_PROJECTION_REVISION = 4;
 
 function json(value, status = 200) {
   return Response.json(value, {
@@ -41,6 +43,11 @@ async function tokenHash(domain, token, pepper) {
     encoder.encode(`rlogs-auth-v1\0${domain}\0${pepper}\0${token}`),
   );
   return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+async function sha256Hex(bytes) {
+  return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
+    (value) => value.toString(16).padStart(2, "0")).join("");
 }
 
 async function legacyJson(env, path) {
@@ -638,9 +645,29 @@ export class RLogsAuthState {
       return error("invalid visibility", 400);
     }
     if (hosted) {
+      let projectionSha256 = null;
+      let projectionObjectKey = null;
+      if (body.visibility === "public" && hosted.visibility !== "public") {
+        const projectionBytes = encoder.encode(JSON.stringify({ ...report, visibility: "public" }));
+        projectionSha256 = await sha256Hex(projectionBytes);
+        projectionObjectKey = `reports/${reportId}/projection-${projectionSha256}.json`;
+        await this.env.RLOGS_ARTIFACTS.put(projectionObjectKey, projectionBytes, {
+          httpMetadata: { contentType: "application/json" },
+        });
+      }
       await this.env.RLOGS_DB.prepare(`UPDATE reports SET visibility=?2,
+        projection_sha256=COALESCE(?4,projection_sha256),
+        projection_object_key=COALESCE(?5,projection_object_key),
         published_unix_millis=CASE WHEN ?2='public' THEN COALESCE(published_unix_millis,?3) ELSE NULL END
-        WHERE report_id=?1`).bind(reportId, body.visibility, now).run();
+        WHERE report_id=?1`).bind(
+        reportId, body.visibility, now, projectionSha256, projectionObjectKey,
+      ).run();
+      if (body.visibility === "public" && report.schema_version === CURRENT_PUBLIC_PARSE_SCHEMA_VERSION &&
+          report.projection_revision === CURRENT_PUBLIC_PARSE_PROJECTION_REVISION) {
+        const task = this.wakeRunGroupReconciliations(reportId);
+        if (typeof this.state.waitUntil === "function") this.state.waitUntil(task);
+        else await task;
+      }
     } else {
       await this.storage.put(`visibility:${reportId}`, body.visibility);
     }
@@ -652,6 +679,31 @@ export class RLogsAuthState {
         ? null
         : `${String(this.env.WEBSITE_URL).replace(/\/$/, "")}/parses/?parse=${reportId}#parse`,
     });
+  }
+
+  async wakeRunGroupReconciliations(reportId) {
+    if (!this.env.RLOGS_VERIFIER) return;
+    const rows = await this.env.RLOGS_DB.prepare(`SELECT DISTINCT rr.run_group_id
+      FROM report_runs rr JOIN reports r ON r.report_id=rr.report_id
+      WHERE rr.report_id=?1 AND r.visibility='public' AND r.verification_tier='replayed'
+      ORDER BY rr.run_group_id`).bind(reportId).all();
+    for (const row of rows.results ?? []) {
+      const runGroupId = String(row.run_group_id ?? "");
+      if (!/^[A-Za-z0-9_-]{1,96}$/.test(runGroupId)) continue;
+      try {
+        const response = await this.env.RLOGS_VERIFIER.fetch(new Request(
+          `https://verifier.internal/v1/reconciliation-jobs/${encodeURIComponent(runGroupId)}/run`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ schema_version: 1, run_group_id: runGroupId }),
+          },
+        ));
+        if (!response.ok && response.status !== 409) {
+          console.error("rLogs reconciliation wake-up was not accepted", runGroupId, response.status);
+        }
+      } catch (cause) {
+        console.error("rLogs reconciliation wake-up failed", runGroupId, cause);
+      }
+    }
   }
 
   async claimedCharacterIds(submitterId) {
