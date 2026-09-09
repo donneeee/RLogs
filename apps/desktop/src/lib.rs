@@ -1058,6 +1058,104 @@ fn live_overlay_primary_imagine_badge(slot: &ActorLoadoutSlot) -> LiveOverlayBad
     }
 }
 
+fn live_overlay_actor_identity_presentation(
+    class_id: Option<i32>,
+    specialization_id: Option<i32>,
+    ability_ids: &[i64],
+    localization_supported: bool,
+) -> rlogs_game_bpsr::ActorCombatPresentation {
+    if localization_supported {
+        return resolve_actor_combat_presentation(
+            class_id,
+            specialization_id,
+            ability_ids.iter().copied(),
+            "en-US",
+        )
+        .unwrap_or(rlogs_game_bpsr::ActorCombatPresentation {
+            class_id,
+            specialization_id,
+            class_name: None,
+            specialization_name: None,
+            icon: None,
+            role: None,
+            accent: None,
+        });
+    }
+    rlogs_game_bpsr::ActorCombatPresentation {
+        class_id,
+        specialization_id,
+        class_name: None,
+        specialization_name: None,
+        icon: None,
+        role: None,
+        accent: None,
+    }
+}
+
+fn live_overlay_weapon_badge(
+    item_id: Option<i64>,
+    breakthrough_count: Option<u32>,
+    localization_supported: bool,
+) -> Option<LiveOverlayBadgePresentation> {
+    if !localization_supported {
+        return None;
+    }
+    item_id.map(|item_id| {
+        let metadata = weapon_presentation(item_id);
+        let level = weapon_level_presentation(item_id, breakthrough_count);
+        LiveOverlayBadgePresentation {
+            slot_id: None,
+            ability_id: None,
+            item_id: Some(item_id),
+            tier: None,
+            level: level.and_then(|value| value.exact),
+            level_min: level.map(|value| value.minimum),
+            level_max: level.map(|value| value.maximum),
+            badge_kind: metadata.map(|value| value.badge_kind.to_owned()),
+            label: metadata
+                .map(|value| value.english_name.to_owned())
+                .unwrap_or_else(|| format!("Weapon item {item_id}")),
+            icon_asset_path: metadata.map(|value| {
+                format!(
+                    "/game-assets/blue-protocol-star-resonance/shared/{}",
+                    value.icon
+                )
+            }),
+        }
+    })
+}
+
+fn live_overlay_primary_imagine_badges(
+    slots: &[ActorLoadoutSlot],
+    localization_supported: bool,
+) -> Vec<LiveOverlayBadgePresentation> {
+    if !localization_supported {
+        return Vec::new();
+    }
+    slots
+        .iter()
+        .take(2)
+        .map(live_overlay_primary_imagine_badge)
+        .collect()
+}
+
+fn live_overlay_boss_name(
+    monster_id: i64,
+    observed_name: Option<&str>,
+    localization_supported: bool,
+) -> String {
+    localization_supported
+        .then(|| {
+            localized_monster_name(monster_id, "en-US")
+                .ok()
+                .flatten()
+                .map(str::to_owned)
+        })
+        .flatten()
+        .or_else(|| observed_name.map(str::to_owned))
+        .unwrap_or_else(|| format!("Monster {monster_id}"))
+}
+
 fn retain_json_object_keys(value: &mut serde_json::Value, keys: &[&str]) {
     let Some(object) = value.as_object_mut() else {
         return;
@@ -1447,6 +1545,8 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
         .snapshot
         .as_ref()
         .map(|snapshot| {
+            let localization_supported =
+                bundled_localization_supports(&snapshot.deployment_id, &snapshot.client_build);
             let stimen_boss_floor = snapshot
                 .scene_id
                 .and_then(stimen_floor_encounter_kind)
@@ -1473,12 +1573,11 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
                         presentation: LiveOverlayBossPresentation {
                             actor_id: actor.actor_id.clone(),
                             monster_id,
-                            name: localized_monster_name(monster_id, "en-US")
-                                .ok()
-                                .flatten()
-                                .map(str::to_owned)
-                                .or_else(|| actor.display_name.clone())
-                                .unwrap_or_else(|| format!("Monster {monster_id}")),
+                            name: live_overlay_boss_name(
+                                monster_id,
+                                actor.display_name.as_deref(),
+                                localization_supported,
+                            ),
                             current_hp,
                             max_hp,
                             bdps: live_boss_dps(actor.damage_taken, snapshot.active_combat_micros),
@@ -1528,6 +1627,8 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
         .snapshot
         .as_ref()
         .map(|snapshot| {
+            let localization_supported =
+                bundled_localization_supports(&snapshot.deployment_id, &snapshot.client_build);
             snapshot
                 .actors
                 .iter()
@@ -1536,54 +1637,23 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
                     let ability_ids = actor
                         .abilities
                         .iter()
-                        .filter_map(|ability| ability.ability_id.parse::<i64>().ok());
-                    let presentation = resolve_actor_combat_presentation(
+                        .filter_map(|ability| ability.ability_id.parse::<i64>().ok())
+                        .collect::<Vec<_>>();
+                    let presentation = live_overlay_actor_identity_presentation(
                         actor.class_id,
                         actor.specialization_id,
-                        ability_ids,
-                        "en-US",
-                    )
-                    .unwrap_or({
-                        rlogs_game_bpsr::ActorCombatPresentation {
-                            class_id: actor.class_id,
-                            specialization_id: None,
-                            class_name: None,
-                            specialization_name: None,
-                            icon: None,
-                            role: None,
-                            accent: None,
-                        }
-                    });
-                    let weapon = actor.weapon_item_id.map(|item_id| {
-                        let metadata = weapon_presentation(item_id);
-                        let level =
-                            weapon_level_presentation(item_id, actor.weapon_breakthrough_count);
-                        LiveOverlayBadgePresentation {
-                            slot_id: None,
-                            ability_id: None,
-                            item_id: Some(item_id),
-                            tier: None,
-                            level: level.and_then(|value| value.exact),
-                            level_min: level.map(|value| value.minimum),
-                            level_max: level.map(|value| value.maximum),
-                            badge_kind: metadata.map(|value| value.badge_kind.to_owned()),
-                            label: metadata
-                                .map(|value| value.english_name.to_owned())
-                                .unwrap_or_else(|| format!("Weapon item {item_id}")),
-                            icon_asset_path: metadata.map(|value| {
-                                format!(
-                                    "/game-assets/blue-protocol-star-resonance/shared/{}",
-                                    value.icon
-                                )
-                            }),
-                        }
-                    });
-                    let primary_imagines = actor
-                        .primary_loadout
-                        .iter()
-                        .take(2)
-                        .map(live_overlay_primary_imagine_badge)
-                        .collect();
+                        &ability_ids,
+                        localization_supported,
+                    );
+                    let weapon = live_overlay_weapon_badge(
+                        actor.weapon_item_id,
+                        actor.weapon_breakthrough_count,
+                        localization_supported,
+                    );
+                    let primary_imagines = live_overlay_primary_imagine_badges(
+                        &actor.primary_loadout,
+                        localization_supported,
+                    );
                     (
                         actor.actor_id.clone(),
                         LiveOverlayActorPresentation {
@@ -12703,9 +12773,15 @@ fn enrich_bpsr_history_presentation(
 ) -> Result<(), String> {
     let localization_deployment_id = snapshot.deployment_id.clone();
     let localization_client_build = snapshot.client_build.clone();
+    let localization_supported =
+        bundled_localization_supports(&localization_deployment_id, &localization_client_build);
     let run_identities = bundled_scene_run_identities()
         .map_err(|error| format!("could not load BPSR run identity rules: {error}"))?;
     for run in &mut snapshot.runs {
+        if !localization_supported {
+            clear_bpsr_run_presentation(run);
+            continue;
+        }
         let observed_specializations = observed_run_specializations(run)?;
         enrich_bpsr_scene_run_identity(
             run.scene_id,
@@ -12836,6 +12912,59 @@ fn enrich_bpsr_history_presentation(
         }
     }
     Ok(())
+}
+
+fn clear_bpsr_run_presentation(run: &mut CombatRunHistory) {
+    run.presentation_scene_name = None;
+    for view in &mut run.views {
+        view.rdps_effect_presentations.clear();
+        for target in &mut view.targets {
+            target.presentation_name = None;
+        }
+        for actor in &mut view.actors {
+            clear_bpsr_actor_presentation(actor);
+        }
+    }
+}
+
+fn clear_bpsr_actor_presentation(actor: &mut rlogs_plugin_combat_meter::HistoryActorSummary) {
+    actor.presentation_name = None;
+    actor.presentation_kind = None;
+    actor.presentation_class_name = None;
+    actor.presentation_specialization_name = None;
+    actor.icon_asset_path = None;
+    actor.presentation_role = None;
+    actor.presentation_accent = None;
+    actor.weapon_icon_asset_path = None;
+    actor.weapon_presentation_name = None;
+    actor.weapon_level = None;
+    actor.weapon_level_min = None;
+    actor.weapon_level_max = None;
+    actor.weapon_badge_kind = None;
+    for slot in actor
+        .primary_loadout
+        .iter_mut()
+        .chain(actor.auxiliary_loadout.iter_mut())
+    {
+        slot.presentation_name = None;
+        slot.icon_asset_path = None;
+        slot.item_tier = None;
+        slot.maximum_tier = None;
+    }
+    for ability in &mut actor.abilities {
+        ability.presentation_name = None;
+        ability.presentation_kind = None;
+        ability.presentation_resolution = None;
+        ability.icon_asset_path = None;
+        ability.presentation_recount_group_id = None;
+        ability.presentation_recount_group_name = None;
+    }
+    for effect in &mut actor.effects {
+        effect.presentation_name = None;
+        effect.presentation_kind = None;
+        effect.presentation_resolution = None;
+        effect.icon_asset_path = None;
+    }
 }
 
 fn enrich_bpsr_run_rdps_effect_presentations(
@@ -13492,6 +13621,13 @@ fn enrich_bpsr_catalog_presentation(
     let run_identities = bundled_scene_run_identities()
         .map_err(|error| format!("could not load BPSR run identity rules: {error}"))?;
     for entry in &mut catalog.entries {
+        if !bundled_localization_supports(&entry.deployment_id, &entry.client_build) {
+            entry.presentation_scene_name = None;
+            for actor in &mut entry.participants {
+                clear_bpsr_catalog_participant_presentation(actor);
+            }
+            continue;
+        }
         enrich_bpsr_scene_run_identity(
             entry.scene_id,
             &mut entry.activity_id,
@@ -13570,6 +13706,34 @@ fn enrich_bpsr_catalog_presentation(
         }
     }
     Ok(())
+}
+
+fn clear_bpsr_catalog_participant_presentation(
+    actor: &mut combat_history::CombatHistoryParticipant,
+) {
+    actor.presentation_name = None;
+    actor.presentation_kind = None;
+    actor.presentation_class_name = None;
+    actor.presentation_specialization_name = None;
+    actor.icon_asset_path = None;
+    actor.presentation_role = None;
+    actor.presentation_accent = None;
+    actor.weapon_icon_asset_path = None;
+    actor.weapon_presentation_name = None;
+    actor.weapon_level = None;
+    actor.weapon_level_min = None;
+    actor.weapon_level_max = None;
+    actor.weapon_badge_kind = None;
+    for slot in actor
+        .primary_loadout
+        .iter_mut()
+        .chain(actor.auxiliary_loadout.iter_mut())
+    {
+        slot.presentation_name = None;
+        slot.icon_asset_path = None;
+        slot.item_tier = None;
+        slot.maximum_tier = None;
+    }
 }
 
 fn enrich_bpsr_scene_run_identity(
@@ -15190,6 +15354,59 @@ mod tests {
         );
     }
 
+    #[test]
+    fn live_overlay_presentation_requires_the_exact_snapshot_build() {
+        let exact_identity =
+            live_overlay_actor_identity_presentation(Some(11), Some(117), &[2_233], true);
+        assert_eq!(exact_identity.class_name.as_deref(), Some("Marksman"));
+        assert_eq!(
+            exact_identity.specialization_name.as_deref(),
+            Some("Falconry")
+        );
+        assert!(exact_identity.icon.is_some());
+        assert!(exact_identity.role.is_some());
+
+        let other_identity =
+            live_overlay_actor_identity_presentation(Some(11), Some(117), &[2_233], false);
+        assert_eq!(other_identity.class_id, Some(11));
+        assert_eq!(other_identity.specialization_id, Some(117));
+        assert_eq!(other_identity.class_name, None);
+        assert_eq!(other_identity.specialization_name, None);
+        assert_eq!(other_identity.icon, None);
+        assert_eq!(other_identity.role, None);
+        assert_eq!(other_identity.accent, None);
+
+        let exact_weapon = live_overlay_weapon_badge(Some(2_000_631), Some(3), true)
+            .expect("current-build weapon presentation");
+        assert_eq!(exact_weapon.label, "Ember - Gaze of the Far Sea");
+        assert!(exact_weapon.icon_asset_path.is_some());
+        assert!(live_overlay_weapon_badge(Some(2_000_631), Some(3), false).is_none());
+
+        let imagine = ActorLoadoutSlot {
+            slot_id: 7,
+            ability_id: Some(3_948),
+            item_id: Some(3_000_101),
+            tier: Some(5),
+        };
+        assert_eq!(
+            live_overlay_primary_imagine_badges(std::slice::from_ref(&imagine), true).len(),
+            1
+        );
+        assert!(
+            live_overlay_primary_imagine_badges(std::slice::from_ref(&imagine), false).is_empty()
+        );
+
+        assert_eq!(
+            live_overlay_boss_name(33_701, Some("Observed Tina"), true),
+            "Tina - Void Reverie"
+        );
+        assert_eq!(
+            live_overlay_boss_name(33_701, Some("Observed Tina"), false),
+            "Observed Tina"
+        );
+        assert_eq!(live_overlay_boss_name(33_701, None, false), "Monster 33701");
+    }
+
     fn boss_candidate(actor_id: &str, max_hp: i64, was_damaged: bool) -> LiveOverlayBossCandidate {
         LiveOverlayBossCandidate {
             presentation: LiveOverlayBossPresentation {
@@ -16474,6 +16691,7 @@ mod tests {
     #[test]
     fn history_presentation_uses_only_captured_run_evidence() {
         let mut snapshot = captured_marksman_history();
+        snapshot.client_build = "24687926".into();
 
         enrich_bpsr_history_presentation(&mut snapshot, "en-US").unwrap();
 
@@ -16514,9 +16732,28 @@ mod tests {
         let mut other_build = captured_marksman_history();
         other_build.client_build = "24687927".into();
         other_build.runs[0].presentation_scene_name = Some("stale current-build label".into());
+        let other_actor = &mut other_build.runs[0].views[0].actors[0];
+        other_actor.presentation_name = Some("stale actor label".into());
+        other_actor.presentation_kind = Some("stale-kind".into());
+        other_actor.presentation_class_name = Some("stale class".into());
+        other_actor.presentation_specialization_name = Some("stale specialization".into());
+        other_actor.icon_asset_path = Some("stale-icon".into());
+        other_actor.presentation_role = Some("stale-role".into());
+        other_actor.presentation_accent = Some("stale-accent".into());
         enrich_bpsr_history_presentation(&mut other_build, "en-US").unwrap();
         assert_eq!(other_build.runs[0].presentation_scene_name, None);
-        let ability = &other_build.runs[0].views[0].actors[0].abilities[0];
+        let other_actor = &other_build.runs[0].views[0].actors[0];
+        assert_eq!(other_actor.display_name.as_deref(), Some("MarieRose"));
+        assert_eq!(other_actor.class_id, None);
+        assert_eq!(other_actor.specialization_id, None);
+        assert_eq!(other_actor.presentation_name, None);
+        assert_eq!(other_actor.presentation_kind, None);
+        assert_eq!(other_actor.presentation_class_name, None);
+        assert_eq!(other_actor.presentation_specialization_name, None);
+        assert_eq!(other_actor.icon_asset_path, None);
+        assert_eq!(other_actor.presentation_role, None);
+        assert_eq!(other_actor.presentation_accent, None);
+        let ability = &other_actor.abilities[0];
         assert_eq!(ability.presentation_name, None);
         assert_eq!(ability.presentation_recount_group_id, None);
         assert_eq!(ability.icon_asset_path, None);
@@ -16670,6 +16907,7 @@ mod tests {
         std::fs::write(&path, serde_json::to_vec(&catalog).unwrap()).unwrap();
         let current = CharacterIdentityStore::open(path).unwrap();
         let mut snapshot = captured_marksman_history();
+        snapshot.client_build = "24687926".into();
         snapshot.world_id = None;
         let actor = &mut snapshot.runs[0].views[0].actors[0];
         actor.display_name = Some("Player 6".into());
@@ -16717,6 +16955,7 @@ mod tests {
     #[test]
     fn history_recount_parent_does_not_replace_the_raw_child_action() {
         let mut snapshot = captured_marksman_history();
+        snapshot.client_build = "24687926".into();
         snapshot.runs[0].views[0].actors[0].abilities[0].ability_id = "220106".into();
 
         enrich_bpsr_history_presentation(&mut snapshot, "en-US").unwrap();
@@ -16779,6 +17018,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let marksman = identity_store(&root, "marksman", 11, 117, 61_382, 3_000_101);
         let mut snapshot = captured_marksman_history();
+        snapshot.client_build = "24687926".into();
         snapshot.runs[0].views[0].actors[0].primary_loadout = vec![HistoryLoadoutSlot {
             slot_id: 7,
             ability_id: Some(3_948),

@@ -1382,12 +1382,14 @@ impl SubmissionService {
             .iter()
             .map(|participant| (public_participant_key(participant), participant.damage))
             .collect::<BTreeMap<_, _>>();
+        let localization_supported =
+            bundled_localization_supports(&history.deployment_id, &history.client_build);
         let replay_damage = view
             .actors
             .iter()
             .filter(|actor| is_public_participant(actor))
             .map(|actor| {
-                let participant = public_participant(actor);
+                let participant = public_participant(actor, localization_supported);
                 (public_participant_key(&participant), participant.damage)
             })
             .collect::<BTreeMap<_, _>>();
@@ -1402,7 +1404,7 @@ impl SubmissionService {
             .iter()
             .filter(|actor| is_public_participant(actor))
             .map(|actor| PublicReconciledParticipant {
-                participant: public_participant(actor),
+                participant: public_participant(actor, localization_supported),
                 rdps_damage: actor.rdps_damage,
                 contribution_given: actor.rdps_contribution_given,
                 contribution_received: actor.rdps_contribution_received,
@@ -1448,7 +1450,11 @@ impl SubmissionService {
         Ok(CrossVantageReplayResult {
             participants,
             conservation,
-            rdps_effects: public_rdps_effects(view),
+            rdps_effects: if localization_supported {
+                public_rdps_effects(view)
+            } else {
+                Vec::new()
+            },
             rdps_influences: public_rdps_influences(view),
             swift_vortex_candidate_audit: (swift_vortex_candidate_audit
                 .candidate_status_event_count
@@ -4495,6 +4501,7 @@ fn public_runs(
                 analysis,
                 &participant_character_ids,
                 local_profile_observations,
+                localization_supported,
             );
             let local_profile_character_ids = local_profile_witnesses
                 .iter()
@@ -4570,12 +4577,16 @@ fn public_runs(
                         view.actors
                             .iter()
                             .filter(|actor| is_public_participant(actor))
-                            .map(public_participant)
+                            .map(|actor| public_participant(actor, localization_supported))
                             .collect()
                     })
                     .unwrap_or_default(),
                 rdps_influences: view.map(public_rdps_influences).unwrap_or_default(),
-                rdps_effects: view.map(public_rdps_effects).unwrap_or_default(),
+                rdps_effects: if localization_supported {
+                    view.map(public_rdps_effects).unwrap_or_default()
+                } else {
+                    Vec::new()
+                },
                 timeline: PublicCombatTimeline::default(),
             };
             public_run.timeline = public_combat_timeline(report_id, &public_run);
@@ -4839,6 +4850,7 @@ fn run_scoped_combat_loadout_phases(
     analysis: &RunAnalysis,
     participant_character_ids: &BTreeSet<String>,
     observations: &[LocalProfileObservation],
+    localization_supported: bool,
 ) -> Vec<PublicCombatLoadoutPhase> {
     let mut last_loadout_by_character = BTreeMap::<String, ProfileLoadoutObservation>::new();
     run_scoped_profile_observations(analysis, participant_character_ids, observations)
@@ -4882,17 +4894,27 @@ fn run_scoped_combat_loadout_phases(
                 attempt_number: encounter.map(|encounter| encounter.attempt_number),
                 in_active_combat,
                 class_id: observation.loadout.class_id,
-                class_name: observation
-                    .loadout
-                    .class_id
-                    .and_then(|id| localized_class_name(id, "en-US").ok().flatten())
-                    .map(str::to_owned),
+                class_name: localization_supported
+                    .then(|| {
+                        observation
+                            .loadout
+                            .class_id
+                            .and_then(|id| localized_class_name(id, "en-US").ok().flatten())
+                            .map(str::to_owned)
+                    })
+                    .flatten(),
                 specialization_id: observation.loadout.specialization_id,
-                specialization_name: observation
-                    .loadout
-                    .specialization_id
-                    .and_then(|id| localized_specialization_name(id, "en-US").ok().flatten())
-                    .map(str::to_owned),
+                specialization_name: localization_supported
+                    .then(|| {
+                        observation
+                            .loadout
+                            .specialization_id
+                            .and_then(|id| {
+                                localized_specialization_name(id, "en-US").ok().flatten()
+                            })
+                            .map(str::to_owned)
+                    })
+                    .flatten(),
                 equipped_skill_ids: observation.loadout.equipped_skill_ids.clone(),
                 equipped_imagines: observation.loadout.equipped_imagines.clone(),
                 equipment_count: observation.loadout.equipment_count,
@@ -6600,31 +6622,42 @@ fn private_parse_membership(
     })
 }
 
-fn public_participant(actor: &HistoryActorSummary) -> PublicParticipant {
+fn public_participant(
+    actor: &HistoryActorSummary,
+    localization_supported: bool,
+) -> PublicParticipant {
     PublicParticipant {
         actor_id: actor.actor_id.clone(),
         character_id: actor.character_id.clone(),
         observed_character_key: None,
-        display_name: actor
-            .presentation_name
-            .clone()
+        display_name: localization_supported
+            .then(|| actor.presentation_name.clone())
+            .flatten()
             .or_else(|| actor.display_name.clone()),
-        actor_kind: actor
-            .presentation_kind
-            .clone()
+        actor_kind: localization_supported
+            .then(|| actor.presentation_kind.clone())
+            .flatten()
             .or_else(|| actor.actor_kind.clone()),
         class_id: actor.class_id,
-        class_name: actor
-            .class_id
-            .and_then(|id| localized_class_name(id, "en-US").ok().flatten())
-            .map(str::to_owned)
-            .or_else(|| actor.presentation_class_name.clone()),
+        class_name: localization_supported
+            .then(|| {
+                actor
+                    .class_id
+                    .and_then(|id| localized_class_name(id, "en-US").ok().flatten())
+                    .map(str::to_owned)
+                    .or_else(|| actor.presentation_class_name.clone())
+            })
+            .flatten(),
         specialization_id: actor.specialization_id,
-        specialization_name: actor
-            .specialization_id
-            .and_then(|id| localized_specialization_name(id, "en-US").ok().flatten())
-            .map(str::to_owned)
-            .or_else(|| actor.presentation_specialization_name.clone()),
+        specialization_name: localization_supported
+            .then(|| {
+                actor
+                    .specialization_id
+                    .and_then(|id| localized_specialization_name(id, "en-US").ok().flatten())
+                    .map(str::to_owned)
+                    .or_else(|| actor.presentation_specialization_name.clone())
+            })
+            .flatten(),
         damage: actor.damage,
         dps: actor.dps,
         encounter_dps: actor.encounter_dps,
@@ -6638,11 +6671,21 @@ fn public_participant(actor: &HistoryActorSummary) -> PublicParticipant {
             .iter()
             .map(|ability| PublicAbilitySummary {
                 ability_id: ability.ability_id.clone(),
-                presentation_name: ability.presentation_name.clone(),
-                presentation_kind: ability.presentation_kind.clone(),
-                icon_asset_path: ability.icon_asset_path.clone(),
-                presentation_recount_group_id: ability.presentation_recount_group_id.clone(),
-                presentation_recount_group_name: ability.presentation_recount_group_name.clone(),
+                presentation_name: localization_supported
+                    .then(|| ability.presentation_name.clone())
+                    .flatten(),
+                presentation_kind: localization_supported
+                    .then(|| ability.presentation_kind.clone())
+                    .flatten(),
+                icon_asset_path: localization_supported
+                    .then(|| ability.icon_asset_path.clone())
+                    .flatten(),
+                presentation_recount_group_id: localization_supported
+                    .then(|| ability.presentation_recount_group_id.clone())
+                    .flatten(),
+                presentation_recount_group_name: localization_supported
+                    .then(|| ability.presentation_recount_group_name.clone())
+                    .flatten(),
                 casts: ability.casts,
                 hits: ability.hits,
                 critical_hits: ability.critical_hits,
@@ -8085,6 +8128,87 @@ mod tests {
     }
 
     #[test]
+    fn public_participant_presentation_requires_exact_artifact_build() {
+        let actor: HistoryActorSummary = serde_json::from_str(
+            r#"{
+            "actor_id": "1",
+            "entity_uuid": "101",
+            "display_name": "Packet Name",
+            "actor_kind": "player",
+            "presentation_name": "Stale Presented Name",
+            "presentation_kind": "stale-kind",
+            "class_id": 11,
+            "specialization_id": 117,
+            "presentation_class_name": "Stale Class",
+            "presentation_specialization_name": "Stale Specialization",
+            "level": null,
+            "damage": 100,
+            "effective_damage": 100,
+            "damage_taken": 0,
+            "healing": 0,
+            "effective_healing": 0,
+            "shielding": 0,
+            "hits": 1,
+            "critical_hits": 0,
+            "deaths": 0,
+            "dps": 100.0,
+            "encounter_dps": 100.0,
+            "hps": 0.0,
+            "tps": 0.0,
+            "rdps": null,
+            "apm": null,
+            "observed_cast_events": 0,
+            "abilities": [{
+                "ability_id": "2233",
+                "presentation_name": "Stale Ability",
+                "presentation_kind": "stale-ability-kind",
+                "icon_asset_path": "stale-ability-icon",
+                "presentation_recount_group_id": "999",
+                "presentation_recount_group_name": "Stale Group",
+                "casts": 1,
+                "hits": 1,
+                "critical_hits": 0,
+                "damage": 100,
+                "effective_damage": 100,
+                "healing": 0,
+                "effective_healing": 0,
+                "shielding": 0,
+                "dps": 100.0,
+                "encounter_dps": 100.0,
+                "hps": 0.0,
+                "targets": []
+            }],
+            "targets": [],
+            "effects": [],
+            "series": []
+        }"#,
+        )
+        .unwrap();
+
+        let exact = public_participant(&actor, true);
+        assert_eq!(exact.display_name.as_deref(), Some("Stale Presented Name"));
+        assert_eq!(exact.class_name.as_deref(), Some("Marksman"));
+        assert_eq!(exact.specialization_name.as_deref(), Some("Falconry Spec"));
+        assert_eq!(
+            exact.abilities[0].presentation_name.as_deref(),
+            Some("Stale Ability")
+        );
+
+        let other = public_participant(&actor, false);
+        assert_eq!(other.display_name.as_deref(), Some("Packet Name"));
+        assert_eq!(other.actor_kind.as_deref(), Some("player"));
+        assert_eq!(other.class_id, Some(11));
+        assert_eq!(other.specialization_id, Some(117));
+        assert_eq!(other.class_name, None);
+        assert_eq!(other.specialization_name, None);
+        assert_eq!(other.abilities[0].presentation_name, None);
+        assert_eq!(other.abilities[0].presentation_kind, None);
+        assert_eq!(other.abilities[0].icon_asset_path, None);
+        assert_eq!(other.abilities[0].presentation_recount_group_id, None);
+        assert_eq!(other.abilities[0].presentation_recount_group_name, None);
+    }
+
+    #[test]
     fn run_groups_use_exact_game_instance_identity_not_parser_version() {
         let mut history = CombatHistorySnapshot {
             schema_version: 1,
@@ -8290,7 +8414,8 @@ mod tests {
         assert!(selected.iter().all(|witness| witness.event_sequence != 2));
         assert!(selected.iter().all(|witness| witness.event_sequence != 6));
 
-        let phases = run_scoped_combat_loadout_phases(&analysis, &participants, &observations);
+        let phases =
+            run_scoped_combat_loadout_phases(&analysis, &participants, &observations, true);
         assert_eq!(phases.len(), 2);
         assert_eq!(
             phases
