@@ -2,6 +2,8 @@ use std::{collections::BTreeMap, sync::OnceLock};
 
 use serde::Deserialize;
 
+use crate::scene_localization::bundled_localization_supports;
+
 const MAXIMUM_COMBAT_ACTIONS: usize = 50_000;
 const MAXIMUM_CAST_RECOUNT_RELATIONS: usize = 10_000;
 const MAXIMUM_STATUS_EFFECTS: usize = 20_000;
@@ -654,9 +656,65 @@ pub fn localized_status_effect_name(
         .map(|index| catalog.effects[index].1.as_str()))
 }
 
+pub fn localized_combat_action_name_for_build(
+    deployment_id: &str,
+    client_build: &str,
+    ability_id: i64,
+    locale: &str,
+) -> Result<Option<&'static str>, String> {
+    if !bundled_localization_supports(deployment_id, client_build) {
+        return Ok(None);
+    }
+    localized_combat_action_name(ability_id, locale)
+}
+
+pub fn localized_recount_group_name_for_build(
+    deployment_id: &str,
+    client_build: &str,
+    ability_id: i64,
+    locale: &str,
+) -> Result<Option<&'static str>, String> {
+    if !bundled_localization_supports(deployment_id, client_build) {
+        return Ok(None);
+    }
+    localized_recount_group_name(ability_id, locale)
+}
+
+pub fn localized_status_effect_name_for_build(
+    deployment_id: &str,
+    client_build: &str,
+    effect_id: i64,
+    locale: &str,
+) -> Result<Option<&'static str>, String> {
+    if !bundled_localization_supports(deployment_id, client_build) {
+        return Ok(None);
+    }
+    localized_status_effect_name(effect_id, locale)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_scoped_combat_localization_fails_closed() {
+        assert_eq!(
+            localized_combat_action_name_for_build("global", "24687926", 2_233, "en-US").unwrap(),
+            Some("Powerdraw")
+        );
+        assert_eq!(
+            localized_combat_action_name_for_build("global", "24687927", 2_233, "en-US").unwrap(),
+            None
+        );
+        assert_eq!(
+            localized_recount_group_name_for_build("cn", "24687926", 220_106, "en-US").unwrap(),
+            None
+        );
+        assert_eq!(
+            localized_status_effect_name_for_build("global", "24687927", 31_602, "en-US").unwrap(),
+            None
+        );
+    }
 
     #[test]
     fn all_promoted_rdps_effects_have_exact_id_english_presentation() {

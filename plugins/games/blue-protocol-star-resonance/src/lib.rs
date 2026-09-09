@@ -103,8 +103,10 @@ pub use class_localization::{
 pub use combat_presentation::{
     CombatActionPresentation, RdpsAttributionEffectPresentation, StatusEffectPresentation,
     combat_action_presentation, combat_recount_group_id, localized_combat_action_name,
-    localized_recount_group_name, localized_status_effect_name,
-    rdps_attribution_effect_presentation, status_effect_presentation,
+    localized_combat_action_name_for_build, localized_recount_group_name,
+    localized_recount_group_name_for_build, localized_status_effect_name,
+    localized_status_effect_name_for_build, rdps_attribution_effect_presentation,
+    status_effect_presentation,
 };
 pub use continuous_recording::{
     ContinuousBpsrRecorder, ContinuousForcedReset, ContinuousRecordingConfig,
@@ -267,7 +269,11 @@ pub use run_segmentation::{
     DungeonRunSegmenter, DungeonSegmentAction, DungeonSegmentBoundary, DungeonSegmentEndReason,
     DungeonSegmentStartReason,
 };
-pub use scene_localization::{ScenePresentation, localized_scene_name, scene_presentation};
+pub use scene_localization::{
+    BUNDLED_SCENE_LOCALIZATION_CLIENT_BUILD, BUNDLED_SCENE_LOCALIZATION_DEPLOYMENT_ID,
+    ScenePresentation, bundled_localization_supports, localized_scene_name,
+    localized_scene_name_for_build, scene_presentation,
+};
 pub use segmented_recording::{
     SealedDungeonRunLog, SegmentedDungeonLogWriter, SegmentedRecordingError,
 };

@@ -34,10 +34,11 @@ use rlogs_game_bpsr::{
     BpsrStatResonanceTransitionLearner, BpsrStateDamageContributionProjector,
     CharacterProfilePatch, SwiftVortexCandidateAuditAnalyzer, SwiftVortexCandidateAuditReport,
     TRAINING_DURATION_MICROS, TrainingDummyController, TrainingDummyPhase,
-    bundled_run_reducer_config, canonicalize_bpsr_region_identity, character_id_from_entity_uuid,
-    combat_action_presentation, combat_breakdown_ability_id, combat_recount_group_id,
-    confirmed_damage_contribution_rules, is_stat_resonance_status, localized_class_name,
-    localized_combat_action_name, localized_recount_group_name, localized_scene_name,
+    bundled_localization_supports, bundled_run_reducer_config, canonicalize_bpsr_region_identity,
+    character_id_from_entity_uuid, combat_action_presentation, combat_breakdown_ability_id,
+    combat_recount_group_id, confirmed_damage_contribution_rules, is_stat_resonance_status,
+    localized_class_name, localized_combat_action_name_for_build,
+    localized_recount_group_name_for_build, localized_scene_name_for_build,
     localized_specialization_name,
 };
 use rlogs_log_format::{RlogLimits, RlogReader};
@@ -4465,6 +4466,8 @@ fn public_runs(
     local_profile_observations: &[LocalProfileObservation],
     local_state_observations: &[LocalStateObservation],
 ) -> Vec<PublicRun> {
+    let localization_supported =
+        bundled_localization_supports(&history.deployment_id, &history.client_build);
     history
         .runs
         .iter()
@@ -4517,12 +4520,21 @@ fn public_runs(
                 scene_name: run
                     .scene_id
                     .and_then(|scene_id| {
-                        localized_scene_name(i64::from(scene_id), "en-US")
-                            .ok()
-                            .flatten()
+                        localized_scene_name_for_build(
+                            &history.deployment_id,
+                            &history.client_build,
+                            i64::from(scene_id),
+                            "en-US",
+                        )
+                        .ok()
+                        .flatten()
                     })
                     .map(str::to_owned)
-                    .or_else(|| run.presentation_scene_name.clone()),
+                    .or_else(|| {
+                        localization_supported
+                            .then(|| run.presentation_scene_name.clone())
+                            .flatten()
+                    }),
                 difficulty_family: run.difficulty_family.clone(),
                 difficulty_tier: run.difficulty_tier,
                 terminal_state: run.terminal_state.clone(),
@@ -4575,37 +4587,66 @@ fn public_runs(
 fn enrich_bpsr_history_ability_presentation(
     history: &mut CombatHistorySnapshot,
 ) -> Result<(), ServiceError> {
+    let deployment_id = history.deployment_id.clone();
+    let client_build = history.client_build.clone();
     for run in &mut history.runs {
         for view in &mut run.views {
             for actor in &mut view.actors {
                 for ability in &mut actor.abilities {
-                    let Ok(ability_id) = ability.ability_id.parse::<i64>() else {
-                        continue;
-                    };
-                    if let Some(presentation) =
-                        combat_action_presentation(ability_id).map_err(ServiceError::Replay)?
-                    {
-                        ability.presentation_name =
-                            localized_combat_action_name(ability_id, "en-US")
-                                .map_err(ServiceError::Replay)?
-                                .map(str::to_owned);
-                        ability.presentation_kind = Some(presentation.kind.clone());
-                        ability.presentation_resolution = Some(presentation.resolution.clone());
-                        ability.icon_asset_path = presentation.icon.as_ref().map(|path| {
-                            format!("/game-assets/blue-protocol-star-resonance/shared/{path}")
-                        });
-                        ability.presentation_recount_group_name =
-                            localized_recount_group_name(ability_id, "en-US")
-                                .map_err(ServiceError::Replay)?
-                                .map(str::to_owned);
-                    }
-                    ability.presentation_recount_group_id = combat_recount_group_id(ability_id)
-                        .map_err(ServiceError::Replay)?
-                        .map(|group_id| group_id.to_string());
+                    enrich_bpsr_ability_presentation(ability, &deployment_id, &client_build)?;
                 }
             }
         }
     }
+    Ok(())
+}
+
+fn enrich_bpsr_ability_presentation(
+    ability: &mut rlogs_plugin_combat_meter::HistoryAbilitySummary,
+    deployment_id: &str,
+    client_build: &str,
+) -> Result<(), ServiceError> {
+    if !bundled_localization_supports(deployment_id, client_build) {
+        ability.presentation_name = None;
+        ability.presentation_kind = None;
+        ability.presentation_resolution = None;
+        ability.icon_asset_path = None;
+        ability.presentation_recount_group_id = None;
+        ability.presentation_recount_group_name = None;
+        return Ok(());
+    }
+    let Ok(ability_id) = ability.ability_id.parse::<i64>() else {
+        return Ok(());
+    };
+    if let Some(presentation) =
+        combat_action_presentation(ability_id).map_err(ServiceError::Replay)?
+    {
+        ability.presentation_name = localized_combat_action_name_for_build(
+            deployment_id,
+            client_build,
+            ability_id,
+            "en-US",
+        )
+        .map_err(ServiceError::Replay)?
+        .map(str::to_owned);
+        ability.presentation_kind = Some(presentation.kind.clone());
+        ability.presentation_resolution = Some(presentation.resolution.clone());
+        ability.icon_asset_path = presentation
+            .icon
+            .as_ref()
+            .map(|path| format!("/game-assets/blue-protocol-star-resonance/shared/{path}"));
+        ability.presentation_recount_group_name = localized_recount_group_name_for_build(
+            deployment_id,
+            client_build,
+            ability_id,
+            "en-US",
+        )
+        .map_err(ServiceError::Replay)?
+        .map(str::to_owned);
+    }
+    ability.presentation_recount_group_id = combat_recount_group_id(ability_id)
+        .map_err(ServiceError::Replay)?
+        .map(|group_id| group_id.to_string());
     Ok(())
 }
 
@@ -7999,6 +8040,48 @@ mod tests {
         let digest = Sha256Digest::parse("ab".repeat(32)).unwrap();
         assert_eq!(report_id(&digest), "rpt_abababababababababababababababab");
         assert_eq!(upload_id(&digest), "up_abababababababababababababababab");
+    }
+
+    #[test]
+    fn public_ability_localization_requires_exact_artifact_build() {
+        let fixture = || {
+            serde_json::from_value::<rlogs_plugin_combat_meter::HistoryAbilitySummary>(
+                serde_json::json!({
+                    "ability_id": "2233",
+                    "presentation_name": "stale label",
+                    "presentation_kind": "stale-kind",
+                    "presentation_resolution": "stale-resolution",
+                    "icon_asset_path": "stale-icon",
+                    "presentation_recount_group_id": "999",
+                    "presentation_recount_group_name": "stale group",
+                    "casts": 1,
+                    "hits": 1,
+                    "critical_hits": 0,
+                    "damage": 1,
+                    "effective_damage": 1,
+                    "healing": 0,
+                    "effective_healing": 0,
+                    "shielding": 0,
+                    "dps": 1.0,
+                    "encounter_dps": 1.0,
+                    "hps": 0.0,
+                    "targets": []
+                }),
+            )
+            .unwrap()
+        };
+
+        let mut exact = fixture();
+        enrich_bpsr_ability_presentation(&mut exact, "global", "24687926").unwrap();
+        assert_eq!(exact.presentation_name.as_deref(), Some("Powerdraw"));
+        assert_eq!(exact.presentation_recount_group_id.as_deref(), Some("84"));
+
+        let mut other = fixture();
+        enrich_bpsr_ability_presentation(&mut other, "global", "24687927").unwrap();
+        assert_eq!(other.presentation_name, None);
+        assert_eq!(other.presentation_kind, None);
+        assert_eq!(other.icon_asset_path, None);
+        assert_eq!(other.presentation_recount_group_id, None);
     }
 
     #[test]

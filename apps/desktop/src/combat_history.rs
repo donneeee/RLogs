@@ -11,7 +11,7 @@ use rlogs_plugin_combat_meter::{
 use serde::{Deserialize, Serialize};
 
 const CATALOG_SCHEMA_VERSION: u16 = 1;
-const CATALOG_SUMMARY_VERSION: u16 = 2;
+const CATALOG_SUMMARY_VERSION: u16 = 3;
 const MAXIMUM_HISTORY_ENTRIES: usize = 2_048;
 const MAXIMUM_HISTORY_DETAIL_BYTES: u64 = 128 * 1024 * 1024;
 const MAXIMUM_HISTORY_INDEX_BYTES: u64 = 16 * 1024 * 1024;
@@ -55,6 +55,11 @@ pub struct CombatHistoryCatalogEntry {
     pub player_count: usize,
     #[serde(default)]
     pub deployment_id: String,
+    /// Exact client build that produced this summary. Older indexes are
+    /// backfilled from their sealed detail before build-scoped presentation is
+    /// applied.
+    #[serde(default)]
+    pub client_build: String,
     #[serde(default)]
     pub region_id: String,
     #[serde(default)]
@@ -362,6 +367,7 @@ impl CombatHistoryStore {
                         .count()
                 }),
                 deployment_id: snapshot.deployment_id.clone(),
+                client_build: snapshot.client_build.clone(),
                 region_id: snapshot.region_id.clone(),
                 world_id: snapshot.world_id.clone(),
                 team_damage: 0,
@@ -412,6 +418,7 @@ impl CombatHistoryStore {
                 ));
             };
             entry.deployment_id.clone_from(&snapshot.deployment_id);
+            entry.client_build.clone_from(&snapshot.client_build);
             entry.region_id.clone_from(&snapshot.region_id);
             entry.world_id.clone_from(&snapshot.world_id);
             entry.game_time_micros = run.game_time_micros;
@@ -1610,6 +1617,7 @@ mod tests {
         let catalog = store.record(&snapshot, 123).unwrap();
         assert_eq!(catalog.entries.len(), 1);
         assert_eq!(catalog.entries[0].terminal_state, "exited");
+        assert_eq!(catalog.entries[0].client_build, "fixture");
         assert_eq!(
             catalog.entries[0].activity_family_id.as_deref(),
             Some("mech-facility")

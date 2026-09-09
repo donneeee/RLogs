@@ -1291,10 +1291,17 @@ impl MechanicsMapProjector {
             scene_id: self.scene_id,
             map_id: self.map_id,
             scene_name: self.scene_id.and_then(|scene_id| {
-                rlogs_game_bpsr::localized_scene_name(i64::from(scene_id), "en-US")
+                self.client_build.as_deref().and_then(|client_build| {
+                    rlogs_game_bpsr::localized_scene_name_for_build(
+                        "global",
+                        client_build,
+                        i64::from(scene_id),
+                        "en-US",
+                    )
                     .ok()
                     .flatten()
                     .map(str::to_owned)
+                })
             }),
             map_model: if absolute_map.is_some() {
                 "absolute_scene_map"
@@ -2243,6 +2250,7 @@ mod tests {
     fn packet_build_transition_replaces_a_bootstrap_map_identity() {
         let mut projector = MechanicsMapProjector::default();
         projector.reset("session", "unverified");
+        projector.scene_id = Some(6_565);
         let mut event = envelope(
             1,
             CanonicalEvent::Timeline(TimelineEvent {
@@ -2273,6 +2281,7 @@ mod tests {
             projector.snapshot().client_build.as_deref(),
             Some("24687927")
         );
+        assert_eq!(projector.snapshot().scene_name, None);
     }
 
     #[test]

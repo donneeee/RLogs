@@ -2,6 +2,14 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
+pub const BUNDLED_SCENE_LOCALIZATION_DEPLOYMENT_ID: &str = "global";
+pub const BUNDLED_SCENE_LOCALIZATION_CLIENT_BUILD: &str = "24687926";
+
+pub fn bundled_localization_supports(deployment_id: &str, client_build: &str) -> bool {
+    deployment_id == BUNDLED_SCENE_LOCALIZATION_DEPLOYMENT_ID
+        && client_build == BUNDLED_SCENE_LOCALIZATION_CLIENT_BUILD
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScenePresentation {
@@ -169,6 +177,24 @@ pub fn localized_scene_name(scene_id: i64, locale: &str) -> Result<Option<&'stat
         .map(|index| catalog.scenes[index].1.as_str()))
 }
 
+/// Resolves a scene label only when the captured artifact exactly matches the
+/// build that supplied the bundled locale tables.
+///
+/// Presentation is deliberately fail-closed here: numeric scene identity
+/// remains available for every build, but a label from a different deployment
+/// or client build must never be presented as if it were observed there.
+pub fn localized_scene_name_for_build(
+    deployment_id: &str,
+    client_build: &str,
+    scene_id: i64,
+    locale: &str,
+) -> Result<Option<&'static str>, String> {
+    if !bundled_localization_supports(deployment_id, client_build) {
+        return Ok(None);
+    }
+    localized_scene_name(scene_id, locale)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,6 +259,22 @@ mod tests {
         assert_eq!(
             localized_scene_name(12_023, "unsupported").unwrap(),
             Some("Guild Hunt - Hard")
+        );
+    }
+
+    #[test]
+    fn exact_build_lookup_fails_closed_across_builds_and_deployments() {
+        assert_eq!(
+            localized_scene_name_for_build("global", "24687926", 12_023, "en-US").unwrap(),
+            Some("Guild Hunt - Hard")
+        );
+        assert_eq!(
+            localized_scene_name_for_build("global", "24687927", 12_023, "en-US").unwrap(),
+            None
+        );
+        assert_eq!(
+            localized_scene_name_for_build("cn", "24687926", 12_023, "en-US").unwrap(),
+            None
         );
     }
 
