@@ -376,6 +376,85 @@ test("new hosted reports and catalog rows are read from D1 and R2", async () => 
   });
 });
 
+test("run-group reconciliation reads the current public D1 pointer from R2", async () => {
+  const runGroupId = "run_exact_group";
+  const reconciliation = {
+    schema_version: 15, reconciliation_id: `rec_${"a".repeat(32)}`, run_group_id: runGroupId,
+  };
+  const env = environment({
+    [`fs:reconciliations/${runGroupId}.json`]: JSON.stringify({ legacy: true }),
+  });
+  env.RLOGS_DB.prepare = (query) => ({ bind(actualRunGroupId) {
+    assert.equal(actualRunGroupId, runGroupId);
+    assert.match(query, /reconciliation_current/u);
+    assert.match(query, /r\.visibility<>'public'/u);
+    assert.match(query, /COUNT\(\*\) FROM reconciliation_job_sources/u);
+    assert.match(query, /COUNT\(\*\) FROM report_runs rr/u);
+    return { async first() { return { projection_object_key: "reconciliations/version.json" }; } };
+  } });
+  env.RLOGS_ARTIFACTS = { async get(key) {
+    assert.equal(key, "reconciliations/version.json");
+    return { async text() { return JSON.stringify(reconciliation); } };
+  } };
+  const response = await backend.fetch(new Request(
+    `https://backend/v1/run-groups/${runGroupId}/reconciliation`,
+  ), env);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), reconciliation);
+});
+
+test("run-group reconciliation falls back to the legacy object only without hosted bindings", async () => {
+  const runGroupId = "run_legacy_group";
+  const legacy = { schema_version: 14, run_group_id: runGroupId };
+  const env = environment({ [`fs:reconciliations/${runGroupId}.json`]: JSON.stringify(legacy) });
+  delete env.RLOGS_DB;
+  const response = await backend.fetch(new Request(
+    `https://backend/v1/run-groups/${runGroupId}/reconciliation`,
+  ), env);
+  assert.deepEqual(await response.json(), legacy);
+});
+
+test("an unsafe hosted reconciliation never falls back to legacy data after a source becomes private", async () => {
+  const runGroupId = "run_private_source";
+  const env = environment({ [`fs:reconciliations/${runGroupId}.json`]: JSON.stringify({ legacy: true }) });
+  env.RLOGS_DB.prepare = (query) => ({ bind() {
+    assert.match(query, /r\.visibility<>'public'/u);
+    return { async first() { return null; } };
+  } });
+  env.RLOGS_ARTIFACTS = { async get() { throw new Error("unsafe pointer must not reach R2"); } };
+  const response = await backend.fetch(new Request(
+    `https://backend/v1/run-groups/${runGroupId}/reconciliation`,
+  ), env);
+  assert.equal(response.status, 404);
+});
+
+test("a hosted pointer fails closed when a newly public replay source is absent from its source set", async () => {
+  const runGroupId = "run_new_source";
+  const env = environment({ [`fs:reconciliations/${runGroupId}.json`]: JSON.stringify({ legacy: true }) });
+  env.RLOGS_DB.prepare = (query) => ({ bind() {
+    assert.match(query, /COUNT\(\*\) FROM reconciliation_job_sources/u);
+    assert.match(query, /rr\.run_group_id=c\.run_group_id AND r\.visibility='public'/u);
+    return { async first() { return null; } };
+  } });
+  env.RLOGS_ARTIFACTS = { async get() { throw new Error("stale pointer must not reach R2"); } };
+  const response = await backend.fetch(new Request(
+    `https://backend/v1/run-groups/${runGroupId}/reconciliation`,
+  ), env);
+  assert.equal(response.status, 404);
+});
+
+test("hosted reconciliation storage errors return retryable failure without legacy fallback", async () => {
+  const runGroupId = "run_storage_error";
+  const env = environment({ [`fs:reconciliations/${runGroupId}.json`]: JSON.stringify({ legacy: true }) });
+  env.RLOGS_DB.prepare = () => ({ bind() { return { async first() { throw new Error("D1 offline"); } }; } });
+  env.RLOGS_ARTIFACTS = {};
+  const response = await backend.fetch(new Request(
+    `https://backend/v1/run-groups/${runGroupId}/reconciliation`,
+  ), env);
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get("Retry-After"), "30");
+});
+
 test("hosted name enrichment rejects placeholders and malformed profile projections", async () => {
   const reportId = `rpt_${"c".repeat(32)}`;
   const report = { report_id: reportId, runs: [{ participants: [

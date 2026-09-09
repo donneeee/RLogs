@@ -1,6 +1,7 @@
 const IDENTIFIER = /^[A-Za-z0-9_-]{1,128}$/;
 const DIGEST = /^[a-f0-9]{64}$/;
 const REPORT_ID = /^rpt_[a-f0-9]{32}$/;
+const RECONCILIATION_ID = /^rec_[a-f0-9]{32}$/;
 
 export function expectedReportId(digest) {
   return `rpt_${digest.slice(0, 32)}`;
@@ -54,6 +55,41 @@ export function validateTrainingOutput(value, wakeup) {
     (value?.target_monster_id === 115 || value?.target_monster_id === 122) &&
     value?.duration_micros === 180_000_000 && Number.isSafeInteger(damage) && damage > 0 &&
     Number.isFinite(dps) && Math.abs(dps - damage / 180) < 0.001;
+}
+
+export function reconciliationSourceIdentity(source) {
+  return `${source.report_id}:${Number(source.run_index)}`;
+}
+
+export function validateReconciliationOutput(value, runGroupId, sources) {
+  if (value?.schema_version !== 15 || value?.run_group_id !== runGroupId ||
+      !RECONCILIATION_ID.test(value?.reconciliation_id ?? "") ||
+      !Array.isArray(value?.reports) || !value?.canonical_spine) return false;
+  const expected = sources.map(reconciliationSourceIdentity).sort();
+  const actual = value.reports.map(reconciliationSourceIdentity).sort();
+  if (actual.length !== expected.length || actual.some((identity, index) => identity !== expected[index])) {
+    return false;
+  }
+  const unique = new Set(actual);
+  if (unique.size !== actual.length || !unique.has(reconciliationSourceIdentity(value.canonical_spine))) {
+    return false;
+  }
+  return [
+    "single_vantage", "multiple_reports_no_additional_vantage",
+    "cross_vantage_evidence_available", "reconciled",
+  ].includes(value.status);
+}
+
+export function reconcileCatalogEntry(entry, result, sourceCount, distinctSubmitterCount) {
+  return {
+    ...entry,
+    report_ids: result.reports.map((report) => report.report_id).sort(),
+    contribution_count: sourceCount,
+    distinct_submitter_count: distinctSubmitterCount,
+    local_profile_witness_character_count: Number(result.local_vantage_character_count ?? 0),
+    attribution_reconciliation_status: result.status,
+    reconciliation_id: result.reconciliation_id,
+  };
 }
 
 export async function runOneShotVerifier(container, request) {

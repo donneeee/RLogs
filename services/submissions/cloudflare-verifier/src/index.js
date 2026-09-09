@@ -1,7 +1,8 @@
 import { Container, ContainerProxy } from "@cloudflare/containers";
 import {
-  catalogEntry, compatibleProfileName, runOneShotVerifier, sameChunkCommitments, validateOutput,
-  validateTrainingOutput, validateWakeup,
+  catalogEntry, compatibleProfileName, reconcileCatalogEntry, runOneShotVerifier,
+  sameChunkCommitments, validateOutput, validateReconciliationOutput, validateTrainingOutput,
+  validateWakeup,
 } from "./core.js";
 
 // Cloudflare requires this named export whenever a Container class installs
@@ -30,7 +31,215 @@ async function sha256(bytes) {
     (value) => value.toString(16).padStart(2, "0")).join("");
 }
 
-async function verifyJob(request, env) {
+const RUN_GROUP_ID = /^[A-Za-z0-9_-]{1,96}$/;
+const DIGEST = /^[a-f0-9]{64}$/;
+const REPORT_ID = /^rpt_[a-f0-9]{32}$/;
+
+async function reconciliationSources(env, runGroupId) {
+  const rows = await all(env, `SELECT r.report_id, r.upload_id, rr.run_index,
+      r.artifact_sha256, r.projection_sha256, r.projection_object_key, u.submitter_id
+    FROM report_runs rr
+    JOIN reports r ON r.report_id=rr.report_id
+    JOIN upload_sessions u ON u.upload_id=r.upload_id
+    WHERE rr.run_group_id=?1 AND r.visibility='public' AND r.verification_tier='replayed'
+    ORDER BY r.report_id, rr.run_index`, runGroupId);
+  if (rows.length < 2 || rows.length > 64) return null;
+  const seen = new Set();
+  const sources = [];
+  for (const row of rows) {
+    const reportId = String(row.report_id ?? "");
+    const uploadId = String(row.upload_id ?? "");
+    const artifactSha256 = String(row.artifact_sha256 ?? "");
+    const projectionSha256 = String(row.projection_sha256 ?? "");
+    const projectionObjectKey = String(row.projection_object_key ?? "");
+    const runIndex = Number(row.run_index);
+    if (!REPORT_ID.test(reportId) || !/^up_[a-f0-9]{32}$/.test(uploadId) ||
+        reportId !== `rpt_${artifactSha256.slice(0, 32)}` || uploadId !== `up_${artifactSha256.slice(0, 32)}` ||
+        !DIGEST.test(artifactSha256) || !DIGEST.test(projectionSha256) ||
+        projectionObjectKey !== `reports/${reportId}/projection-${projectionSha256}.json` ||
+        !Number.isInteger(runIndex) || runIndex < 0 || seen.has(reportId)) return null;
+    seen.add(reportId);
+    const [projection, chunks] = await Promise.all([
+      env.RLOGS_ARTIFACTS.head(projectionObjectKey),
+      all(env, `SELECT sequence, sha256, byte_length, object_key
+        FROM upload_chunks WHERE upload_id=?1 ORDER BY sequence`, uploadId),
+    ]);
+    if (!projection || Number(projection.size) <= 0 || chunks.length === 0) return null;
+    const normalizedChunks = chunks.map((chunk, sequence) => ({
+      sequence: Number(chunk.sequence), sha256: String(chunk.sha256),
+      byte_length: Number(chunk.byte_length), object_key: String(chunk.object_key),
+    }));
+    if (normalizedChunks.some((chunk, sequence) => chunk.sequence !== sequence ||
+        !DIGEST.test(chunk.sha256) || !Number.isSafeInteger(chunk.byte_length) || chunk.byte_length <= 0 ||
+        chunk.object_key !== `uploads/${uploadId}/chunks/${String(sequence).padStart(8, "0")}-${chunk.sha256}.bin`)) {
+      return null;
+    }
+    sources.push({
+      report_id: reportId, upload_id: uploadId, run_index: runIndex,
+      artifact_sha256: artifactSha256,
+      projection: { object_key: projectionObjectKey, byte_length: Number(projection.size), sha256: projectionSha256 },
+      chunks: normalizedChunks,
+      submitter_id: String(row.submitter_id ?? ""),
+    });
+  }
+  return sources;
+}
+
+async function sourceSetDigest(runGroupId, sources) {
+  const commitment = {
+    run_group_id: runGroupId,
+    sources: sources.map(({ submitter_id, ...source }) => source),
+  };
+  return sha256(new TextEncoder().encode(JSON.stringify(commitment)));
+}
+
+function currentSourceGuard() {
+  return `(SELECT COUNT(*) FROM reconciliation_job_sources js
+    JOIN report_runs rr ON rr.report_id=js.report_id AND rr.run_index=js.run_index
+    JOIN reports r ON r.report_id=js.report_id
+    WHERE js.job_id=?1 AND rr.run_group_id=?2
+      AND r.visibility='public' AND r.verification_tier='replayed'
+      AND r.projection_sha256=js.projection_sha256
+      AND r.projection_object_key=js.projection_object_key)=?3
+    AND (SELECT COUNT(*) FROM report_runs rr JOIN reports r ON r.report_id=rr.report_id
+      WHERE rr.run_group_id=?2
+        AND r.visibility='public' AND r.verification_tier='replayed')=?3`;
+}
+
+async function reconciliationFailure(env, jobId, leaseToken, state, code, detail) {
+  await env.RLOGS_DB.prepare(`UPDATE reconciliation_jobs SET state=?2, failure_code=?3,
+    failure_detail=?4, updated_unix_millis=?5 WHERE job_id=?1 AND lease_token=?6`)
+    .bind(jobId, state, code, String(detail).slice(0, 2000), Date.now(), leaseToken).run();
+  return json({ error: String(detail) }, state === "rejected" ? 422 : 503);
+}
+
+export async function reconcileRunGroup(env, runGroupId) {
+  if (!RUN_GROUP_ID.test(runGroupId)) return json({ error: "invalid run group" }, 400);
+  const sources = await reconciliationSources(env, runGroupId);
+  if (!sources) return json({ error: "run group does not have 2..64 unique current public replay sources" }, 409);
+  const sourceSetSha256 = await sourceSetDigest(runGroupId, sources);
+  const existing = await first(env, `SELECT c.reconciliation_id, v.projection_object_key
+    FROM reconciliation_current c JOIN reconciliation_versions v
+      ON v.reconciliation_id=c.reconciliation_id
+    WHERE c.run_group_id=?1 AND c.source_set_sha256=?2`, runGroupId, sourceSetSha256);
+  if (existing) return json({ accepted: true, duplicate: true, reconciliation_id: existing.reconciliation_id });
+
+  const jobId = `rjob_${sourceSetSha256.slice(0, 32)}`;
+  const started = Date.now();
+  const leaseToken = crypto.randomUUID();
+  await env.RLOGS_DB.prepare(`INSERT INTO reconciliation_jobs
+      (job_id,run_group_id,source_set_sha256,state,attempt_count,lease_token,created_unix_millis,updated_unix_millis)
+      VALUES (?1,?2,?3,'running',1,?5,?4,?4)
+      ON CONFLICT(run_group_id,source_set_sha256) DO UPDATE SET state='running',
+        attempt_count=attempt_count+1,lease_token=excluded.lease_token,failure_code=NULL,
+        failure_detail=NULL,completed_unix_millis=NULL,updated_unix_millis=excluded.updated_unix_millis
+      WHERE reconciliation_jobs.state IN ('retryable_failure','superseded')`)
+    .bind(jobId, runGroupId, sourceSetSha256, started, leaseToken).run();
+  const acquired = await first(env, `SELECT state FROM reconciliation_jobs
+    WHERE job_id=?1 AND lease_token=?2 AND state='running'`, jobId, leaseToken);
+  if (!acquired) {
+    const job = await first(env, `SELECT state FROM reconciliation_jobs
+      WHERE run_group_id=?1 AND source_set_sha256=?2`, runGroupId, sourceSetSha256);
+    if (job?.state === "rejected") return json({ error: "reconciliation source set was rejected" }, 422);
+    if (job?.state === "running") return json({ accepted: true, duplicate: true, in_progress: true }, 202);
+    return json({ error: "reconciliation job state is inconsistent with its current pointer" }, 503);
+  }
+
+  const registration = [];
+  for (const source of sources) {
+    registration.push(env.RLOGS_DB.prepare(`INSERT INTO reconciliation_job_sources
+      (job_id,report_id,run_index,projection_sha256,projection_object_key)
+      VALUES (?1,?2,?3,?4,?5) ON CONFLICT(job_id,report_id) DO UPDATE SET
+        run_index=excluded.run_index,projection_sha256=excluded.projection_sha256,
+        projection_object_key=excluded.projection_object_key`).bind(
+      jobId, source.report_id, source.run_index, source.projection.sha256, source.projection.object_key,
+    ));
+  }
+  try {
+    await env.RLOGS_DB.batch(registration);
+  } catch (cause) {
+    return reconciliationFailure(env, jobId, leaseToken, "retryable_failure", "source_registration_failed",
+      cause?.message ?? cause);
+  }
+
+  const container = env.RLOGS_VERIFIER_CONTAINER.getByName(jobId);
+  let response;
+  let result;
+  try {
+    ({ response, result } = await runOneShotVerifier(container, new Request("http://container/internal/v1/reconcile", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        schema_version: 1, run_group_id: runGroupId,
+        sources: sources.map(({ submitter_id, ...source }) => source),
+      }),
+    })));
+  } catch (cause) {
+    return reconciliationFailure(env, jobId, leaseToken, "retryable_failure", "container_unavailable", cause?.message ?? cause);
+  }
+  if (!response.ok) {
+    const detail = result?.error ?? `verifier returned HTTP ${response.status}`;
+    return reconciliationFailure(env, jobId, leaseToken, response.status === 422 ? "rejected" : "retryable_failure",
+      response.status === 422 ? "replay_rejected" : "verifier_unavailable", detail);
+  }
+  if (!validateReconciliationOutput(result, runGroupId, sources)) {
+    return reconciliationFailure(env, jobId, leaseToken, "retryable_failure", "invalid_verifier_output",
+      "reconciliation verifier output failed source identity validation");
+  }
+
+  const projectionBytes = new TextEncoder().encode(JSON.stringify(result));
+  const projectionSha256 = await sha256(projectionBytes);
+  const projectionKey = `reconciliations/${runGroupId}/versions/${result.reconciliation_id}-${projectionSha256}.json`;
+  await env.RLOGS_ARTIFACTS.put(projectionKey, projectionBytes, { httpMetadata: { contentType: "application/json" } });
+  const completed = Date.now();
+  const guard = currentSourceGuard();
+  const statements = [
+    env.RLOGS_DB.prepare(`INSERT INTO reconciliation_versions
+      (reconciliation_id,run_group_id,source_set_sha256,projection_sha256,projection_object_key,
+       source_count,reconciliation_status,created_unix_millis)
+      SELECT ?4,?2,?5,?6,?7,?3,?8,?9 WHERE ${guard}
+      ON CONFLICT(reconciliation_id) DO NOTHING`).bind(
+      jobId, runGroupId, sources.length, result.reconciliation_id, sourceSetSha256,
+      projectionSha256, projectionKey, result.status, completed,
+    ),
+    env.RLOGS_DB.prepare(`INSERT INTO reconciliation_current
+      (run_group_id,reconciliation_id,source_set_sha256,updated_unix_millis)
+      SELECT ?2,?4,?5,?6 WHERE ${guard}
+      ON CONFLICT(run_group_id) DO UPDATE SET reconciliation_id=excluded.reconciliation_id,
+        source_set_sha256=excluded.source_set_sha256,updated_unix_millis=excluded.updated_unix_millis`)
+      .bind(jobId, runGroupId, sources.length, result.reconciliation_id, sourceSetSha256, completed),
+  ];
+  const distinctSubmitters = new Set(sources.map((source) => source.submitter_id).filter(Boolean)).size;
+  for (const source of sources) {
+    const row = await first(env, "SELECT catalog_entry_json FROM report_runs WHERE report_id=?1 AND run_index=?2",
+      source.report_id, source.run_index);
+    let entry;
+    try { entry = JSON.parse(row?.catalog_entry_json); } catch { entry = null; }
+    if (!entry) continue;
+    statements.push(env.RLOGS_DB.prepare(`UPDATE report_runs SET catalog_entry_json=?4
+      WHERE report_id=?5 AND run_index=?6 AND EXISTS (
+        SELECT 1 FROM reconciliation_current WHERE run_group_id=?2
+          AND reconciliation_id=?7 AND source_set_sha256=?8) AND ${guard}`).bind(
+      jobId, runGroupId, sources.length,
+      JSON.stringify(reconcileCatalogEntry(entry, result, sources.length, distinctSubmitters)),
+      source.report_id, source.run_index, result.reconciliation_id, sourceSetSha256,
+    ));
+  }
+  statements.push(env.RLOGS_DB.prepare(`UPDATE reconciliation_jobs SET state='published',
+    completed_unix_millis=?4,updated_unix_millis=?4 WHERE job_id=?1 AND ${guard}`)
+    .bind(jobId, runGroupId, sources.length, completed));
+  await env.RLOGS_DB.batch(statements);
+  const published = await first(env, `SELECT reconciliation_id FROM reconciliation_current
+    WHERE run_group_id=?1 AND reconciliation_id=?2 AND source_set_sha256=?3`,
+  runGroupId, result.reconciliation_id, sourceSetSha256);
+  if (!published) {
+    return reconciliationFailure(env, jobId, leaseToken, "superseded", "source_set_changed",
+      "public source set changed before reconciliation publication");
+  }
+  return json({ accepted: true, reconciliation_id: result.reconciliation_id,
+    projection_sha256: projectionSha256, source_count: sources.length });
+}
+
+async function verifyJob(request, env, context) {
   const wakeup = await request.json().catch(() => null);
   if (!validateWakeup(wakeup)) return json({ error: "invalid verification wake-up" }, 400);
   const session = await first(env, "SELECT * FROM upload_sessions WHERE upload_id = ?1", wakeup.upload_id);
@@ -163,6 +372,12 @@ async function verifyJob(request, env) {
     }
   }
   await env.RLOGS_DB.batch(statements);
+  for (const runGroupId of new Set(result.report.runs.map((run) => run.run_group_id).filter(Boolean))) {
+    const task = reconcileRunGroup(env, runGroupId).catch((cause) => {
+      console.error("rLogs reconciliation wake-up failed", runGroupId, cause);
+    });
+    if (context?.waitUntil) context.waitUntil(task);
+  }
   return json({ accepted: true, report_id: wakeup.expected_report_id, projection_sha256: projectionDigest });
 }
 
@@ -265,7 +480,8 @@ RLogsVerifierContainer.outboundByHost = {
   "rlogs-artifacts.r2": async (request, env) => {
     if (request.method !== "GET") return new Response(null, { status: 405 });
     const key = decodeURIComponent(new URL(request.url).pathname.slice(1));
-    if (!/^uploads\/up_[a-f0-9]{32}\/chunks\/[A-Za-z0-9._-]+$/.test(key)) {
+    if (!/^uploads\/up_[a-f0-9]{32}\/chunks\/[A-Za-z0-9._-]+$/.test(key) &&
+        !/^reports\/rpt_[a-f0-9]{32}\/projection-[a-f0-9]{64}\.json$/.test(key)) {
       return new Response(null, { status: 403 });
     }
     const object = await env.RLOGS_ARTIFACTS.get(key);
@@ -275,10 +491,18 @@ RLogsVerifierContainer.outboundByHost = {
 };
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, context) {
     const path = new URL(request.url).pathname;
     if (request.method === "POST" && /^\/v1\/verification-jobs\/up_[a-f0-9]{32}\/run$/.test(path)) {
-      return verifyJob(request, env);
+      return verifyJob(request, env, context);
+    }
+    const reconciliation = /^\/v1\/reconciliation-jobs\/([A-Za-z0-9_-]{1,96})\/run$/.exec(path);
+    if (request.method === "POST" && reconciliation) {
+      const body = await request.json().catch(() => null);
+      if (body?.schema_version !== 1 || body?.run_group_id !== reconciliation[1]) {
+        return json({ error: "invalid reconciliation wake-up" }, 400);
+      }
+      return reconcileRunGroup(env, reconciliation[1]);
     }
     return json({ error: "not found" }, 404);
   },

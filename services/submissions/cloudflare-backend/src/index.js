@@ -100,6 +100,47 @@ async function publicReport(env, reportId) {
     : json(normalizePublishedParseRouting({ ...report, visibility }));
 }
 
+async function hostedReconciliation(env, runGroupId) {
+  if (!env.RLOGS_DB || !env.RLOGS_ARTIFACTS) return { state: "legacy" };
+  try {
+    const row = await env.RLOGS_DB.prepare(`SELECT v.projection_object_key
+      FROM reconciliation_current c
+      JOIN reconciliation_versions v ON v.reconciliation_id=c.reconciliation_id
+      JOIN reconciliation_jobs j ON j.run_group_id=c.run_group_id
+        AND j.source_set_sha256=c.source_set_sha256 AND j.state='published'
+      WHERE c.run_group_id=?1 AND NOT EXISTS (
+        SELECT 1 FROM reconciliation_job_sources js
+        LEFT JOIN reports r ON r.report_id=js.report_id
+        LEFT JOIN report_runs rr ON rr.report_id=js.report_id AND rr.run_index=js.run_index
+        WHERE js.job_id=j.job_id AND (r.report_id IS NULL OR r.visibility<>'public'
+          OR r.verification_tier<>'replayed' OR rr.run_group_id<>c.run_group_id
+          OR r.projection_sha256<>js.projection_sha256
+          OR r.projection_object_key<>js.projection_object_key))
+      AND (SELECT COUNT(*) FROM reconciliation_job_sources js WHERE js.job_id=j.job_id)
+        = (SELECT COUNT(*) FROM report_runs rr
+          JOIN reports r ON r.report_id=rr.report_id
+          WHERE rr.run_group_id=c.run_group_id AND r.visibility='public'
+            AND r.verification_tier='replayed')`)
+      .bind(runGroupId).first();
+    if (!row) return { state: "not_found" };
+    const object = await env.RLOGS_ARTIFACTS.get(row.projection_object_key);
+    return object ? { state: "found", value: await object.text() } : { state: "unavailable" };
+  } catch (cause) {
+    console.error("rLogs hosted reconciliation read failed", cause);
+    return { state: "unavailable" };
+  }
+}
+
+async function publicReconciliation(env, runGroupId) {
+  const hosted = await hostedReconciliation(env, runGroupId);
+  if (hosted.state === "legacy") return storedJson(env, `reconciliations/${runGroupId}.json`);
+  if (hosted.state === "not_found") return notFound();
+  if (hosted.state === "unavailable") {
+    return json({ error: "reconciliation storage is temporarily unavailable" }, 503, { "Retry-After": "30" });
+  }
+  return new Response(hosted.value, { headers: JSON_HEADERS });
+}
+
 export function normalizePublishedParseRouting(value) {
   const normalized = structuredClone(value);
   const hasDeployment = typeof normalized.deployment_id === "string" && normalized.deployment_id.trim() !== "";
@@ -503,7 +544,7 @@ async function route(request, env) {
   match = /^\/v1\/training-dummy\/(rpt_[A-Za-z0-9_-]+)$/.exec(path);
   if (match) return trainingDummyResult(env, match[1]);
   match = /^\/v1\/run-groups\/([A-Za-z0-9_-]+)\/reconciliation$/.exec(path);
-  if (match) return storedJson(env, `reconciliations/${match[1]}.json`);
+  if (match) return publicReconciliation(env, match[1]);
   match = /^\/v1\/profiles\/(prf_[a-z0-9_]+)$/.exec(path);
   if (match) return publicProfile(env, match[1]);
   match = /^\/v1\/profiles\/(prf_[a-z0-9_]+)\/loadouts\/([1-9][0-9]*)$/.exec(path);
