@@ -1,15 +1,16 @@
 # English (United States)
 
-This will be the bundled default localization add-on and the fallback for
-missing user-facing text.
+This is the bundled default localization add-on and the fallback for missing
+user-facing text. The first runtime-backed shard covers a foundational subset
+of the Mechanics Map overlay; other desktop surfaces are still being migrated.
 
-It will contain:
+It contains or will contain:
 
 - `ui/`: all first-party RLogs interface and accessibility strings.
 - `games/<game-plugin-id>/game/`: reviewed official English names and
   descriptions for each installed game, preserving build availability and
   provenance.
 
-No strings move here until their stable IDs, domains, and ownership relations
-have passed catalog validation. The package will use the same public,
-data-only add-on contract as every other locale.
+Strings move here only after their stable IDs, domains, and ownership relations
+have passed validation. The package uses the same public, data-only add-on
+contract as every other locale.

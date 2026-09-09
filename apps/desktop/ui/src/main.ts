@@ -15,6 +15,7 @@ import { parseMechanicsMapUpdate } from "./adapters/mechanics-map";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
+import { loadUiLocalizer } from "./localization/ui-locale";
 
 const root = document.querySelector<HTMLElement>("#app");
 if (root === null) {
@@ -117,6 +118,7 @@ if (isCombatOverlayRuntime) {
   document.body.dataset.surface = "overlay-canvas";
   const appWindow = getCurrentWindow();
   try {
+    const localizer = await loadUiLocalizer(navigator.languages[0] ?? navigator.language);
     mountMechanicsMapOverlay(root, {
       loadSnapshot: async () => parseMechanicsMapUpdate(await runtimeJson("/api/runtime/live/mechanics-map")),
       waitForSnapshot: async (afterRevision) => parseMechanicsMapUpdate(await runtimeJson(
@@ -141,7 +143,7 @@ if (isCombatOverlayRuntime) {
         "overlay-canvas-focus-held",
         ({ payload }) => handler(payload),
       ),
-    });
+    }, localizer);
     await invoke("overlay_canvas_ready");
   } catch (error) {
     const failure = document.createElement("main");

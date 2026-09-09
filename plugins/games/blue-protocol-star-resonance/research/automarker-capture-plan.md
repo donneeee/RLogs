@@ -38,6 +38,27 @@ the game protocol below is proven from a controlled capture.
 - The canonical `MapEvent` model has add/update/remove shapes, but the current
   BPSR decoder has no producer for it. It is not evidence that the game exposes
   party-visible actor markers.
+- The reviewed `resonance-logs-cn` source provides a strong inbound-observation
+  lead: it interprets `SeqPassiveSkillInfo` entries with skill IDs `1101..=1106`
+  as numbered in-game player markers, retains their passive instance IDs and
+  target positions, removes them when the matching passive instance ends, and
+  clears its projection on scene change. RLogs already decodes the same
+  `SeqPassiveSkillInfo` wire fields (`actor_uuid`, passive `uuid`,
+  `target_uuid`, `skill_id`, and `target_position`), but currently consumes
+  those entries only as specialization evidence and does not emit a marker
+  event.
+- Those passive containers are carried by the current build pack's existing
+  inbound `WorldNtf` routes: `SyncNearEntities` (service `1664308034`, method
+  `6`), `SyncNearDeltaInfo` (method `45`), and `SyncToMeDeltaInfo` (method
+  `46`). This makes packet-only detection plausible without process-memory
+  reading. It does **not** prove that Global Steam build `24687926` uses the
+  same skill IDs or lifecycle, and it says nothing about the outbound placement
+  request.
+- The `resonance-logs-cn` projection treats these entries as numbered spatial
+  markers with coordinates. The player's description may instead refer to
+  actor-targeted party icons like FFXIV automarkers. A controlled capture must
+  resolve whether the Tina/M17 action targets a ground/map position, a party
+  member, or both before RLogs chooses a canonical event shape.
 - Static game files expose `World.SetMapMark` and `World.RemoveMapMark` at
   service `103198054`, methods `65538` and `65539`. Their payloads are
   scene/map coordinates and custom text/icon data, not an actor target. Treat
@@ -57,32 +78,57 @@ the game protocol below is proven from a controlled capture.
   joined actors by display name. That is suitable for a HUD list, but it must
   never be used as native automarker slot authority.
 
-## Controlled experiment
+## Minimum Tina/M17 placement capture
 
-Capture two clients in the same party at the same time: the leader and one
-non-leader. Use private, local PCAPNG capture; do not upload it or include chat,
-login, account, or authentication traffic in a shareable artifact.
+The first capture should stay short and target the user's reported placement
+window. Because the markers were reportedly placed once and then persisted
+through later pulls, start recording **before the first placement**, not at
+boss engagement.
 
-1. Record 10 seconds idle and note both character IDs, current actor IDs, party
-   group/slot order, scene ID, and wall-clock time.
-2. Through the normal game UI, have the leader place each available native
-   marker type on one party member, waiting five seconds between actions.
-3. Repeat on an enemy, if the UI permits it. Record whether both clients see
-   the marker and whether it appears overhead, in party frames, or only on the
-   map.
-4. Replace a marker on the same target, move it to a second target, attempt a
-   duplicate marker, clear one marker, and clear all markers.
-5. Have the non-leader attempt the same operations and retain every success or
-   denial result.
-6. Transfer leadership, repeat one place/update/clear cycle, then disconnect
-   and reconnect the marked player to observe persistence and resync.
-7. As a separate control, reorder one member within a group and move one member
-   between groups. This distinguishes party-slot synchronization from actual
-   marker placement.
+1. Capture two clients in the same party at the same time when possible: the
+   leader and one non-leader observer. Start already authenticated and inside
+   Tina/M17 scene `1633`.
+2. Record 10-15 seconds of idle traffic before the first placement. Note the
+   exact installed build, scene ID, both character and current actor/entity
+   identities, leader identity, visible party group/slot order, and a
+   synchronized wall-clock time.
+3. Through the normal game UI, have the leader place marker 1, wait five
+   seconds, place marker 2, and continue one marker at a time with the same
+   spacing. Record whether each action targets a map/ground coordinate or a
+   party member and what the observer sees.
+4. Wait ten seconds after the final marker, engage the boss, and retain roughly
+   the first ten seconds of combat. This brackets the placement and tests
+   whether the marker state persists across engagement.
+5. For every action, record a ledger entry with wall-clock timestamp,
+   initiating character, marker number/icon, target character/actor/entity UUID
+   or coordinates, expected action, local UI result, and observer result.
+6. Keep the process-owned PCAP or PCAPNG, connection evidence, and private
+   JSONL protocol journal local. Do not upload them or include chat, login,
+   account, or authentication traffic in any shareable artifact.
 
-For every action, record a short action ledger with wall-clock timestamp,
-initiating character, target character/actor/entity UUID, marker icon/slot,
-expected action, UI result, and what the second client observed.
+One leader-side capture is enough to search for a client request, but the
+simultaneous observer capture is required to prove a server broadcast or
+resynchronization path. If the `1101..=1106` passive entries correlate on both
+clients, preserve the containing inbound route, passive instance ID, actor and
+target UUIDs, target position, and end notification in the private evidence.
+Do not promote the interpretation from IDs alone.
+
+## Follow-up lifecycle controls
+
+Run these as separate short captures after the initial Tina placement trace so
+each action has a clean packet delta:
+
+1. Replace one marker in place, move it to a different position or target,
+   attempt a duplicate, clear one marker, and clear all markers.
+2. Have the non-leader attempt one place/update/clear cycle and retain every
+   success or denial result.
+3. Transfer leadership and repeat one place/update/clear cycle.
+4. Wipe without resetting markers, then disconnect and reconnect a marked
+   player to observe persistence and resynchronization.
+5. Change scene and return to determine whether scene change truly clears the
+   server state or only the local projection.
+6. Reorder one member within a group and move one member between groups. This
+   distinguishes party-slot synchronization from actual marker placement.
 
 ## Proof gate for native placement
 
@@ -104,3 +150,8 @@ Do not enable a native placement adapter until the capture proves all of:
 Until then, RLogs should expose only the deterministic, reviewed assignment
 plan and clearly label every rendered badge as a local preview. Packet
 injection and process-memory writes remain out of scope for this evidence pass.
+Inbound detection, deterministic assignment planning, and any future native
+executor must remain separate boundaries. A future executor must be host-owned,
+explicitly enabled, exact-build locked, leader-authorized, acknowledgement
+driven, rate-limited, and idempotent; detection and local display must continue
+to work while that executor is absent or disabled.

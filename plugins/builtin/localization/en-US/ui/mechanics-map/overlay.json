@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "locale": "en-US",
+  "namespace": "ui.mechanics_map",
+  "messages": {
+    "ui.mechanics_map.toolbar.rotate": "Rotate",
+    "ui.mechanics_map.toolbar.mobs": "Mobs",
+    "ui.mechanics_map.toolbar.dim_percent": "Dim {percent}%",
+    "ui.mechanics_map.toolbar.dim_help": "Cycle the real game-map dimming so mechanic layers remain readable",
+    "ui.mechanics_map.toolbar.contrast": "Contrast",
+    "ui.mechanics_map.toolbar.contrast_help": "Use stronger outlines and fills for mechanic geometry",
+    "ui.mechanics_map.toolbar.fit": "Fit",
+    "ui.mechanics_map.toolbar.center": "Center",
+    "ui.mechanics_map.status.waiting_for_scene": "Waiting for scene",
+    "ui.mechanics_map.status.connecting": "CONNECTING",
+    "ui.mechanics_map.status.waiting": "WAITING",
+    "ui.mechanics_map.status.live": "LIVE",
+    "ui.mechanics_map.status.position_needed": "POSITION NEEDED",
+    "ui.mechanics_map.notice.waiting_for_position": "Waiting for packet-observed position…",
+    "ui.mechanics_map.source.game_map": "GAME MAP",
+    "ui.mechanics_map.source.preparing_map": "PREPARING MAP",
+    "ui.mechanics_map.source.map_asset_pending": "MAP ASSET PENDING",
+    "ui.mechanics_map.source.radar_fallback": "RADAR FALLBACK",
+    "ui.mechanics_map.metrics.summary": "{entities} entities · {mechanics} mechanics · {objectives} objectives"
+  }
+}

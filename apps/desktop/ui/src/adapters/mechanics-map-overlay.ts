@@ -1,4 +1,5 @@
 import type { MountedSurface } from "../shell/types";
+import type { UiLocalizer } from "../localization/ui-locale";
 import { planAutomarkerPreview } from "./automarker-plan";
 import {
   actionControlRemainingMillis,
@@ -197,6 +198,7 @@ function humanizeDungeonState(value: string): string {
 export function mountMechanicsMapOverlay(
   container: HTMLElement,
   dependencies: MechanicsMapOverlayDependencies,
+  localizer: UiLocalizer,
 ): MountedSurface {
   let alive = true;
   let update: MechanicsMapUpdate | null = null;
@@ -241,47 +243,50 @@ export function mountMechanicsMapOverlay(
   panel.dataset.expanded = String(preferences.expanded);
   const toolbar = element("header", "mechanics-map-overlay-toolbar");
   const identity = element("div", "mechanics-map-overlay-identity");
-  const title = text("strong", "Waiting for scene");
-  const status = text("span", "CONNECTING");
+  const title = text("strong", localizer.t("ui.mechanics_map.status.waiting_for_scene"));
+  const status = text("span", localizer.t("ui.mechanics_map.status.connecting"));
   identity.append(title, status);
   const actions = element("div", "mechanics-map-overlay-actions");
-  const rotate = button("Rotate", preferences.rotateWithPlayer, () => {
+  const rotate = button(localizer.t("ui.mechanics_map.toolbar.rotate"), preferences.rotateWithPlayer, () => {
     preferences.rotateWithPlayer = !preferences.rotateWithPlayer;
     rotate.dataset.active = String(preferences.rotateWithPlayer);
     savePreferences();
     scheduleDraw();
   });
-  const monsters = button("Mobs", preferences.showMonsters, () => {
+  const monsters = button(localizer.t("ui.mechanics_map.toolbar.mobs"), preferences.showMonsters, () => {
     preferences.showMonsters = !preferences.showMonsters;
     monsters.dataset.active = String(preferences.showMonsters);
     savePreferences();
     scheduleDraw();
   });
-  const dim = button(`Dim ${Math.round(preferences.mapDim * 100)}%`, preferences.mapDim > 0, () => {
+  const dimLabel = (): string => localizer.t("ui.mechanics_map.toolbar.dim_percent", {
+    percent: localizer.formatNumber(Math.round(preferences.mapDim * 100)),
+  });
+  const dim = button(dimLabel(), preferences.mapDim > 0, () => {
     preferences.mapDim = nextMapDim(preferences.mapDim);
-    dim.textContent = `Dim ${Math.round(preferences.mapDim * 100)}%`;
+    dim.textContent = dimLabel();
     dim.dataset.active = String(preferences.mapDim > 0);
-    dim.title = "Cycle the real game-map dimming so mechanic layers remain readable";
+    dim.title = localizer.t("ui.mechanics_map.toolbar.dim_help");
     savePreferences();
     scheduleDraw();
   });
-  dim.title = "Cycle the real game-map dimming so mechanic layers remain readable";
-  const contrast = button("Contrast", preferences.highContrastMechanics, () => {
+  dim.title = localizer.t("ui.mechanics_map.toolbar.dim_help");
+  const contrast = button(localizer.t("ui.mechanics_map.toolbar.contrast"), preferences.highContrastMechanics, () => {
     preferences.highContrastMechanics = !preferences.highContrastMechanics;
     contrast.dataset.active = String(preferences.highContrastMechanics);
     contrast.setAttribute("aria-pressed", String(preferences.highContrastMechanics));
     savePreferences();
     scheduleDraw();
   });
-  contrast.title = "Use stronger outlines and fills for mechanic geometry";
-  const fit = button("Fit", false, () => {
+  contrast.title = localizer.t("ui.mechanics_map.toolbar.contrast_help");
+  const fit = button(localizer.t("ui.mechanics_map.toolbar.fit"), false, () => {
     preferences.scale = 1;
     preferences.panX = 0;
     preferences.panY = 0;
     savePreferences();
     scheduleDraw();
   });
-  const center = button("Center", false, centerOnPlayer);
+  const center = button(localizer.t("ui.mechanics_map.toolbar.center"), false, centerOnPlayer);
   const expand = button(preferences.expanded ? "Window" : "Full map", preferences.expanded, () => {
     setExpanded(!preferences.expanded);
   });
@@ -296,10 +301,10 @@ export function mountMechanicsMapOverlay(
   const canvas = document.createElement("canvas");
   canvas.className = "mechanics-map-overlay-canvas";
   canvas.setAttribute("aria-label", "Live packet-observed Mechanics Map canvas");
-  const notice = text("p", "Waiting for packet-observed position…", "mechanics-map-overlay-notice");
+  const notice = text("p", localizer.t("ui.mechanics_map.notice.waiting_for_position"), "mechanics-map-overlay-notice");
   viewport.append(canvas, notice);
   const footer = element("footer", "mechanics-map-overlay-footer");
-  const mapSource = text("span", "RADAR FALLBACK");
+  const mapSource = text("span", localizer.t("ui.mechanics_map.source.radar_fallback"));
   const mapCoordinates = text("span", "X — · Z —");
   const mapMetrics = text("span", "1× · 0 entities");
   footer.append(mapSource, mapCoordinates, mapMetrics);
@@ -591,11 +596,17 @@ export function mountMechanicsMapOverlay(
   function renderState(): void {
     const snapshot = update?.snapshot;
     if (!snapshot) return;
-    title.textContent = snapshot.scene_name ?? (snapshot.scene_id === null ? "Waiting for scene" : `Scene ${snapshot.scene_id}`);
-    status.textContent = snapshot.local_position_observed ? "LIVE" : snapshot.scene_id === null ? "WAITING" : "POSITION NEEDED";
+    title.textContent = snapshot.scene_name ?? (snapshot.scene_id === null
+      ? localizer.t("ui.mechanics_map.status.waiting_for_scene")
+      : `Scene ${snapshot.scene_id}`);
+    status.textContent = snapshot.local_position_observed
+      ? localizer.t("ui.mechanics_map.status.live")
+      : snapshot.scene_id === null
+        ? localizer.t("ui.mechanics_map.status.waiting")
+        : localizer.t("ui.mechanics_map.status.position_needed");
     status.dataset.state = snapshot.local_position_observed ? "live" : "waiting";
     notice.hidden = snapshot.local_position_observed && snapshot.data_gap === null;
-    notice.textContent = snapshot.data_gap ?? "Waiting for packet-observed position…";
+    notice.textContent = snapshot.data_gap ?? localizer.t("ui.mechanics_map.notice.waiting_for_position");
     loadBackground(snapshot.background_asset_url);
     renderPlayer(snapshot);
     renderActions(snapshot);
@@ -609,16 +620,24 @@ export function mountMechanicsMapOverlay(
 
   function renderMapFooter(snapshot: MechanicsMapSnapshot): void {
     mapSource.textContent = snapshot.map_model === "absolute_scene_map"
-      ? imageReady ? "GAME MAP" : preparingAsset ? "PREPARING MAP" : "MAP ASSET PENDING"
-      : "RADAR FALLBACK";
+      ? imageReady
+        ? localizer.t("ui.mechanics_map.source.game_map")
+        : preparingAsset
+          ? localizer.t("ui.mechanics_map.source.preparing_map")
+          : localizer.t("ui.mechanics_map.source.map_asset_pending")
+      : localizer.t("ui.mechanics_map.source.radar_fallback");
     mapSource.dataset.state = snapshot.map_model === "absolute_scene_map" && imageReady ? "live" : "fallback";
     const local = snapshot.entities.find((entity) => entity.actor_id === snapshot.local_actor_id);
     mapCoordinates.textContent = local
-      ? `X ${formatMechanicsMapCoordinate(local.x)} · Z ${formatMechanicsMapCoordinate(local.z)}`
+      ? `X ${formatMechanicsMapCoordinate(local.x, localizer)} · Z ${formatMechanicsMapCoordinate(local.z, localizer)}`
       : "X — · Z —";
     const mechanicCount = snapshot.mechanics.filter((signal) => signal.mechanic_kind !== null).length;
     const objectiveCount = snapshot.dungeon?.objectives.length ?? 0;
-    mapMetrics.textContent = `${formatMechanicsMapZoom(preferences.scale)}× · ${snapshot.entities.length} entities · ${mechanicCount} mechanics · ${objectiveCount} objectives`;
+    mapMetrics.textContent = `${formatMechanicsMapZoom(preferences.scale)}× · ${localizer.t("ui.mechanics_map.metrics.summary", {
+      entities: localizer.formatNumber(snapshot.entities.length),
+      mechanics: localizer.formatNumber(mechanicCount),
+      objectives: localizer.formatNumber(objectiveCount),
+    })}`;
   }
 
   function renderMechanicAlerts(snapshot: MechanicsMapSnapshot): void {
@@ -852,7 +871,7 @@ export function mountMechanicsMapOverlay(
       name.append(text("strong", member.display_name ?? `Player ${member.actor_id}`));
       identity.append(
         name,
-        text("span", member.dead ? "DEFEATED" : member.stale ? "STALE" : formatTargetHealth(member.current_hp, member.max_hp)),
+        text("span", member.dead ? "DEFEATED" : member.stale ? "STALE" : formatTargetHealth(member.current_hp, member.max_hp, localizer)),
       );
       const health = element("div", "party-frame-overlay-health");
       health.dataset.observed = String(member.hp_percent !== null);
@@ -889,7 +908,7 @@ export function mountMechanicsMapOverlay(
     const identity = element("div", "player-frame-overlay-identity");
     identity.append(
       text("strong", "HP"),
-      text("span", formatTargetHealth(player.current_hp, player.max_hp)),
+      text("span", formatTargetHealth(player.current_hp, player.max_hp, localizer)),
     );
     const vitals = element("div", "player-frame-overlay-vitals");
     const health = element("div", "player-frame-overlay-health");
@@ -903,11 +922,11 @@ export function mountMechanicsMapOverlay(
       const shieldFill = element("span");
       shieldFill.style.width = `${player.shield_percent ?? (player.current_shield > 0 ? 100 : 0)}%`;
       shield.dataset.observed = String(player.shield_percent !== null);
-      shield.title = `Shield ${formatTargetHealth(player.current_shield, player.max_shield)}`;
+      shield.title = `Shield ${formatTargetHealth(player.current_shield, player.max_shield, localizer)}`;
       shield.append(shieldFill);
       vitals.append(
         shield,
-        text("small", `SHIELD ${formatTargetHealth(player.current_shield, player.max_shield)}`, "player-frame-overlay-shield-label"),
+        text("small", `SHIELD ${formatTargetHealth(player.current_shield, player.max_shield, localizer)}`, "player-frame-overlay-shield-label"),
       );
     }
     const statuses = element("div", "player-frame-overlay-statuses");
@@ -1000,7 +1019,7 @@ export function mountMechanicsMapOverlay(
     targetStatus.dataset.state = target.dead ? "dead" : target.stale ? "waiting" : "live";
     const identity = element("div", "target-frame-overlay-identity");
     const name = text("strong", target.display_name ?? (target.monster_id === null ? "Unknown target" : `Monster ${target.monster_id}`));
-    const health = text("span", formatTargetHealth(target.current_hp, target.max_hp));
+    const health = text("span", formatTargetHealth(target.current_hp, target.max_hp, localizer));
     identity.append(name, health);
     const track = element("div", "target-frame-overlay-health");
     const fill = element("span");
@@ -1014,9 +1033,9 @@ export function mountMechanicsMapOverlay(
       const shieldFill = element("span");
       shieldFill.style.width = `${target.shield_percent ?? (target.current_shield > 0 ? 100 : 0)}%`;
       shield.dataset.observed = String(target.shield_percent !== null);
-      shield.title = `Shield ${formatTargetHealth(target.current_shield, target.max_shield)}`;
+      shield.title = `Shield ${formatTargetHealth(target.current_shield, target.max_shield, localizer)}`;
       shield.append(shieldFill);
-      const shieldLabel = text("small", `SHIELD ${formatTargetHealth(target.current_shield, target.max_shield)}`, "target-frame-overlay-shield-label");
+      const shieldLabel = text("small", `SHIELD ${formatTargetHealth(target.current_shield, target.max_shield, localizer)}`, "target-frame-overlay-shield-label");
       vitals.append(shield, shieldLabel);
     }
     if (target.breaking_stage !== null) {
@@ -1881,8 +1900,8 @@ function loadPreferences(): MechanicsMapCanvasPreferences {
   }
 }
 
-function formatMechanicsMapCoordinate(value: number): string {
-  return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 1 });
+function formatMechanicsMapCoordinate(value: number, localizer: UiLocalizer): string {
+  return localizer.formatNumber(value, Number.isInteger(value) ? undefined : { maximumFractionDigits: 1 });
 }
 
 function formatMechanicsMapZoom(value: number): string {
@@ -1913,8 +1932,8 @@ export function mechanicsMapReadabilityProfile(
   };
 }
 
-function formatTargetHealth(current: number | null, maximum: number | null): string {
-  const format = (value: number): string => Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 }).format(value);
+function formatTargetHealth(current: number | null, maximum: number | null, localizer: UiLocalizer): string {
+  const format = (value: number): string => localizer.formatNumber(value, { notation: "compact", maximumFractionDigits: 2 });
   if (current !== null && maximum !== null) return `${format(current)} / ${format(maximum)}`;
   if (current !== null) return format(current);
   if (maximum !== null) return `— / ${format(maximum)}`;
