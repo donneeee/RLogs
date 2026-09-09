@@ -313,7 +313,14 @@ struct CrossVantageReplayResult {
     conservation: PublicAttributionConservation,
     rdps_effects: Vec<PublicRdpsEffectPresentation>,
     rdps_influences: Vec<PublicRdpsInfluence>,
+    canonical_run_observed_bounds: Option<CanonicalRunObservedBounds>,
     swift_vortex_candidate_audit: Option<SwiftVortexCandidateAuditReport>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CanonicalRunObservedBounds {
+    started_micros: u64,
+    ended_micros: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -1347,6 +1354,10 @@ impl SubmissionService {
         let run_projection = encounter
             .live_snapshot()
             .map_err(|error| ServiceError::Replay(error.to_string()))?;
+        let canonical_run_observed_bounds = run_projection
+            .runs
+            .get(reconciliation.canonical_spine.run_index as usize)
+            .and_then(canonical_run_observed_bounds);
         let mut history = meter
             .history_snapshot(&run_projection.runs)
             .map_err(|error| ServiceError::Replay(error.to_string()))?;
@@ -1456,6 +1467,7 @@ impl SubmissionService {
                 Vec::new()
             },
             rdps_influences: public_rdps_influences(view),
+            canonical_run_observed_bounds,
             swift_vortex_candidate_audit: (swift_vortex_candidate_audit
                 .candidate_status_event_count
                 > 0)
@@ -1715,6 +1727,7 @@ impl SubmissionService {
                                 populate_timeline_rdps_spans(
                                     &mut reconciliation.timeline,
                                     &result.rdps_influences,
+                                    result.canonical_run_observed_bounds,
                                 );
                                 reconciliation.status =
                                     RunAttributionReconciliationStatus::Reconciled;
@@ -2973,11 +2986,12 @@ pub struct PublicSeriesPoint {
 ///
 /// One-second series values are bucket totals, not cumulative values. Exact
 /// microsecond timestamps are published only for inputs that carry them. Each
-/// row names its clock when that clock differs from run elapsed. In particular,
-/// an rDPS influence span is the first/last capture-clock observation of an
-/// affected damage event and its `attributed_rdps` remains an aggregate for
-/// that span; clients must neither position it on the run clock nor interpolate
-/// it into a time-varying rDPS curve.
+/// row names its clock. An rDPS influence span is aligned to run elapsed only
+/// when both affected-damage endpoints fall inside the exact observed bounds
+/// of the canonical run. Otherwise it remains explicitly `capture_observed`:
+/// clients must not infer an offset for that alignment gap. `attributed_rdps`
+/// remains an aggregate for the span and must not be interpolated into a
+/// time-varying rDPS curve.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PublicCombatTimeline {
     pub schema_version: u16,
@@ -3016,9 +3030,9 @@ pub enum PublicTimelineSource {
 pub enum PublicTimelineTimeBasis {
     #[default]
     RunElapsed,
-    /// Monotonic capture clock retained by the current attribution summary.
-    /// It must not be positioned against run-elapsed tracks without a future
-    /// verifier-published clock transform.
+    /// Monotonic capture clock retained when no exact canonical-run transform
+    /// is available for this row. It must not be positioned against
+    /// run-elapsed tracks or shifted by an inferred offset.
     CaptureObserved,
 }
 
@@ -4590,7 +4604,7 @@ fn public_runs(
                 },
                 timeline: PublicCombatTimeline::default(),
             };
-            public_run.timeline = public_combat_timeline(report_id, &public_run);
+            public_run.timeline = public_combat_timeline(report_id, &public_run, analysis);
             Some(public_run)
         })
         .collect()
@@ -6050,6 +6064,7 @@ pub fn reconcile_hosted_run_group(
                     populate_timeline_rdps_spans(
                         &mut reconciliation.timeline,
                         &result.rdps_influences,
+                        result.canonical_run_observed_bounds,
                     );
                     reconciliation.status = RunAttributionReconciliationStatus::Reconciled;
                     reconciliation.reconciled_participants = result.participants;
@@ -6785,7 +6800,11 @@ fn public_rdps_influences(view: &CombatHistoryView) -> Vec<PublicRdpsInfluence> 
         .collect()
 }
 
-fn public_combat_timeline(report_id: &str, run: &PublicRun) -> PublicCombatTimeline {
+fn public_combat_timeline(
+    report_id: &str,
+    run: &PublicRun,
+    analysis: &RunAnalysis,
+) -> PublicCombatTimeline {
     let mut timeline = PublicCombatTimeline {
         schema_version: PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION,
         source: PublicTimelineSource::SingleReport,
@@ -6814,7 +6833,12 @@ fn public_combat_timeline(report_id: &str, run: &PublicRun) -> PublicCombatTimel
         rdps_influence_spans: Vec::new(),
         omitted: PublicTimelineOmittedCounts::default(),
     };
-    populate_timeline_combat_data(&mut timeline, &run.participants, &run.rdps_influences);
+    populate_timeline_combat_data(
+        &mut timeline,
+        &run.participants,
+        &run.rdps_influences,
+        canonical_run_observed_bounds(analysis),
+    );
     populate_timeline_loadouts(
         &mut timeline,
         combat_loadout_marker_sources(report_id, &run.combat_loadout_phases),
@@ -6844,6 +6868,7 @@ fn populate_timeline_combat_data(
     timeline: &mut PublicCombatTimeline,
     participants: &[PublicParticipant],
     influences: &[PublicRdpsInfluence],
+    canonical_run_observed_bounds: Option<CanonicalRunObservedBounds>,
 ) {
     timeline.participant_tracks.clear();
     timeline.death_markers.clear();
@@ -6928,12 +6953,13 @@ fn populate_timeline_combat_data(
         (left.at_micros, &left.actor_id).cmp(&(right.at_micros, &right.actor_id))
     });
 
-    populate_timeline_rdps_spans(timeline, influences);
+    populate_timeline_rdps_spans(timeline, influences, canonical_run_observed_bounds);
 }
 
 fn populate_timeline_rdps_spans(
     timeline: &mut PublicCombatTimeline,
     influences: &[PublicRdpsInfluence],
+    canonical_run_observed_bounds: Option<CanonicalRunObservedBounds>,
 ) {
     timeline.rdps_influence_spans.clear();
     timeline.omitted.rdps_influence_spans = 0;
@@ -6945,16 +6971,51 @@ fn populate_timeline_rdps_spans(
                 timeline.omitted.rdps_influence_spans.saturating_add(1);
             continue;
         }
+        let aligned = canonical_run_observed_bounds.filter(|bounds| {
+            influence.first_observed_micros >= bounds.started_micros
+                && influence.last_observed_micros <= bounds.ended_micros
+        });
+        let (time_basis, start_micros, end_micros) = aligned.map_or_else(
+            || {
+                (
+                    PublicTimelineTimeBasis::CaptureObserved,
+                    influence.first_observed_micros,
+                    influence.last_observed_micros,
+                )
+            },
+            |bounds| {
+                (
+                    PublicTimelineTimeBasis::RunElapsed,
+                    influence
+                        .first_observed_micros
+                        .saturating_sub(bounds.started_micros),
+                    influence
+                        .last_observed_micros
+                        .saturating_sub(bounds.started_micros),
+                )
+            },
+        );
         timeline
             .rdps_influence_spans
             .push(PublicTimelineRdpsInfluenceSpan {
                 influence_index: index,
-                time_basis: PublicTimelineTimeBasis::CaptureObserved,
-                start_micros: influence.first_observed_micros,
-                end_micros: influence.last_observed_micros,
+                time_basis,
+                start_micros,
+                end_micros,
                 complete_lifecycle: false,
             });
     }
+}
+
+fn canonical_run_observed_bounds(analysis: &RunAnalysis) -> Option<CanonicalRunObservedBounds> {
+    let ended_micros = analysis
+        .timing
+        .ended_micros
+        .unwrap_or(analysis.timing.observed_until_micros);
+    (ended_micros >= analysis.timing.started_micros).then_some(CanonicalRunObservedBounds {
+        started_micros: analysis.timing.started_micros,
+        ended_micros,
+    })
 }
 
 fn populate_timeline_loadouts<'a>(
@@ -7483,7 +7544,7 @@ mod tests {
             ..PublicCombatTimeline::default()
         };
 
-        populate_timeline_combat_data(&mut timeline, &[participant], &[]);
+        populate_timeline_combat_data(&mut timeline, &[participant], &[], None);
 
         assert_eq!(timeline.participant_tracks.len(), 1);
         assert_eq!(
@@ -7523,7 +7584,7 @@ mod tests {
             ..PublicCombatTimeline::default()
         };
 
-        populate_timeline_combat_data(&mut timeline, &participants, &influences);
+        populate_timeline_combat_data(&mut timeline, &participants, &influences, None);
 
         assert_eq!(
             timeline.participant_tracks.len(),
@@ -7552,6 +7613,46 @@ mod tests {
     }
 
     #[test]
+    fn public_timeline_aligns_rdps_only_inside_exact_canonical_run_bounds() {
+        let influences = vec![
+            timeline_influence(1_100, 1_900),
+            timeline_influence(999, 1_100),
+            timeline_influence(1_900, 2_001),
+        ];
+        let mut timeline = PublicCombatTimeline {
+            schema_version: PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION,
+            series_bucket_micros: 1_000_000,
+            ..PublicCombatTimeline::default()
+        };
+
+        populate_timeline_combat_data(
+            &mut timeline,
+            &[],
+            &influences,
+            Some(CanonicalRunObservedBounds {
+                started_micros: 1_000,
+                ended_micros: 2_000,
+            }),
+        );
+
+        assert_eq!(timeline.rdps_influence_spans.len(), 3);
+        assert_eq!(
+            timeline.rdps_influence_spans[0].time_basis,
+            PublicTimelineTimeBasis::RunElapsed
+        );
+        assert_eq!(timeline.rdps_influence_spans[0].start_micros, 100);
+        assert_eq!(timeline.rdps_influence_spans[0].end_micros, 900);
+        for (span, influence) in timeline.rdps_influence_spans[1..]
+            .iter()
+            .zip(&influences[1..])
+        {
+            assert_eq!(span.time_basis, PublicTimelineTimeBasis::CaptureObserved);
+            assert_eq!(span.start_micros, influence.first_observed_micros);
+            assert_eq!(span.end_micros, influence.last_observed_micros);
+        }
+    }
+
+    #[test]
     fn public_timeline_death_precision_and_gap_semantics_are_explicit() {
         let mut participant = timeline_participant("actor-1");
         participant.death_seconds = vec![5];
@@ -7567,7 +7668,7 @@ mod tests {
             ..PublicCombatTimeline::default()
         };
 
-        populate_timeline_combat_data(&mut timeline, &[participant], &[]);
+        populate_timeline_combat_data(&mut timeline, &[participant], &[], None);
 
         assert_eq!(timeline.death_markers[0].at_micros, 5_000_000);
         assert_eq!(
@@ -7615,7 +7716,7 @@ mod tests {
             ..PublicCombatTimeline::default()
         };
 
-        populate_timeline_combat_data(&mut timeline, &[participant], &[]);
+        populate_timeline_combat_data(&mut timeline, &[participant], &[], None);
         populate_timeline_loadouts(
             &mut timeline,
             combat_loadout_marker_sources("report-1", &phases),
@@ -10298,6 +10399,17 @@ mod tests {
         );
         assert!(!provider.rdps_incomplete);
         assert!(!recipient.rdps_incomplete);
+        let bounds = result.canonical_run_observed_bounds.unwrap();
+        assert_eq!(bounds.started_micros, 5);
+        assert_eq!(bounds.ended_micros, 60_000);
+        let mut timeline = PublicCombatTimeline::default();
+        populate_timeline_rdps_spans(&mut timeline, &result.rdps_influences, Some(bounds));
+        assert!(!timeline.rdps_influence_spans.is_empty());
+        assert!(timeline.rdps_influence_spans.iter().all(|span| {
+            span.time_basis == PublicTimelineTimeBasis::RunElapsed
+                && span.start_micros == 45_000 - bounds.started_micros
+                && span.end_micros == 45_000 - bounds.started_micros
+        }));
     }
 
     #[test]
@@ -10738,7 +10850,11 @@ mod tests {
                 timeline: PublicCombatTimeline::default(),
             }],
         };
-        report.runs[0].timeline = public_combat_timeline(report_id, &report.runs[0]);
+        report.runs[0].timeline = public_combat_timeline(
+            report_id,
+            &report.runs[0],
+            &fixture_analysis("fixture-session", Some("instance-1")),
+        );
         report
     }
 
