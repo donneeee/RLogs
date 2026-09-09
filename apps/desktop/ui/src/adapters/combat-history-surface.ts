@@ -1,4 +1,5 @@
 import type { MountedSurface } from "../shell/types";
+import type { UiLocalizer } from "../localization/ui-locale";
 import type {
   CombatHistoryCatalog,
   CombatHistoryCatalogEntry,
@@ -713,11 +714,13 @@ export function mountCombatHistorySurface(
   container: HTMLElement,
   loadCatalog: () => Promise<CombatHistoryCatalog>,
   loadDetail: (sessionId: string) => Promise<CombatHistorySnapshot>,
+  localizer: UiLocalizer,
   loadSettings: () => Promise<CombatMeterSettings> = async () =>
     DEFAULT_COMBAT_METER_SETTINGS,
   subscribeCatalogChanges?: CombatHistoryChangeSubscriber,
   actions?: CombatHistoryActions,
 ): MountedSurface {
+  const ui = localizer;
   let alive = true;
   let catalog: CombatHistoryCatalog | null = null;
   let selectedEntry: CombatHistoryCatalogEntry | null = null;
@@ -752,10 +755,10 @@ export function mountCombatHistorySurface(
 
   const root = element("div", "plugin-surface combat-history-surface");
   applyHistorySizing(root, settings);
-  const status = element("span", "combat-history-live-status", "Loading run history…");
+  const status = element("span", "combat-history-live-status", ui.t("ui.combat_history.status.loading_history"));
   status.setAttribute("aria-live", "polite");
   const content = element("div", "combat-history-content");
-  content.append(element("p", "runtime-empty-result", "Loading saved dungeon runs…"));
+  content.append(element("p", "runtime-empty-result", ui.t("ui.combat_history.status.loading_runs")));
   root.append(status, content);
   container.append(root);
 
@@ -769,7 +772,7 @@ export function mountCombatHistorySurface(
       return loadInFlight;
     }
     loadInFlight = (async () => {
-      status.textContent = "Reading the lightweight history index…";
+      status.textContent = ui.t("ui.combat_history.status.reading_index");
       try {
         const loadedCatalog = await loadCatalog();
         const loadedSettings = includeSettings ? await loadSettings() : settings;
@@ -808,14 +811,14 @@ export function mountCombatHistorySurface(
         }
         render();
         status.textContent = catalog.entries.length === 0
-          ? "No completed run history is indexed yet."
-          : `${catalog.entries.length.toLocaleString()} run(s) indexed`;
+          ? ui.t("ui.combat_history.status.no_indexed_runs")
+          : ui.t("ui.combat_history.status.indexed_runs", { count: ui.formatNumber(catalog.entries.length) });
       } catch (error) {
         if (!alive) return;
         status.textContent = errorMessage(error);
         if (catalog === null) {
           content.replaceChildren(
-            element("p", "runtime-empty-result", "Combat history could not be loaded."),
+            element("p", "runtime-empty-result", ui.t("ui.combat_history.error.load_failed")),
           );
         }
       } finally {
@@ -847,7 +850,7 @@ export function mountCombatHistorySurface(
         element(
           "p",
           "runtime-empty-result",
-          "Complete a dungeon after this history version is installed. The run will appear here immediately when its completion packet seals it.",
+          ui.t("ui.combat_history.empty.complete_dungeon"),
         ),
       );
       return;
@@ -882,10 +885,13 @@ export function mountCombatHistorySurface(
         element(
           "div",
           "",
-          element("h2", "", "Past dungeon runs"),
-          element("p", "card-copy", "Search the compact index, then open one run for its complete breakdown."),
+          element("h2", "", ui.t("ui.combat_history.browser.title")),
+          element("p", "card-copy", ui.t("ui.combat_history.browser.description")),
         ),
-        element("span", "state-pill", `${entries.length.toLocaleString()} of ${catalog.entries.length.toLocaleString()}`),
+        element("span", "state-pill", ui.t("ui.combat_history.browser.result_count", {
+          visible: ui.formatNumber(entries.length),
+          total: ui.formatNumber(catalog.entries.length),
+        })),
       ),
     );
 
@@ -893,8 +899,8 @@ export function mountCombatHistorySurface(
     const search = document.createElement("input");
     search.type = "search";
     search.value = browserQuery;
-    search.placeholder = "Search dungeon, player, UID, region…";
-    search.setAttribute("aria-label", "Search saved dungeon runs");
+    search.placeholder = ui.t("ui.combat_history.browser.search_placeholder");
+    search.setAttribute("aria-label", ui.t("ui.combat_history.browser.search_aria"));
     search.addEventListener("input", () => {
       browserQuery = search.value;
       browserPage = 0;
@@ -908,8 +914,8 @@ export function mountCombatHistorySurface(
       });
     });
     const difficulty = selectControl(
-      "Difficulty",
-      [["all", "All difficulties"], ...uniqueDifficultyFilters(catalog.entries)],
+      ui.t("ui.combat_history.browser.difficulty"),
+      [["all", ui.t("ui.combat_history.browser.all_difficulties")], ...uniqueDifficultyFilters(catalog.entries)],
       browserDifficulty,
       (value) => {
         browserDifficulty = value;
@@ -918,13 +924,13 @@ export function mountCombatHistorySurface(
       },
     );
     const sort = selectControl(
-      "Sort runs",
+      ui.t("ui.combat_history.browser.sort_runs"),
       [
-        ["newest", "Newest first"],
-        ["oldest", "Oldest first"],
-        ["fastest", "Fastest run"],
-        ["team_dps", "Highest team eDPS"],
-        ["team_edps", "Highest team aDPS"],
+        ["newest", ui.t("ui.combat_history.browser.sort_newest")],
+        ["oldest", ui.t("ui.combat_history.browser.sort_oldest")],
+        ["fastest", ui.t("ui.combat_history.browser.sort_fastest")],
+        ["team_dps", ui.t("ui.combat_history.browser.sort_team_edps")],
+        ["team_edps", ui.t("ui.combat_history.browser.sort_team_adps")],
       ],
       browserSort,
       (value) => {
@@ -934,7 +940,7 @@ export function mountCombatHistorySurface(
       },
     );
     const favoriteFilter = button(
-      browserFavoritesOnly ? "★ Favorites" : "☆ Favorites",
+      `${browserFavoritesOnly ? "★" : "☆"} ${ui.t("ui.combat_history.browser.favorites")}`,
       "quiet-button combat-history-favorite-filter",
     );
     favoriteFilter.dataset.selected = String(browserFavoritesOnly);
@@ -992,7 +998,7 @@ export function mountCombatHistorySurface(
     }
 
     if (pageEntries.length === 0) {
-      runBrowser.append(element("p", "runtime-empty-result", "No saved runs match these filters."));
+      runBrowser.append(element("p", "runtime-empty-result", ui.t("ui.combat_history.browser.no_matches")));
       appendDeleteConfirmation(runBrowser);
       content.replaceChildren(runBrowser);
       return;
@@ -1082,7 +1088,9 @@ export function mountCombatHistorySurface(
           .then((updatedCatalog) => {
             if (!alive) return;
             catalog = updatedCatalog;
-            status.textContent = `${updatedCatalog.entries.length.toLocaleString()} run(s) indexed`;
+            status.textContent = ui.t("ui.combat_history.status.indexed_runs", {
+              count: ui.formatNumber(updatedCatalog.entries.length),
+            });
           })
           .catch((error) => {
             if (!alive) return;
@@ -1128,10 +1136,12 @@ export function mountCombatHistorySurface(
         element("span", "combat-history-run-open", "›"),
       );
       item.addEventListener("click", () => {
-        status.textContent = "Loading saved run detail…";
+        status.textContent = ui.t("ui.combat_history.status.loading_detail");
         void selectEntry(entry)
           .then(() => {
-            status.textContent = `${catalog?.entries.length ?? 0} run(s) indexed`;
+            status.textContent = ui.t("ui.combat_history.status.indexed_runs", {
+              count: ui.formatNumber(catalog?.entries.length ?? 0),
+            });
           })
           .catch((error) => {
             status.textContent = errorMessage(error);
@@ -1149,13 +1159,13 @@ export function mountCombatHistorySurface(
     runBrowser.append(tableScroll);
     if (pageCount > 1) {
       const pagination = element("div", "combat-history-pagination");
-      const previous = button("Previous", "quiet-button");
+      const previous = button(ui.t("ui.combat_history.browser.previous"), "quiet-button");
       previous.disabled = browserPage === 0;
       previous.addEventListener("click", () => {
         browserPage = Math.max(0, browserPage - 1);
         render();
       });
-      const next = button("Next", "quiet-button");
+      const next = button(ui.t("ui.combat_history.browser.next"), "quiet-button");
       next.disabled = browserPage + 1 >= pageCount;
       next.addEventListener("click", () => {
         browserPage = Math.min(pageCount - 1, browserPage + 1);
@@ -1163,7 +1173,10 @@ export function mountCombatHistorySurface(
       });
       pagination.append(
         previous,
-        element("span", "", `Page ${browserPage + 1} of ${pageCount}`),
+        element("span", "", ui.t("ui.combat_history.browser.page", {
+          current: ui.formatNumber(browserPage + 1),
+          total: ui.formatNumber(pageCount),
+        })),
         next,
       );
       runBrowser.append(pagination);
@@ -2200,6 +2213,7 @@ export function mountCombatHistorySurface(
           graphMetric = metric;
           render();
         },
+        ui,
       ),
     );
     return gallery;
@@ -3161,6 +3175,7 @@ function renderMetricGraph(
   actorColors: ReadonlyMap<string, string>,
   targetActorId: string | null,
   selectMetric: (metric: GraphMetric) => void,
+  localizer: UiLocalizer,
 ): HTMLElement {
   const card = element("section", "combat-history-metric-graph");
   const durationSeconds = Math.max(1, Math.ceil(elapsedMicros / 1_000_000));
@@ -3217,6 +3232,7 @@ function renderMetricGraph(
       durationSeconds,
       scaleMaximum,
       targetActorId === null,
+      localizer,
     ),
   );
   const stats = element("div", "combat-history-graph-stats");
@@ -3325,6 +3341,7 @@ function partyLineChart(
   durationSeconds: number,
   scaleMaximum: number,
   showDeathMarkers: boolean,
+  localizer: UiLocalizer,
 ): HTMLElement {
   const width = 1_120;
   const height = 330;
@@ -3342,7 +3359,11 @@ function partyLineChart(
   svg.setAttribute("role", "img");
   svg.setAttribute(
     "aria-label",
-    `${definition.title}, ${definition.rateLabel} by character over ${formatGraphTime(durationSeconds)}. Focus the chart and use the arrow keys to inspect exact seconds.`,
+    localizer.t("ui.combat_history.graph.aria", {
+      title: definition.title,
+      rate: definition.rateLabel,
+      duration: formatGraphTime(durationSeconds),
+    }),
   );
   svg.tabIndex = 0;
 
@@ -3376,7 +3397,7 @@ function partyLineChart(
     );
   }
   svg.append(
-    svgText(width / 2, height - 5, "Run time", "combat-history-axis-title", "middle"),
+    svgText(width / 2, height - 5, localizer.t("ui.combat_history.graph.run_time"), "combat-history-axis-title", "middle"),
   );
   const yTitle = svgText(15, top + plotHeight / 2, definition.rateLabel, "combat-history-axis-title", "middle");
   yTitle.setAttribute("transform", `rotate(-90 15 ${top + plotHeight / 2})`);
@@ -3435,7 +3456,7 @@ function partyLineChart(
   const readout = element(
     "div",
     "combat-history-graph-inspection-readout",
-    "Hover the chart, or focus it and use the arrow keys, to inspect exact values.",
+    localizer.t("ui.combat_history.graph.inspect_help"),
   );
   readout.setAttribute("aria-live", "polite");
   let inspectedSecond: number | null = null;
@@ -3468,7 +3489,7 @@ function partyLineChart(
   const clearInspection = () => {
     inspectedSecond = null;
     inspection.setAttribute("hidden", "");
-    readout.textContent = "Hover the chart, or focus it and use the arrow keys, to inspect exact values.";
+    readout.textContent = localizer.t("ui.combat_history.graph.inspect_help");
   };
   svg.addEventListener("pointermove", (event) => {
     const bounds = svg.getBoundingClientRect();

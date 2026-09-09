@@ -35,6 +35,43 @@ describe("desktop UI locale packages", () => {
     }
   });
 
+  it("loads the shipped combat history browser and graph inspection shard", async () => {
+    const localizer = await loadUiLocalizer("en-US");
+    for (const key of [
+      "ui.combat_history.status.loading_history",
+      "ui.combat_history.status.loading_runs",
+      "ui.combat_history.status.reading_index",
+      "ui.combat_history.status.no_indexed_runs",
+      "ui.combat_history.status.indexed_runs",
+      "ui.combat_history.status.loading_detail",
+      "ui.combat_history.error.load_failed",
+      "ui.combat_history.empty.complete_dungeon",
+      "ui.combat_history.browser.title",
+      "ui.combat_history.browser.description",
+      "ui.combat_history.browser.result_count",
+      "ui.combat_history.browser.search_placeholder",
+      "ui.combat_history.browser.search_aria",
+      "ui.combat_history.browser.difficulty",
+      "ui.combat_history.browser.all_difficulties",
+      "ui.combat_history.browser.sort_runs",
+      "ui.combat_history.browser.sort_newest",
+      "ui.combat_history.browser.sort_oldest",
+      "ui.combat_history.browser.sort_fastest",
+      "ui.combat_history.browser.sort_team_edps",
+      "ui.combat_history.browser.sort_team_adps",
+      "ui.combat_history.browser.favorites",
+      "ui.combat_history.browser.no_matches",
+      "ui.combat_history.browser.previous",
+      "ui.combat_history.browser.next",
+      "ui.combat_history.browser.page",
+      "ui.combat_history.graph.aria",
+      "ui.combat_history.graph.run_time",
+      "ui.combat_history.graph.inspect_help",
+    ]) {
+      expect(localizer.t(key), key).not.toBe(key);
+    }
+  });
+
   it("uses exact, base-language, English, then stable-key fallback", async () => {
     const loaders: UiMessageLoaders = {
       "/localization/en-US/ui/test/messages.json": async () => shard("en-US", {

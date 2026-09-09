@@ -122,6 +122,7 @@ import {
   type ThemeSettings,
   parseThemeSettings,
 } from "./theme-settings";
+import type { UiLocalizer } from "../localization/ui-locale";
 import type {
   DesktopHostAdapter,
   InstalledPluginDescriptor,
@@ -272,7 +273,7 @@ interface RuntimeEnvironment extends CaptureEnvironment {
   npcap_error?: string | null;
 }
 
-export async function createLocalHostAdapterIfAvailable(): Promise<DesktopHostAdapter | null> {
+export async function createLocalHostAdapterIfAvailable(localizer: UiLocalizer): Promise<DesktopHostAdapter | null> {
   try {
     const response = await fetch("/api/runtime/status", {
       cache: "no-store",
@@ -286,7 +287,7 @@ export async function createLocalHostAdapterIfAvailable(): Promise<DesktopHostAd
       return null;
     }
     await response.json();
-    return createLocalHostAdapter();
+    return createLocalHostAdapter(localizer);
   } catch {
     return null;
   }
@@ -526,7 +527,7 @@ function subscribeCombatHistoryChanges(
   };
 }
 
-function createLocalHostAdapter(): DesktopHostAdapter {
+function createLocalHostAdapter(localizer: UiLocalizer): DesktopHostAdapter {
   let pluginCatalogRequest: Promise<LocalPluginCatalog> | null = null;
   const loadPluginCatalog = (force = false): Promise<LocalPluginCatalog> => {
     if (force || pluginCatalogRequest === null) {
@@ -594,6 +595,7 @@ function createLocalHostAdapter(): DesktopHostAdapter {
                   body: JSON.stringify({ sessionId }),
                 }),
               ),
+            localizer,
             async () =>
               parseCombatMeterSettings(
                 await apiJson<unknown>("/api/settings/combat-meter"),
