@@ -78,7 +78,14 @@ the game protocol below is proven from a controlled capture.
   joined actors by display name. That is suitable for a HUD list, but it must
   never be used as native automarker slot authority.
 
-## Minimum Tina/M17 placement capture
+## Minimum controlled placement capture
+
+For a mirrored or leader-host capture, filter on the explicit client host, not
+one previously observed remote server. This retains a dungeon world-server
+migration. `tools/windows/capture-client-host.ps1` uses `tcp and host
+<client-ip>` and then creates the exact-flow connection sidecar from transport
+metadata after capture. The PCAPNG and sidecar remain private research and must
+not be committed or uploaded.
 
 The first capture should stay short and target the user's reported placement
 window. Because the markers were reportedly placed once and then persisted
@@ -87,7 +94,7 @@ boss engagement.
 
 1. Capture two clients in the same party at the same time when possible: the
    leader and one non-leader observer. Start already authenticated and inside
-   Tina/M17 scene `1633`.
+   the chosen dungeon, and record its exact name, difficulty, and scene ID.
 2. Record 10-15 seconds of idle traffic before the first placement. Note the
    exact installed build, scene ID, both character and current actor/entity
    identities, leader identity, visible party group/slot order, and a
@@ -115,7 +122,7 @@ Do not promote the interpretation from IDs alone.
 
 ## Follow-up lifecycle controls
 
-Run these as separate short captures after the initial Tina placement trace so
+Run these as separate short captures after the initial placement trace so
 each action has a clean packet delta:
 
 1. Replace one marker in place, move it to a different position or target,
