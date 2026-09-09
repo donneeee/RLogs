@@ -74,7 +74,7 @@ use rlogs_profiles::LocalProfilePackage;
 pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 12;
 pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 2;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 6;
-pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 12;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 13;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
@@ -310,6 +310,7 @@ struct ReconciliationRunSource {
     quality: CanonicalSpineQuality,
     local_profile_witnesses: Vec<PublicLocalProfileWitness>,
     local_state_witnesses: Vec<PublicLocalStateWitness>,
+    combat_loadout_phases: Vec<PublicCombatLoadoutPhase>,
     /// Stable participant identities that were already present in the public
     /// projection. Only this subset may be exposed by the public
     /// reconciliation manifest.
@@ -344,6 +345,7 @@ impl ReconciliationRunSource {
             quality: CanonicalSpineQuality::from_report(report, run),
             local_profile_witnesses: run.local_profile_witnesses.clone(),
             local_state_witnesses: run.local_state_witnesses.clone(),
+            combat_loadout_phases: run.combat_loadout_phases.clone(),
             public_participant_character_ids: public_participant_character_ids
                 .into_iter()
                 .collect(),
@@ -2698,7 +2700,7 @@ pub struct PublicRun {
     pub rdps_effects: Vec<PublicRdpsEffectPresentation>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicCombatLoadoutPhase {
     pub character_id: String,
     pub display_name: Option<String>,
@@ -3492,6 +3494,11 @@ pub struct PublicReconciliationReport {
     pub canonical_spine: bool,
     pub local_profile_witnesses: Vec<PublicLocalProfileWitness>,
     pub local_state_witnesses: Vec<PublicLocalStateWitness>,
+    /// Presentation-safe loadout phases contributed by this exact report.
+    /// These remain attached to their source artifact even when reconciliation
+    /// cannot select one conflict-free character summary.
+    #[serde(default)]
+    pub combat_loadout_phases: Vec<PublicCombatLoadoutPhase>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3503,6 +3510,16 @@ pub struct PublicReconciliationCharacter {
     pub state_witness_count: usize,
     pub game_time_aligned_state_witness_count: usize,
     pub witnesses: Vec<PublicCharacterWitnessSource>,
+    /// Uses the same fail-closed vocabulary as profile witness selection.
+    /// `MultipleReportsRequireOrdering` also covers semantically conflicting
+    /// phase sequences; in that state no selected phases are published.
+    #[serde(default)]
+    pub combat_loadout_disposition: ProfileWitnessDisposition,
+    /// Exact phases copied from `selected_report_id` only after every report
+    /// that witnessed this local character supplied the same semantic phase
+    /// sequence. Source-relative clocks and provenance remain unchanged.
+    #[serde(default)]
+    pub selected_combat_loadout_phases: Vec<PublicCombatLoadoutPhase>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -5209,6 +5226,8 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
                 .collect::<Vec<_>>();
             let (disposition, selected_report_id) =
                 profile_witness_disposition(&witnesses, canonical_report_id);
+            let (combat_loadout_disposition, selected_combat_loadout_phases) =
+                combat_loadout_selection(&sources, &character_id, selected_report_id.as_deref());
             PublicReconciliationCharacter {
                 character_id,
                 participant_report_count,
@@ -5224,6 +5243,8 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
                     .filter(|snapshot| snapshot.game_time_millis.is_some())
                     .count(),
                 witnesses,
+                combat_loadout_disposition,
+                selected_combat_loadout_phases,
             }
         })
         .collect::<Vec<_>>();
@@ -5248,6 +5269,12 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
                 .local_state_witnesses
                 .iter()
                 .filter(|witness| participant_character_ids.contains(&witness.character_id))
+                .cloned()
+                .collect(),
+            combat_loadout_phases: source
+                .combat_loadout_phases
+                .iter()
+                .filter(|phase| participant_character_ids.contains(&phase.character_id))
                 .cloned()
                 .collect(),
         })
@@ -5323,6 +5350,10 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
             hasher.update(witness.game_time_millis.unwrap_or(i64::MIN).to_le_bytes());
             hasher.update(witness.payload_sha256.as_bytes());
         }
+        hasher.update(
+            serde_json::to_vec(&report.combat_loadout_phases)
+                .expect("public combat loadout phases always serialize"),
+        );
     }
     let reconciliation_id = format!("rec_{:x}", hasher.finalize())[..36].to_owned();
 
@@ -5559,6 +5590,107 @@ fn profile_witness_disposition(
             )
         }
     }
+}
+
+fn combat_loadout_selection(
+    sources: &[ReconciliationRunSource],
+    character_id: &str,
+    selected_report_id: Option<&str>,
+) -> (ProfileWitnessDisposition, Vec<PublicCombatLoadoutPhase>) {
+    let phase_sets = sources
+        .iter()
+        .filter(|source| {
+            source
+                .local_profile_witnesses
+                .iter()
+                .any(|witness| witness.character_id == character_id)
+        })
+        .map(|source| {
+            (
+                source.report_id.as_str(),
+                source
+                    .combat_loadout_phases
+                    .iter()
+                    .filter(|phase| phase.character_id == character_id)
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect::<Vec<_>>();
+    if phase_sets.is_empty() || phase_sets.iter().any(|(_, phases)| phases.is_empty()) {
+        return (ProfileWitnessDisposition::Missing, Vec::new());
+    }
+    let Some(selected_report_id) = selected_report_id else {
+        return (
+            ProfileWitnessDisposition::MultipleReportsRequireOrdering,
+            Vec::new(),
+        );
+    };
+    let Some((_, selected)) = phase_sets
+        .iter()
+        .find(|(report_id, _)| *report_id == selected_report_id)
+    else {
+        return (ProfileWitnessDisposition::Missing, Vec::new());
+    };
+    let identical = phase_sets
+        .windows(2)
+        .all(|pair| combat_loadout_phase_sets_semantically_equal(&pair[0].1, &pair[1].1));
+    if !identical {
+        return (
+            ProfileWitnessDisposition::MultipleReportsRequireOrdering,
+            Vec::new(),
+        );
+    }
+    (
+        if phase_sets.len() == 1 {
+            ProfileWitnessDisposition::SingleReportExact
+        } else {
+            ProfileWitnessDisposition::MultipleReportsIdentical
+        },
+        selected.iter().map(|phase| (*phase).clone()).collect(),
+    )
+}
+
+fn combat_loadout_phase_sets_semantically_equal(
+    left: &[&PublicCombatLoadoutPhase],
+    right: &[&PublicCombatLoadoutPhase],
+) -> bool {
+    left.len() == right.len()
+        && left.iter().zip(right).all(|(left, right)| {
+            left.segment_index == right.segment_index
+                && left.encounter_index == right.encounter_index
+                && left.attempt_number == right.attempt_number
+                && left.in_active_combat == right.in_active_combat
+                && left.class_id == right.class_id
+                && left.specialization_id == right.specialization_id
+                && left.equipment_count == right.equipment_count
+                && left.equipped_module_count == right.equipped_module_count
+                && left.talent_count == right.talent_count
+                && sorted_strings(&left.equipped_skill_ids)
+                    == sorted_strings(&right.equipped_skill_ids)
+                && sorted_imagines(&left.equipped_imagines)
+                    == sorted_imagines(&right.equipped_imagines)
+        })
+}
+
+fn sorted_strings(values: &[String]) -> Vec<&str> {
+    let mut values = values.iter().map(String::as_str).collect::<Vec<_>>();
+    values.sort_unstable();
+    values
+}
+
+fn sorted_imagines(values: &[PublicCombatImagineLoadout]) -> Vec<(i32, &str, Option<u32>)> {
+    let mut values = values
+        .iter()
+        .map(|imagine| {
+            (
+                imagine.equipped_slot,
+                imagine.skill_id.as_str(),
+                imagine.tier,
+            )
+        })
+        .collect::<Vec<_>>();
+    values.sort_unstable();
+    values
 }
 
 fn run_group_id(history: &CombatHistorySnapshot, analysis: &RunAnalysis, run_index: u32) -> String {
@@ -7012,8 +7144,172 @@ mod tests {
         assert!(reconciliation.characters.iter().all(|character| {
             character.disposition == ProfileWitnessDisposition::SingleReportExact
                 && character.selected_report_id.is_some()
+                && character.combat_loadout_disposition
+                    == ProfileWitnessDisposition::SingleReportExact
+                && character.selected_combat_loadout_phases.len() == 1
+        }));
+        assert!(reconciliation.reports.iter().all(|report| {
+            report.combat_loadout_phases.len() == 1
+                && report.combat_loadout_phases[0].character_id
+                    == report.local_profile_witnesses[0].character_id
         }));
         assert!(!reconciliation.attribution_replay_completed);
+    }
+
+    #[test]
+    fn conflicting_multi_report_combat_loadouts_remain_unselected() {
+        let mut report_a =
+            fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
+        let mut report_b =
+            fixture_public_report("rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "character-a", 0);
+        report_a.runs[0].combat_loadout_phases[0].equipped_skill_ids = vec!["skill-a".into()];
+        report_b.runs[0].combat_loadout_phases[0].equipped_skill_ids = vec!["skill-b".into()];
+        let group = CatalogRunGroup {
+            representative: PublicParseCatalogEntry::from_report(&report_a, &report_a.runs[0]),
+            representative_quality: CanonicalSpineQuality::from_report(
+                &report_a,
+                &report_a.runs[0],
+            ),
+            submitters: BTreeSet::new(),
+            local_profile_witnesses: ["character-a".to_owned()].into_iter().collect(),
+            reconciliation_sources: vec![
+                ReconciliationRunSource::from_report(&report_a, &report_a.runs[0], None),
+                ReconciliationRunSource::from_report(&report_b, &report_b.runs[0], None),
+            ],
+            milestone_source: MilestoneSource {
+                entry: PublicParseCatalogEntry::from_report(&report_a, &report_a.runs[0]),
+                authoritative_completion: true,
+                participants: report_a.runs[0].participants.clone(),
+            },
+        };
+
+        let reconciliation = build_public_reconciliation(&group);
+        let character = reconciliation
+            .characters
+            .iter()
+            .find(|character| character.character_id == "character-a")
+            .unwrap();
+
+        assert_eq!(
+            character.disposition,
+            ProfileWitnessDisposition::MultipleReportsIdentical
+        );
+        assert_eq!(
+            character.combat_loadout_disposition,
+            ProfileWitnessDisposition::MultipleReportsRequireOrdering
+        );
+        assert!(character.selected_combat_loadout_phases.is_empty());
+        assert_eq!(
+            reconciliation
+                .reports
+                .iter()
+                .map(|report| report.combat_loadout_phases[0].equipped_skill_ids[0].as_str())
+                .collect::<Vec<_>>(),
+            vec!["skill-a", "skill-b"]
+        );
+    }
+
+    #[test]
+    fn identical_multi_report_combat_loadouts_select_the_canonical_report_phase() {
+        let report_a =
+            fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
+        let mut report_b =
+            fixture_public_report("rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "character-a", 0);
+        report_b.runs[0].combat_loadout_phases[0].display_name =
+            Some("Other observer label".into());
+        report_b.runs[0].combat_loadout_phases[0].observed_micros = 9;
+        report_b.runs[0].combat_loadout_phases[0].run_elapsed_micros = 9;
+        report_b.runs[0].combat_loadout_phases[0].game_time_millis = Some(109);
+        let group = CatalogRunGroup {
+            representative: PublicParseCatalogEntry::from_report(&report_a, &report_a.runs[0]),
+            representative_quality: CanonicalSpineQuality::from_report(
+                &report_a,
+                &report_a.runs[0],
+            ),
+            submitters: BTreeSet::new(),
+            local_profile_witnesses: ["character-a".to_owned()].into_iter().collect(),
+            reconciliation_sources: vec![
+                ReconciliationRunSource::from_report(&report_b, &report_b.runs[0], None),
+                ReconciliationRunSource::from_report(&report_a, &report_a.runs[0], None),
+            ],
+            milestone_source: MilestoneSource {
+                entry: PublicParseCatalogEntry::from_report(&report_a, &report_a.runs[0]),
+                authoritative_completion: true,
+                participants: report_a.runs[0].participants.clone(),
+            },
+        };
+
+        let reconciliation = build_public_reconciliation(&group);
+        let character = reconciliation
+            .characters
+            .iter()
+            .find(|character| character.character_id == "character-a")
+            .unwrap();
+
+        assert_eq!(
+            character.combat_loadout_disposition,
+            ProfileWitnessDisposition::MultipleReportsIdentical
+        );
+        assert_eq!(
+            character.selected_report_id.as_deref(),
+            Some("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        );
+        assert_eq!(character.selected_combat_loadout_phases.len(), 1);
+        assert_eq!(
+            character.selected_combat_loadout_phases[0].observed_micros,
+            5
+        );
+        assert_eq!(
+            reconciliation.reports[1].combat_loadout_phases[0].observed_micros,
+            9
+        );
+    }
+
+    #[test]
+    fn legacy_reconciliation_defaults_combat_loadout_fields() {
+        let report =
+            fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
+        let group = CatalogRunGroup {
+            representative: PublicParseCatalogEntry::from_report(&report, &report.runs[0]),
+            representative_quality: CanonicalSpineQuality::from_report(&report, &report.runs[0]),
+            submitters: BTreeSet::new(),
+            local_profile_witnesses: ["character-a".to_owned()].into_iter().collect(),
+            reconciliation_sources: vec![ReconciliationRunSource::from_report(
+                &report,
+                &report.runs[0],
+                None,
+            )],
+            milestone_source: MilestoneSource {
+                entry: PublicParseCatalogEntry::from_report(&report, &report.runs[0]),
+                authoritative_completion: true,
+                participants: report.runs[0].participants.clone(),
+            },
+        };
+        let mut value = serde_json::to_value(build_public_reconciliation(&group)).unwrap();
+        for report in value["reports"].as_array_mut().unwrap() {
+            report
+                .as_object_mut()
+                .unwrap()
+                .remove("combat_loadout_phases");
+        }
+        for character in value["characters"].as_array_mut().unwrap() {
+            let character = character.as_object_mut().unwrap();
+            character.remove("combat_loadout_disposition");
+            character.remove("selected_combat_loadout_phases");
+        }
+
+        let decoded: PublicRunReconciliation = serde_json::from_value(value).unwrap();
+
+        assert!(decoded.reports[0].combat_loadout_phases.is_empty());
+        assert_eq!(
+            decoded.characters[0].combat_loadout_disposition,
+            ProfileWitnessDisposition::Missing
+        );
+        assert!(
+            decoded.characters[0]
+                .selected_combat_loadout_phases
+                .is_empty()
+        );
     }
 
     #[test]
@@ -7105,6 +7401,7 @@ mod tests {
                 payload_sha256: "sha256:profile".into(),
             }],
             local_state_witnesses: Vec::new(),
+            combat_loadout_phases: Vec::new(),
         };
         assert_eq!(
             reconciliation_status(
@@ -8512,7 +8809,30 @@ mod tests {
                     game_time_millis: Some(100),
                     payload_sha256: format!("sha256:state-{local_character_id}"),
                 }],
-                combat_loadout_phases: Vec::new(),
+                combat_loadout_phases: vec![PublicCombatLoadoutPhase {
+                    character_id: local_character_id.into(),
+                    display_name: Some(local_character_id.into()),
+                    observed_micros: 5,
+                    run_elapsed_micros: 5,
+                    game_time_millis: Some(105),
+                    segment_index: None,
+                    encounter_index: None,
+                    attempt_number: None,
+                    in_active_combat: true,
+                    class_id: Some(5),
+                    class_name: Some("Stormblade".into()),
+                    specialization_id: Some(51),
+                    specialization_name: Some("Iaido".into()),
+                    equipped_skill_ids: vec![format!("skill-{local_character_id}")],
+                    equipped_imagines: vec![PublicCombatImagineLoadout {
+                        skill_id: "imagine-1".into(),
+                        tier: Some(5),
+                        equipped_slot: 1,
+                    }],
+                    equipment_count: Some(8),
+                    equipped_module_count: Some(5),
+                    talent_count: Some(12),
+                }],
                 segments: Vec::new(),
                 participants: vec![participant("character-a"), participant("character-b")],
                 rdps_influences: Vec::new(),
