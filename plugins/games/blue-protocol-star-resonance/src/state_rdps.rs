@@ -60,7 +60,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v49";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v50";
 // Current-build Life Wave static identity. The child is a refreshable
 // five-second recipient status produced by module family 2404. Exact selected-
 // secondary-lane marginals require the authoritative local module profile and
@@ -4561,6 +4561,24 @@ impl BpsrStateDamageContributionProjector {
                                     .extend(element_bucket_contributions.iter().copied());
                             }
                         } else {
+                            // The current-build corpus contains packet-proven
+                            // Attack, all-plus-property element, and critical
+                            // candidates on the same damage rows, but does not
+                            // prove the server's Attack-versus-element
+                            // allocation order. Keep every transfer suppressed
+                            // and make that incompleteness explicit for every
+                            // provider and recipient involved. Otherwise the
+                            // intentionally partial total could be presented as
+                            // a complete rDPS value.
+                            mark_unresolved_rational_contributions(
+                                &mut self.incomplete_rdps_actor_ids,
+                                attack_contributions
+                                    .iter()
+                                    .chain(element_bucket_contributions.iter())
+                                    .chain(later_contributions.iter())
+                                    .copied()
+                                    .chain(joint_critical_cold_team_luck.into_iter().flatten()),
+                            );
                             rational_output.extend(attack_contributions.iter().copied().filter(
                                 |contribution| {
                                     contribution.effect_id == self.runtime.inspire.effect_id
@@ -17202,6 +17220,16 @@ fn scale_later_rational_marginal_after_many(
     Some(later)
 }
 
+fn mark_unresolved_rational_contributions(
+    incomplete_actor_ids: &mut HashSet<u64>,
+    contributions: impl IntoIterator<Item = ExactRationalDamageContributionEvent>,
+) {
+    for contribution in contributions {
+        incomplete_actor_ids.insert(contribution.provider_actor_id);
+        incomplete_actor_ids.insert(contribution.recipient_actor_id);
+    }
+}
+
 #[cfg(test)]
 fn allocate_ordered_rational_marginals(
     first: ExactRationalDamageContributionEvent,
@@ -29329,5 +29357,30 @@ mod tests {
             earlier.numerator + second_earlier.numerator + adjusted_after_both.numerator,
             65
         );
+    }
+
+    #[test]
+    fn unresolved_order_marks_every_external_party_incomplete() {
+        let contribution =
+            |provider_actor_id, recipient_actor_id| ExactRationalDamageContributionEvent {
+                observed_micros: 1,
+                effect_id: 99,
+                provider_actor_id,
+                recipient_actor_id,
+                scope: DamageContributionScope::Component("unresolved-order-test"),
+                numerator: 1,
+                denominator: 10,
+                observed_damage: 100,
+                included: true,
+                deferred_damage_context: None,
+            };
+        let mut incomplete = HashSet::from([1]);
+
+        mark_unresolved_rational_contributions(
+            &mut incomplete,
+            [contribution(2, 4), contribution(3, 4), contribution(2, 5)],
+        );
+
+        assert_eq!(incomplete, HashSet::from([1, 2, 3, 4, 5]));
     }
 }
