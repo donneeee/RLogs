@@ -71,10 +71,11 @@ use profiles::{
 };
 use rlogs_profiles::LocalProfilePackage;
 
-pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 13;
-pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 3;
+pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 14;
+pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 4;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 6;
-pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 14;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 15;
+pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 1;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
@@ -93,6 +94,11 @@ const MAXIMUM_COMBAT_EQUIPPED_MODULES: usize = 16;
 const MAXIMUM_COMBAT_MODULE_EFFECTS: usize = 16;
 const MAXIMUM_HOSTED_RECONCILIATION_ARTIFACTS: usize = 64;
 const MAXIMUM_HOSTED_RECONCILIATION_BYTES: u64 = 64 * 1024 * 1024 * 1024;
+const MAXIMUM_TIMELINE_PARTICIPANTS: usize = 256;
+const MAXIMUM_TIMELINE_SERIES_POINTS: usize = 262_144;
+const MAXIMUM_TIMELINE_DEATH_MARKERS: usize = 4_096;
+const MAXIMUM_TIMELINE_LOADOUT_MARKERS: usize = 4_096;
+const MAXIMUM_TIMELINE_RDPS_SPANS: usize = 65_536;
 
 #[derive(Clone)]
 pub enum SubmissionAuthentication {
@@ -320,6 +326,7 @@ struct ReconciliationRunSource {
     local_profile_witnesses: Vec<PublicLocalProfileWitness>,
     local_state_witnesses: Vec<PublicLocalStateWitness>,
     combat_loadout_phases: Vec<PublicCombatLoadoutPhase>,
+    timeline: PublicCombatTimeline,
     /// Stable participant identities that were already present in the public
     /// projection. Only this subset may be exposed by the public
     /// reconciliation manifest.
@@ -355,6 +362,7 @@ impl ReconciliationRunSource {
             local_profile_witnesses: run.local_profile_witnesses.clone(),
             local_state_witnesses: run.local_state_witnesses.clone(),
             combat_loadout_phases: run.combat_loadout_phases.clone(),
+            timeline: run.timeline.clone(),
             public_participant_character_ids: public_participant_character_ids
                 .into_iter()
                 .collect(),
@@ -1697,6 +1705,10 @@ impl SubmissionService {
                             Some(verified_state_input_digest(&reconciliation, &events)?);
                         match self.replay_cross_vantage_attribution(&reconciliation, events) {
                             Ok(result) => {
+                                populate_timeline_rdps_spans(
+                                    &mut reconciliation.timeline,
+                                    &result.rdps_influences,
+                                );
                                 reconciliation.status =
                                     RunAttributionReconciliationStatus::Reconciled;
                                 reconciliation.reconciled_participants = result.participants;
@@ -2739,6 +2751,10 @@ pub struct PublicRun {
     pub rdps_influences: Vec<PublicRdpsInfluence>,
     #[serde(default)]
     pub rdps_effects: Vec<PublicRdpsEffectPresentation>,
+    /// Versioned, bounded graph/timeline projection. This is derived only from
+    /// the same public canonical combat spine represented by this run.
+    #[serde(default)]
+    pub timeline: PublicCombatTimeline,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2943,6 +2959,136 @@ pub struct PublicSeriesPoint {
     pub damage: i64,
     pub effective_healing: i64,
     pub damage_taken: i64,
+}
+
+/// Public graph/timeline data shared by desktop and web clients.
+///
+/// One-second series values are bucket totals, not cumulative values. Exact
+/// microsecond timestamps are published only for inputs that carry them. Each
+/// row names its clock when that clock differs from run elapsed. In particular,
+/// an rDPS influence span is the first/last capture-clock observation of an
+/// affected damage event and its `attributed_rdps` remains an aggregate for
+/// that span; clients must neither position it on the run clock nor interpolate
+/// it into a time-varying rDPS curve.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PublicCombatTimeline {
+    pub schema_version: u16,
+    #[serde(default)]
+    pub source: PublicTimelineSource,
+    pub canonical_report_id: String,
+    pub canonical_run_index: u32,
+    #[serde(default)]
+    pub contributing_report_ids: Vec<String>,
+    pub duration_micros: u64,
+    pub time_basis: PublicTimelineTimeBasis,
+    pub series_bucket_micros: u64,
+    pub coverage: PublicTimelineCoverage,
+    #[serde(default)]
+    pub participant_tracks: Vec<PublicTimelineParticipantTrack>,
+    #[serde(default)]
+    pub death_markers: Vec<PublicTimelineDeathMarker>,
+    #[serde(default)]
+    pub loadout_markers: Vec<PublicTimelineLoadoutMarker>,
+    #[serde(default)]
+    pub rdps_influence_spans: Vec<PublicTimelineRdpsInfluenceSpan>,
+    #[serde(default)]
+    pub omitted: PublicTimelineOmittedCounts,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicTimelineSource {
+    #[default]
+    SingleReport,
+    ReconciledCanonicalSpine,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicTimelineTimeBasis {
+    #[default]
+    RunElapsed,
+    /// Monotonic capture clock retained by the current attribution summary.
+    /// It must not be positioned against run-elapsed tracks without a future
+    /// verifier-published clock transform.
+    CaptureObserved,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PublicTimelineCoverage {
+    pub authoritative_start: bool,
+    pub authoritative_completion: bool,
+    pub data_gap_count: u64,
+    #[serde(default)]
+    pub gap_timing: PublicTimelineGapTiming,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicTimelineGapTiming {
+    #[default]
+    NoKnownGaps,
+    /// Gap count is authoritative, but the current public projection does not
+    /// retain safe start/end timestamps. No gap position may be inferred.
+    CountOnly,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicTimelineParticipantTrack {
+    pub actor_id: String,
+    pub character_id: Option<String>,
+    pub observed_character_key: Option<String>,
+    pub display_name: Option<String>,
+    /// Index into the canonical report/run's `participants` array. The first
+    /// `series_point_count` sparse points are this track's bucket data. This
+    /// keeps the versioned timeline directly resolvable without duplicating a
+    /// potentially large series inside the same response.
+    pub canonical_participant_index: usize,
+    pub series_point_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicTimelineDeathMarker {
+    pub actor_id: String,
+    pub at_micros: u64,
+    pub precision: PublicTimelineMarkerPrecision,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicTimelineMarkerPrecision {
+    ExactMicrosecond,
+    OneSecondBucket,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicTimelineLoadoutMarker {
+    pub character_id: String,
+    pub at_micros: u64,
+    /// Zero-based index within this character's phases from the named source
+    /// report, not within a merged cross-character list.
+    pub phase_index: usize,
+    pub source_report_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicTimelineRdpsInfluenceSpan {
+    pub influence_index: usize,
+    pub time_basis: PublicTimelineTimeBasis,
+    pub start_micros: u64,
+    pub end_micros: u64,
+    /// False by design: endpoints bound observed affected damage, not the
+    /// complete lifecycle of a buff/status.
+    pub complete_lifecycle: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PublicTimelineOmittedCounts {
+    pub participant_tracks: usize,
+    pub series_points: usize,
+    pub death_markers: usize,
+    pub loadout_markers: usize,
+    pub rdps_influence_spans: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3517,6 +3663,10 @@ pub struct PublicRunReconciliation {
     /// This product inventories and selects evidence. It does not claim that
     /// the conserved counterfactual replay has already consumed it.
     pub attribution_replay_completed: bool,
+    /// Canonical-spine graph data plus conflict-free cross-vantage loadout and
+    /// conserved rDPS evidence. POV combat series are never summed.
+    #[serde(default)]
+    pub timeline: PublicCombatTimeline,
 }
 
 /// One current server-produced projection and its immutable sealed artifact.
@@ -4257,6 +4407,7 @@ where
         })
         .collect::<Vec<_>>();
     let runs = public_runs(
+        report_id,
         &history,
         &run_projection.runs,
         &local_profile_observations,
@@ -4308,6 +4459,7 @@ fn canonicalize_public_report_region(report: &mut PublicParseReport) {
 }
 
 fn public_runs(
+    report_id: &str,
     history: &CombatHistorySnapshot,
     analyses: &[RunAnalysis],
     local_profile_observations: &[LocalProfileObservation],
@@ -4350,7 +4502,7 @@ fn public_runs(
                 &local_profile_character_ids,
                 local_state_observations,
             );
-            Some(PublicRun {
+            let mut public_run = PublicRun {
                 run_index: run.run_index,
                 run_group_id: run_group_id(history, analysis, run.run_index),
                 correlation_method: if analysis.identity.instance_id.is_some() {
@@ -4412,7 +4564,10 @@ fn public_runs(
                     .unwrap_or_default(),
                 rdps_influences: view.map(public_rdps_influences).unwrap_or_default(),
                 rdps_effects: view.map(public_rdps_effects).unwrap_or_default(),
-            })
+                timeline: PublicCombatTimeline::default(),
+            };
+            public_run.timeline = public_combat_timeline(report_id, &public_run);
+            Some(public_run)
         })
         .collect()
 }
@@ -5459,6 +5614,28 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
         canonical_report_id,
         complete_local_vantage_coverage,
     );
+    let mut timeline = canonical.timeline.clone();
+    timeline.source = PublicTimelineSource::ReconciledCanonicalSpine;
+    timeline.contributing_report_ids = reports
+        .iter()
+        .map(|report| report.report_id.clone())
+        .collect();
+    populate_timeline_loadouts(
+        &mut timeline,
+        characters.iter().flat_map(|character| {
+            character
+                .selected_report_id
+                .as_deref()
+                .into_iter()
+                .flat_map(move |report_id| {
+                    character
+                        .selected_combat_loadout_phases
+                        .iter()
+                        .enumerate()
+                        .map(move |(phase_index, phase)| (report_id, phase_index, phase))
+                })
+        }),
+    );
 
     let mut hasher = Sha256::new();
     hasher.update(b"rlogs-cross-vantage-reconciliation-v1\0");
@@ -5551,6 +5728,7 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
         rdps_effects: Vec::new(),
         swift_vortex_candidate_audit: None,
         attribution_replay_completed: false,
+        timeline,
     }
 }
 
@@ -5774,6 +5952,10 @@ pub fn reconcile_hosted_run_group(
                 canonical_report,
             ) {
                 Ok(result) => {
+                    populate_timeline_rdps_spans(
+                        &mut reconciliation.timeline,
+                        &result.rdps_influences,
+                    );
                     reconciliation.status = RunAttributionReconciliationStatus::Reconciled;
                     reconciliation.reconciled_participants = result.participants;
                     reconciliation.conservation = Some(result.conservation);
@@ -6487,6 +6669,213 @@ fn public_rdps_influences(view: &CombatHistoryView) -> Vec<PublicRdpsInfluence> 
         .collect()
 }
 
+fn public_combat_timeline(report_id: &str, run: &PublicRun) -> PublicCombatTimeline {
+    let mut timeline = PublicCombatTimeline {
+        schema_version: PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION,
+        source: PublicTimelineSource::SingleReport,
+        canonical_report_id: report_id.to_owned(),
+        canonical_run_index: run.run_index,
+        contributing_report_ids: vec![report_id.to_owned()],
+        duration_micros: run
+            .total_run_time_micros
+            .or(run.true_time_micros)
+            .unwrap_or(run.active_combat_micros),
+        time_basis: PublicTimelineTimeBasis::RunElapsed,
+        series_bucket_micros: 1_000_000,
+        coverage: PublicTimelineCoverage {
+            authoritative_start: run.authoritative_start,
+            authoritative_completion: run.authoritative_completion,
+            data_gap_count: run.data_gap_count,
+            gap_timing: if run.data_gap_count == 0 {
+                PublicTimelineGapTiming::NoKnownGaps
+            } else {
+                PublicTimelineGapTiming::CountOnly
+            },
+        },
+        participant_tracks: Vec::new(),
+        death_markers: Vec::new(),
+        loadout_markers: Vec::new(),
+        rdps_influence_spans: Vec::new(),
+        omitted: PublicTimelineOmittedCounts::default(),
+    };
+    populate_timeline_combat_data(&mut timeline, &run.participants, &run.rdps_influences);
+    populate_timeline_loadouts(
+        &mut timeline,
+        combat_loadout_marker_sources(report_id, &run.combat_loadout_phases),
+    );
+    timeline
+}
+
+fn combat_loadout_marker_sources<'a>(
+    report_id: &'a str,
+    phases: &'a [PublicCombatLoadoutPhase],
+) -> Vec<(&'a str, usize, &'a PublicCombatLoadoutPhase)> {
+    let mut next_index_by_character = BTreeMap::<&str, usize>::new();
+    phases
+        .iter()
+        .map(|phase| {
+            let next_index = next_index_by_character
+                .entry(phase.character_id.as_str())
+                .or_default();
+            let phase_index = *next_index;
+            *next_index = next_index.saturating_add(1);
+            (report_id, phase_index, phase)
+        })
+        .collect()
+}
+
+fn populate_timeline_combat_data(
+    timeline: &mut PublicCombatTimeline,
+    participants: &[PublicParticipant],
+    influences: &[PublicRdpsInfluence],
+) {
+    timeline.participant_tracks.clear();
+    timeline.death_markers.clear();
+    timeline.rdps_influence_spans.clear();
+    timeline.omitted.participant_tracks = participants
+        .len()
+        .saturating_sub(MAXIMUM_TIMELINE_PARTICIPANTS);
+    timeline.omitted.series_points = 0;
+    timeline.omitted.death_markers = 0;
+    timeline.omitted.rdps_influence_spans = 0;
+
+    let mut remaining_points = MAXIMUM_TIMELINE_SERIES_POINTS;
+    for (participant_index, participant) in participants
+        .iter()
+        .take(MAXIMUM_TIMELINE_PARTICIPANTS)
+        .enumerate()
+    {
+        let kept = participant.series.len().min(remaining_points);
+        timeline.omitted.series_points = timeline
+            .omitted
+            .series_points
+            .saturating_add(participant.series.len().saturating_sub(kept));
+        remaining_points -= kept;
+        if let Some(last) = kept
+            .checked_sub(1)
+            .and_then(|last_index| participant.series.get(last_index))
+        {
+            timeline.duration_micros = timeline.duration_micros.max(
+                u64::from(last.second)
+                    .saturating_add(1)
+                    .saturating_mul(timeline.series_bucket_micros),
+            );
+        }
+        timeline
+            .participant_tracks
+            .push(PublicTimelineParticipantTrack {
+                actor_id: participant.actor_id.clone(),
+                character_id: participant.character_id.clone(),
+                observed_character_key: participant.observed_character_key.clone(),
+                display_name: participant.display_name.clone(),
+                canonical_participant_index: participant_index,
+                series_point_count: kept,
+            });
+        for (death_index, second) in participant.death_seconds.iter().enumerate() {
+            if timeline.death_markers.len() == MAXIMUM_TIMELINE_DEATH_MARKERS {
+                timeline.omitted.death_markers = timeline
+                    .omitted
+                    .death_markers
+                    .saturating_add(participant.death_seconds.len() - death_index);
+                break;
+            }
+            let at_micros = u64::from(*second).saturating_mul(1_000_000);
+            timeline.duration_micros = timeline
+                .duration_micros
+                .max(at_micros.saturating_add(timeline.series_bucket_micros));
+            timeline.death_markers.push(PublicTimelineDeathMarker {
+                actor_id: participant.actor_id.clone(),
+                at_micros,
+                precision: PublicTimelineMarkerPrecision::OneSecondBucket,
+            });
+        }
+    }
+    let omitted_participant_deaths = participants
+        .iter()
+        .skip(MAXIMUM_TIMELINE_PARTICIPANTS)
+        .map(|participant| participant.death_seconds.len())
+        .sum::<usize>();
+    let omitted_participant_points = participants
+        .iter()
+        .skip(MAXIMUM_TIMELINE_PARTICIPANTS)
+        .map(|participant| participant.series.len())
+        .sum::<usize>();
+    timeline.omitted.series_points = timeline
+        .omitted
+        .series_points
+        .saturating_add(omitted_participant_points);
+    timeline.omitted.death_markers = timeline
+        .omitted
+        .death_markers
+        .saturating_add(omitted_participant_deaths);
+    timeline.death_markers.sort_by(|left, right| {
+        (left.at_micros, &left.actor_id).cmp(&(right.at_micros, &right.actor_id))
+    });
+
+    populate_timeline_rdps_spans(timeline, influences);
+}
+
+fn populate_timeline_rdps_spans(
+    timeline: &mut PublicCombatTimeline,
+    influences: &[PublicRdpsInfluence],
+) {
+    timeline.rdps_influence_spans.clear();
+    timeline.omitted.rdps_influence_spans = 0;
+    for (index, influence) in influences.iter().enumerate() {
+        if timeline.rdps_influence_spans.len() == MAXIMUM_TIMELINE_RDPS_SPANS
+            || influence.first_observed_micros > influence.last_observed_micros
+        {
+            timeline.omitted.rdps_influence_spans =
+                timeline.omitted.rdps_influence_spans.saturating_add(1);
+            continue;
+        }
+        timeline
+            .rdps_influence_spans
+            .push(PublicTimelineRdpsInfluenceSpan {
+                influence_index: index,
+                time_basis: PublicTimelineTimeBasis::CaptureObserved,
+                start_micros: influence.first_observed_micros,
+                end_micros: influence.last_observed_micros,
+                complete_lifecycle: false,
+            });
+    }
+}
+
+fn populate_timeline_loadouts<'a>(
+    timeline: &mut PublicCombatTimeline,
+    phases: impl IntoIterator<Item = (&'a str, usize, &'a PublicCombatLoadoutPhase)>,
+) {
+    timeline.loadout_markers.clear();
+    timeline.omitted.loadout_markers = 0;
+    for (report_id, phase_index, phase) in phases {
+        if timeline.loadout_markers.len() == MAXIMUM_TIMELINE_LOADOUT_MARKERS {
+            timeline.omitted.loadout_markers = timeline.omitted.loadout_markers.saturating_add(1);
+            continue;
+        }
+        timeline.duration_micros = timeline.duration_micros.max(phase.run_elapsed_micros);
+        timeline.loadout_markers.push(PublicTimelineLoadoutMarker {
+            character_id: phase.character_id.clone(),
+            at_micros: phase.run_elapsed_micros,
+            phase_index,
+            source_report_id: report_id.to_owned(),
+        });
+    }
+    timeline.loadout_markers.sort_by(|left, right| {
+        (
+            left.at_micros,
+            &left.character_id,
+            &left.source_report_id,
+            left.phase_index,
+        )
+            .cmp(&(
+                right.at_micros,
+                &right.character_id,
+                &right.source_report_id,
+                right.phase_index,
+            ))
+    });
+}
+
 fn public_participant_key(participant: &PublicParticipant) -> String {
     // Both sides of this invariant are projections of the same canonical
     // combat spine, so its exact runtime actor ID is the strongest key. A
@@ -6914,6 +7303,221 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn timeline_participant(actor_id: &str) -> PublicParticipant {
+        PublicParticipant {
+            actor_id: actor_id.into(),
+            character_id: Some(format!("character-{actor_id}")),
+            observed_character_key: None,
+            display_name: Some(actor_id.into()),
+            actor_kind: Some("player".into()),
+            class_id: None,
+            class_name: None,
+            specialization_id: None,
+            specialization_name: None,
+            damage: 0,
+            dps: 0.0,
+            encounter_dps: 0.0,
+            hps: 0.0,
+            tps: 0.0,
+            rdps: None,
+            deaths: 0,
+            death_seconds: Vec::new(),
+            abilities: Vec::new(),
+            series: Vec::new(),
+        }
+    }
+
+    fn timeline_influence(first: u64, last: u64) -> PublicRdpsInfluence {
+        PublicRdpsInfluence {
+            effect_id: "effect-1".into(),
+            attribution_component: None,
+            complete_effect: true,
+            provider_actor_id: "provider".into(),
+            recipient_actor_id: "recipient".into(),
+            affected_ability_id: None,
+            target_actor_id: None,
+            first_observed_micros: first,
+            last_observed_micros: last,
+            damage_event_count: 1,
+            critical_hit_count: None,
+            observed_damage: "100".into(),
+            exact_integer_delta: "10".into(),
+            exact_rational_deltas: Vec::new(),
+            attributed_rdps: Some("10".into()),
+            damage_context_complete: true,
+        }
+    }
+
+    #[test]
+    fn public_timeline_references_existing_series_without_serializing_it_twice() {
+        let mut participant = timeline_participant("actor-1");
+        participant.series = (0..1_000)
+            .map(|second| PublicSeriesPoint {
+                second,
+                damage: 9_876_543_210,
+                effective_healing: 123,
+                damage_taken: 456,
+            })
+            .collect();
+        let run_series_bytes = serde_json::to_vec(&participant.series).unwrap().len();
+        let mut timeline = PublicCombatTimeline {
+            schema_version: PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION,
+            series_bucket_micros: 1_000_000,
+            ..PublicCombatTimeline::default()
+        };
+
+        populate_timeline_combat_data(&mut timeline, &[participant], &[]);
+
+        assert_eq!(timeline.participant_tracks.len(), 1);
+        assert_eq!(
+            timeline.participant_tracks[0].canonical_participant_index,
+            0
+        );
+        assert_eq!(timeline.participant_tracks[0].series_point_count, 1_000);
+        let timeline_bytes = serde_json::to_vec(&timeline).unwrap().len();
+        assert!(run_series_bytes > 50_000);
+        assert!(timeline_bytes < 1_024);
+    }
+
+    #[test]
+    fn public_timeline_bounds_rows_and_rejects_invalid_influence_spans() {
+        let participants = (0..MAXIMUM_TIMELINE_PARTICIPANTS + 1)
+            .map(|index| {
+                let mut participant = timeline_participant(&format!("actor-{index}"));
+                participant.death_seconds = vec![index as u32];
+                participant.series = vec![PublicSeriesPoint {
+                    second: index as u32,
+                    damage: 1,
+                    effective_healing: 0,
+                    damage_taken: 0,
+                }];
+                participant
+            })
+            .collect::<Vec<_>>();
+        let influences = std::iter::once(timeline_influence(9, 8))
+            .chain(
+                (0..MAXIMUM_TIMELINE_RDPS_SPANS + 1)
+                    .map(|index| timeline_influence(index as u64, index as u64 + 1)),
+            )
+            .collect::<Vec<_>>();
+        let mut timeline = PublicCombatTimeline {
+            schema_version: PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION,
+            series_bucket_micros: 1_000_000,
+            ..PublicCombatTimeline::default()
+        };
+
+        populate_timeline_combat_data(&mut timeline, &participants, &influences);
+
+        assert_eq!(
+            timeline.participant_tracks.len(),
+            MAXIMUM_TIMELINE_PARTICIPANTS
+        );
+        assert_eq!(timeline.omitted.participant_tracks, 1);
+        assert_eq!(timeline.omitted.series_points, 1);
+        assert_eq!(timeline.death_markers.len(), MAXIMUM_TIMELINE_PARTICIPANTS);
+        assert_eq!(timeline.omitted.death_markers, 1);
+        assert_eq!(
+            timeline.rdps_influence_spans.len(),
+            MAXIMUM_TIMELINE_RDPS_SPANS
+        );
+        assert_eq!(timeline.omitted.rdps_influence_spans, 2);
+        assert_eq!(timeline.rdps_influence_spans[0].influence_index, 1);
+        assert!(
+            timeline
+                .rdps_influence_spans
+                .iter()
+                .all(|span| span.influence_index < influences.len()
+                    && influences[span.influence_index].first_observed_micros == span.start_micros
+                    && span.start_micros <= span.end_micros
+                    && span.time_basis == PublicTimelineTimeBasis::CaptureObserved
+                    && !span.complete_lifecycle)
+        );
+    }
+
+    #[test]
+    fn public_timeline_death_precision_and_gap_semantics_are_explicit() {
+        let mut participant = timeline_participant("actor-1");
+        participant.death_seconds = vec![5];
+        let mut timeline = PublicCombatTimeline {
+            schema_version: PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION,
+            series_bucket_micros: 1_000_000,
+            coverage: PublicTimelineCoverage {
+                authoritative_start: true,
+                authoritative_completion: false,
+                data_gap_count: 2,
+                gap_timing: PublicTimelineGapTiming::CountOnly,
+            },
+            ..PublicCombatTimeline::default()
+        };
+
+        populate_timeline_combat_data(&mut timeline, &[participant], &[]);
+
+        assert_eq!(timeline.death_markers[0].at_micros, 5_000_000);
+        assert_eq!(
+            timeline.death_markers[0].precision,
+            PublicTimelineMarkerPrecision::OneSecondBucket
+        );
+        assert_eq!(timeline.duration_micros, 6_000_000);
+        assert_eq!(
+            timeline.coverage.gap_timing,
+            PublicTimelineGapTiming::CountOnly
+        );
+    }
+
+    #[test]
+    fn public_timeline_omitted_counts_are_exact_after_caps() {
+        let mut participant = timeline_participant("actor-1");
+        participant.death_seconds = (0..MAXIMUM_TIMELINE_DEATH_MARKERS as u32 + 3).collect();
+        let phases = (0..MAXIMUM_TIMELINE_LOADOUT_MARKERS + 2)
+            .map(|index| PublicCombatLoadoutPhase {
+                character_id: "character-1".into(),
+                display_name: None,
+                observed_micros: index as u64,
+                run_elapsed_micros: index as u64,
+                game_time_millis: None,
+                segment_index: None,
+                encounter_index: None,
+                attempt_number: None,
+                in_active_combat: true,
+                class_id: None,
+                class_name: None,
+                specialization_id: None,
+                specialization_name: None,
+                equipped_skill_ids: Vec::new(),
+                equipped_imagines: Vec::new(),
+                equipment_count: None,
+                equipped_module_count: None,
+                module_snapshot_disposition: PublicCombatModuleSnapshotDisposition::Missing,
+                equipped_modules: Vec::new(),
+                talent_count: None,
+            })
+            .collect::<Vec<_>>();
+        let mut timeline = PublicCombatTimeline {
+            schema_version: PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION,
+            series_bucket_micros: 1_000_000,
+            ..PublicCombatTimeline::default()
+        };
+
+        populate_timeline_combat_data(&mut timeline, &[participant], &[]);
+        populate_timeline_loadouts(
+            &mut timeline,
+            combat_loadout_marker_sources("report-1", &phases),
+        );
+
+        assert_eq!(timeline.death_markers.len(), MAXIMUM_TIMELINE_DEATH_MARKERS);
+        assert_eq!(timeline.omitted.death_markers, 3);
+        assert_eq!(
+            timeline.loadout_markers.len(),
+            MAXIMUM_TIMELINE_LOADOUT_MARKERS
+        );
+        assert_eq!(timeline.omitted.loadout_markers, 2);
+        assert_eq!(timeline.loadout_markers[0].phase_index, 0);
+        assert_eq!(
+            timeline.loadout_markers.last().unwrap().phase_index,
+            MAXIMUM_TIMELINE_LOADOUT_MARKERS - 1
+        );
+    }
 
     fn module_item(
         instance_id: &str,
@@ -8238,6 +8842,21 @@ mod tests {
             reconciliation.reports[1].combat_loadout_phases[0].observed_micros,
             9
         );
+        assert_eq!(
+            reconciliation.timeline.source,
+            PublicTimelineSource::ReconciledCanonicalSpine
+        );
+        assert_eq!(
+            reconciliation.timeline.canonical_report_id,
+            "rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        );
+        assert_eq!(reconciliation.timeline.contributing_report_ids.len(), 2);
+        assert_eq!(reconciliation.timeline.loadout_markers.len(), 1);
+        assert_eq!(
+            reconciliation.timeline.loadout_markers[0].source_report_id,
+            "rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        );
+        assert_eq!(reconciliation.timeline.loadout_markers[0].at_micros, 5);
     }
 
     #[test]
@@ -9734,7 +10353,7 @@ mod tests {
             abilities: Vec::new(),
             series: Vec::new(),
         };
-        PublicParseReport {
+        let mut report = PublicParseReport {
             schema_version: PUBLIC_PARSE_SCHEMA_VERSION,
             projection_revision: PUBLIC_PARSE_PROJECTION_REVISION,
             report_id: report_id.into(),
@@ -9832,8 +10451,11 @@ mod tests {
                 participants: vec![participant("character-a"), participant("character-b")],
                 rdps_influences: Vec::new(),
                 rdps_effects: Vec::new(),
+                timeline: PublicCombatTimeline::default(),
             }],
-        }
+        };
+        report.runs[0].timeline = public_combat_timeline(report_id, &report.runs[0]);
+        report
     }
 
     #[test]
