@@ -5167,6 +5167,7 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
             .flat_map(|source| source.local_profile_witnesses.iter())
             .map(|witness| witness.character_id.clone()),
     );
+    character_ids.retain(|character_id| participant_character_ids.contains(character_id));
 
     let characters = character_ids
         .into_iter()
@@ -5237,18 +5238,28 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
             created_unix_millis: source.created_unix_millis,
             canonical_spine: source.report_id == canonical_report_id
                 && source.run_index == canonical_run_index,
-            local_profile_witnesses: source.local_profile_witnesses.clone(),
-            local_state_witnesses: source.local_state_witnesses.clone(),
+            local_profile_witnesses: source
+                .local_profile_witnesses
+                .iter()
+                .filter(|witness| participant_character_ids.contains(&witness.character_id))
+                .cloned()
+                .collect(),
+            local_state_witnesses: source
+                .local_state_witnesses
+                .iter()
+                .filter(|witness| participant_character_ids.contains(&witness.character_id))
+                .cloned()
+                .collect(),
         })
         .collect::<Vec<_>>();
-    let local_vantage_character_count = reports
+    let local_vantage_character_ids = reports
         .iter()
         .flat_map(|report| &report.local_profile_witnesses)
-        .map(|witness| witness.character_id.as_str())
-        .collect::<BTreeSet<_>>()
-        .len();
-    let complete_local_vantage_coverage = participant_character_count > 0
-        && local_vantage_character_count == participant_character_count;
+        .map(|witness| witness.character_id.clone())
+        .collect::<BTreeSet<_>>();
+    let local_vantage_character_count = local_vantage_character_ids.len();
+    let complete_local_vantage_coverage =
+        participant_character_count > 0 && local_vantage_character_ids == participant_character_ids;
     let (state_replay_readiness, state_replay_blockers) = cross_vantage_state_readiness(
         &reports,
         &characters,
@@ -5319,7 +5330,7 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
         schema_version: PUBLIC_RECONCILIATION_SCHEMA_VERSION,
         reconciliation_id,
         run_group_id: group.representative.run_group_id.clone(),
-        status: reconciliation_status(&reports),
+        status: reconciliation_status(&reports, &participant_character_ids),
         canonical_spine: PublicCanonicalSpine {
             report_id: canonical.report_id.clone(),
             run_index: canonical.run_index,
@@ -5485,6 +5496,7 @@ fn cross_vantage_state_readiness(
 
 fn reconciliation_status(
     reports: &[PublicReconciliationReport],
+    participant_character_ids: &BTreeSet<String>,
 ) -> RunAttributionReconciliationStatus {
     if reports.len() <= 1 {
         return RunAttributionReconciliationStatus::SingleVantage;
@@ -5493,6 +5505,7 @@ fn reconciliation_status(
         .iter()
         .flat_map(|report| &report.local_profile_witnesses)
         .map(|witness| witness.character_id.as_str())
+        .filter(|character_id| participant_character_ids.contains(*character_id))
         .collect::<BTreeSet<_>>()
         .len();
     if distinct_local_characters > 1 {
@@ -7094,9 +7107,70 @@ mod tests {
             local_state_witnesses: Vec::new(),
         };
         assert_eq!(
-            reconciliation_status(&[report("rpt_a"), report("rpt_b")]),
+            reconciliation_status(
+                &[report("rpt_a"), report("rpt_b")],
+                &["same-character".to_owned()].into_iter().collect(),
+            ),
             RunAttributionReconciliationStatus::MultipleReportsNoAdditionalVantage
         );
+    }
+
+    #[test]
+    fn nonparticipant_witness_cannot_complete_local_vantage_coverage() {
+        let root = tempfile::tempdir().unwrap();
+        let service =
+            SubmissionService::open(root.path().into(), "https://example.test".into(), None)
+                .unwrap();
+        let report_a =
+            fixture_public_report("rpt_56565656565656565656565656565656", "character-a", 0);
+        let report_b = fixture_public_report(
+            "rpt_78787878787878787878787878787878",
+            "not-a-run-participant",
+            0,
+        );
+        write_json_atomic(
+            &service.projection_path(&report_a.report_id).unwrap(),
+            &report_a,
+        )
+        .unwrap();
+        write_json_atomic(
+            &service.projection_path(&report_b.report_id).unwrap(),
+            &report_b,
+        )
+        .unwrap();
+
+        service.rebuild_catalog_locked().unwrap();
+        let reconciliation = service
+            .reconciliation("run_exact000000000000000000000000000")
+            .unwrap();
+
+        assert_eq!(reconciliation.participant_character_count, 2);
+        assert_eq!(reconciliation.local_vantage_character_count, 1);
+        assert!(!reconciliation.complete_local_vantage_coverage);
+        assert_eq!(
+            reconciliation.status,
+            RunAttributionReconciliationStatus::MultipleReportsNoAdditionalVantage
+        );
+        assert_eq!(
+            reconciliation.state_replay_readiness,
+            CrossVantageStateReplayReadiness::MultipleReportsNoAdditionalVantage
+        );
+        assert!(
+            reconciliation
+                .characters
+                .iter()
+                .all(|character| { character.character_id != "not-a-run-participant" })
+        );
+        assert!(reconciliation.reports.iter().all(|report| {
+            report
+                .local_profile_witnesses
+                .iter()
+                .all(|witness| witness.character_id != "not-a-run-participant")
+                && report
+                    .local_state_witnesses
+                    .iter()
+                    .all(|witness| witness.character_id != "not-a-run-participant")
+        }));
     }
 
     #[test]
