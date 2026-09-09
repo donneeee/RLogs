@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDungeonAttemptTime, formatDungeonObjectiveValue, parseMechanicsMapCanvasPreferences, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
+import { formatDungeonAttemptTime, formatDungeonObjectiveValue, nextMapDim, parseMechanicsMapCanvasPreferences, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
 
 describe("Mechanics Map overlay canvas preferences", () => {
   it("does not rebuild the overlay after an unchanged long-poll timeout", () => {
@@ -16,6 +16,8 @@ describe("Mechanics Map overlay canvas preferences", () => {
       panY: 92,
       rotateWithPlayer: false,
       showMonsters: false,
+      mapDim: 0.48,
+      highContrastMechanics: false,
       showPlayer: false,
       showActions: true,
       showParty: false,
@@ -52,6 +54,8 @@ describe("Mechanics Map overlay canvas preferences", () => {
       panY: 92,
       rotateWithPlayer: false,
       showMonsters: false,
+      mapDim: 0.48,
+      highContrastMechanics: false,
       showPlayer: false,
       showActions: true,
       showParty: false,
@@ -92,6 +96,8 @@ describe("Mechanics Map overlay canvas preferences", () => {
       panY: 10_000_001,
       rotateWithPlayer: "yes",
       showMonsters: null,
+      mapDim: 2,
+      highContrastMechanics: "yes",
       showPlayer: "yes",
       showActions: null,
       showParty: 1,
@@ -128,6 +134,8 @@ describe("Mechanics Map overlay canvas preferences", () => {
       panY: 0,
       rotateWithPlayer: true,
       showMonsters: true,
+      mapDim: 0.16,
+      highContrastMechanics: true,
       showPlayer: true,
       showActions: true,
       showParty: true,
@@ -173,5 +181,12 @@ describe("Mechanics Map overlay canvas preferences", () => {
     expect(formatDungeonAttemptTime(0)).toBe("0:00.0");
     expect(formatDungeonAttemptTime(83_456_789)).toBe("1:23.4");
     expect(formatDungeonAttemptTime(3_723_456_789)).toBe("1:02:03.4");
+  });
+
+  it("cycles real-map dimming through bounded readability levels", () => {
+    expect(nextMapDim(0)).toBe(0.16);
+    expect(nextMapDim(0.16)).toBe(0.32);
+    expect(nextMapDim(0.48)).toBe(0.64);
+    expect(nextMapDim(0.64)).toBe(0);
   });
 });

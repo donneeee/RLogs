@@ -38,6 +38,8 @@ export interface MechanicsMapCanvasPreferences {
   panY: number;
   rotateWithPlayer: boolean;
   showMonsters: boolean;
+  mapDim: number;
+  highContrastMechanics: boolean;
   showPlayer: boolean;
   showActions: boolean;
   showParty: boolean;
@@ -76,6 +78,8 @@ const DEFAULT_PREFERENCES: MechanicsMapCanvasPreferences = {
   panY: 0,
   rotateWithPlayer: true,
   showMonsters: true,
+  mapDim: 0.16,
+  highContrastMechanics: true,
   showPlayer: true,
   showActions: true,
   showParty: true,
@@ -119,6 +123,8 @@ export function parseMechanicsMapCanvasPreferences(value: unknown): MechanicsMap
     panY,
     rotateWithPlayer: typeof value.rotateWithPlayer === "boolean" ? value.rotateWithPlayer : true,
     showMonsters: typeof value.showMonsters === "boolean" ? value.showMonsters : true,
+    mapDim: finiteUnitInterval(value.mapDim) ? Math.min(0.8, value.mapDim) : 0.16,
+    highContrastMechanics: typeof value.highContrastMechanics === "boolean" ? value.highContrastMechanics : true,
     showPlayer: typeof value.showPlayer === "boolean" ? value.showPlayer : true,
     showActions: typeof value.showActions === "boolean" ? value.showActions : true,
     showParty: typeof value.showParty === "boolean" ? value.showParty : true,
@@ -248,6 +254,23 @@ export function mountMechanicsMapOverlay(
     savePreferences();
     scheduleDraw();
   });
+  const dim = button(`Dim ${Math.round(preferences.mapDim * 100)}%`, preferences.mapDim > 0.16, () => {
+    preferences.mapDim = nextMapDim(preferences.mapDim);
+    dim.textContent = `Dim ${Math.round(preferences.mapDim * 100)}%`;
+    dim.dataset.active = String(preferences.mapDim > 0.16);
+    dim.title = "Cycle the real game-map dimming so mechanic layers remain readable";
+    savePreferences();
+    scheduleDraw();
+  });
+  dim.title = "Cycle the real game-map dimming so mechanic layers remain readable";
+  const contrast = button("Contrast", preferences.highContrastMechanics, () => {
+    preferences.highContrastMechanics = !preferences.highContrastMechanics;
+    contrast.dataset.active = String(preferences.highContrastMechanics);
+    contrast.setAttribute("aria-pressed", String(preferences.highContrastMechanics));
+    savePreferences();
+    scheduleDraw();
+  });
+  contrast.title = "Use stronger outlines and fills for mechanic geometry";
   const fit = button("Fit", false, () => {
     preferences.scale = 1;
     preferences.panX = 0;
@@ -263,7 +286,7 @@ export function mountMechanicsMapOverlay(
     void setLocked(!preferences.locked);
   });
   const hide = button("Hide", false, () => { void dependencies.hide(); });
-  actions.append(rotate, monsters, fit, center, expand, lock, hide);
+  actions.append(rotate, monsters, dim, contrast, fit, center, expand, lock, hide);
   toolbar.append(identity, actions);
 
   const viewport = element("section", "mechanics-map-overlay-viewport");
@@ -1129,12 +1152,12 @@ export function mountMechanicsMapOverlay(
     context.translate(-width / 2, -height / 2);
     const activeImage = imageReady ? image : null;
     const content = mechanicsMapContentRect(snapshot, width, height, activeImage);
-    drawBackdrop(context, snapshot, content, activeImage);
+    drawBackdrop(context, snapshot, content, activeImage, preferences.mapDim);
     context.save();
     context.translate(content.x, content.y);
     context.scale(content.width / width, content.height / height);
     drawArena(context, snapshot, width, height);
-    drawRegions(context, snapshot, width, height);
+    drawRegions(context, snapshot, width, height, preferences.highContrastMechanics);
     drawEntities(context, snapshot, width, height, preferences);
     context.restore();
     context.restore();
@@ -1485,6 +1508,7 @@ function drawBackdrop(
   snapshot: MechanicsMapSnapshot,
   rect: MechanicsMapCanvasRect,
   activeImage: HTMLImageElement | null,
+  mapDim: number,
 ): void {
   context.fillStyle = "rgba(5, 13, 23, 0.92)";
   context.fillRect(rect.x, rect.y, rect.width, rect.height);
@@ -1492,7 +1516,7 @@ function drawBackdrop(
     context.globalAlpha = 0.9;
     context.drawImage(activeImage, rect.x, rect.y, rect.width, rect.height);
     context.globalAlpha = 1;
-    context.fillStyle = "rgba(3, 11, 19, 0.16)";
+    context.fillStyle = `rgba(3, 11, 19, ${mapDim})`;
     context.fillRect(rect.x, rect.y, rect.width, rect.height);
   } else {
     const centerX = rect.x + rect.width / 2;
@@ -1548,24 +1572,31 @@ function drawArena(context: CanvasRenderingContext2D, snapshot: MechanicsMapSnap
   context.restore();
 }
 
-function drawRegions(context: CanvasRenderingContext2D, snapshot: MechanicsMapSnapshot, width: number, height: number): void {
+function drawRegions(
+  context: CanvasRenderingContext2D,
+  snapshot: MechanicsMapSnapshot,
+  width: number,
+  height: number,
+  highContrast: boolean,
+): void {
+  const outline = highContrast ? "rgba(255,255,255,.96)" : null;
   for (const signal of snapshot.mechanics) {
     drawPolygon(context, projectCursedTombChargeRegion(snapshot, signal), width, height,
-      signal.mechanic_kind === "clone_charge_right" ? "rgba(179,138,255,.28)" : "rgba(255,91,111,.28)");
+      signal.mechanic_kind === "clone_charge_right" ? "rgba(179,138,255,.38)" : "rgba(255,91,111,.38)", outline);
     const beam = projectCoralMatrixBeam(snapshot, signal);
-    if (beam.length === 2) drawLine(context, beam[0]!, beam[1]!, width, height, "rgba(242,195,107,.95)", 3);
+    if (beam.length === 2) drawLine(context, beam[0]!, beam[1]!, width, height, "rgba(242,195,107,.98)", highContrast ? 5 : 3);
   }
   for (const entity of snapshot.entities) {
     drawPolygon(context, projectTinaPizzaRegion(snapshot, entity), width, height,
-      entity.mechanic_role === "pizza_fast" ? "rgba(255,157,92,.32)" : "rgba(255,91,111,.32)");
-    drawPolygon(context, projectCoralWaveRegion(snapshot, entity), width, height, "rgba(92,228,212,.24)");
+      entity.mechanic_role === "pizza_fast" ? "rgba(255,157,92,.42)" : "rgba(255,91,111,.42)", outline);
+    drawPolygon(context, projectCoralWaveRegion(snapshot, entity), width, height, "rgba(92,228,212,.36)", outline);
   }
   for (const region of projectCoralPizzaRegions(snapshot)) {
     drawPolygon(context, region.points, width, height,
-      region.kind === "pizza_purple" ? "rgba(179,138,255,.3)" : "rgba(255,157,92,.3)");
+      region.kind === "pizza_purple" ? "rgba(179,138,255,.4)" : "rgba(255,157,92,.4)", outline);
   }
-  for (const region of projectRaidFloorRegions(snapshot)) drawFloorRegion(context, region, width, height);
-  drawActiveRaidRings(context, snapshot, width, height);
+  for (const region of projectRaidFloorRegions(snapshot)) drawFloorRegion(context, region, width, height, highContrast);
+  drawActiveRaidRings(context, snapshot, width, height, highContrast);
 }
 
 function drawEntities(
@@ -1637,9 +1668,9 @@ function drawEntities(
   }
 }
 
-function drawFloorRegion(context: CanvasRenderingContext2D, region: MechanicsMapProjectedRegion, width: number, height: number): void {
+function drawFloorRegion(context: CanvasRenderingContext2D, region: MechanicsMapProjectedRegion, width: number, height: number, highContrast: boolean): void {
   const danger = region.kind === "phase_edge" || region.kind === "phase_corner";
-  drawPolygon(context, region.points, width, height, danger ? "rgba(255,91,111,.26)" : "rgba(179,138,255,.24)");
+  drawPolygon(context, region.points, width, height, danger ? "rgba(255,91,111,.38)" : "rgba(179,138,255,.36)", highContrast ? "rgba(255,255,255,.96)" : null);
   if (!region.label || region.points.length === 0) return;
   const x = region.points.reduce((sum, point) => sum + point.mapX, 0) / region.points.length / 100 * width;
   const y = region.points.reduce((sum, point) => sum + point.mapY, 0) / region.points.length / 100 * height;
@@ -1649,7 +1680,7 @@ function drawFloorRegion(context: CanvasRenderingContext2D, region: MechanicsMap
   context.fillText(region.label, x, y);
 }
 
-function drawActiveRaidRings(context: CanvasRenderingContext2D, snapshot: MechanicsMapSnapshot, width: number, height: number): void {
+function drawActiveRaidRings(context: CanvasRenderingContext2D, snapshot: MechanicsMapSnapshot, width: number, height: number, highContrast: boolean): void {
   if (snapshot.map_layout !== "raid_ring" || !snapshot.map_span_x || !snapshot.map_span_z) return;
   const center = projectMechanicsMapPoint(snapshot, 0, 0, false);
   if (!center) return;
@@ -1660,7 +1691,7 @@ function drawActiveRaidRings(context: CanvasRenderingContext2D, snapshot: Mechan
     const radius = inner === 0 ? outer : (inner + outer) / 2;
     context.save();
     context.strokeStyle = mechanicColor(signal.effect_id, signal.mechanic_kind);
-    context.globalAlpha = 0.55;
+    context.globalAlpha = highContrast ? 0.82 : 0.55;
     context.lineWidth = Math.max(2, (outer - inner) / snapshot.map_span_x * width);
     context.beginPath();
     context.ellipse(center.mapX / 100 * width, center.mapY / 100 * height,
@@ -1670,7 +1701,7 @@ function drawActiveRaidRings(context: CanvasRenderingContext2D, snapshot: Mechan
   }
 }
 
-function drawPolygon(context: CanvasRenderingContext2D, points: readonly MechanicsMapViewPoint[], width: number, height: number, fill: string): void {
+function drawPolygon(context: CanvasRenderingContext2D, points: readonly MechanicsMapViewPoint[], width: number, height: number, fill: string, outline: string | null = null): void {
   if (points.length < 3) return;
   context.beginPath();
   context.moveTo(points[0]!.mapX / 100 * width, points[0]!.mapY / 100 * height);
@@ -1678,8 +1709,8 @@ function drawPolygon(context: CanvasRenderingContext2D, points: readonly Mechani
   context.closePath();
   context.fillStyle = fill;
   context.fill();
-  context.strokeStyle = fill;
-  context.lineWidth = 1.5;
+  context.strokeStyle = outline ?? fill;
+  context.lineWidth = outline ? 3 : 1.5;
   context.stroke();
 }
 
@@ -1720,6 +1751,11 @@ function formatMechanicsMapCoordinate(value: number): string {
 
 function formatMechanicsMapZoom(value: number): string {
   return value >= 10 ? value.toFixed(0) : value.toFixed(value < 2 ? 2 : 1).replace(/\.0+$/, "");
+}
+
+export function nextMapDim(value: number): number {
+  const levels = [0, 0.16, 0.32, 0.48, 0.64] as const;
+  return levels.find((level) => level > value + 0.001) ?? levels[0];
 }
 
 function formatTargetHealth(current: number | null, maximum: number | null): string {
@@ -1768,6 +1804,10 @@ function record(value: unknown): value is Record<string, unknown> {
 
 function finitePositive(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function finiteUnitInterval(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
 }
 
 function finiteBounded(value: unknown): value is number {
