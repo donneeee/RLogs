@@ -83,7 +83,8 @@ jobs:
           $repository = "${{ github.repository }}"
           $commit = "${{ github.sha }}"
           $defaultBranch = "${{ github.event.repository.default_branch }}"
-          for ($attempt = 1; $attempt -le 60; $attempt++) {
+          $maxAttempts = 180
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
             $runs = gh api "/repos/$repository/actions/workflows/ci.yml/runs?head_sha=$commit&per_page=100" | ConvertFrom-Json
             $mainRuns = @($runs.workflow_runs | Where-Object {
               $_.event -eq "push" -and
@@ -99,8 +100,8 @@ jobs:
             if ($failed.Count -gt 0) {
               throw "CI failed for tagged commit $commit on $defaultBranch."
             }
-            if ($attempt -lt 60) {
-              Write-Host "Waiting for main CI on $commit ($attempt/60)..."
+            if ($attempt -lt $maxAttempts) {
+              Write-Host "Waiting for main CI on $commit ($attempt/$maxAttempts)..."
               Start-Sleep -Seconds 15
             }
           }
@@ -175,9 +176,11 @@ jobs:
           "$sha256 *$($installer.Name)" | Set-Content -LiteralPath $checksumsPath -Encoding ascii
           gh release upload "${{ github.ref_name }}" $checksumsPath --clobber
           $release = gh release view "${{ github.ref_name }}" --json assets | ConvertFrom-Json
-          $installerAssets = @($release.assets | Where-Object { $_.name -match '^rLogs_(?:[0-9]+\.[0-9]+\.[0-9]+_)?x64-setup\.exe$' })
-          if ($installerAssets.Count -ne 1 -or $installerAssets[0].name -ne $installer.Name) {
-            throw "Release must contain exactly the validated versioned installer $($installer.Name)"
+          $actualAssetNames = @($release.assets | ForEach-Object name | Sort-Object)
+          $expectedAssetNames = @($installer.Name, $checksumsName) | Sort-Object
+          if ($actualAssetNames.Count -ne $expectedAssetNames.Count -or
+              (Compare-Object -ReferenceObject $expectedAssetNames -DifferenceObject $actualAssetNames)) {
+            throw "Release assets must be exactly $($expectedAssetNames -join ', '); found $($actualAssetNames -join ', ')"
           }
           $notes = (Get-Content -Raw -LiteralPath $notesPath).Trim()
           $body = @(
