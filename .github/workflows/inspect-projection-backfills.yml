@@ -1,0 +1,60 @@
+name: Inspect projection backfill audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch_id:
+        description: "Optional exact backfill batch id; blank shows the latest five"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/submissions/cloudflare-backend/package-lock.json
+
+      - name: Install pinned D1 inspection tooling
+        working-directory: services/submissions/cloudflare-backend
+        run: npm ci --ignore-scripts
+
+      - name: Inspect bounded projection backfill audit state
+        working-directory: services/submissions/cloudflare-backend
+        shell: bash
+        env:
+          AUDIT_BATCH_ID: ${{ inputs.batch_id }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "Missing CLOUDFLARE_ACCOUNT_ID repository secret" >&2; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "Missing CLOUDFLARE_API_TOKEN repository secret" >&2; exit 1; }
+          [[ -z "$AUDIT_BATCH_ID" || "$AUDIT_BATCH_ID" =~ ^bf_[0-9]{1,20}_[0-9]{1,4}$ ]] || {
+            echo "Invalid batch id" >&2
+            exit 1
+          }
+
+          BATCH_COLUMNS="batch_id,target_verifier_release,source_schema_version,target_schema_version,maximum_reports,dry_run,state,inspected_count,eligible_count,published_count,skipped_count,consecutive_retry_count,failure_code,created_unix_millis,updated_unix_millis,completed_unix_millis"
+          if [[ -n "$AUDIT_BATCH_ID" ]]; then
+            BATCH_SQL="SELECT $BATCH_COLUMNS FROM projection_backfill_batches WHERE batch_id='$AUDIT_BATCH_ID' LIMIT 1;"
+            JOB_SQL="SELECT batch_id,state,COUNT(*) AS job_count,MIN(updated_unix_millis) AS first_updated_unix_millis,MAX(updated_unix_millis) AS last_updated_unix_millis FROM projection_backfill_jobs WHERE batch_id='$AUDIT_BATCH_ID' GROUP BY batch_id,state ORDER BY state LIMIT 16;"
+          else
+            BATCH_SQL="SELECT $BATCH_COLUMNS FROM projection_backfill_batches ORDER BY created_unix_millis DESC,batch_id DESC LIMIT 5;"
+            JOB_SQL="SELECT batch_id,state,COUNT(*) AS job_count,MIN(updated_unix_millis) AS first_updated_unix_millis,MAX(updated_unix_millis) AS last_updated_unix_millis FROM projection_backfill_jobs WHERE batch_id IN (SELECT batch_id FROM projection_backfill_batches ORDER BY created_unix_millis DESC,batch_id DESC LIMIT 5) GROUP BY batch_id,state ORDER BY batch_id DESC,state LIMIT 80;"
+          fi
+
+          echo "Backfill batches (bounded audit fields):"
+          npx wrangler d1 execute rlogs-production --remote --json --command "$BATCH_SQL"
+          echo "Job state totals (no report, upload, artifact, object, or failure-detail fields):"
+          npx wrangler d1 execute rlogs-production --remote --json --command "$JOB_SQL"
