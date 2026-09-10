@@ -28,6 +28,7 @@ import {
   projectOverlayRatesForTimer,
   runtimeOverlayNeedsRender,
   runtimeOverlayRenderDelay,
+  runtimeOverlayStateKey,
   runtimeEmptyMessage,
   shouldIgnoreCombatOverlayCursor,
   shouldKeepCombatVisibilityTimer,
@@ -1008,6 +1009,36 @@ describe("Combat Overlay plug-in settings", () => {
     expect(runtimeOverlayNeedsRender(42, 43, false, false)).toBe(true);
     expect(runtimeOverlayNeedsRender(42, 42, true, false)).toBe(true);
     expect(runtimeOverlayNeedsRender(42, 42, false, true)).toBe(true);
+  });
+
+  it("does not repaint for a newer transport revision with identical visual state", () => {
+    const settings = editableSummarySettings();
+    const key = (value: typeof settings, elapsed = 1_000_000) => runtimeOverlayStateKey(
+      value,
+      [],
+      { actors: [], encounter_elapsed_micros: elapsed },
+      null,
+      null,
+      "party-meter",
+      [],
+      [],
+      [],
+    );
+    expect(key(settings)).toBe(key({
+      ...settings,
+      alwaysOnTop: !settings.alwaysOnTop,
+      clickThrough: !settings.clickThrough,
+      liveOverlayEnabled: !settings.liveOverlayEnabled,
+      autoHideOutsideCombat: !settings.autoHideOutsideCombat,
+      autoHideDelaySeconds: settings.autoHideDelaySeconds + 1,
+      refreshIntervalMillis: 2_000,
+      backgroundMode: "transparent",
+      backgroundColor: "#ffffff",
+      backgroundOpacityPercent: 0,
+      customBackgroundRevision: 9,
+    }));
+    expect(key(settings, 2_000_000)).not.toBe(key(settings));
+    expect(key({ ...settings, opacityPercent: 50 })).not.toBe(key(settings));
   });
 
   it("coalesces burst updates to the configured overlay refresh cadence", () => {

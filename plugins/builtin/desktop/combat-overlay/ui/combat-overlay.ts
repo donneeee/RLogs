@@ -160,6 +160,98 @@ export function runtimeOverlayNeedsRender(
   return nextRevision > previousRevision || settingsChanged || timerSettingsChanged;
 }
 
+/**
+ * Produces the identity of the pixels owned by the live overlay. Feed
+ * revisions are transport metadata: a publisher may advance one while
+ * returning presentation data identical to the frame already on screen.
+ */
+export function runtimeOverlayStateKey(
+  settings: CombatOverlaySettings,
+  actors: readonly OverlayActor[],
+  snapshot: OverlaySnapshot | null,
+  encounterPresentation: OverlayEncounterPresentation | null,
+  trainingDummy: TrainingDummyState | null,
+  activeLayerId: string | null,
+  selectedActors: readonly (readonly [string, string])[],
+  selectedTimers: readonly (readonly [string, OverlaySummaryField])[],
+  selectedSegments: readonly (readonly [string, string])[],
+): string {
+  const activeLayer = settings.layers.find((layer) => layer.id === activeLayerId)
+    ?? settings.layers[0]
+    ?? null;
+  const renderedLayerId = activeLayer?.id ?? null;
+  const visualSettings = {
+    canvasWidth: settings.canvasWidth,
+    canvasHeight: settings.canvasHeight,
+    opacityPercent: settings.opacityPercent,
+    barOpacityPercent: settings.barOpacityPercent,
+    summaryOpacityPercent: settings.summaryOpacityPercent,
+    barColorMode: settings.barColorMode,
+    barColorOverrides: settings.barColorOverrides,
+    numberFormats: settings.numberFormats,
+    dynamicHeight: settings.dynamicHeight,
+    allowLiveResize: settings.allowLiveResize,
+    showViewTabs: settings.showViewTabs,
+    maxVisiblePlayers: settings.maxVisiblePlayers,
+    scalePercent: settings.scalePercent,
+    activeLayer,
+    viewTabs: settings.showViewTabs
+      ? settings.layers.map((layer) => ({ id: layer.id, title: layer.title }))
+      : undefined,
+  };
+  const visualSnapshot = snapshot === null ? null : {
+    rdps_status: snapshot.rdps_status,
+    scene_id: snapshot.scene_id,
+    attempt_elapsed_micros: snapshot.attempt_elapsed_micros,
+    encounter_elapsed_micros: snapshot.encounter_elapsed_micros,
+    active_combat_micros: snapshot.active_combat_micros,
+    run_elapsed_micros: snapshot.run_elapsed_micros,
+    game_time_micros: snapshot.game_time_micros,
+    true_time_micros: snapshot.true_time_micros,
+    rdps_damage_influences: snapshot.rdps_damage_influences,
+    rdps_damage_influences_truncated: snapshot.rdps_damage_influences_truncated,
+    rdps_effect_presentations: snapshot.rdps_effect_presentations,
+  };
+  const selectedSegmentId = renderedLayerId === null
+    ? undefined
+    : selectedSegments.find(([layerId]) => layerId === renderedLayerId)?.[1];
+  const projection = encounterPresentation?.run_projection;
+  const selectedView = selectedSegmentId === undefined || selectedSegmentId === "live"
+    ? null
+    : projection?.views.find((view) => view.id === selectedSegmentId)
+      ?? projection?.views.find((view) => view.id === "all")
+      ?? projection?.views[0]
+      ?? null;
+  const visualEncounterPresentation = encounterPresentation === null ? null : {
+    scene_id: encounterPresentation.scene_id,
+    scene_name: encounterPresentation.scene_name,
+    bosses: selectedView?.kind === "mobbing" ? [] : encounterPresentation.bosses,
+    run_projection: projection === null || projection === undefined ? projection : {
+      rdps_status: projection.rdps_status,
+      total_run_time_micros: projection.total_run_time_micros,
+      game_time_micros: projection.game_time_micros,
+      true_time_micros: projection.true_time_micros,
+      selected_view: selectedView,
+    },
+  };
+  const visualTrainingDummy = trainingDummy === null ? null : {
+    phase: trainingDummy.phase,
+    remainingMicros: trainingDummy.phase === "running" ? trainingDummy.remainingMicros : undefined,
+    invalidReason: trainingDummy.phase === "invalid" ? trainingDummy.invalidReason : undefined,
+  };
+  return JSON.stringify([
+    visualSettings,
+    actors,
+    visualSnapshot,
+    visualEncounterPresentation,
+    visualTrainingDummy,
+    activeLayerId,
+    renderedLayerId === null ? undefined : selectedActors.find(([layerId]) => layerId === renderedLayerId)?.[1],
+    renderedLayerId === null ? undefined : selectedTimers.find(([layerId]) => layerId === renderedLayerId)?.[1],
+    selectedSegmentId,
+  ]);
+}
+
 export function runtimeOverlayRenderDelay(
   lastRenderMillis: number,
   nowMillis: number,
@@ -2327,11 +2419,14 @@ export async function mountCombatOverlayRuntimeApp(
   let stopShowRequestListener: (() => void) | null = null;
   let frameTimer: number | null = null;
   let lastRenderMillis = 0;
+  let lastRenderStateKey: string | null = null;
   let settingsFingerprint = JSON.stringify(settings);
   let timerSettingsFingerprint = JSON.stringify(initialTimerSettings);
   let lastSettingsRefreshMillis = 0;
   let lastWindowWidth = Math.round(settings.canvasWidth * overlayScale(settings));
   let lastWindowHeight = Math.round(settings.canvasHeight * overlayScale(settings));
+  let desiredWindowWidth = lastWindowWidth;
+  let desiredWindowHeight = lastWindowHeight;
   let pendingProgrammaticSize: { width: number; height: number } | null = {
     width: lastWindowWidth,
     height: lastWindowHeight,
@@ -2339,6 +2434,18 @@ export async function mountCombatOverlayRuntimeApp(
   const reportWindowSyncFailure = (operation: string, error: unknown) => {
     root.dataset.windowSyncError = operation;
     root.title = errorMessage(error);
+  };
+  const reconcileNativeWindowSize = () => {
+    if (
+      (lastWindowWidth === desiredWindowWidth && lastWindowHeight === desiredWindowHeight)
+      || (pendingProgrammaticSize?.width === desiredWindowWidth
+        && pendingProgrammaticSize.height === desiredWindowHeight)
+    ) return;
+    pendingProgrammaticSize = { width: desiredWindowWidth, height: desiredWindowHeight };
+    void appWindow.setSize(desiredWindowWidth, desiredWindowHeight).catch((error) => {
+      pendingProgrammaticSize = null;
+      reportWindowSyncFailure("resize", error);
+    });
   };
   void appWindow.setEnabled(settings.liveOverlayEnabled, automaticallyHidden)
     .catch((error) => reportWindowSyncFailure("startup visibility", error));
@@ -2456,8 +2563,24 @@ export async function mountCombatOverlayRuntimeApp(
       window.clearTimeout(frameTimer);
       frameTimer = null;
     }
-    lastRenderMillis = performance.now();
     const scale = overlayScale(runtimeSettings);
+    const renderedSnapshot = applyOverlayTimerPause(latestSnapshot, timerSettings);
+    const renderStateKey = runtimeOverlayStateKey(
+      runtimeSettings,
+      actors,
+      renderedSnapshot,
+      encounterPresentation,
+      trainingDummy,
+      activeLayerId,
+      [...selectedActorByLayer],
+      [...selectedTimerByLayer],
+      [...selectedSegmentByLayer],
+    );
+    if (renderStateKey === lastRenderStateKey) {
+      reconcileNativeWindowSize();
+      return;
+    }
+    lastRenderMillis = performance.now();
     root.dataset.dynamicHeight = String(runtimeSettings.dynamicHeight);
     root.dataset.liveResize = String(runtimeSettings.allowLiveResize);
     resizeEast.hidden = !runtimeSettings.allowLiveResize;
@@ -2474,7 +2597,7 @@ export async function mountCombatOverlayRuntimeApp(
     renderOverlayCanvas(nextCanvas, runtimeSettings, actors, {
       mode: "runtime",
       emptyMessage: runtimeEmptyMessage(trainingDummy),
-      snapshot: applyOverlayTimerPause(latestSnapshot, timerSettings),
+      snapshot: renderedSnapshot,
       encounterPresentation,
       trainingDummy,
       selectedLayerId: activeLayerId,
@@ -2586,15 +2709,10 @@ export async function mountCombatOverlayRuntimeApp(
     // frame on WebView2, especially while the game is presenting at high FPS.
     canvas.replaceWith(nextCanvas);
     canvas = nextCanvas;
-    if (desiredWidth !== lastWindowWidth || desiredHeight !== lastWindowHeight) {
-      lastWindowWidth = desiredWidth;
-      lastWindowHeight = desiredHeight;
-      pendingProgrammaticSize = { width: desiredWidth, height: desiredHeight };
-      void appWindow.setSize(desiredWidth, desiredHeight).catch((error) => {
-        pendingProgrammaticSize = null;
-        reportWindowSyncFailure("resize", error);
-      });
-    }
+    lastRenderStateKey = renderStateKey;
+    desiredWindowWidth = desiredWidth;
+    desiredWindowHeight = desiredHeight;
+    reconcileNativeWindowSize();
   };
   const requestFeedRender = () => {
     const delay = runtimeOverlayRenderDelay(
@@ -6478,10 +6596,12 @@ function installStyles(): void {
     .combat-overlay-color-empty { padding:8px; border:1px dashed var(--line); border-radius:8px; }
     .combat-overlay-status.error { color:#ff8f9e; }
     .combat-overlay-runtime-document, .combat-overlay-runtime-document body, .combat-overlay-runtime-document #app { margin:0; min-width:0; min-height:0; overflow:hidden; background:transparent !important; }
-    .combat-overlay-runtime { position:relative; width:100vw; height:100vh; overflow:hidden; border-radius:9px; background:transparent; clip-path:inset(0 round 9px); }
+    .combat-overlay-runtime { position:relative; width:100vw; height:100vh; overflow:hidden; background:transparent; }
     .combat-overlay-runtime.is-auto-hidden { visibility:hidden; opacity:0; pointer-events:none; }
     .combat-overlay-runtime-loading { margin:0; padding:12px; color:#9fb1c5; background:#0b1522e8; font:600 11px/1.35 system-ui; }
-    .combat-overlay-canvas-runtime { overflow:hidden; border-radius:9px; background:transparent; clip-path:inset(0 round 9px); }
+    .combat-overlay-canvas-runtime { overflow:hidden; border-radius:0; background:transparent; clip-path:none; }
+    .combat-overlay-canvas-runtime .combat-overlay-layer { border:0; border-radius:0; background:transparent; box-shadow:none; }
+    .combat-overlay-canvas-runtime .combat-overlay-layer::before { display:none; }
     .combat-overlay-runtime-resize-handle { position:absolute; z-index:110; margin:0; padding:0; border:0; background:transparent; opacity:.35; touch-action:none; }
     .combat-overlay-runtime-resize-handle[hidden] { display:none; }
     .combat-overlay-runtime-resize-handle[data-direction='East'] { top:0; right:0; bottom:10px; width:6px; cursor:ew-resize; }
