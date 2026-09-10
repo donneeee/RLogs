@@ -1,4 +1,5 @@
 import type { MountedSurface } from "../shell/types";
+import { mountOverlayLayoutEditorSurface, type OverlayLayoutEditorDependencies } from "./overlay-layout-editor-surface";
 import { requestWorkspaceNavigation } from "../shell/workspace-navigation";
 
 const OVERLAY_WORKSPACE_ID = "app.rlogs.overlay";
@@ -237,7 +238,9 @@ const PAGE_DEFINITIONS: Record<OverlayWorkspacePage, PageDefinition> = {
 export function mountOverlayWorkspaceSurface(
   container: HTMLElement,
   page: OverlayWorkspacePage,
+  editorDependencies?: OverlayLayoutEditorDependencies,
 ): MountedSurface {
+  if (page === "editor" && editorDependencies !== undefined) return mountOverlayLayoutEditorSurface(container, editorDependencies);
   const definition = PAGE_DEFINITIONS[page];
   const root = element("div", "plugin-surface overlay-workspace-surface");
 

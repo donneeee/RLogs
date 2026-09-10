@@ -10,6 +10,7 @@ mod layout_settings;
 mod mechanics_map;
 mod module_optimizer;
 mod native_plugin_processes;
+mod overlay_layout_settings;
 mod parser_health;
 mod photo_wall_pending;
 mod profile_packages;
@@ -54,6 +55,9 @@ use mechanics_map::{
 };
 use module_optimizer::{LocalModuleInventoryView, load_local_module_inventories};
 use native_plugin_processes::{NativePluginLaunch, NativePluginProcesses};
+use overlay_layout_settings::{
+    OverlayLayoutSettings, OverlayLayoutSettingsStore, OverlayLayoutUpdateError,
+};
 use parser_health::{
     ParserHealthHistory, ParserHealthObservation, ParserHealthOutcome, ParserHealthStore,
 };
@@ -5560,6 +5564,7 @@ struct RuntimeController {
     core_settings: Mutex<CoreSettingsStore>,
     hotkey_settings: Mutex<HotkeySettingsStore>,
     layout_settings: Mutex<LayoutSettingsStore>,
+    overlay_layout_settings: Mutex<OverlayLayoutSettingsStore>,
     theme_settings: Mutex<ThemeSettingsStore>,
     combat_meter_settings: Mutex<CombatMeterSettingsStore>,
     combat_overlay_settings: Arc<Mutex<CombatOverlaySettingsStore>>,
@@ -5787,6 +5792,9 @@ impl RuntimeController {
             HotkeySettingsStore::open(install_root.join("runtime-data/settings/hotkeys.v1.json"))?;
         let layout_settings =
             LayoutSettingsStore::open(install_root.join("runtime-data/settings/layout.v1.json"))?;
+        let overlay_layout_settings = OverlayLayoutSettingsStore::open(
+            install_root.join("runtime-data/settings/plugins/app.rlogs.overlay-layout.v1.json"),
+        )?;
         let theme_settings = ThemeSettingsStore::open(
             install_root.join("runtime-data/settings/plugins/app.rlogs.themes.v1.json"),
         )?;
@@ -5846,6 +5854,7 @@ impl RuntimeController {
             core_settings: Mutex::new(core_settings),
             hotkey_settings: Mutex::new(hotkey_settings),
             layout_settings: Mutex::new(layout_settings),
+            overlay_layout_settings: Mutex::new(overlay_layout_settings),
             theme_settings: Mutex::new(theme_settings),
             combat_meter_settings: Mutex::new(combat_meter_settings),
             combat_overlay_settings: Arc::new(Mutex::new(combat_overlay_settings)),
@@ -7438,6 +7447,23 @@ impl RuntimeController {
 
     fn update_layout_settings(&self, settings: LayoutSettings) -> Result<LayoutSettings, String> {
         self.layout_settings
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .update(settings)
+    }
+
+    fn overlay_layout_settings(&self) -> OverlayLayoutSettings {
+        self.overlay_layout_settings
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .snapshot()
+    }
+
+    fn update_overlay_layout_settings(
+        &self,
+        settings: OverlayLayoutSettings,
+    ) -> Result<OverlayLayoutSettings, OverlayLayoutUpdateError> {
+        self.overlay_layout_settings
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .update(settings)
@@ -14518,6 +14544,22 @@ fn handle_connection(
         ("GET", "/api/settings/layout") => {
             write_json(&mut stream, 200, &controller.layout_settings())?;
         }
+        ("GET", "/api/settings/overlay-layout") => {
+            write_json(&mut stream, 200, &controller.overlay_layout_settings())?;
+        }
+        ("POST", "/api/settings/overlay-layout") => {
+            let settings: OverlayLayoutSettings = match serde_json::from_slice(&request.body) {
+                Ok(settings) => settings,
+                Err(error) => {
+                    write_api_error(&mut stream, 400, format!("invalid request: {error}"))?;
+                    return Ok(());
+                }
+            };
+            match controller.update_overlay_layout_settings(settings) {
+                Ok(settings) => write_json(&mut stream, 200, &settings)?,
+                Err(error) => write_overlay_layout_api_error(&mut stream, error)?,
+            }
+        }
         ("POST", "/api/settings/layout") => {
             let settings: LayoutSettings = match serde_json::from_slice(&request.body) {
                 Ok(settings) => settings,
@@ -15217,6 +15259,55 @@ fn write_api_error(
     write_json(stream, status, &serde_json::json!({"error": detail}))
 }
 
+fn write_overlay_layout_api_error(
+    stream: &mut TcpStream,
+    error: OverlayLayoutUpdateError,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (status, detail) = match error {
+        OverlayLayoutUpdateError::Conflict(detail) => (409, detail),
+        OverlayLayoutUpdateError::Validation(detail) => (422, detail),
+        OverlayLayoutUpdateError::Io(detail) => (500, detail),
+    };
+    write_api_error(stream, status, detail)
+}
+
+#[cfg(test)]
+mod overlay_layout_http_tests {
+    use super::*;
+
+    #[test]
+    fn typed_overlay_layout_failures_use_distinct_http_statuses() {
+        for (error, expected) in [
+            (
+                OverlayLayoutUpdateError::Conflict("stale".into()),
+                "409 Conflict",
+            ),
+            (
+                OverlayLayoutUpdateError::Validation("invalid".into()),
+                "422 Unprocessable Content",
+            ),
+            (
+                OverlayLayoutUpdateError::Io("disk".into()),
+                "500 Internal Server Error",
+            ),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let writer = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                write_overlay_layout_api_error(&mut stream, error).unwrap();
+            });
+            let mut response = String::new();
+            TcpStream::connect(address)
+                .unwrap()
+                .read_to_string(&mut response)
+                .unwrap();
+            writer.join().unwrap();
+            assert!(response.starts_with(&format!("HTTP/1.1 {expected}")));
+        }
+    }
+}
+
 fn write_text(
     stream: &mut TcpStream,
     status: u16,
@@ -15229,6 +15320,8 @@ fn write_text(
         400 => "Bad Request",
         404 => "Not Found",
         409 => "Conflict",
+        422 => "Unprocessable Content",
+        500 => "Internal Server Error",
         _ => "Error",
     };
     write!(

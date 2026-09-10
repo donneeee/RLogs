@@ -2,6 +2,8 @@ import type { MountedSurface } from "../shell/types";
 import type { UiLocalizer } from "../localization/ui-locale";
 import type { AutomarkerLoadResult, AutomarkerPoint, AutomarkerPresetView, AutomarkerPreview } from "./automarker-presets";
 import { AUTOMARKER_PREVIEW_STORAGE_KEY, automarkerResponseIsCurrent, publishAutomarkerPreview, readActiveAutomarkerPreview } from "./automarker-presets";
+import { activeOverlaySetup, normalizedModuleGeometry, raiseOverlayModule, type OverlayLayoutSettings, type OverlayModuleId } from "./overlay-layout";
+import { LocalHostHttpError } from "../shell/local-host-http";
 import {
   actionControlRemainingMillis,
   fitMechanicsMapCanvasRect,
@@ -32,10 +34,14 @@ export interface MechanicsMapOverlayDependencies {
   prepareLocalMaps(): Promise<void>;
   hide(): Promise<void>;
   setInteractive(interactive: boolean): Promise<void>;
+  acknowledgeInteractivity?(interactive: boolean): Promise<void>;
   onInteractivity(handler: (interactive: boolean) => void): Promise<() => void>;
+  onLayoutInitialized?(error?: unknown): void;
   onFocusHeld(handler: (held: boolean) => void): Promise<() => void>;
   loadAutomarkerPresets(): Promise<AutomarkerPresetView>;
   loadAutomarkerPreset(presetId: string): Promise<AutomarkerLoadResult>;
+  loadLayout(): Promise<OverlayLayoutSettings>;
+  saveLayout(settings: OverlayLayoutSettings): Promise<OverlayLayoutSettings>;
 }
 
 export interface MechanicsMapCanvasPreferences {
@@ -257,6 +263,12 @@ export function mountMechanicsMapOverlay(
   let automarkerPreview: AutomarkerPreview | null = null;
   let automarkerPreviewTimer: number | null = null;
   let automarkerRequestGeneration = 0;
+  let layoutSettings: OverlayLayoutSettings | null = null;
+  let layoutAcknowledged: OverlayLayoutSettings | null = null;
+  let layoutPollTimer: number | null = null;
+  let layoutSaving = false;
+  type LayoutOperation = (settings: OverlayLayoutSettings) => void;
+  const layoutOperations: LayoutOperation[] = [];
 
   const root = element("main", "overlay-canvas-runtime");
   root.dataset.locked = String(preferences.locked);
@@ -563,6 +575,11 @@ export function mountMechanicsMapOverlay(
   alertsResizeHandle.addEventListener("pointermove", resizeAlerts);
   alertsResizeHandle.addEventListener("pointerup", endAlertsResize);
   alertsResizeHandle.addEventListener("pointercancel", endAlertsResize);
+  for (const [id, handle, module] of [
+    ["map", toolbar, panel], ["player", playerToolbar, playerPanel], ["actions", actionsToolbar, actionsPanel],
+    ["party", partyToolbar, partyPanel], ["target", targetToolbar, targetPanel],
+    ["objectives", objectivesToolbar, objectivesPanel], ["alerts", alertsToolbar, alertsPanel],
+  ] as const) handle.addEventListener("pointerdown", () => bringToFront(id, module));
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("pointerdown", beginPan);
   canvas.addEventListener("pointermove", continuePan);
@@ -581,9 +598,13 @@ export function mountMechanicsMapOverlay(
   window.addEventListener("storage", handlePreviewStorage);
   automarkerPreviewTimer = window.setInterval(refreshAutomarkerPreview, 500);
 
-  void dependencies.setInteractive(!preferences.locked);
+  void initializeLayout();
+  layoutPollTimer = window.setInterval(() => { void refreshLayout(); }, 1_000);
   void dependencies.onInteractivity((interactive) => {
-    if (interactive && preferences.locked) void setLocked(false);
+    void (async () => {
+      if (interactive && preferences.locked) await setLocked(false);
+      await dependencies.acknowledgeInteractivity?.(interactive);
+    })();
   }).then((remove) => { removeInteractivityListener = remove; });
   void dependencies.onFocusHeld((held) => {
     root.dataset.focusHeld = String(held);
@@ -606,6 +627,7 @@ export function mountMechanicsMapOverlay(
         : "ui.mechanics_map.module.show", { module: label });
       module.hidden = !preferences[preference];
       savePreferences();
+      persistSharedLayout();
     });
     control.title = localizer.t(preferences[preference]
       ? "ui.mechanics_map.module.hide"
@@ -1401,6 +1423,7 @@ export function mountMechanicsMapOverlay(
     lock.textContent = value ? "Unlock" : "Lock";
     lock.dataset.active = String(value);
     savePreferences();
+    persistSharedLayout();
     await dependencies.setInteractive(!value);
   }
 
@@ -1418,6 +1441,185 @@ export function mountMechanicsMapOverlay(
 
   function savePreferences(): void {
     localStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences));
+  }
+
+  async function initializeLayout(): Promise<void> {
+    try {
+      let loaded = await dependencies.loadLayout();
+      if (!alive) return;
+      for (let attempt = 0; alive && !loaded.legacyMigrationComplete && attempt < 4; attempt += 1) {
+        try {
+          loaded = await dependencies.saveLayout(migrateLegacyLayout(structuredClone(loaded)));
+        } catch {
+          loaded = await dependencies.loadLayout();
+        }
+      }
+      if (!loaded.legacyMigrationComplete) return;
+      if (!alive) return;
+      await applySharedLayout(loaded, true);
+      dependencies.onLayoutInitialized?.();
+    } catch (error) {
+      console.error("Could not load shared overlay layout", error);
+      dependencies.onLayoutInitialized?.(error);
+    }
+  }
+
+  async function refreshLayout(): Promise<void> {
+    if (layoutSaving || layoutOperations.length > 0) {
+      if (!layoutSaving) void flushSharedLayout();
+      return;
+    }
+    try {
+      const loaded = await dependencies.loadLayout();
+      if (!loaded.legacyMigrationComplete) { await initializeLayout(); return; }
+      if (!alive || loaded.revision === layoutSettings?.revision) return;
+      await applySharedLayout(loaded, true);
+    } catch { /* retain the last safe host-owned layout */ }
+  }
+
+  function migrateLegacyLayout(settings: OverlayLayoutSettings): OverlayLayoutSettings {
+    const setup = activeOverlaySetup(settings);
+    const legacy = window.localStorage.getItem(PREFERENCES_KEY);
+    if (legacy !== null) {
+      setGeometry(setup.modules.map, preferences.moduleX, preferences.moduleY, preferences.moduleWidth, preferences.moduleHeight);
+      setGeometry(setup.modules.player, preferences.playerX, preferences.playerY, preferences.playerWidth, 160);
+      setGeometry(setup.modules.actions, preferences.actionsX, preferences.actionsY, preferences.actionsWidth, 170);
+      setGeometry(setup.modules.party, preferences.partyX, preferences.partyY, preferences.partyWidth, 480);
+      setGeometry(setup.modules.target, preferences.targetX, preferences.targetY, preferences.targetWidth, 190);
+      setGeometry(setup.modules.objectives, preferences.objectivesX, preferences.objectivesY, preferences.objectivesWidth, 300);
+      setGeometry(setup.modules.alerts, preferences.alertsX, preferences.alertsY, preferences.alertsWidth, 300);
+      setup.modules.player.visible = preferences.showPlayer; setup.modules.actions.visible = preferences.showActions;
+      setup.modules.party.visible = preferences.showParty; setup.modules.target.visible = preferences.showTarget;
+      setup.modules.objectives.visible = preferences.showObjectives; setup.modules.alerts.visible = preferences.showAlerts;
+      setup.locked = preferences.locked;
+    }
+    settings.legacyMigrationComplete = true;
+    return settings;
+  }
+
+  function setGeometry(module: ReturnType<typeof activeOverlaySetup>["modules"][OverlayModuleId], x: number, y: number, width: number, height: number): void {
+    Object.assign(module, normalizedModuleGeometry({ x, y, width, height }, window.innerWidth, window.innerHeight));
+  }
+
+  async function applySharedLayout(settings: OverlayLayoutSettings, acknowledge = false): Promise<void> {
+    layoutSettings = structuredClone(settings);
+    if (acknowledge) layoutAcknowledged = structuredClone(settings);
+    const setup = activeOverlaySetup(layoutSettings);
+    const map = setup.modules.map;
+    preferences.moduleX = map.x * window.innerWidth; preferences.moduleY = map.y * window.innerHeight;
+    preferences.moduleWidth = map.width * window.innerWidth; preferences.moduleHeight = map.height * window.innerHeight;
+    const bindings: Array<[OverlayModuleId, HTMLElement, "showPlayer" | "showActions" | "showParty" | "showTarget" | "showObjectives" | "showAlerts" | null]> = [
+      ["map", panel, null], ["player", playerPanel, "showPlayer"], ["actions", actionsPanel, "showActions"],
+      ["party", partyPanel, "showParty"], ["target", targetPanel, "showTarget"],
+      ["objectives", objectivesPanel, "showObjectives"], ["alerts", alertsPanel, "showAlerts"],
+    ];
+    for (const [id, element, visibility] of bindings) {
+      const module = setup.modules[id];
+      if (id !== "map") {
+        const key = id as Exclude<OverlayModuleId, "map">;
+        (preferences as unknown as Record<string, number>)[`${key}X`] = module.x * window.innerWidth;
+        (preferences as unknown as Record<string, number>)[`${key}Y`] = module.y * window.innerHeight;
+        (preferences as unknown as Record<string, number>)[`${key}Width`] = module.width * window.innerWidth;
+        element.style.height = `${module.height * window.innerHeight}px`;
+      } else {
+        element.hidden = !module.visible;
+      }
+      if (visibility !== null) { preferences[visibility] = module.visible; element.hidden = !module.visible; }
+      element.style.zIndex = String(module.zOrder);
+      element.style.opacity = String(module.opacity);
+      element.style.scale = String(module.scale);
+      element.style.transformOrigin = "top left";
+    }
+    preferences.locked = setup.locked;
+    root.dataset.locked = String(setup.locked); panel.dataset.locked = String(setup.locked);
+    lock.textContent = setup.locked ? "Unlock" : "Lock"; lock.dataset.active = String(setup.locked);
+    applyModuleGeometry(); scheduleDraw();
+    await dependencies.setInteractive(!setup.locked);
+  }
+
+  function persistSharedLayout(): void {
+    if (layoutSettings === null) return;
+    const before = structuredClone(layoutSettings);
+    const setup = activeOverlaySetup(layoutSettings);
+    setGeometry(setup.modules.map, preferences.moduleX, preferences.moduleY, preferences.moduleWidth, preferences.moduleHeight);
+    for (const id of ["player", "actions", "party", "target", "objectives", "alerts"] as const) {
+      const values = preferences as unknown as Record<string, number>;
+      const element = { player: playerPanel, actions: actionsPanel, party: partyPanel, target: targetPanel, objectives: objectivesPanel, alerts: alertsPanel }[id];
+      setGeometry(setup.modules[id], values[`${id}X`]!, values[`${id}Y`]!, values[`${id}Width`]!, element.offsetHeight || parseFloat(element.style.height) || 120);
+    }
+    setup.modules.player.visible = preferences.showPlayer; setup.modules.actions.visible = preferences.showActions;
+    setup.modules.party.visible = preferences.showParty; setup.modules.target.visible = preferences.showTarget;
+    setup.modules.objectives.visible = preferences.showObjectives; setup.modules.alerts.visible = preferences.showAlerts;
+    setup.locked = preferences.locked;
+    enqueueLayoutChanges(before, layoutSettings);
+    if (!layoutSaving) void flushSharedLayout();
+  }
+
+  function enqueueLayoutChanges(before: OverlayLayoutSettings, after: OverlayLayoutSettings): void {
+    const setupId = after.selectedSetupId;
+    const beforeSetup = before.setups[setupId];
+    const afterSetup = after.setups[setupId];
+    if (beforeSetup === undefined || afterSetup === undefined) return;
+    if (beforeSetup.locked !== afterSetup.locked) {
+      const locked = afterSetup.locked;
+      layoutOperations.push((settings) => { const setup = settings.setups[setupId]; if (setup) setup.locked = locked; });
+    }
+    for (const id of ["map", "player", "actions", "party", "target", "objectives", "alerts"] as const) {
+      for (const key of ["x", "y", "width", "height", "visible", "zOrder", "opacity", "scale"] as const) {
+        if (beforeSetup.modules[id][key] === afterSetup.modules[id][key]) continue;
+        const value = afterSetup.modules[id][key];
+        layoutOperations.push((settings) => {
+          const setup = settings.setups[setupId];
+          if (setup) Object.assign(setup.modules[id], { [key]: value });
+        });
+      }
+    }
+  }
+
+  function rebasedLayout(): OverlayLayoutSettings | null {
+    if (layoutAcknowledged === null) return null;
+    const draft = structuredClone(layoutAcknowledged);
+    for (const operation of layoutOperations) operation(draft);
+    return draft;
+  }
+
+  async function flushSharedLayout(): Promise<void> {
+    if (layoutSaving) return;
+    layoutSaving = true;
+    try {
+      while (alive && layoutAcknowledged !== null && layoutOperations.length > 0) {
+        const operationCount = layoutOperations.length;
+        const candidate = rebasedLayout();
+        if (candidate === null) break;
+        try {
+          const saved = await dependencies.saveLayout(candidate);
+          layoutOperations.splice(0, operationCount);
+          layoutAcknowledged = structuredClone(saved);
+          const draft = rebasedLayout() ?? saved;
+          await applySharedLayout(draft, layoutOperations.length === 0);
+        } catch (error) {
+          if (!(error instanceof LocalHostHttpError) || error.status !== 409) throw error;
+          const fresh = await dependencies.loadLayout();
+          layoutAcknowledged = structuredClone(fresh);
+          const draft = rebasedLayout();
+          if (draft !== null) await applySharedLayout(draft);
+        }
+      }
+    } catch (error) {
+      console.error("Could not save shared overlay layout", error);
+    } finally {
+      layoutSaving = false;
+    }
+  }
+
+  function bringToFront(id: OverlayModuleId, element: HTMLElement): void {
+    if (layoutSettings === null || preferences.locked) return;
+    const before = structuredClone(layoutSettings);
+    const setup = activeOverlaySetup(layoutSettings);
+    const next = raiseOverlayModule(setup, id);
+    element.style.zIndex = String(next);
+    enqueueLayoutChanges(before, layoutSettings);
+    persistSharedLayout();
   }
 
   function applyModuleGeometry(): void {
@@ -1454,9 +1656,6 @@ export function mountMechanicsMapOverlay(
     actionsPanel.style.left = `${preferences.actionsX}px`;
     actionsPanel.style.top = `${preferences.actionsY}px`;
     actionsPanel.style.width = `${actionsWidth}px`;
-    const actionsHorizontalAnchor = preferences.actionsX + actionsWidth / 2 > window.innerWidth / 2 ? "right" : "left";
-    const actionsVerticalAnchor = preferences.actionsY + actionsPanel.offsetHeight / 2 > window.innerHeight / 2 ? "bottom" : "top";
-    actionsPanel.style.transformOrigin = `${actionsHorizontalAnchor} ${actionsVerticalAnchor}`;
     const partyWidth = Math.min(window.innerWidth, preferences.partyWidth);
     preferences.partyX = Math.min(Math.max(0, window.innerWidth - partyWidth), Math.max(0, preferences.partyX));
     preferences.partyY = Math.min(Math.max(0, window.innerHeight - 96), Math.max(0, preferences.partyY));
@@ -1488,6 +1687,7 @@ export function mountMechanicsMapOverlay(
     if (moduleDrag?.pointerId !== event.pointerId) return;
     moduleDrag = null;
     savePreferences();
+    persistSharedLayout();
   }
 
   function resizeModule(event: PointerEvent): void {
@@ -1501,6 +1701,7 @@ export function mountMechanicsMapOverlay(
     if (moduleResize?.pointerId !== event.pointerId) return;
     moduleResize = null;
     savePreferences();
+    persistSharedLayout();
   }
 
   function movePlayer(event: PointerEvent): void {
@@ -1514,6 +1715,7 @@ export function mountMechanicsMapOverlay(
     if (playerDrag?.pointerId !== event.pointerId) return;
     playerDrag = null;
     savePreferences();
+    persistSharedLayout();
   }
 
   function resizePlayer(event: PointerEvent): void {
@@ -1526,6 +1728,7 @@ export function mountMechanicsMapOverlay(
     if (playerResize?.pointerId !== event.pointerId) return;
     playerResize = null;
     savePreferences();
+    persistSharedLayout();
   }
 
   function moveActions(event: PointerEvent): void {
@@ -1539,6 +1742,7 @@ export function mountMechanicsMapOverlay(
     if (actionsDrag?.pointerId !== event.pointerId) return;
     actionsDrag = null;
     savePreferences();
+    persistSharedLayout();
   }
 
   function resizeActions(event: PointerEvent): void {
@@ -1551,6 +1755,7 @@ export function mountMechanicsMapOverlay(
     if (actionsResize?.pointerId !== event.pointerId) return;
     actionsResize = null;
     savePreferences();
+    persistSharedLayout();
   }
 
   function moveParty(event: PointerEvent): void {
@@ -1564,6 +1769,7 @@ export function mountMechanicsMapOverlay(
     if (partyDrag?.pointerId !== event.pointerId) return;
     partyDrag = null;
     savePreferences();
+    persistSharedLayout();
   }
 
   function resizeParty(event: PointerEvent): void {
@@ -1576,6 +1782,7 @@ export function mountMechanicsMapOverlay(
     if (partyResize?.pointerId !== event.pointerId) return;
     partyResize = null;
     savePreferences();
+    persistSharedLayout();
   }
 
   function moveTarget(event: PointerEvent): void {
@@ -1589,6 +1796,7 @@ export function mountMechanicsMapOverlay(
     if (targetDrag?.pointerId !== event.pointerId) return;
     targetDrag = null;
     savePreferences();
+    persistSharedLayout();
   }
 
   function resizeTarget(event: PointerEvent): void {
@@ -1601,6 +1809,7 @@ export function mountMechanicsMapOverlay(
     if (targetResize?.pointerId !== event.pointerId) return;
     targetResize = null;
     savePreferences();
+    persistSharedLayout();
   }
 
   function moveObjectives(event: PointerEvent): void {
@@ -1614,6 +1823,7 @@ export function mountMechanicsMapOverlay(
     if (objectivesDrag?.pointerId !== event.pointerId) return;
     objectivesDrag = null;
     savePreferences();
+    persistSharedLayout();
   }
 
   function resizeObjectives(event: PointerEvent): void {
@@ -1626,6 +1836,7 @@ export function mountMechanicsMapOverlay(
     if (objectivesResize?.pointerId !== event.pointerId) return;
     objectivesResize = null;
     savePreferences();
+    persistSharedLayout();
   }
 
   function moveAlerts(event: PointerEvent): void {
@@ -1639,6 +1850,7 @@ export function mountMechanicsMapOverlay(
     if (alertsDrag?.pointerId !== event.pointerId) return;
     alertsDrag = null;
     savePreferences();
+    persistSharedLayout();
   }
 
   function resizeAlerts(event: PointerEvent): void {
@@ -1651,6 +1863,7 @@ export function mountMechanicsMapOverlay(
     if (alertsResize?.pointerId !== event.pointerId) return;
     alertsResize = null;
     savePreferences();
+    persistSharedLayout();
   }
 
   return {
@@ -1667,6 +1880,7 @@ export function mountMechanicsMapOverlay(
       window.removeEventListener("resize", handleScreenResize);
       window.removeEventListener("storage", handlePreviewStorage);
       if (automarkerPreviewTimer !== null) window.clearInterval(automarkerPreviewTimer);
+      if (layoutPollTimer !== null) window.clearInterval(layoutPollTimer);
       window.localStorage.removeItem(AUTOMARKER_PREVIEW_STORAGE_KEY);
       removeInteractivityListener?.();
       removeFocusHeldListener?.();

@@ -5697,6 +5697,14 @@ body {
 }
 
 .mechanics-map-layout { display: grid; grid-template-columns: minmax(360px, 1.45fr) minmax(260px, 0.75fr); gap: 12px; min-width: 0; }
+.overlay-layout-editor-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; padding: 14px; }
+.overlay-layout-editor-controls select, .overlay-layout-editor-controls button { min-height: 32px; }
+.overlay-layout-editor-controls label { display: inline-flex; align-items: center; gap: 6px; }
+.overlay-layout-editor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.overlay-layout-module-card { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 10px; padding: 13px; }
+.overlay-layout-module-card > label:first-child { grid-column: 1 / -1; font-weight: 800; }
+.overlay-layout-field { display: grid; gap: 3px; color: var(--muted); font-size: 10px; }
+.overlay-layout-field input { box-sizing: border-box; width: 100%; min-width: 0; padding: 5px 6px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: var(--surface-soft); }
 .mechanics-map-open-overlay { white-space: nowrap; }
 
 body[data-surface="overlay-canvas"] { margin: 0; min-width: 0; min-height: 100vh; overflow: hidden; background: transparent; }

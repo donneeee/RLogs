@@ -1,6 +1,9 @@
 # Overlay and Custom Triggers information architecture
 
 Status: the workspace menus and cross-workspace navigation are implemented.
+The Overlay Editor is now a working host-persisted layout editor for the seven
+native Overlay Canvas modules; Setup browsing/import/sharing and display groups
+remain planned.
 The bounded Event Inspector is the first working Custom Triggers component.
 The Overlay Trackers page now has a working local Combat Stats component backed
 by the exact build-stamped Fight Attribute catalog. Rule execution and actual

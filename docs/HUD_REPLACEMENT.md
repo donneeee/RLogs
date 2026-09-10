@@ -8,6 +8,25 @@ implemented; additional HUD modules remain
 disabled until their authoritative event and asset contracts pass the gates
 below.
 
+The Overlay Editor and live canvas now share a bounded host-owned layout file.
+The selected setup records normalized geometry, visibility, z-order, opacity,
+scale, and the canvas lock for all seven modules. Existing browser-local canvas
+geometry migrates only after a revision-checked commit, stale cross-window writes
+are rebased or fail closed, and a safe reset uses that same revision-checked
+settings update to restore an unlocked on-screen default. The settings file is
+flushed and replaced atomically with bounded backup recovery. Unix hosts flush
+parent-directory metadata after renames; Windows uses write-through Win32 moves
+for the backup and replacement transitions. These loopback
+settings routes use the desktop host's existing localhost trust boundary; this
+work does not add or claim a broader localhost authentication mechanism.
+Monitor selection and multi-monitor DPI verification remain follow-up release
+gates.
+Opening the overlay now uses one native editable-open request. The host shows or
+recreates the canvas and retains pending interactivity until the new WebView has
+registered its listener, applied the persisted layout, and explicitly acknowledged
+the delivered edit state. This keeps a persisted locked canvas editable after
+recreation while allowing a later user Lock action to restore click-through.
+
 ## Product goal
 
 Allow a player who hides the native BPSR HUD to assemble an rLogs HUD from the

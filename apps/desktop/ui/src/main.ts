@@ -7,10 +7,12 @@ import {
 } from "./adapters/local-host-adapter";
 import { loadAndApplyThemeSettings } from "./adapters/theme-settings";
 import { DesktopShell } from "./shell/desktop-shell";
+import { localHostJson } from "./shell/local-host-http";
 import { installInterfaceZoom } from "./shell/ui-zoom";
 import { dispatchCombatOverlayHide } from "./shell/combat-overlay-hide";
 import { mountCombatOverlayRuntimeApp } from "../../../../plugins/builtin/desktop/combat-overlay/ui/combat-overlay";
 import { mountMechanicsMapOverlay } from "./adapters/mechanics-map-overlay";
+import { parseOverlayLayoutSettings } from "./adapters/overlay-layout";
 import { parseMechanicsMapUpdate } from "./adapters/mechanics-map";
 import { parseAutomarkerLoadResult, parseAutomarkerPresetView } from "./adapters/automarker-presets";
 import { invoke } from "@tauri-apps/api/core";
@@ -120,6 +122,21 @@ if (isCombatOverlayRuntime) {
   const appWindow = getCurrentWindow();
   try {
     const localizer = await loadUiLocalizer(navigator.languages[0] ?? navigator.language);
+    let interactivityHandler: ((interactive: boolean) => void) | undefined;
+    let focusHeldHandler: ((held: boolean) => void) | undefined;
+    let resolveLayoutInitialized!: () => void;
+    let rejectLayoutInitialized!: (error: unknown) => void;
+    const layoutInitialized = new Promise<void>((resolve, reject) => {
+      resolveLayoutInitialized = resolve; rejectLayoutInitialized = reject;
+    });
+    // Register native listeners before acknowledging runtime readiness. A
+    // recreated WebView otherwise loses the one-shot pending Edit request.
+    await appWindow.listen<boolean>("overlay-canvas-interactivity", ({ payload }) => {
+      interactivityHandler?.(payload);
+    });
+    await appWindow.listen<boolean>("overlay-canvas-focus-held", ({ payload }) => {
+      focusHeldHandler?.(payload);
+    });
     mountMechanicsMapOverlay(root, {
       loadSnapshot: async () => parseMechanicsMapUpdate(await runtimeJson("/api/runtime/live/mechanics-map")),
       waitForSnapshot: async (afterRevision) => parseMechanicsMapUpdate(await runtimeJson(
@@ -133,17 +150,22 @@ if (isCombatOverlayRuntime) {
       prepareLocalMaps: async () => { await runtimeJson("/api/runtime/local-game-assets/prepare", { method: "POST" }); },
       hide: async () => { await invoke("hide_overlay_canvas"); },
       setInteractive: async (interactive) => {
-        await appWindow.setIgnoreCursorEvents(!interactive);
         await invoke("set_overlay_canvas_interactive", { interactive });
       },
-      onInteractivity: async (handler) => appWindow.listen<boolean>(
-        "overlay-canvas-interactivity",
-        ({ payload }) => handler(payload),
-      ),
-      onFocusHeld: async (handler) => appWindow.listen<boolean>(
-        "overlay-canvas-focus-held",
-        ({ payload }) => handler(payload),
-      ),
+      acknowledgeInteractivity: async (interactive) => {
+        await invoke("acknowledge_overlay_canvas_interactivity", { interactive });
+      },
+      onLayoutInitialized: (error) => {
+        if (error === undefined) resolveLayoutInitialized(); else rejectLayoutInitialized(error);
+      },
+      onInteractivity: async (handler) => {
+        interactivityHandler = handler;
+        return () => { if (interactivityHandler === handler) interactivityHandler = undefined; };
+      },
+      onFocusHeld: async (handler) => {
+        focusHeldHandler = handler;
+        return () => { if (focusHeldHandler === handler) focusHeldHandler = undefined; };
+      },
       loadAutomarkerPresets: async () => parseAutomarkerPresetView(
         await runtimeJson("/api/automarkers/presets"),
       ),
@@ -154,8 +176,14 @@ if (isCombatOverlayRuntime) {
           body: JSON.stringify({ presetId }),
         }),
       ),
+      loadLayout: async () => parseOverlayLayoutSettings(await runtimeJson("/api/settings/overlay-layout")),
+      saveLayout: async (settings) => parseOverlayLayoutSettings(await runtimeJson("/api/settings/overlay-layout", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings),
+      })),
     }, localizer);
     await invoke("overlay_canvas_ready");
+    await layoutInitialized;
+    await invoke("overlay_canvas_layout_initialized");
   } catch (error) {
     const failure = document.createElement("main");
     failure.className = "mechanics-map-overlay-failure";
@@ -214,6 +242,5 @@ if (isCombatOverlayRuntime) {
 
 async function runtimeJson(path: string, init?: RequestInit): Promise<unknown> {
   const response = await fetch(path, { cache: "no-store", ...init });
-  if (!response.ok) throw new Error(`rLogs host returned HTTP ${response.status} for ${path}`);
-  return response.json();
+  return localHostJson(response, `rLogs host returned HTTP ${response.status} for ${path}`);
 }

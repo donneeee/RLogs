@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering},
     },
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -154,7 +154,75 @@ struct CombatOverlayWindowState {
 #[derive(Default)]
 struct OverlayCanvasWindowState {
     ready: AtomicBool,
+    layout_initialized: AtomicBool,
     requested: AtomicBool,
+    pending_interactive: AtomicU8,
+    force_edit_until_acknowledged: AtomicBool,
+}
+
+const INTERACTIVITY_NONE: u8 = 0;
+const INTERACTIVITY_DISABLED: u8 = 1;
+const INTERACTIVITY_ENABLED: u8 = 2;
+
+fn queue_overlay_canvas_interactivity(state: &OverlayCanvasWindowState, interactive: bool) {
+    state.pending_interactive.store(
+        if interactive {
+            INTERACTIVITY_ENABLED
+        } else {
+            INTERACTIVITY_DISABLED
+        },
+        Ordering::Release,
+    );
+}
+
+fn ready_overlay_canvas_interactivity(state: &OverlayCanvasWindowState) -> Option<(u8, bool)> {
+    if !state.ready.load(Ordering::Acquire) || !state.layout_initialized.load(Ordering::Acquire) {
+        return None;
+    }
+    match state.pending_interactive.load(Ordering::Acquire) {
+        INTERACTIVITY_ENABLED => Some((INTERACTIVITY_ENABLED, true)),
+        INTERACTIVITY_DISABLED => Some((INTERACTIVITY_DISABLED, false)),
+        _ => None,
+    }
+}
+
+fn apply_pending_overlay_canvas_interactivity_with(
+    state: &OverlayCanvasWindowState,
+    apply: impl FnOnce(bool) -> Result<(), String>,
+) -> Result<(), String> {
+    let Some((pending, interactive)) = ready_overlay_canvas_interactivity(state) else {
+        return Ok(());
+    };
+    apply(interactive)?;
+    let _ = state.pending_interactive.compare_exchange(
+        pending,
+        INTERACTIVITY_NONE,
+        Ordering::AcqRel,
+        Ordering::Acquire,
+    );
+    Ok(())
+}
+
+fn queue_reported_overlay_canvas_interactivity(
+    state: &OverlayCanvasWindowState,
+    interactive: bool,
+) -> bool {
+    if !interactive && state.force_edit_until_acknowledged.load(Ordering::Acquire) {
+        return false;
+    }
+    queue_overlay_canvas_interactivity(state, interactive);
+    true
+}
+
+fn acknowledge_overlay_canvas_interactivity_state(
+    state: &OverlayCanvasWindowState,
+    interactive: bool,
+) {
+    if interactive {
+        state
+            .force_edit_until_acknowledged
+            .store(false, Ordering::Release);
+    }
 }
 
 #[derive(Default)]
@@ -274,6 +342,7 @@ fn show_overlay_canvas(
     app: tauri::AppHandle,
     state: tauri::State<'_, OverlayCanvasWindowState>,
     focus_state: tauri::State<'_, OverlayFocusWindowState>,
+    host: tauri::State<'_, EmbeddedLocalHost>,
 ) -> Result<(), String> {
     state.requested.store(true, Ordering::Release);
     if !focus_state.allows_visibility() {
@@ -281,9 +350,15 @@ fn show_overlay_canvas(
             "The map overlay cannot open while rLogs is automatically hiding overlays.".into(),
         );
     }
+    if app.get_webview_window("overlay-canvas").is_none() {
+        build_overlay_canvas_window(&app, &host)
+            .map_err(|error| format!("could not recreate Overlay Canvas: {error}"))?;
+        state.ready.store(false, Ordering::Release);
+        state.layout_initialized.store(false, Ordering::Release);
+    }
     let window = app
         .get_webview_window("overlay-canvas")
-        .ok_or_else(|| "Overlay Canvas is unavailable; restart rLogs".to_owned())?;
+        .ok_or_else(|| "Overlay Canvas could not be created".to_owned())?;
     // Showing is safe before the WebView reports ready: the window is already
     // transparent and the ready callback will reconcile the same request. The
     // previous ready guard silently accepted clicks while leaving the window
@@ -293,6 +368,38 @@ fn show_overlay_canvas(
         .emit("overlay-canvas-show-requested", ())
         .map_err(|error| error.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+fn show_overlay_canvas_editable(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, OverlayCanvasWindowState>,
+    focus_state: tauri::State<'_, OverlayFocusWindowState>,
+    host: tauri::State<'_, EmbeddedLocalHost>,
+) -> Result<(), String> {
+    show_overlay_canvas(app.clone(), state.clone(), focus_state, host)?;
+    state
+        .force_edit_until_acknowledged
+        .store(true, Ordering::Release);
+    queue_overlay_canvas_interactivity(&state, true);
+    apply_pending_overlay_canvas_interactivity(&app, &state)
+}
+
+#[tauri::command]
+fn overlay_canvas_layout_initialized(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, OverlayCanvasWindowState>,
+) -> Result<(), String> {
+    state.layout_initialized.store(true, Ordering::Release);
+    apply_pending_overlay_canvas_interactivity(&app, &state)
+}
+
+#[tauri::command]
+fn acknowledge_overlay_canvas_interactivity(
+    state: tauri::State<'_, OverlayCanvasWindowState>,
+    interactive: bool,
+) {
+    acknowledge_overlay_canvas_interactivity_state(&state, interactive);
 }
 
 #[tauri::command]
@@ -320,20 +427,36 @@ fn overlay_canvas_ready(
             .ok_or_else(|| "Overlay Canvas is unavailable; restart rLogs".to_owned())?;
         show_combat_overlay_without_activation(&window)?;
     }
-    Ok(())
+    apply_pending_overlay_canvas_interactivity(&app, &state)
 }
 
 #[tauri::command]
-fn set_overlay_canvas_interactive(app: tauri::AppHandle, interactive: bool) -> Result<(), String> {
-    let window = app
-        .get_webview_window("overlay-canvas")
-        .ok_or_else(|| "Overlay Canvas is unavailable; restart rLogs".to_owned())?;
-    window
-        .set_ignore_cursor_events(!interactive)
-        .map_err(|error| error.to_string())?;
-    window
-        .emit("overlay-canvas-interactivity", interactive)
-        .map_err(|error| error.to_string())
+fn set_overlay_canvas_interactive(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, OverlayCanvasWindowState>,
+    interactive: bool,
+) -> Result<(), String> {
+    if !queue_reported_overlay_canvas_interactivity(&state, interactive) {
+        return Ok(());
+    }
+    apply_pending_overlay_canvas_interactivity(&app, &state)
+}
+
+fn apply_pending_overlay_canvas_interactivity(
+    app: &tauri::AppHandle,
+    state: &OverlayCanvasWindowState,
+) -> Result<(), String> {
+    apply_pending_overlay_canvas_interactivity_with(state, |interactive| {
+        let window = app
+            .get_webview_window("overlay-canvas")
+            .ok_or_else(|| "Overlay Canvas is unavailable; restart rLogs".to_owned())?;
+        window
+            .set_ignore_cursor_events(!interactive)
+            .map_err(|error| error.to_string())?;
+        window
+            .emit("overlay-canvas-interactivity", interactive)
+            .map_err(|error| error.to_string())
+    })
 }
 
 #[tauri::command]
@@ -526,7 +649,7 @@ fn build_combat_overlay_window(
 }
 
 fn build_overlay_canvas_window(
-    app: &mut tauri::App,
+    app: &impl tauri::Manager<tauri::Wry>,
     host: &rlogs_desktop_host::EmbeddedLocalHost,
 ) -> tauri::Result<()> {
     let url = format!(
@@ -1223,8 +1346,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             set_combat_overlay_enabled,
             hide_combat_overlay,
             show_overlay_canvas,
+            show_overlay_canvas_editable,
             hide_overlay_canvas,
             overlay_canvas_ready,
+            overlay_canvas_layout_initialized,
+            acknowledge_overlay_canvas_interactivity,
             set_overlay_canvas_interactive,
             show_combat_overlay_if_requested,
             set_combat_overlay_automatically_hidden,
@@ -1241,10 +1367,97 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 #[allow(clippy::items_after_test_module)]
 mod tests {
     use super::{
-        OverlayFocusPolicyDebounce, combat_overlay_damage_started, combat_overlay_health_status,
-        combat_overlay_hostile_activity_started, combat_overlay_renderer_is_stale,
-        combat_overlay_should_be_visible, is_overlay_window_label, overlay_focus_hold_from_inputs,
+        OverlayCanvasWindowState, OverlayFocusPolicyDebounce,
+        acknowledge_overlay_canvas_interactivity_state,
+        apply_pending_overlay_canvas_interactivity_with, combat_overlay_damage_started,
+        combat_overlay_health_status, combat_overlay_hostile_activity_started,
+        combat_overlay_renderer_is_stale, combat_overlay_should_be_visible,
+        is_overlay_window_label, overlay_focus_hold_from_inputs,
+        queue_overlay_canvas_interactivity, queue_reported_overlay_canvas_interactivity,
     };
+    use std::sync::atomic::Ordering;
+
+    #[test]
+    fn recreated_locked_canvas_applies_forced_edit_only_after_layout_initialization() {
+        let state = OverlayCanvasWindowState::default();
+        state
+            .force_edit_until_acknowledged
+            .store(true, Ordering::Release);
+        queue_overlay_canvas_interactivity(&state, true);
+        // The recreated runtime's persisted locked layout can report false
+        // before it receives the native Edit event; that stale report must not
+        // replace the host-owned pending request.
+        assert!(!queue_reported_overlay_canvas_interactivity(&state, false));
+        let mut applied = Vec::new();
+        apply_pending_overlay_canvas_interactivity_with(&state, |value| {
+            applied.push(value);
+            Ok(())
+        })
+        .unwrap();
+        assert!(applied.is_empty());
+        state.ready.store(true, Ordering::Release);
+        apply_pending_overlay_canvas_interactivity_with(&state, |value| {
+            applied.push(value);
+            Ok(())
+        })
+        .unwrap();
+        assert!(applied.is_empty());
+        state.layout_initialized.store(true, Ordering::Release);
+        apply_pending_overlay_canvas_interactivity_with(&state, |value| {
+            applied.push(value);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(applied, [true]);
+        acknowledge_overlay_canvas_interactivity_state(&state, true);
+        assert!(!state.force_edit_until_acknowledged.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn already_ready_unlocked_canvas_acknowledges_edit_then_accepts_lock() {
+        let state = OverlayCanvasWindowState::default();
+        state.ready.store(true, Ordering::Release);
+        state.layout_initialized.store(true, Ordering::Release);
+        state
+            .force_edit_until_acknowledged
+            .store(true, Ordering::Release);
+        queue_overlay_canvas_interactivity(&state, true);
+        let mut applied = Vec::new();
+        apply_pending_overlay_canvas_interactivity_with(&state, |value| {
+            applied.push(value);
+            Ok(())
+        })
+        .unwrap();
+        acknowledge_overlay_canvas_interactivity_state(&state, true);
+        assert!(queue_reported_overlay_canvas_interactivity(&state, false));
+        apply_pending_overlay_canvas_interactivity_with(&state, |value| {
+            applied.push(value);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(applied, [true, false]);
+    }
+
+    #[test]
+    fn failed_native_interactivity_apply_retains_pending_request_for_retry() {
+        let state = OverlayCanvasWindowState::default();
+        state.ready.store(true, Ordering::Release);
+        state.layout_initialized.store(true, Ordering::Release);
+        queue_overlay_canvas_interactivity(&state, true);
+        assert!(
+            apply_pending_overlay_canvas_interactivity_with(&state, |_| Err(
+                "platform failure".into()
+            ))
+            .is_err()
+        );
+        let mut applied = Vec::new();
+        apply_pending_overlay_canvas_interactivity_with(&state, |value| {
+            applied.push(value);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(applied, [true]);
+    }
 
     #[test]
     fn overlay_requires_request_readiness_and_nonautomatic_visibility() {

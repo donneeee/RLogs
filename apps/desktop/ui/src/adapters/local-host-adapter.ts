@@ -82,10 +82,17 @@ import {
 import { mountOverlayStatsTrackerSurface } from "./overlay-stats-tracker-surface";
 import { parseMechanicsMapUpdate } from "./mechanics-map";
 import { mountMechanicsMapSurface } from "./mechanics-map-surface";
+import { parseOverlayLayoutSettings } from "./overlay-layout";
 import {
   parseAutomarkerLoadResult,
   parseAutomarkerPresetView,
 } from "./automarker-presets";
+
+export async function openEditableOverlayCanvas(
+  invokeCommand: (command: string, args?: Record<string, unknown>) => Promise<unknown>,
+): Promise<void> {
+  await invokeCommand("show_overlay_canvas_editable");
+}
 import { mountAutomarkerPresetsSurface } from "./automarker-presets-surface";
 import {
   PHOTO_WALL_CAPTURE_STEPS,
@@ -128,6 +135,7 @@ import {
   parseThemeSettings,
 } from "./theme-settings";
 import type { UiLocalizer } from "../localization/ui-locale";
+import { localHostJson } from "../shell/local-host-http";
 import type {
   DesktopHostAdapter,
   InstalledPluginDescriptor,
@@ -263,9 +271,6 @@ interface CombatOverlayHealth {
   lastRecoveryUnixMillis: number | null;
 }
 
-interface ApiError {
-  error: string;
-}
 
 interface RuntimeEnvironment extends CaptureEnvironment {
   platform: string;
@@ -670,12 +675,21 @@ function createLocalHostAdapter(localizer: UiLocalizer): DesktopHostAdapter {
           });
         case `builtin://${OVERLAY_PLUGIN_ID}/overview`:
         case `builtin://${OVERLAY_PLUGIN_ID}/setups`:
-        case `builtin://${OVERLAY_PLUGIN_ID}/editor`:
         case `builtin://${OVERLAY_PLUGIN_ID}/settings`:
           return mountOverlayWorkspaceSurface(
             container,
             builtinSurfacePage(tab.entrypoint) as OverlayWorkspacePage,
           );
+        case `builtin://${OVERLAY_PLUGIN_ID}/editor`:
+          return mountOverlayWorkspaceSurface(container, "editor", {
+            load: async () => parseOverlayLayoutSettings(await apiJson<unknown>("/api/settings/overlay-layout")),
+            save: async (settings) => parseOverlayLayoutSettings(await apiJson<unknown>("/api/settings/overlay-layout", {
+              method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings),
+            })),
+            openOverlay: async () => {
+              await openEditableOverlayCanvas(invoke);
+            },
+          });
         case `builtin://${OVERLAY_PLUGIN_ID}/mechanics-map`:
           return mountMechanicsMapSurface(container, {
             async loadSnapshot() {
@@ -698,8 +712,7 @@ function createLocalHostAdapter(localizer: UiLocalizer): DesktopHostAdapter {
               });
             },
             async openOverlay() {
-              await invoke("set_overlay_canvas_interactive", { interactive: true });
-              await invoke("show_overlay_canvas");
+              await openEditableOverlayCanvas(invoke);
             },
           });
         case `builtin://${OVERLAY_PLUGIN_ID}/automarkers`:
@@ -722,8 +735,7 @@ function createLocalHostAdapter(localizer: UiLocalizer): DesktopHostAdapter {
               }));
             },
             async openOverlay() {
-              await invoke("set_overlay_canvas_interactive", { interactive: true });
-              await invoke("show_overlay_canvas");
+              await openEditableOverlayCanvas(invoke);
             },
           });
         case `builtin://${OVERLAY_PLUGIN_ID}/trackers`:
@@ -4828,15 +4840,7 @@ async function apiJson<T>(
     headers: { Accept: "application/json", ...init?.headers },
     ...init,
   });
-  const body: unknown = await response.json();
-  if (!response.ok) {
-    const detail =
-      isApiError(body) && body.error.trim() !== ""
-        ? body.error
-        : `Local runtime returned HTTP ${response.status}`;
-    throw new Error(detail);
-  }
-  return body as T;
+  return await localHostJson(response, `Local runtime returned HTTP ${response.status}`) as T;
 }
 
 function parseShellPreferences(value: unknown): ShellPreferences {
@@ -4907,15 +4911,6 @@ function isStringArrayRecord(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isApiError(value: unknown): value is ApiError {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "error" in value &&
-    typeof value.error === "string"
-  );
 }
 
 function emptyToNull(value: string): string | null {
