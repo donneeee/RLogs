@@ -3,8 +3,11 @@ const DIGEST = /^[a-f0-9]{64}$/;
 const REPORT_ID = /^rpt_[a-f0-9]{32}$/;
 const RECONCILIATION_ID = /^rec_[a-f0-9]{32}$/;
 export const BACKFILL_SOURCE_SCHEMA_VERSION = 12;
-export const BACKFILL_TARGET_SCHEMA_VERSION = 15;
-export const BACKFILL_TARGET_PROJECTION_REVISION = 7;
+export const CURRENT_REPORT_SCHEMA_VERSION = 15;
+export const CURRENT_REPORT_PROJECTION_REVISION = 7;
+export const CURRENT_TIMELINE_SCHEMA_VERSION = 3;
+export const BACKFILL_TARGET_SCHEMA_VERSION = CURRENT_REPORT_SCHEMA_VERSION;
+export const BACKFILL_TARGET_PROJECTION_REVISION = CURRENT_REPORT_PROJECTION_REVISION;
 
 export function expectedReportId(digest) {
   return `rpt_${digest.slice(0, 32)}`;
@@ -44,7 +47,11 @@ export function validateOutput(value, wakeup) {
     value.report?.verification?.artifact_sha256 === wakeup.artifact_sha256 &&
     value.membership?.report_id === wakeup.expected_report_id &&
     value.membership?.artifact_sha256 === wakeup.artifact_sha256 && Array.isArray(value.report?.runs) &&
-    value.report.runs.length > 0 && Array.isArray(value.membership?.runs);
+    value.report.runs.length > 0 &&
+    value.report.schema_version === CURRENT_REPORT_SCHEMA_VERSION &&
+    value.report.projection_revision === CURRENT_REPORT_PROJECTION_REVISION &&
+    value.report.runs.every((run) => run?.timeline?.schema_version === CURRENT_TIMELINE_SCHEMA_VERSION) &&
+    Array.isArray(value.membership?.runs);
 }
 
 export function isSchema12BackfillCandidate(report, row) {
@@ -162,7 +169,8 @@ function validReplayRateClock(timeline) {
 export function validateReconciliationOutput(value, runGroupId, sources) {
   if (value?.schema_version !== RECONCILIATION_SCHEMA_VERSION || value?.run_group_id !== runGroupId ||
       !RECONCILIATION_ID.test(value?.reconciliation_id ?? "") ||
-      !Array.isArray(value?.reports) || !value?.canonical_spine) return false;
+      !Array.isArray(value?.reports) || !value?.canonical_spine ||
+      value?.timeline?.schema_version !== CURRENT_TIMELINE_SCHEMA_VERSION) return false;
   if (value.reports.some((report) =>
     typeof report?.deployment_id !== "string" || report.deployment_id.length === 0 ||
     typeof report?.client_build !== "string" || report.client_build.length === 0 ||

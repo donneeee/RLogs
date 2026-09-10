@@ -5,6 +5,8 @@ import test from "node:test";
 import {
   BACKFILL_SOURCE_SCHEMA_VERSION, BACKFILL_TARGET_PROJECTION_REVISION,
   BACKFILL_TARGET_SCHEMA_VERSION,
+  CURRENT_REPORT_PROJECTION_REVISION, CURRENT_REPORT_SCHEMA_VERSION,
+  CURRENT_TIMELINE_SCHEMA_VERSION,
   RECONCILIATION_SCHEMA_VERSION,
   catalogEntry, compatibleProfileName, expectedReportId, reconcileCatalogEntry,
   isSchema12BackfillCandidate,
@@ -30,12 +32,40 @@ test("wake-up identities are derived from the sealed digest", () => {
 test("container output must preserve report and artifact identities", () => {
   const output = {
     schema_version: 1,
-    report: { report_id: wakeup.expected_report_id, verification: { artifact_sha256: digest }, runs: [{}] },
+    report: {
+      schema_version: CURRENT_REPORT_SCHEMA_VERSION,
+      projection_revision: CURRENT_REPORT_PROJECTION_REVISION,
+      report_id: wakeup.expected_report_id,
+      verification: { artifact_sha256: digest },
+      runs: [{ timeline: { schema_version: CURRENT_TIMELINE_SCHEMA_VERSION } }],
+    },
     membership: { report_id: wakeup.expected_report_id, artifact_sha256: digest, runs: [] },
   };
   assert.equal(validateOutput(output, wakeup), true);
   output.report.verification.artifact_sha256 = "b".repeat(64);
   assert.equal(validateOutput(output, wakeup), false);
+});
+
+test("container output must use the exact current report and timeline tuple", () => {
+  const output = {
+    schema_version: 1,
+    report: {
+      schema_version: CURRENT_REPORT_SCHEMA_VERSION,
+      projection_revision: CURRENT_REPORT_PROJECTION_REVISION,
+      report_id: wakeup.expected_report_id,
+      verification: { artifact_sha256: digest },
+      runs: [{ timeline: { schema_version: CURRENT_TIMELINE_SCHEMA_VERSION } }],
+    },
+    membership: { report_id: wakeup.expected_report_id, artifact_sha256: digest, runs: [] },
+  };
+  assert.equal(validateOutput({ ...output, report: { ...output.report, schema_version: 14 } }, wakeup), false);
+  assert.equal(validateOutput({ ...output, report: { ...output.report, projection_revision: 6 } }, wakeup), false);
+  assert.equal(validateOutput({ ...output, report: {
+    ...output.report, runs: [{ timeline: { schema_version: 2 } }],
+  } }, wakeup), false);
+  assert.equal(validateOutput({ ...output, report: {
+    ...output.report, runs: [{ timeline: { schema_version: 4 } }],
+  } }, wakeup), false);
 });
 
 test("backfill eligibility is limited to current public schema-12 replay evidence", () => {
@@ -73,7 +103,10 @@ test("backfill output can add schema fields but cannot change identity, owner, v
     report: {
       ...original, schema_version: BACKFILL_TARGET_SCHEMA_VERSION,
       projection_revision: BACKFILL_TARGET_PROJECTION_REVISION,
-      verification: { ...original.verification }, runs: [{ run_index: 0, run_group_id: "run_fixture" }],
+      verification: { ...original.verification }, runs: [{
+        run_index: 0, run_group_id: "run_fixture",
+        timeline: { schema_version: CURRENT_TIMELINE_SCHEMA_VERSION },
+      }],
     },
     membership: {
       report_id: wakeup.expected_report_id, artifact_sha256: digest,
@@ -91,6 +124,9 @@ test("backfill output can add schema fields but cannot change identity, owner, v
     ...output.report, region_id: "asia",
   } }, wakeup, original, row, "new-release"), false);
   assert.equal(validateBackfillOutput(output, wakeup, original, row, "short"), false);
+  assert.equal(validateBackfillOutput({ ...output, report: {
+    ...output.report, runs: [{ ...output.report.runs[0], timeline: { schema_version: 2 } }],
+  } }, wakeup, original, row, "new-release"), false);
 });
 
 test("training output must be an exact server-replayed solo dummy result", () => {
@@ -174,10 +210,14 @@ test("reconciliation output must preserve the exact source set and canonical spi
     })),
     attribution_replay_completed: false,
     rdps_status: null,
+    timeline: { schema_version: CURRENT_TIMELINE_SCHEMA_VERSION },
   };
   assert.equal(validateReconciliationOutput(output, "run_exact", sources), true);
   assert.equal(validateReconciliationOutput({ ...output, rdps_status: "partial_packet_proven_rules" }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, schema_version: 16 }, "run_exact", sources), false);
+  assert.equal(validateReconciliationOutput({ ...output, timeline: { schema_version: 2 } }, "run_exact", sources), false);
+  assert.equal(validateReconciliationOutput({ ...output, timeline: { schema_version: 4 } }, "run_exact", sources), false);
+  assert.equal(validateReconciliationOutput({ ...output, timeline: undefined }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, reports: [sources[0]] }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, canonical_spine: {
     report_id: `rpt_${"d".repeat(32)}`, run_index: 0, artifact_sha256: "d".repeat(64),
@@ -222,6 +262,7 @@ test("completed reconciliation requires replay-authored status, conservation, an
       conserved: true,
     },
     timeline: {
+      schema_version: CURRENT_TIMELINE_SCHEMA_VERSION,
       source: "reconciled_canonical_spine",
       duration_micros: 2_000_000,
       series_bucket_micros: 1_000_000,
