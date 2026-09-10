@@ -3,6 +3,9 @@ import test from "node:test";
 
 import backend from "../src/index.js";
 
+const PACK_A = `sha256:${"a".repeat(64)}`;
+const PACK_B = `sha256:${"b".repeat(64)}`;
+
 function environment(values = {}) {
   const store = new Map(Object.entries(values));
   return {
@@ -33,6 +36,9 @@ function environment(values = {}) {
     },
     RLOGS_DB: {
       prepare(query) {
+        if (query.includes("LEFT JOIN report_runs")) {
+          return { bind() { return { async all() { return { results: [] }; } }; } };
+        }
         if (query.includes("FROM report_runs")) {
           return { async all() { return { results: [] }; } };
         }
@@ -268,17 +274,175 @@ test("training leaderboard supports season, region, class, and spec filters", as
   assert.deepEqual(captured.bindings, [3, "north-america", 4, 41, 100]);
 });
 
-test("observed character directory comes only from its materialized Cloudflare catalog", async () => {
+test("legacy observed character catalogs fail closed without fabricating presentation authority", async () => {
   const catalog = {
     schema_version: 1,
-    characters: [{ observed_character_key: "chr_example", display_name: "MarieRose" }],
+    characters: [{
+      observed_character_key: "chr_example", display_name: "MarieRose",
+      class_id: 4, class_name: "Legacy Marksman", specialization_id: 2,
+      specialization_name: "Legacy Falconry", reports: [{
+        report_id: "rpt_legacy", run_index: 0, scene_id: 6500,
+        scene_name: "Legacy scene", terminal_state: "completed",
+      }],
+    }],
   };
   const response = await backend.fetch(
     new Request("https://backend/v1/characters"),
     environment({ "fs:characters/catalog.v1.json": JSON.stringify(catalog) }),
   );
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), catalog);
+  const value = await response.json();
+  assert.equal(value.schema_version, 2);
+  assert.equal(value.characters[0].presentation_authority, null);
+  assert.equal(value.characters[0].class_id, 4);
+  assert.equal(value.characters[0].specialization_id, 2);
+  assert.equal(value.characters[0].class_name, null);
+  assert.equal(value.characters[0].specialization_name, null);
+  assert.deepEqual(value.characters[0].reports[0], {
+    ...catalog.characters[0].reports[0], deployment_id: null, client_build: null,
+    protocol_pack_digest: null, scene_name: null,
+  });
+});
+
+test("schema-2 observed character authority must match one exact report reference", async () => {
+  const authority = {
+    deployment_id: "global", client_build: "24687926", protocol_pack_digest: PACK_A,
+  };
+  const catalog = {
+    schema_version: 2,
+    characters: [{
+      observed_character_key: "chr_example", display_name: "MarieRose",
+      presentation_authority: authority, class_id: 4, class_name: "Marksman",
+      specialization_id: 2, specialization_name: "Falconry Spec", reports: [{
+        report_id: "rpt_current", run_index: 0, scene_id: 6500, scene_name: "Current scene",
+        terminal_state: "completed", ...authority,
+      }],
+    }],
+  };
+  const value = await (await backend.fetch(
+    new Request("https://backend/v1/characters"),
+    environment({ "fs:characters/catalog.v1.json": JSON.stringify(catalog) }),
+  )).json();
+  assert.deepEqual(value.characters[0].presentation_authority, authority);
+  assert.equal(value.characters[0].class_name, "Marksman");
+  assert.equal(value.characters[0].reports[0].scene_name, "Current scene");
+
+  const malformed = structuredClone(catalog);
+  malformed.characters[0].presentation_authority.protocol_pack_digest = `sha256:${"A".repeat(64)}`;
+  malformed.characters[0].reports[0].protocol_pack_digest = `sha256:${"A".repeat(64)}`;
+  const rejected = await (await backend.fetch(
+    new Request("https://backend/v1/characters"),
+    environment({ "fs:characters/catalog.v1.json": JSON.stringify(malformed) }),
+  )).json();
+  assert.equal(rejected.characters[0].presentation_authority, null);
+  assert.equal(rejected.characters[0].class_name, null);
+  assert.equal(rejected.characters[0].reports[0].protocol_pack_digest, null);
+  assert.equal(rejected.characters[0].reports[0].scene_name, null);
+});
+
+test("milestone schema-2 uses report-specific D1 authority and marks unavailable legacy semantics unknown", async () => {
+  const authorizedId = "rpt_authorized";
+  const legacy = {
+    schema_version: 1,
+    entries: [authorizedId, "rpt_unavailable"].map((report_id) => ({
+      kind: "master_twenty_dungeon", character_id: "3296036", report_id, run_index: 0,
+      completed_unix_millis: 1, scene_id: 6500, scene_name: "Legacy scene",
+      difficulty_family: "master", difficulty_tier: 20, total_run_time_micros: 10,
+    })),
+  };
+  const env = environment({ "fs:community-milestones.v1.json": JSON.stringify(legacy) });
+  env.RLOGS_DB.prepare = (query) => ({ bind(...reportIds) {
+    assert.match(query, /r\.game_build AS client_build/u);
+    assert.ok(reportIds.includes(authorizedId));
+    return { async all() { return { results: [{
+      report_id: authorizedId, run_index: 0,
+      visibility: "public", verification_tier: "replayed",
+      catalog_entry_json: JSON.stringify({ deployment_id: "global" }),
+      client_build: "24687926", protocol_pack_digest: PACK_A,
+    }] }; } };
+  } });
+  const value = await (await backend.fetch(
+    new Request("https://backend/v1/activity/milestones"), env,
+  )).json();
+  assert.equal(value.schema_version, 2);
+  assert.deepEqual(value.entries[0], {
+    ...legacy.entries[0], deployment_id: "global", client_build: "24687926",
+    protocol_pack_digest: PACK_A,
+  });
+  assert.equal(value.entries[1].kind, "unknown");
+  assert.equal(value.entries[1].deployment_id, null);
+  assert.equal(value.entries[1].client_build, null);
+  assert.equal(value.entries[1].protocol_pack_digest, null);
+  assert.equal(value.entries[1].scene_name, null);
+  assert.equal(value.entries[1].difficulty_family, null);
+  assert.equal(value.entries[1].scene_id, 6500);
+  assert.equal(value.entries[1].difficulty_tier, 20);
+});
+
+test("observed public reads remove D1-known ineligible and visibility-overridden reports", async () => {
+  const reportIds = ["rpt_eligible", "rpt_private", "rpt_nonreplayed", "rpt_absent", "rpt_overridden"];
+  const catalog = {
+    schema_version: 1,
+    characters: reportIds.map((report_id) => ({
+      observed_character_key: `chr_${report_id}`, display_name: report_id,
+      class_id: 4, class_name: "Legacy class", report_count: 1,
+      reports: [{ report_id, run_index: 0, created_unix_millis: 1,
+        scene_id: 6500, scene_name: `Scene ${report_id}`, terminal_state: "completed" }],
+    })),
+  };
+  const env = environment({ "fs:characters/catalog.v1.json": JSON.stringify(catalog) });
+  env.AUTH_STATE.get = () => ({ async fetch() { return Response.json({ rpt_overridden: "private" }); } });
+  env.RLOGS_DB.prepare = () => ({ bind() { return { async all() { return { results: [
+    { report_id: "rpt_eligible", run_index: 0, visibility: "public", verification_tier: "replayed",
+      catalog_entry_json: JSON.stringify({ deployment_id: "global" }), client_build: "24687926",
+      protocol_pack_digest: PACK_A },
+    { report_id: "rpt_private", run_index: 0, visibility: "private", verification_tier: "replayed",
+      catalog_entry_json: JSON.stringify({ deployment_id: "global" }), client_build: "24687926",
+      protocol_pack_digest: PACK_A },
+    { report_id: "rpt_nonreplayed", run_index: 0, visibility: "public", verification_tier: "corroborated",
+      catalog_entry_json: JSON.stringify({ deployment_id: "global" }), client_build: "24687926",
+      protocol_pack_digest: PACK_A },
+  ] }; } }; } });
+
+  const value = await (await backend.fetch(new Request("https://backend/v1/characters"), env)).json();
+  assert.deepEqual(value.characters.map((character) => character.display_name), ["rpt_eligible", "rpt_absent"]);
+  assert.equal(value.characters[0].reports[0].scene_name, "Scene rpt_eligible");
+  assert.equal(value.characters[0].reports[0].protocol_pack_digest, PACK_A);
+  assert.equal(value.characters[1].reports[0].scene_name, null);
+  assert.equal(value.characters[1].reports[0].protocol_pack_digest, null);
+  assert.equal(value.characters[1].class_id, 4);
+  assert.equal(value.characters[1].class_name, null);
+});
+
+test("milestone public reads remove D1-known ineligible and overridden entries", async () => {
+  const reportIds = ["rpt_eligible", "rpt_private", "rpt_nonreplayed", "rpt_absent", "rpt_overridden"];
+  const catalog = {
+    schema_version: 1,
+    entries: reportIds.map((report_id) => ({
+      kind: "master_twenty_dungeon", character_id: report_id, report_id, run_index: 0,
+      completed_unix_millis: 1, scene_id: 6500, scene_name: "Legacy scene",
+      difficulty_family: "master", difficulty_tier: 20,
+    })),
+  };
+  const env = environment({ "fs:community-milestones.v1.json": JSON.stringify(catalog) });
+  env.AUTH_STATE.get = () => ({ async fetch() { return Response.json({ rpt_overridden: "private" }); } });
+  env.RLOGS_DB.prepare = () => ({ bind() { return { async all() { return { results: [
+    { report_id: "rpt_eligible", run_index: 0, visibility: "public", verification_tier: "replayed",
+      catalog_entry_json: JSON.stringify({ deployment_id: "global" }), client_build: "24687926",
+      protocol_pack_digest: PACK_A },
+    { report_id: "rpt_private", run_index: 0, visibility: "private", verification_tier: "replayed",
+      catalog_entry_json: JSON.stringify({ deployment_id: "global" }), client_build: "24687926",
+      protocol_pack_digest: PACK_A },
+    { report_id: "rpt_nonreplayed", run_index: 0, visibility: "public", verification_tier: "ranked",
+      catalog_entry_json: JSON.stringify({ deployment_id: "global" }), client_build: "24687926",
+      protocol_pack_digest: PACK_A },
+  ] }; } }; } });
+  const value = await (await backend.fetch(new Request("https://backend/v1/activity/milestones"), env)).json();
+  assert.deepEqual(value.entries.map((entry) => entry.report_id), ["rpt_eligible", "rpt_absent"]);
+  assert.equal(value.entries[0].kind, "master_twenty_dungeon");
+  assert.equal(value.entries[1].kind, "unknown");
+  assert.equal(value.entries[1].scene_id, 6500);
+  assert.equal(value.entries[1].scene_name, null);
 });
 
 test("parse catalog applies public filters and pagination", async () => {
@@ -357,13 +521,13 @@ test("legacy catalog rows retain raw scene identity but cannot lend derived face
 test("mixed localization identities cannot lend a scene facet label", async () => {
   const exact = {
     run_index: 0, deployment_id: "global", client_build: "24687926",
-    protocol_pack_digest: "sha256:pack-a", region_id: "global", scene_id: 6565,
+    protocol_pack_digest: PACK_A, region_id: "global", scene_id: 6565,
     scene_name: "Sea-Ringed Reef", terminal_state: "completed",
   };
   const env = environment({
     "fs:catalog.v1.json": JSON.stringify({ schema_version: 7, entries: [
       { ...exact, report_id: "rpt_a" },
-      { ...exact, report_id: "rpt_b", protocol_pack_digest: "sha256:pack-b" },
+      { ...exact, report_id: "rpt_b", protocol_pack_digest: PACK_B },
     ], facets: {} }),
   });
   const value = await (await backend.fetch(new Request("https://backend/v1/parses"), env)).json();
@@ -408,7 +572,7 @@ test("new hosted reports and catalog rows are read from D1 and R2", async () => 
   env.RLOGS_DB.prepare = (query) => {
     if (query.includes("FROM report_runs")) return { async all() { return { results: [{
       catalog_entry_json: JSON.stringify(entry), client_build: "24687926",
-      protocol_pack_digest: "sha256:hosted-pack",
+      protocol_pack_digest: PACK_A,
     }] }; } };
     if (query.includes("FROM reports r JOIN upload_sessions")) return { bind() { return { async first() {
       return { visibility: "public", projection_object_key: "reports/new.json", submitter_id: "usr_owner" };
@@ -432,7 +596,7 @@ test("new hosted reports and catalog rows are read from D1 and R2", async () => 
   assert.deepEqual((await catalog.json()).entries, [{
     ...entry,
     client_build: "24687926",
-    protocol_pack_digest: "sha256:hosted-pack",
+    protocol_pack_digest: PACK_A,
   }]);
   const projection = await backend.fetch(new Request(`https://backend/v1/parses/${reportId}`), env);
   assert.deepEqual(await projection.json(), {

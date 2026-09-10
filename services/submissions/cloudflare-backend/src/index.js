@@ -25,6 +25,144 @@ async function storedJson(env, key) {
     : new Response(value, { headers: JSON_HEADERS });
 }
 
+function completePresentationAuthority(deploymentId, clientBuild, protocolPackDigest) {
+  if (![deploymentId, clientBuild].every((value) => typeof value === "string" && value.trim() !== "") ||
+      typeof protocolPackDigest !== "string" ||
+      !/^sha256:[0-9a-f]{64}$/u.test(protocolPackDigest.trim())) return null;
+  return {
+    deployment_id: deploymentId.trim(),
+    client_build: clientBuild.trim(),
+    protocol_pack_digest: protocolPackDigest.trim(),
+  };
+}
+
+async function authoritativeReportRunIdentities(env, references) {
+  const byRun = new Map();
+  const reportEligibility = new Map();
+  if (!env.RLOGS_DB) return { byRun, reportEligibility };
+  const reportIds = [...new Set(references.map((reference) => reference?.report_id).filter(Boolean))];
+  try {
+    for (let offset = 0; offset < reportIds.length; offset += 90) {
+      const chunk = reportIds.slice(offset, offset + 90);
+      const placeholders = chunk.map((_, index) => `?${index + 1}`).join(",");
+      const statement = env.RLOGS_DB.prepare(`SELECT r.report_id, r.visibility, r.verification_tier,
+          rr.run_index,
+          rr.catalog_entry_json, r.game_build AS client_build, r.protocol_pack_digest
+        FROM reports r LEFT JOIN report_runs rr ON rr.report_id=r.report_id
+        WHERE r.report_id IN (${placeholders})`);
+      const rows = await (typeof statement.bind === "function" ? statement.bind(...chunk) : statement).all();
+      for (const row of rows.results ?? []) {
+        const eligible = row.visibility === "public" && row.verification_tier === "replayed";
+        reportEligibility.set(row.report_id, eligible);
+        if (!eligible || row.run_index == null) continue;
+        let catalogEntry = null;
+        try { catalogEntry = JSON.parse(row.catalog_entry_json); } catch {}
+        const authority = completePresentationAuthority(
+          catalogEntry?.deployment_id, row.client_build, row.protocol_pack_digest,
+        );
+        byRun.set(`${row.report_id}:${row.run_index}`, authority);
+      }
+    }
+  } catch (cause) {
+    console.error("rLogs report presentation authority read failed", cause);
+  }
+  return { byRun, reportEligibility };
+}
+
+function samePresentationAuthority(left, right) {
+  return left?.deployment_id === right?.deployment_id &&
+    left?.client_build === right?.client_build &&
+    left?.protocol_pack_digest === right?.protocol_pack_digest;
+}
+
+async function observedCharacterCatalog(env) {
+  const catalog = await env.RLOGS_DATA.get("fs:characters/catalog.v1.json", "json");
+  if (!catalog || !Array.isArray(catalog.characters)) return notFound();
+  const references = catalog.characters.flatMap((character) => character.reports ?? []);
+  const [{ byRun: authoritative, reportEligibility }, overrides] = await Promise.all([
+    authoritativeReportRunIdentities(env, references), visibilityOverrides(env),
+  ]);
+  const schemaTwo = Number(catalog.schema_version) >= 2;
+  const characters = catalog.characters.flatMap((character) => {
+    let removedKnownReference = false;
+    const originalReports = character.reports ?? [];
+    const reports = originalReports.flatMap((reference) => {
+      const override = overrides[reference.report_id];
+      const knownEligibility = reportEligibility.get(reference.report_id);
+      const ineligible = (override != null && override !== "public") || knownEligibility === false ||
+        (knownEligibility === true && !authoritative.has(`${reference.report_id}:${reference.run_index}`));
+      if (ineligible) {
+        removedKnownReference = true;
+        return [];
+      }
+      const referenceKey = `${reference.report_id}:${reference.run_index}`;
+      const authority = authoritative.has(referenceKey)
+        ? authoritative.get(referenceKey)
+        : (schemaTwo ? completePresentationAuthority(
+          reference.deployment_id, reference.client_build, reference.protocol_pack_digest,
+        ) : null);
+      return [{
+        ...reference,
+        deployment_id: authority?.deployment_id ?? null,
+        client_build: authority?.client_build ?? null,
+        protocol_pack_digest: authority?.protocol_pack_digest ?? null,
+        scene_name: authority ? reference.scene_name ?? null : null,
+      }];
+    });
+    // A schema-2 character does not retain the report id that authored its
+    // aggregate display/name timestamps. If any contributing reference is now
+    // known ineligible, the aggregate cannot be safely separated from it.
+    if (removedKnownReference) return [];
+    const candidateAuthority = schemaTwo ? completePresentationAuthority(
+      character.presentation_authority?.deployment_id,
+      character.presentation_authority?.client_build,
+      character.presentation_authority?.protocol_pack_digest,
+    ) : null;
+    const presentationAuthority = candidateAuthority && reports.some((reference) =>
+      samePresentationAuthority(candidateAuthority, reference)) ? candidateAuthority : null;
+    return [{
+      ...character,
+      presentation_authority: presentationAuthority,
+      class_name: presentationAuthority ? character.class_name ?? null : null,
+      specialization_name: presentationAuthority ? character.specialization_name ?? null : null,
+      report_count: reports.length,
+      reports,
+    }];
+  });
+  return json({ ...catalog, schema_version: 2, total_characters: characters.length, characters });
+}
+
+async function communityMilestoneCatalog(env) {
+  const catalog = await env.RLOGS_DATA.get("fs:community-milestones.v1.json", "json");
+  if (!catalog || !Array.isArray(catalog.entries)) return notFound();
+  const [{ byRun: authoritative, reportEligibility }, overrides] = await Promise.all([
+    authoritativeReportRunIdentities(env, catalog.entries), visibilityOverrides(env),
+  ]);
+  const schemaTwo = Number(catalog.schema_version) >= 2;
+  const entries = catalog.entries.flatMap((entry) => {
+    const override = overrides[entry.report_id];
+    const knownEligibility = reportEligibility.get(entry.report_id);
+    if ((override != null && override !== "public") || knownEligibility === false ||
+        (knownEligibility === true && !authoritative.has(`${entry.report_id}:${entry.run_index}`))) return [];
+    const entryKey = `${entry.report_id}:${entry.run_index}`;
+    const authority = authoritative.has(entryKey)
+      ? authoritative.get(entryKey)
+      : (schemaTwo ? completePresentationAuthority(
+        entry.deployment_id, entry.client_build, entry.protocol_pack_digest,
+      ) : null);
+    return [{
+      ...entry,
+      kind: authority ? entry.kind : "unknown",
+      deployment_id: authority?.deployment_id ?? null,
+      client_build: authority?.client_build ?? null,
+      protocol_pack_digest: authority?.protocol_pack_digest ?? null,
+      scene_name: authority ? entry.scene_name ?? null : null,
+      difficulty_family: authority ? entry.difficulty_family ?? null : null,
+    }];
+  });
+  return json({ ...catalog, schema_version: 2, total_entries: entries.length, entries });
+}
+
 async function visibilityOverrides(env) {
   const id = env.AUTH_STATE.idFromName("global");
   const response = await env.AUTH_STATE.get(id).fetch("https://auth.internal/internal/visibility-overrides");
@@ -189,16 +327,15 @@ function normalizeCatalogEntry(entry, authoritativeIdentity = null) {
   const protocolPackDigest = authoritativeIdentity === null
     ? normalized.protocol_pack_digest ?? null
     : authoritativeIdentity.protocol_pack_digest ?? null;
-  const hasAuthority = typeof normalized.deployment_id === "string" &&
-    normalized.deployment_id.trim() !== "" && typeof clientBuild === "string" &&
-    clientBuild.trim() !== "" && typeof protocolPackDigest === "string" &&
-    protocolPackDigest.trim() !== "";
+  const authority = completePresentationAuthority(
+    normalized.deployment_id, clientBuild, protocolPackDigest,
+  );
   const result = {
     ...normalized,
-    client_build: hasAuthority ? clientBuild : null,
-    protocol_pack_digest: hasAuthority ? protocolPackDigest : null,
+    client_build: authority?.client_build ?? null,
+    protocol_pack_digest: authority?.protocol_pack_digest ?? null,
   };
-  if (!hasAuthority) {
+  if (!authority) {
     result.activity_id = null;
     result.activity_family_id = null;
     result.activity_category_id = null;
@@ -592,10 +729,10 @@ async function route(request, env) {
   if (path === "/v1/profiles") return profileCatalog(env, url);
   if (path === "/v1/leaderboards/profiles") return profileLeaderboards(env, url);
   if (path === "/v1/leaderboards/training-dummy") return trainingDummyLeaderboard(env, url);
-  if (path === "/v1/characters") return storedJson(env, "characters/catalog.v1.json");
+  if (path === "/v1/characters") return observedCharacterCatalog(env);
   if (path === "/v1/parses") return parseCatalog(env, url);
   if (path === "/v1/activity/milestones") {
-    return storedJson(env, "community-milestones.v1.json");
+    return communityMilestoneCatalog(env);
   }
   let match = /^\/v1\/parses\/(rpt_[A-Za-z0-9_-]+)$/.exec(path);
   if (match) return publicReport(env, match[1]);

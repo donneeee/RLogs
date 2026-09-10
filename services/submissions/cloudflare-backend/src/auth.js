@@ -933,7 +933,8 @@ function normalizeCatalogEntry(entry, clientBuild = null, protocolPackDigest = n
   const build = clientBuild ?? null;
   const digest = protocolPackDigest ?? null;
   const hasAuthority = typeof entry.deployment_id === "string" && entry.deployment_id.trim() !== "" &&
-    typeof build === "string" && build.trim() !== "" && typeof digest === "string" && digest.trim() !== "";
+    typeof build === "string" && build.trim() !== "" && typeof digest === "string" &&
+    /^sha256:[0-9a-f]{64}$/u.test(digest.trim());
   return {
     ...entry,
     client_build: hasAuthority ? build : null,

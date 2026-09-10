@@ -4,6 +4,8 @@ import test from "node:test";
 import { accountView, catalogEntry, RLogsAuthState, tokenHash } from "../src/auth.js";
 import { canonicalJson, canonicalPublishedRouting, liveCaptureProof, profileLeaderboardProjection, reconcileCatalog, reconcilePublishedRouting } from "../src/profile.js";
 
+const PACK_A = `sha256:${"a".repeat(64)}`;
+
 function authFixture() {
   const durable = new Map();
   const kv = new Map();
@@ -316,7 +318,7 @@ test("My Parses includes uploader reports and non-private claimed-character repo
   assert.equal(value.entries[0].submitted_by_you, true);
   assert.deepEqual(value.entries[1].matched_character_ids, ["3296036"]);
   assert.ok(value.entries.every((entry) => entry.client_build === "24687926"));
-  assert.ok(value.entries.every((entry) => entry.protocol_pack_digest === "sha256:test-pack"));
+  assert.ok(value.entries.every((entry) => entry.protocol_pack_digest === PACK_A));
 });
 
 test("legacy My Parses reports fail closed for derived localization semantics", () => {
@@ -349,7 +351,7 @@ test("My Parses ignores conflicting schema-6 catalog semantics and rebuilds from
     schema_version: 6,
     entries: [{
       report_id: reportId, run_index: 0, deployment_id: "global",
-      client_build: "24687926", protocol_pack_digest: "sha256:test-pack",
+      client_build: "24687926", protocol_pack_digest: PACK_A,
       scene_id: 9999, scene_name: "Wrong cached scene", activity_id: "wrong.activity",
       activity_family_id: "wrong.family", activity_category_id: "wrong-category",
       difficulty_family: "wrong-difficulty", difficulty_tier: 1,
@@ -371,7 +373,7 @@ test("My Parses ignores conflicting schema-6 catalog semantics and rebuilds from
   assert.equal(value.entries[0].difficulty_family, "master");
   assert.equal(value.entries[0].difficulty_tier, 20);
   assert.equal(value.entries[0].client_build, "24687926");
-  assert.equal(value.entries[0].protocol_pack_digest, "sha256:test-pack");
+  assert.equal(value.entries[0].protocol_pack_digest, PACK_A);
 });
 
 test("My Parses filters hosted reports in D1 without a per-report membership query", async () => {
@@ -397,7 +399,7 @@ test("My Parses filters hosted reports in D1 without a per-report membership que
                   scene_id: 1, scene_name: "Dungeon", terminal_state: "completed",
                 }),
                 client_build: "24687926",
-                protocol_pack_digest: "sha256:hosted-pack",
+                protocol_pack_digest: PACK_A,
                 visibility: "unlisted",
                 submitter_id: "usr_other",
                 matched_character_ids: "3296036",
@@ -421,7 +423,7 @@ test("My Parses filters hosted reports in D1 without a per-report membership que
   assert.deepEqual(value.entries.map((entry) => entry.report_id), [reportId]);
   assert.deepEqual(value.entries[0].matched_character_ids, ["3296036"]);
   assert.equal(value.entries[0].client_build, "24687926");
-  assert.equal(value.entries[0].protocol_pack_digest, "sha256:hosted-pack");
+  assert.equal(value.entries[0].protocol_pack_digest, PACK_A);
   const reportQueries = queries.filter((query) => query.includes("FROM report_runs"));
   assert.equal(reportQueries.length, 2);
   assert.match(reportQueries[0], /EXISTS \(/u);
@@ -734,7 +736,7 @@ function reportFixture(reportId, visibility, submitterId, createdUnixMillis) {
     created_unix_millis: createdUnixMillis,
     deployment_id: "global",
     client_build: "24687926",
-    protocol_pack_digest: "sha256:test-pack",
+    protocol_pack_digest: PACK_A,
     region_id: "north-america",
     submission_provenance: { submitter_id: submitterId },
     runs: [{
