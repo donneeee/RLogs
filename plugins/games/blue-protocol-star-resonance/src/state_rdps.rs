@@ -60,7 +60,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v50";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v51";
 // Current-build Life Wave static identity. The child is a refreshable
 // five-second recipient status produced by module family 2404. Exact selected-
 // secondary-lane marginals require the authoritative local module profile and
@@ -16490,7 +16490,13 @@ impl BpsrStateDamageContributionProjector {
         self.team_luck_critical_cleared_by_snapshot
             .remove(&actor_id);
         self.team_luck_lucky_cleared_by_snapshot.remove(&actor_id);
-        self.incomplete_rdps_actor_ids.remove(&actor_id);
+        // This set is a run-level completeness receipt, not live actor state.
+        // Despawn, transform, and short-ID reuse clear attribution windows, but
+        // they cannot make an already accumulated partial rDPS total complete.
+        // Keep the conservative receipt until the enclosing run reset. If a
+        // short ID is reused, retaining incompleteness may suppress a complete
+        // display; removing it could instead publish a known-partial total as
+        // exact, which is the unsafe direction.
         self.life_wave_character_id_by_actor.remove(&actor_id);
         if let Some(entity_uuid) = self.life_wave_entity_uuid_by_actor.remove(&actor_id) {
             self.life_wave_bonus_basis_points_by_entity_uuid
@@ -29382,5 +29388,17 @@ mod tests {
         );
 
         assert_eq!(incomplete, HashSet::from([1, 2, 3, 4, 5]));
+    }
+
+    #[test]
+    fn actor_lifetime_boundary_preserves_run_level_incomplete_receipt() {
+        let mut projector = BpsrStateDamageContributionProjector::default();
+        projector.incomplete_rdps_actor_ids.insert(4);
+
+        projector.clear_actor(4);
+
+        assert_eq!(projector.incomplete_rdps_actor_ids(), vec![4]);
+        projector.clear_run_state();
+        assert!(projector.incomplete_rdps_actor_ids().is_empty());
     }
 }
