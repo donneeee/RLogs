@@ -6908,6 +6908,7 @@ fn public_combat_timeline(
     populate_timeline_loadouts(
         &mut timeline,
         combat_loadout_marker_sources(report_id, &run.combat_loadout_phases),
+        canonical_run_observed_bounds(analysis).is_some(),
     );
     timeline
 }
@@ -6919,9 +6920,23 @@ fn populate_timeline_rate_clock(
 ) {
     timeline.rate_clock.clear();
     timeline.rate_clock_complete = false;
-    let kept = points.len().min(MAXIMUM_TIMELINE_SERIES_POINTS);
-    timeline.omitted.rate_clock_points = points.len().saturating_sub(kept);
-    if !complete || timeline.omitted.rate_clock_points != 0 {
+    let expected_points_u64 = timeline
+        .duration_micros
+        .saturating_add(timeline.series_bucket_micros.saturating_sub(1))
+        / timeline.series_bucket_micros.max(1);
+    let Ok(expected_points) = usize::try_from(expected_points_u64) else {
+        return;
+    };
+    timeline.omitted.rate_clock_points =
+        expected_points.saturating_sub(MAXIMUM_TIMELINE_SERIES_POINTS);
+    if !complete
+        || expected_points > MAXIMUM_TIMELINE_SERIES_POINTS
+        || points.len() > expected_points
+        || points
+            .iter()
+            .enumerate()
+            .any(|(index, point)| point.second != index as u32)
+    {
         return;
     }
     timeline.rate_clock = points
@@ -6932,6 +6947,24 @@ fn populate_timeline_rate_clock(
             adps_elapsed_micros: point.adps_elapsed_micros,
         })
         .collect();
+
+    // The reducer clock advances only while its reviewed Game/active intervals
+    // advance. A canonical run can end later (including in a fractional final
+    // bucket), so publish plateau points through the exact playback endpoint.
+    // This keeps the strict one-clock-point-per-visible-bucket contract without
+    // pretending that terminal non-combat wall time advances either rate clock.
+    let (last_edps_elapsed_micros, last_adps_elapsed_micros) = timeline
+        .rate_clock
+        .last()
+        .map(|point| (point.edps_elapsed_micros, point.adps_elapsed_micros))
+        .unwrap_or((0, 0));
+    while timeline.rate_clock.len() < expected_points {
+        timeline.rate_clock.push(PublicTimelineRateClockPoint {
+            second: timeline.rate_clock.len() as u32,
+            edps_elapsed_micros: last_edps_elapsed_micros,
+            adps_elapsed_micros: last_adps_elapsed_micros,
+        });
+    }
     timeline.rate_clock_complete = true;
 }
 
@@ -6959,6 +6992,7 @@ fn populate_timeline_combat_data(
     influences: &[PublicRdpsInfluence],
     canonical_run_observed_bounds: Option<CanonicalRunObservedBounds>,
 ) {
+    let canonical_duration_known = canonical_run_observed_bounds.is_some();
     timeline.participant_tracks.clear();
     timeline.death_markers.clear();
     timeline.rdps_influence_spans.clear();
@@ -6981,9 +7015,10 @@ fn populate_timeline_combat_data(
             .series_points
             .saturating_add(participant.series.len().saturating_sub(kept));
         remaining_points -= kept;
-        if let Some(last) = kept
-            .checked_sub(1)
-            .and_then(|last_index| participant.series.get(last_index))
+        if !canonical_duration_known
+            && let Some(last) = kept
+                .checked_sub(1)
+                .and_then(|last_index| participant.series.get(last_index))
         {
             timeline.duration_micros = timeline.duration_micros.max(
                 u64::from(last.second)
@@ -7010,9 +7045,11 @@ fn populate_timeline_combat_data(
                 break;
             }
             let at_micros = u64::from(*second).saturating_mul(1_000_000);
-            timeline.duration_micros = timeline
-                .duration_micros
-                .max(at_micros.saturating_add(timeline.series_bucket_micros));
+            if !canonical_duration_known {
+                timeline.duration_micros = timeline
+                    .duration_micros
+                    .max(at_micros.saturating_add(timeline.series_bucket_micros));
+            }
             timeline.death_markers.push(PublicTimelineDeathMarker {
                 actor_id: participant.actor_id.clone(),
                 at_micros,
@@ -7128,6 +7165,7 @@ fn canonical_run_observed_bounds(analysis: &RunAnalysis) -> Option<CanonicalRunO
 fn populate_timeline_loadouts<'a>(
     timeline: &mut PublicCombatTimeline,
     phases: impl IntoIterator<Item = (&'a str, usize, &'a PublicCombatLoadoutPhase)>,
+    canonical_duration_known: bool,
 ) {
     timeline.loadout_markers.clear();
     timeline.omitted.loadout_markers = 0;
@@ -7136,7 +7174,13 @@ fn populate_timeline_loadouts<'a>(
             timeline.omitted.loadout_markers = timeline.omitted.loadout_markers.saturating_add(1);
             continue;
         }
-        timeline.duration_micros = timeline.duration_micros.max(phase.run_elapsed_micros);
+        if canonical_duration_known && phase.run_elapsed_micros > timeline.duration_micros {
+            timeline.omitted.loadout_markers = timeline.omitted.loadout_markers.saturating_add(1);
+            continue;
+        }
+        if !canonical_duration_known {
+            timeline.duration_micros = timeline.duration_micros.max(phase.run_elapsed_micros);
+        }
         timeline.loadout_markers.push(PublicTimelineLoadoutMarker {
             character_id: phase.character_id.clone(),
             at_micros: phase.run_elapsed_micros,
@@ -7752,7 +7796,11 @@ mod tests {
                 adps_elapsed_micros: 1_000_000,
             },
         ];
-        let mut timeline = PublicCombatTimeline::default();
+        let mut timeline = PublicCombatTimeline {
+            duration_micros: 2_000_000,
+            series_bucket_micros: 1_000_000,
+            ..PublicCombatTimeline::default()
+        };
 
         populate_timeline_rate_clock(&mut timeline, &points, true);
 
@@ -7765,6 +7813,36 @@ mod tests {
         populate_timeline_rate_clock(&mut timeline, &points, false);
         assert!(!timeline.rate_clock_complete);
         assert!(timeline.rate_clock.is_empty());
+    }
+
+    #[test]
+    fn public_timeline_rate_clock_plateaus_through_fractional_terminal_bucket() {
+        let points = vec![
+            HistoryRateClockPoint {
+                second: 0,
+                edps_elapsed_micros: 1_000_000,
+                adps_elapsed_micros: 900_000,
+            },
+            HistoryRateClockPoint {
+                second: 1,
+                edps_elapsed_micros: 1_750_000,
+                adps_elapsed_micros: 1_250_000,
+            },
+        ];
+        let mut timeline = PublicCombatTimeline {
+            duration_micros: 2_100_000,
+            series_bucket_micros: 1_000_000,
+            ..PublicCombatTimeline::default()
+        };
+
+        populate_timeline_rate_clock(&mut timeline, &points, true);
+
+        assert!(timeline.rate_clock_complete);
+        assert_eq!(timeline.duration_micros, 2_100_000);
+        assert_eq!(timeline.rate_clock.len(), 3);
+        assert_eq!(timeline.rate_clock[2].second, 2);
+        assert_eq!(timeline.rate_clock[2].edps_elapsed_micros, 1_750_000);
+        assert_eq!(timeline.rate_clock[2].adps_elapsed_micros, 1_250_000);
     }
 
     #[test]
@@ -7952,6 +8030,37 @@ mod tests {
     }
 
     #[test]
+    fn public_timeline_preserves_fractional_canonical_terminal_duration() {
+        let mut participant = timeline_participant("actor-1");
+        participant.series = vec![PublicSeriesPoint {
+            second: 2,
+            damage: 10,
+            effective_healing: 0,
+            damage_taken: 0,
+            rdps_damage: Some(10),
+            rdps_contribution_given: Some(0),
+            rdps_contribution_received: Some(0),
+        }];
+        participant.death_seconds = vec![2];
+        let bounds = CanonicalRunObservedBounds {
+            started_micros: 100,
+            ended_micros: 2_100_100,
+        };
+        let mut timeline = PublicCombatTimeline {
+            schema_version: PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION,
+            duration_micros: 2_100_000,
+            series_bucket_micros: 1_000_000,
+            ..PublicCombatTimeline::default()
+        };
+
+        populate_timeline_combat_data(&mut timeline, &[participant], &[], Some(bounds));
+
+        assert_eq!(timeline.duration_micros, 2_100_000);
+        assert_eq!(timeline.death_markers[0].at_micros, 2_000_000);
+        assert_eq!(timeline.participant_tracks[0].series_point_count, 1);
+    }
+
+    #[test]
     fn public_timeline_omitted_counts_are_exact_after_caps() {
         let mut participant = timeline_participant("actor-1");
         participant.death_seconds = (0..MAXIMUM_TIMELINE_DEATH_MARKERS as u32 + 3).collect();
@@ -7989,6 +8098,7 @@ mod tests {
         populate_timeline_loadouts(
             &mut timeline,
             combat_loadout_marker_sources("report-1", &phases),
+            false,
         );
 
         assert_eq!(timeline.death_markers.len(), MAXIMUM_TIMELINE_DEATH_MARKERS);
@@ -11211,12 +11321,12 @@ mod tests {
                 timeline: PublicCombatTimeline::default(),
             }],
         };
-        report.runs[0].timeline = public_combat_timeline(
-            report_id,
-            &report.runs[0],
-            None,
-            &fixture_analysis("fixture-session", Some("instance-1")),
-        );
+        let mut analysis = fixture_analysis("fixture-session", Some("instance-1"));
+        analysis.timing.ended_micros = Some(11);
+        analysis.timing.observed_until_micros = 11;
+        analysis.timing.wall_time_micros = Some(10);
+        report.runs[0].timeline =
+            public_combat_timeline(report_id, &report.runs[0], None, &analysis);
         report
     }
 

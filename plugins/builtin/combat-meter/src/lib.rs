@@ -4007,6 +4007,7 @@ impl CombatTimelinePlugin {
 
         let elapsed_seconds = seconds(spec.elapsed_micros);
         let active_seconds = seconds(spec.active_combat_micros);
+        let rdps_seconds = exact_seconds(spec.elapsed_micros);
         let actors = values
             .into_iter()
             .map(|(actor_id, value)| {
@@ -4015,6 +4016,7 @@ impl CombatTimelinePlugin {
                     value,
                     elapsed_seconds,
                     active_seconds,
+                    rdps_seconds,
                     last_selected_micros,
                 )
             })
@@ -4128,6 +4130,7 @@ impl CombatTimelinePlugin {
         value: HistoryValueAccumulator,
         elapsed_seconds: f64,
         active_seconds: f64,
+        rdps_seconds: f64,
         last_selected_micros: u64,
     ) -> HistoryActorSummary {
         let identity = self.history_identity_at(actor_id, value.entity_uuid, last_selected_micros);
@@ -4181,9 +4184,13 @@ impl CombatTimelinePlugin {
             encounter_dps: rate_per_second(value.damage, active_seconds),
             hps: rate_per_second(value.healing, elapsed_seconds),
             tps: rate_per_second(value.damage_taken, elapsed_seconds),
+            // rDPS is an adjusted-damage ownership view over the same selected
+            // run facts as eDPS. Keep its denominator on the reviewed
+            // run/Game-time clock; active-combat time remains the distinct
+            // aDPS denominator above.
             rdps: value
                 .rdps_damage
-                .map(|damage| rate_per_second(damage, active_seconds)),
+                .map(|damage| rate_per_second(damage, rdps_seconds)),
             rdps_damage: value.rdps_damage,
             rdps_contribution_given: value.rdps_contribution_given,
             rdps_contribution_received: value.rdps_contribution_received,
@@ -4840,6 +4847,10 @@ fn seconds(micros: u64) -> f64 {
     } else {
         micros.max(MINIMUM_PERSONAL_ACTIVE_MICROS) as f64 / 1_000_000.0
     }
+}
+
+fn exact_seconds(micros: u64) -> f64 {
+    micros as f64 / 1_000_000.0
 }
 
 fn interval_overlap_micros(window: (u64, u64), intervals: &[(u64, u64)]) -> u64 {
@@ -6137,7 +6148,7 @@ mod tests {
             .unwrap();
         assert_eq!(actor.damage, 2_737_001);
         assert_eq!(actor.rdps_damage, Some(2_737_001));
-        assert_eq!(actor.rdps, Some(2_737_001.0));
+        assert_eq!(actor.rdps, Some(1_368_500.5));
         assert_eq!(actor.rdps_contribution_given, Some(0));
         assert_eq!(actor.rdps_contribution_received, Some(0));
     }
