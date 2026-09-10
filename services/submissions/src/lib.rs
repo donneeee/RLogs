@@ -41,7 +41,7 @@ use rlogs_game_bpsr::{
     localized_recount_group_name_for_build, localized_scene_name_for_build,
     localized_specialization_name,
 };
-use rlogs_log_format::{RlogLimits, RlogReader};
+use rlogs_log_format::{RlogLimits, RlogReader, RlogReplaySummary};
 use rlogs_plugin_combat_meter::{
     CombatHistorySnapshot, CombatHistoryView, CombatTimelinePlugin, HistoryActorSummary,
     HistoryRateClockPoint,
@@ -76,7 +76,7 @@ use rlogs_profiles::LocalProfilePackage;
 pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 15;
 pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 6;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 6;
-pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 16;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 17;
 pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 3;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
@@ -330,6 +330,8 @@ struct ReconciliationRunSource {
     report_id: String,
     run_index: u32,
     artifact_sha256: String,
+    deployment_id: String,
+    client_build: String,
     protocol_pack_digest: String,
     created_unix_millis: u64,
     quality: CanonicalSpineQuality,
@@ -366,6 +368,8 @@ impl ReconciliationRunSource {
             report_id: report.report_id.clone(),
             run_index: run.run_index,
             artifact_sha256: report.verification.artifact_sha256.clone(),
+            deployment_id: report.deployment_id.clone(),
+            client_build: report.client_build.clone(),
             protocol_pack_digest: report.protocol_pack_digest.clone(),
             created_unix_millis: report.created_unix_millis,
             quality: CanonicalSpineQuality::from_report(report, run),
@@ -1103,6 +1107,26 @@ impl SubmissionService {
         reconciliation: &PublicRunReconciliation,
         artifact_paths: &BTreeMap<String, PathBuf>,
     ) -> Result<Vec<VerifiedCrossVantageStateEvent>, ServiceError> {
+        let canonical_report = reconciliation
+            .reports
+            .iter()
+            .find(|report| {
+                report.canonical_spine
+                    && report.report_id == reconciliation.canonical_spine.report_id
+            })
+            .ok_or_else(|| {
+                ServiceError::CrossVantageReplay(
+                    "canonical report is absent from the reconciliation manifest".into(),
+                )
+            })?;
+        if canonical_report.deployment_id.is_empty()
+            || canonical_report.client_build.is_empty()
+            || canonical_report.protocol_pack_digest.is_empty()
+        {
+            return Err(ServiceError::CrossVantageReplay(
+                "canonical report lacks an exact runtime identity".into(),
+            ));
+        }
         let mut selected_by_report = BTreeMap::<String, SelectedArtifactWitnesses>::new();
         for character in &reconciliation.characters {
             let Some(selected_report_id) = character.selected_report_id.as_deref() else {
@@ -1146,7 +1170,7 @@ impl SubmissionService {
             selected
                 .states
                 .dedup_by_key(|(_, witness)| witness.event_sequence);
-            let _report = reconciliation
+            let report = reconciliation
                 .reports
                 .iter()
                 .find(|report| report.report_id == report_id)
@@ -1155,6 +1179,14 @@ impl SubmissionService {
                         "selected report {report_id} is absent from the reconciliation manifest"
                     ))
                 })?;
+            if report.deployment_id != canonical_report.deployment_id
+                || report.client_build != canonical_report.client_build
+                || report.protocol_pack_digest != canonical_report.protocol_pack_digest
+            {
+                return Err(ServiceError::CrossVantageReplay(format!(
+                    "selected report {report_id} runtime identity does not match the canonical report"
+                )));
+            }
             let path = artifact_paths.get(&report_id).ok_or_else(|| {
                 ServiceError::CrossVantageReplay(format!(
                     "selected report {report_id} has no supplied artifact path"
@@ -1168,6 +1200,16 @@ impl SubmissionService {
                 ))
             })?;
             let reader = RlogReader::new(BufReader::new(file), RlogLimits::default())?;
+            let header = reader.header();
+            if header.region.identity.deployment_id != report.deployment_id
+                || header.region.client_build != report.client_build
+                || header.region.protocol_pack_digest != report.protocol_pack_digest
+            {
+                return Err(ServiceError::CrossVantageReplay(format!(
+                    "selected artifact {} does not match report {report_id} runtime identity",
+                    path.display()
+                )));
+            }
             let mut seen_profiles = BTreeSet::new();
             let mut seen_states = BTreeSet::new();
             reader.replay(|envelope| {
@@ -3805,6 +3847,14 @@ pub struct PublicReconciliationReport {
     pub report_id: String,
     pub run_index: u32,
     pub artifact_sha256: String,
+    /// Exact deployment identity of the sealed source. Missing legacy values
+    /// fail closed for cross-vantage state replay.
+    #[serde(default)]
+    pub deployment_id: String,
+    /// Exact client build of the sealed source. Missing legacy values fail
+    /// closed for cross-vantage state replay.
+    #[serde(default)]
+    pub client_build: String,
     /// Decoder/protocol identity is replay compatibility evidence, not game
     /// run identity. Reports from the same exact game instance remain grouped
     /// when this differs, but their state cannot be mixed automatically.
@@ -5743,6 +5793,8 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
             report_id: source.report_id.clone(),
             run_index: source.run_index,
             artifact_sha256: source.artifact_sha256.clone(),
+            deployment_id: source.deployment_id.clone(),
+            client_build: source.client_build.clone(),
             protocol_pack_digest: source.protocol_pack_digest.clone(),
             created_unix_millis: source.created_unix_millis,
             canonical_spine: source.report_id == canonical_report_id
@@ -5796,13 +5848,15 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
     );
 
     let mut hasher = Sha256::new();
-    hasher.update(b"rlogs-cross-vantage-reconciliation-v1\0");
+    hasher.update(b"rlogs-cross-vantage-reconciliation-v2\0");
     hasher.update(group.representative.run_group_id.as_bytes());
     hasher.update(b"\0");
     for report in &reports {
         hasher.update(report.report_id.as_bytes());
         hasher.update(report.run_index.to_le_bytes());
         hasher.update(report.artifact_sha256.as_bytes());
+        hasher.update(report.deployment_id.as_bytes());
+        hasher.update(report.client_build.as_bytes());
         hasher.update(report.protocol_pack_digest.as_bytes());
         for witness in &report.local_profile_witnesses {
             hasher.update(witness.character_id.as_bytes());
@@ -6007,7 +6061,19 @@ pub fn reconcile_hosted_run_group(
                 artifact.report.report_id, artifact.run_index
             )));
         }
-        let membership = build_private_parse_membership(artifact.artifact_path, artifact.report)?;
+        let (membership, replay) = build_private_parse_membership_with_replay_summary(
+            artifact.artifact_path,
+            artifact.report,
+        )?;
+        if replay.content_sha256 != artifact.report.verification.canonical_content_sha256
+            || replay.event_count != artifact.report.verification.event_count
+        {
+            return Err(ServiceError::CrossVantageReplay(format!(
+                "artifact {} canonical event stream does not match report {} verification",
+                artifact.artifact_path.display(),
+                artifact.report.report_id
+            )));
+        }
         let private_run_membership = membership
             .runs
             .iter()
@@ -6178,6 +6244,28 @@ fn cross_vantage_state_readiness(
         return (
             CrossVantageStateReplayReadiness::MultipleReportsNoAdditionalVantage,
             vec!["no_additional_local_vantage".into()],
+        );
+    }
+
+    let deployment_ids = reports
+        .iter()
+        .map(|report| report.deployment_id.as_str())
+        .collect::<BTreeSet<_>>();
+    if deployment_ids.len() != 1 || deployment_ids.contains("") {
+        return (
+            CrossVantageStateReplayReadiness::Blocked,
+            vec![format!("deployment_id_mismatch:{}", deployment_ids.len())],
+        );
+    }
+
+    let client_builds = reports
+        .iter()
+        .map(|report| report.client_build.as_str())
+        .collect::<BTreeSet<_>>();
+    if client_builds.len() != 1 || client_builds.contains("") {
+        return (
+            CrossVantageStateReplayReadiness::Blocked,
+            vec![format!("client_build_mismatch:{}", client_builds.len())],
         );
     }
 
@@ -6512,17 +6600,36 @@ fn build_private_parse_membership(
     artifact_path: &Path,
     report: &PublicParseReport,
 ) -> Result<PrivateParseMembership, ServiceError> {
-    let character_by_actor = sealed_character_identities(artifact_path)?;
-    private_parse_membership(report, &character_by_actor)
+    build_private_parse_membership_with_replay_summary(artifact_path, report)
+        .map(|(membership, _)| membership)
+}
+
+fn build_private_parse_membership_with_replay_summary(
+    artifact_path: &Path,
+    report: &PublicParseReport,
+) -> Result<(PrivateParseMembership, RlogReplaySummary), ServiceError> {
+    let (character_by_actor, replay) =
+        sealed_character_identities_with_replay_summary(artifact_path)?;
+    Ok((
+        private_parse_membership(report, &character_by_actor)?,
+        replay,
+    ))
 }
 
 fn sealed_character_identities(
     artifact_path: &Path,
 ) -> Result<BTreeMap<String, String>, ServiceError> {
+    sealed_character_identities_with_replay_summary(artifact_path)
+        .map(|(character_by_actor, _)| character_by_actor)
+}
+
+fn sealed_character_identities_with_replay_summary(
+    artifact_path: &Path,
+) -> Result<(BTreeMap<String, String>, RlogReplaySummary), ServiceError> {
     let file = File::open(artifact_path)?;
     let reader = RlogReader::new(BufReader::new(file), RlogLimits::default())?;
     let mut character_by_actor = BTreeMap::<String, String>::new();
-    reader.replay(|event| {
+    let replay = reader.replay(|event| {
         let CanonicalEvent::Timeline(timeline) = &event.event else {
             return Ok(());
         };
@@ -6564,7 +6671,7 @@ fn sealed_character_identities(
         Ok(())
     })?;
 
-    Ok(character_by_actor)
+    Ok((character_by_actor, replay))
 }
 
 fn restore_verified_names(
@@ -9157,7 +9264,10 @@ mod tests {
                 && character.selected_combat_loadout_phases.len() == 1
         }));
         assert!(reconciliation.reports.iter().all(|report| {
-            report.combat_loadout_phases.len() == 1
+            report.deployment_id == "global"
+                && report.client_build == "24687926"
+                && report.protocol_pack_digest == "sha256:pack"
+                && report.combat_loadout_phases.len() == 1
                 && report.combat_loadout_phases[0].character_id
                     == report.local_profile_witnesses[0].character_id
         }));
@@ -9175,6 +9285,18 @@ mod tests {
         digest_bytes(&bytes).unwrap()
     }
 
+    fn bind_hosted_report_to_artifact(
+        report: &mut PublicParseReport,
+        path: &Path,
+        digest: &Sha256Digest,
+    ) {
+        report.report_id = report_id(digest);
+        report.verification.artifact_sha256 = digest.to_string();
+        let (_, replay) = sealed_character_identities_with_replay_summary(path).unwrap();
+        report.verification.canonical_content_sha256 = replay.content_sha256;
+        report.verification.event_count = replay.event_count;
+    }
+
     #[test]
     fn hosted_manifest_groups_two_exact_artifacts_without_summing_participants() {
         let root = tempfile::tempdir().unwrap();
@@ -9186,10 +9308,8 @@ mod tests {
             fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 1);
         let mut report_b =
             fixture_public_report("rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "character-b", 0);
-        report_a.report_id = report_id(&digest_a);
-        report_b.report_id = report_id(&digest_b);
-        report_a.verification.artifact_sha256 = digest_a.to_string();
-        report_b.verification.artifact_sha256 = digest_b.to_string();
+        bind_hosted_report_to_artifact(&mut report_a, &path_a, &digest_a);
+        bind_hosted_report_to_artifact(&mut report_b, &path_b, &digest_b);
         report_a.runs[0].local_state_witnesses.clear();
         report_b.runs[0].local_state_witnesses.clear();
 
@@ -9218,6 +9338,77 @@ mod tests {
             RunAttributionReconciliationStatus::CrossVantageEvidenceAvailable
         );
         assert!(!reconciliation.attribution_replay_completed);
+    }
+
+    #[test]
+    fn hosted_single_vantage_rejects_mutated_canonical_hash_and_event_count() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("single.rlog");
+        let digest = write_empty_hosted_artifact(&path, "hosted-single");
+        let mut report =
+            fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
+        bind_hosted_report_to_artifact(&mut report, &path, &digest);
+
+        let mut wrong_hash = report.clone();
+        wrong_hash.verification.canonical_content_sha256 = "sha256:not-the-stream".into();
+        let error = reconcile_hosted_run_group(
+            "run_exact000000000000000000000000000",
+            &[HostedRunArtifact {
+                report: &wrong_hash,
+                run_index: 0,
+                artifact_path: &path,
+            }],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("canonical event stream"));
+
+        let mut wrong_count = report;
+        wrong_count.verification.event_count =
+            wrong_count.verification.event_count.saturating_add(1);
+        let error = reconcile_hosted_run_group(
+            "run_exact000000000000000000000000000",
+            &[HostedRunArtifact {
+                report: &wrong_count,
+                run_index: 0,
+                artifact_path: &path,
+            }],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("canonical event stream"));
+    }
+
+    #[test]
+    fn hosted_rejects_inflated_event_count_before_canonical_selection() {
+        let root = tempfile::tempdir().unwrap();
+        let path_a = root.path().join("inflated.rlog");
+        let path_b = root.path().join("exact.rlog");
+        let digest_a = write_empty_hosted_artifact(&path_a, "hosted-inflated");
+        let digest_b = write_empty_hosted_artifact(&path_b, "hosted-exact");
+        let mut report_a =
+            fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
+        let mut report_b =
+            fixture_public_report("rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "character-b", 0);
+        bind_hosted_report_to_artifact(&mut report_a, &path_a, &digest_a);
+        bind_hosted_report_to_artifact(&mut report_b, &path_b, &digest_b);
+        report_a.verification.event_count = report_a.verification.event_count.saturating_add(1);
+
+        let error = reconcile_hosted_run_group(
+            "run_exact000000000000000000000000000",
+            &[
+                HostedRunArtifact {
+                    report: &report_a,
+                    run_index: 0,
+                    artifact_path: &path_a,
+                },
+                HostedRunArtifact {
+                    report: &report_b,
+                    run_index: 0,
+                    artifact_path: &path_b,
+                },
+            ],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("canonical event stream"));
     }
 
     #[test]
@@ -9318,8 +9509,7 @@ mod tests {
         write_empty_hosted_artifact(&other_path, "hosted-other");
         let mut report =
             fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
-        report.report_id = report_id(&digest);
-        report.verification.artifact_sha256 = digest.to_string();
+        bind_hosted_report_to_artifact(&mut report, &path, &digest);
 
         assert!(
             reconcile_hosted_run_group(
@@ -9727,10 +9917,10 @@ mod tests {
         };
         let mut value = serde_json::to_value(build_public_reconciliation(&group)).unwrap();
         for report in value["reports"].as_array_mut().unwrap() {
-            report
-                .as_object_mut()
-                .unwrap()
-                .remove("combat_loadout_phases");
+            let report = report.as_object_mut().unwrap();
+            report.remove("deployment_id");
+            report.remove("client_build");
+            report.remove("combat_loadout_phases");
         }
         for character in value["characters"].as_array_mut().unwrap() {
             let character = character.as_object_mut().unwrap();
@@ -9740,6 +9930,8 @@ mod tests {
 
         let decoded: PublicRunReconciliation = serde_json::from_value(value).unwrap();
 
+        assert!(decoded.reports[0].deployment_id.is_empty());
+        assert!(decoded.reports[0].client_build.is_empty());
         assert!(decoded.reports[0].combat_loadout_phases.is_empty());
         assert_eq!(
             decoded.characters[0].combat_loadout_disposition,
@@ -9847,6 +10039,8 @@ mod tests {
             report_id: report_id.into(),
             run_index: 0,
             artifact_sha256: format!("sha256:{report_id}"),
+            deployment_id: "global".into(),
+            client_build: "24687926".into(),
             protocol_pack_digest: "sha256:pack".into(),
             created_unix_millis: 1,
             canonical_spine: report_id.ends_with('a'),
@@ -10004,6 +10198,114 @@ mod tests {
             vec!["protocol_pack_digest_mismatch:2"]
         );
         assert!(!reconciliation.attribution_replay_completed);
+    }
+
+    #[test]
+    fn same_run_group_with_different_client_builds_blocks_joint_replay() {
+        let root = tempfile::tempdir().unwrap();
+        let service =
+            SubmissionService::open(root.path().into(), "https://example.test".into(), None)
+                .unwrap();
+        let report_a =
+            fixture_public_report("rpt_56565656565656565656565656565656", "character-a", 0);
+        let mut report_b =
+            fixture_public_report("rpt_78787878787878787878787878787878", "character-b", 0);
+        report_b.client_build = "24687927".into();
+        write_json_atomic(
+            &service.projection_path(&report_a.report_id).unwrap(),
+            &report_a,
+        )
+        .unwrap();
+        write_json_atomic(
+            &service.projection_path(&report_b.report_id).unwrap(),
+            &report_b,
+        )
+        .unwrap();
+
+        service.rebuild_catalog_locked().unwrap();
+        let reconciliation = service
+            .reconciliation("run_exact000000000000000000000000000")
+            .unwrap();
+        assert_eq!(
+            reconciliation.state_replay_readiness,
+            CrossVantageStateReplayReadiness::Blocked
+        );
+        assert_eq!(
+            reconciliation.state_replay_blockers,
+            vec!["client_build_mismatch:2"]
+        );
+        assert!(!reconciliation.attribution_replay_completed);
+    }
+
+    #[test]
+    fn same_run_group_with_different_deployments_blocks_joint_replay() {
+        let root = tempfile::tempdir().unwrap();
+        let service =
+            SubmissionService::open(root.path().into(), "https://example.test".into(), None)
+                .unwrap();
+        let report_a =
+            fixture_public_report("rpt_90909090909090909090909090909090", "character-a", 0);
+        let mut report_b =
+            fixture_public_report("rpt_abababababababababababababababab", "character-b", 0);
+        report_b.deployment_id = "cn".into();
+        write_json_atomic(
+            &service.projection_path(&report_a.report_id).unwrap(),
+            &report_a,
+        )
+        .unwrap();
+        write_json_atomic(
+            &service.projection_path(&report_b.report_id).unwrap(),
+            &report_b,
+        )
+        .unwrap();
+
+        service.rebuild_catalog_locked().unwrap();
+        let reconciliation = service
+            .reconciliation("run_exact000000000000000000000000000")
+            .unwrap();
+        assert_eq!(
+            reconciliation.state_replay_readiness,
+            CrossVantageStateReplayReadiness::Blocked
+        );
+        assert_eq!(
+            reconciliation.state_replay_blockers,
+            vec!["deployment_id_mismatch:2"]
+        );
+        assert!(!reconciliation.attribution_replay_completed);
+    }
+
+    #[test]
+    fn witness_import_rechecks_exact_runtime_identity_before_opening_artifacts() {
+        fn assert_rejected(
+            mut reconciliation: PublicRunReconciliation,
+            mutate: impl FnOnce(&mut PublicReconciliationReport),
+        ) {
+            let secondary = reconciliation
+                .reports
+                .iter_mut()
+                .find(|report| !report.canonical_spine)
+                .unwrap();
+            let report_id = secondary.report_id.clone();
+            mutate(secondary);
+            let error = SubmissionService::load_verified_cross_vantage_state_events_from_paths(
+                &reconciliation,
+                &BTreeMap::new(),
+            )
+            .unwrap_err();
+            assert!(error.to_string().contains(&format!(
+                "selected report {report_id} runtime identity does not match the canonical report"
+            )));
+        }
+
+        assert_rejected(secondary_loadout_reconciliation(), |report| {
+            report.protocol_pack_digest = "sha256:different-pack".into();
+        });
+        assert_rejected(secondary_loadout_reconciliation(), |report| {
+            report.client_build = "24687927".into();
+        });
+        assert_rejected(secondary_loadout_reconciliation(), |report| {
+            report.deployment_id = "cn".into();
+        });
     }
 
     fn cross_vantage_test_region() -> rlogs_events::RegionContext {
