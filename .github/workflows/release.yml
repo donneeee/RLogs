@@ -83,16 +83,28 @@ jobs:
           $repository = "${{ github.repository }}"
           $commit = "${{ github.sha }}"
           $defaultBranch = "${{ github.event.repository.default_branch }}"
-          $runs = gh api "/repos/$repository/actions/workflows/ci.yml/runs?head_sha=$commit&status=success&per_page=100" | ConvertFrom-Json
-          $passedMain = @($runs.workflow_runs | Where-Object {
-            $_.event -eq "push" -and
-            $_.head_branch -eq $defaultBranch -and
-            $_.head_sha -eq $commit -and
-            $_.conclusion -eq "success"
-          })
-          if ($passedMain.Count -eq 0) {
-            throw "Commit $commit has no successful CI push run on $defaultBranch. Finish and verify the major feature on main before tagging it."
+          for ($attempt = 1; $attempt -le 60; $attempt++) {
+            $runs = gh api "/repos/$repository/actions/workflows/ci.yml/runs?head_sha=$commit&per_page=100" | ConvertFrom-Json
+            $mainRuns = @($runs.workflow_runs | Where-Object {
+              $_.event -eq "push" -and
+              $_.head_branch -eq $defaultBranch -and
+              $_.head_sha -eq $commit
+            })
+            if (@($mainRuns | Where-Object conclusion -eq "success").Count -gt 0) {
+              exit 0
+            }
+            $failed = @($mainRuns | Where-Object {
+              $_.status -eq "completed" -and $_.conclusion -notin @("success", "skipped")
+            })
+            if ($failed.Count -gt 0) {
+              throw "CI failed for tagged commit $commit on $defaultBranch."
+            }
+            if ($attempt -lt 60) {
+              Write-Host "Waiting for main CI on $commit ($attempt/60)..."
+              Start-Sleep -Seconds 15
+            }
           }
+          throw "Timed out waiting for successful main CI on tagged commit $commit."
 
       - name: Build and attach the Windows installer
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5
