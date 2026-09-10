@@ -32,6 +32,14 @@ const ATTR_CURRENT_HP: i32 = 11310;
 const ATTR_MAX_HP_FINAL: i32 = 11320;
 const ATTR_SHIELD_LIST: i32 = 60050;
 
+// The HUD tables and attribute IDs in this module have their own review
+// boundary. Their authority must not be inherited from run segmentation or
+// rDPS merely because those features currently target the same packet pack.
+const REVIEWED_MECHANICS_DEPLOYMENT_ID: &str = "global";
+const REVIEWED_MECHANICS_CLIENT_BUILD: &str = "24687926";
+const REVIEWED_MECHANICS_PROTOCOL_PACK_DIGEST: &str =
+    "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MechanicsMapSnapshot {
     pub schema_version: u16,
@@ -498,8 +506,9 @@ impl MechanicsMapProjector {
             // Any deployment/build/protocol transition changes every reviewed
             // interpretation gate. Preserve raw packet positions, but discard
             // state whose IDs or presentation depend on the prior identity.
+            // User-authored automarker presets are scene-scoped separately and
+            // are not derived from this runtime identity.
             self.signals.clear();
-            self.local_markers.clear();
             self.attack_targets.clear();
             self.target_statuses.clear();
             self.cooldowns.clear();
@@ -513,6 +522,7 @@ impl MechanicsMapProjector {
             }
             changed = true;
         }
+        let runtime_reviewed = reviewed_mechanics_identity(self.runtime_identity.as_ref());
         match &envelope.event {
             CanonicalEvent::WorldChanged(world) => {
                 let next_scene = world.scene_id.map(|scene| scene.0);
@@ -771,7 +781,7 @@ impl MechanicsMapProjector {
                         changed = true;
                     }
                 }
-                TimelineEventKind::EntityAttributes(attributes) => {
+                TimelineEventKind::EntityAttributes(attributes) if runtime_reviewed => {
                     let actor_id = attributes.actor.actor_id.0;
                     let entry = self.entities.entry(actor_id).or_insert(EntityState {
                         actor: attributes.actor,
@@ -889,7 +899,7 @@ impl MechanicsMapProjector {
                         entity.last_observed_micros = envelope.time.observed_micros;
                     }
                 }
-                TimelineEventKind::Cooldown(cooldown) => {
+                TimelineEventKind::Cooldown(cooldown) if runtime_reviewed => {
                     let skill_level_id = cooldown.ability.0;
                     if skill_level_id > 0 {
                         let key = (cooldown.actor.actor_id.0, skill_level_id);
@@ -906,7 +916,7 @@ impl MechanicsMapProjector {
                         changed = true;
                     }
                 }
-                TimelineEventKind::Resource(resource) => {
+                TimelineEventKind::Resource(resource) if runtime_reviewed => {
                     let actor_id = resource.actor.actor_id.0;
                     if resource.update_kind == EntityAttributeUpdateKind::Snapshot {
                         let before = self.resource_values.len();
@@ -932,7 +942,7 @@ impl MechanicsMapProjector {
                         }
                     }
                 }
-                TimelineEventKind::Status(status) => {
+                TimelineEventKind::Status(status) if runtime_reviewed => {
                     let key = (
                         status.target.actor_id.0,
                         status.instance_id.map_or(status.effect.0, |id| id.0),
@@ -1038,6 +1048,7 @@ impl MechanicsMapProjector {
 
     pub fn snapshot(&self) -> MechanicsMapSnapshot {
         let now = self.last_observed_micros.unwrap_or_default();
+        let runtime_reviewed = reviewed_mechanics_identity(self.runtime_identity.as_ref());
         let local_actor_id = self.local_actor_id();
         let local_position_observed = local_actor_id
             .and_then(|actor_id| self.entities.get(&actor_id))
@@ -1049,20 +1060,28 @@ impl MechanicsMapProjector {
                 actor_id: entity.actor.actor_id.0,
                 entity_uuid: entity.actor.entity_uuid.0,
                 display_name: entity.display_name.clone(),
-                current_hp: entity.current_hp,
-                max_hp: entity.max_hp,
-                hp_percent: observed_percent(entity.current_hp, entity.max_hp),
-                current_shield: entity.current_shield,
-                max_shield: entity.max_shield,
-                shield_percent: observed_percent(entity.current_shield, entity.max_shield),
+                current_hp: runtime_reviewed.then_some(entity.current_hp).flatten(),
+                max_hp: runtime_reviewed.then_some(entity.max_hp).flatten(),
+                hp_percent: runtime_reviewed
+                    .then(|| observed_percent(entity.current_hp, entity.max_hp))
+                    .flatten(),
+                current_shield: runtime_reviewed.then_some(entity.current_shield).flatten(),
+                max_shield: runtime_reviewed.then_some(entity.max_shield).flatten(),
+                shield_percent: runtime_reviewed
+                    .then(|| observed_percent(entity.current_shield, entity.max_shield))
+                    .flatten(),
                 dead: entity.dead,
                 stale: now.saturating_sub(entity.last_observed_micros) > ENTITY_STALE_AFTER_MICROS,
-                statuses: self.presented_statuses_for_actor(
-                    entity.actor.actor_id.0,
-                    now,
-                    "/buff/",
-                    MAX_PLAYER_STATUSES,
-                ),
+                statuses: if runtime_reviewed {
+                    self.presented_statuses_for_actor(
+                        entity.actor.actor_id.0,
+                        now,
+                        "/buff/",
+                        MAX_PLAYER_STATUSES,
+                    )
+                } else {
+                    Vec::new()
+                },
             });
         let mut party = self
             .entities
@@ -1078,12 +1097,16 @@ impl MechanicsMapProjector {
                 actor_id: entity.actor.actor_id.0,
                 entity_uuid: entity.actor.entity_uuid.0,
                 display_name: entity.display_name.clone(),
-                current_hp: entity.current_hp,
-                max_hp: entity.max_hp,
-                hp_percent: observed_percent(entity.current_hp, entity.max_hp),
-                current_shield: entity.current_shield,
-                max_shield: entity.max_shield,
-                shield_percent: observed_percent(entity.current_shield, entity.max_shield),
+                current_hp: runtime_reviewed.then_some(entity.current_hp).flatten(),
+                max_hp: runtime_reviewed.then_some(entity.max_hp).flatten(),
+                hp_percent: runtime_reviewed
+                    .then(|| observed_percent(entity.current_hp, entity.max_hp))
+                    .flatten(),
+                current_shield: runtime_reviewed.then_some(entity.current_shield).flatten(),
+                max_shield: runtime_reviewed.then_some(entity.max_shield).flatten(),
+                shield_percent: runtime_reviewed
+                    .then(|| observed_percent(entity.current_shield, entity.max_shield))
+                    .flatten(),
                 dead: entity.dead,
                 stale: now.saturating_sub(entity.last_observed_micros) > ENTITY_STALE_AFTER_MICROS,
                 statuses: Vec::new(),
@@ -1097,25 +1120,32 @@ impl MechanicsMapProjector {
                 .then(left.actor_id.cmp(&right.actor_id))
         });
         party.truncate(MAX_PARTY_FRAMES);
-        let mut action_controls = local_actor_id
-            .into_iter()
-            .flat_map(|actor_id| {
-                self.cooldowns
-                    .range((actor_id, i64::MIN)..=(actor_id, i64::MAX))
-                    .map(|(_, cooldown)| action_control_snapshot(cooldown, now))
-            })
-            .collect::<Vec<_>>();
+        let mut action_controls = if runtime_reviewed {
+            local_actor_id
+                .into_iter()
+                .flat_map(|actor_id| {
+                    self.cooldowns
+                        .range((actor_id, i64::MIN)..=(actor_id, i64::MAX))
+                        .map(|(_, cooldown)| action_control_snapshot(cooldown, now))
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
         action_controls.sort_by_key(|control| control.skill_level_id);
         action_controls.truncate(MAX_LOCAL_COOLDOWNS);
-        let resources = local_actor_id
-            .and_then(|actor_id| {
-                self.entities
-                    .get(&actor_id)
-                    .and_then(|entity| entity.class_id)
-                    .map(|class_id| {
-                        resource_hud_snapshots(class_id, actor_id, &self.resource_values)
-                    })
+        let resources = runtime_reviewed
+            .then(|| {
+                local_actor_id.and_then(|actor_id| {
+                    self.entities
+                        .get(&actor_id)
+                        .and_then(|entity| entity.class_id)
+                        .map(|class_id| {
+                            resource_hud_snapshots(class_id, actor_id, &self.resource_values)
+                        })
+                })
             })
+            .flatten()
             .unwrap_or_default();
         let mut entities = self
             .entities
@@ -1198,7 +1228,9 @@ impl MechanicsMapProjector {
         mechanics.truncate(MAX_MECHANICS);
         let pack = encounter_pack(self.runtime_identity.as_ref(), self.scene_id);
         let scene_map = scene_map_spec(self.runtime_identity.as_ref(), self.scene_id);
-        let target = local_actor_id
+        let target = runtime_reviewed
+            .then_some(local_actor_id)
+            .flatten()
             .and_then(|actor_id| self.attack_targets.get(&actor_id).copied())
             .and_then(|entity_uuid| {
                 self.entities
@@ -1560,10 +1592,21 @@ impl MechanicsMapProjector {
         {
             return "party";
         }
-        if entity
-            .monster_id
-            .is_some_and(|id| rlogs_game_bpsr::is_boss_monster(id).unwrap_or(false))
-        {
+        let reviewed_boss = self
+            .runtime_identity
+            .as_ref()
+            .filter(|identity| reviewed_mechanics_identity(Some(identity)))
+            .zip(entity.monster_id)
+            .is_some_and(|(identity, monster_id)| {
+                rlogs_game_bpsr::is_boss_monster_for_identity(
+                    &identity.deployment_id,
+                    &identity.client_build,
+                    &identity.protocol_pack_digest,
+                    monster_id,
+                )
+                .unwrap_or(false)
+            });
+        if reviewed_boss {
             return "boss";
         }
         match entity.kind {
@@ -1997,18 +2040,9 @@ fn packaged_scene_maps() -> &'static PackagedSceneMapManifest<'static> {
 
 fn reviewed_mechanics_identity(identity: Option<&MechanicsRuntimeIdentity>) -> bool {
     identity.is_some_and(|identity| {
-        // Mechanics were reviewed against the same exact active packet pack as
-        // the live state runtime. Formula-compatible historical packs do not
-        // automatically gain mechanic or coordinate authority.
-        rlogs_game_bpsr::state_damage_contribution_deployment_id()
-            .ok()
-            .is_some_and(|expected| identity.deployment_id == expected)
-            && rlogs_game_bpsr::state_damage_contribution_game_build()
-                .ok()
-                .is_some_and(|expected| identity.client_build == expected)
-            && rlogs_game_bpsr::state_damage_contribution_protocol_pack_digest()
-                .ok()
-                .is_some_and(|expected| identity.protocol_pack_digest == expected)
+        identity.deployment_id == REVIEWED_MECHANICS_DEPLOYMENT_ID
+            && identity.client_build == REVIEWED_MECHANICS_CLIENT_BUILD
+            && identity.protocol_pack_digest == REVIEWED_MECHANICS_PROTOCOL_PACK_DIGEST
     })
 }
 
@@ -2263,11 +2297,12 @@ fn is_reviewed_mechanic_cast(
 mod tests {
     use super::*;
     use rlogs_events::{
-        ActorEvent, ActorId, ActorLoadoutObservation, CharacterIdentity, DungeonEvent,
-        DungeonFlowSnapshot, DungeonId, DungeonObjectiveCatalogReference, EntityAttribute,
-        EntityAttributeEvent, EntityUuid, EventProvenance, EventSensitivity, EventTime,
-        EvidenceConfidence, EvidenceSource, GameProfileEvent, RegionContext, RegionIdentity,
-        ResourceEvent, SceneId, StatusEffectId, StatusEffectInstanceId, StatusEvent, TimelineEvent,
+        AbilityId, ActorEvent, ActorId, ActorLoadoutObservation, CharacterIdentity, CooldownEvent,
+        DungeonEvent, DungeonFlowSnapshot, DungeonId, DungeonObjectiveCatalogReference,
+        EntityAttribute, EntityAttributeEvent, EntityUuid, EventProvenance, EventSensitivity,
+        EventTime, EvidenceConfidence, EvidenceSource, GameProfileEvent, RegionContext,
+        RegionIdentity, ResourceEvent, SceneId, StatusEffectId, StatusEffectInstanceId,
+        StatusEvent, TimelineEvent,
     };
 
     #[test]
@@ -2314,21 +2349,37 @@ mod tests {
     fn reviewed_region() -> RegionContext {
         RegionContext {
             identity: RegionIdentity {
-                deployment_id: "global".into(),
+                deployment_id: REVIEWED_MECHANICS_DEPLOYMENT_ID.into(),
                 region_id: "north-america".into(),
                 realm_id: None,
                 world_id: None,
             },
-            client_build: "24687926".into(),
-            protocol_pack_digest: rlogs_game_bpsr::state_damage_contribution_protocol_pack_digest()
-                .expect("bundled exact runtime identity")
-                .into(),
+            client_build: REVIEWED_MECHANICS_CLIENT_BUILD.into(),
+            protocol_pack_digest: REVIEWED_MECHANICS_PROTOCOL_PACK_DIGEST.into(),
             evidence: vec![],
         }
     }
 
     fn reviewed_identity() -> MechanicsRuntimeIdentity {
         MechanicsRuntimeIdentity::from(&reviewed_region())
+    }
+
+    #[test]
+    fn mechanics_authority_matches_the_bundled_current_protocol_pack() {
+        let pack = rlogs_game_bpsr::ProtocolPack::from_json(include_bytes!(
+            "../../../plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24687926/pack.json"
+        ))
+        .expect("bundled current protocol pack");
+        assert_eq!(
+            pack.definition().target.deployment_id,
+            REVIEWED_MECHANICS_DEPLOYMENT_ID
+        );
+        assert_eq!(
+            pack.definition().target.build_id,
+            REVIEWED_MECHANICS_CLIENT_BUILD
+        );
+        assert_eq!(pack.digest(), REVIEWED_MECHANICS_PROTOCOL_PACK_DIGEST);
+        assert!(reviewed_mechanics_identity(Some(&reviewed_identity())));
     }
 
     fn entity(actor_id: u64, uuid: i64) -> EntityRef {
@@ -2507,13 +2558,457 @@ mod tests {
             let snapshot = projector.snapshot();
             assert_eq!(snapshot.map_model, "player_relative_radar");
             assert!(snapshot.mechanics.is_empty());
-            assert!(snapshot.markers.is_empty());
+            assert_eq!(snapshot.markers.len(), 1);
+            assert_eq!(snapshot.markers[0].marker_number, Some(1));
             assert_eq!(snapshot.entities.len(), 1);
             assert_eq!(
                 (snapshot.entities[0].x, snapshot.entities[0].z),
                 (11.0, 21.0)
             );
         }
+    }
+
+    #[test]
+    fn unsupported_runtime_cannot_repopulate_build_locked_hud_state() {
+        for changed_component in ["deployment", "build", "protocol"] {
+            let local = entity(7, 42 << 16);
+            let boss = entity(8, 800);
+            let mut projector = MechanicsMapProjector {
+                session_id: Some("session".into()),
+                runtime_identity: Some(reviewed_identity()),
+                client_build: Some(REVIEWED_MECHANICS_CLIENT_BUILD.into()),
+                local_character_id: Some("42".into()),
+                scene_id: Some(1_631),
+                ..Default::default()
+            };
+            projector.entities.insert(
+                7,
+                EntityState {
+                    actor: local,
+                    kind: ActorKind::Player,
+                    character_id: Some("42".into()),
+                    display_name: Some("Local".into()),
+                    monster_id: None,
+                    class_id: Some(4),
+                    specialization_id: None,
+                    owner_entity_uuid: None,
+                    current_hp: Some(900),
+                    max_hp: Some(1_000),
+                    current_shield: Some(100),
+                    max_shield: Some(200),
+                    breaking_stage: None,
+                    position: Some((10.0, 0.0, 20.0)),
+                    facing_radians: Some(0.5),
+                    dead: false,
+                    last_observed_micros: 1_000,
+                },
+            );
+            projector.entities.insert(
+                8,
+                EntityState {
+                    actor: boss,
+                    kind: ActorKind::Monster,
+                    character_id: None,
+                    display_name: None,
+                    monster_id: Some(33_701),
+                    class_id: None,
+                    specialization_id: None,
+                    owner_entity_uuid: None,
+                    current_hp: Some(500),
+                    max_hp: Some(1_000),
+                    current_shield: Some(100),
+                    max_shield: Some(200),
+                    breaking_stage: Some(0),
+                    position: Some((30.0, 0.0, 40.0)),
+                    facing_radians: None,
+                    dead: false,
+                    last_observed_micros: 1_000,
+                },
+            );
+            projector.attack_targets.insert(7, boss.entity_uuid.0);
+            projector.cooldowns.insert(
+                (7, 12_301),
+                CooldownState {
+                    skill_level_id: 12_301,
+                    duration_millis: Some(10_000),
+                    cooldown_type: Some(2),
+                    charge_count: Some(1),
+                    observed_at_micros: 1_000,
+                },
+            );
+            projector
+                .resource_values
+                .extend([((7, 14_011), 72), ((7, 14_017), 100)]);
+            projector.target_statuses.insert(
+                (7, 21_412),
+                TargetStatusState {
+                    effect_id: 21_412,
+                    instance_id: None,
+                    target: local,
+                    source: Some(local),
+                    stacks: Some(1),
+                    duration_millis: Some(8_000),
+                    applied_at_micros: 1_000,
+                },
+            );
+            projector.replace_local_markers([rlogs_game_bpsr::LocalMapMarker {
+                passive_instance_id: 77,
+                related_entity_uuid: None,
+                marker_number: 1,
+                x: Some(10.0),
+                y: Some(0.0),
+                z: Some(20.0),
+            }]);
+
+            let mut unsupported_region = reviewed_region();
+            match changed_component {
+                "deployment" => unsupported_region.identity.deployment_id = "cn".into(),
+                "build" => unsupported_region.client_build = "24687927".into(),
+                "protocol" => {
+                    unsupported_region.protocol_pack_digest =
+                        "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                            .into();
+                }
+                _ => unreachable!(),
+            }
+            let with_unsupported_region = |sequence, event| {
+                let mut value = envelope(sequence, event);
+                value.region = unsupported_region.clone();
+                value
+            };
+
+            assert!(projector.observe(&with_unsupported_region(
+                10,
+                CanonicalEvent::Timeline(TimelineEvent {
+                    sequence: 10,
+                    time: EventTime {
+                        observed_micros: 10_000,
+                        game_time_millis: None,
+                    },
+                    provenance: EventProvenance::wire(10, 1, 1),
+                    kind: TimelineEventKind::EntityAttributes(EntityAttributeEvent {
+                        actor: local,
+                        update_kind: EntityAttributeUpdateKind::Delta,
+                        ownership: None,
+                        attributes: vec![
+                            EntityAttribute {
+                                attribute_id: ATTR_TARGET_ID,
+                                raw_value: vec![],
+                                decoded: Some(EntityAttributeValue::Integer(boss.entity_uuid.0)),
+                            },
+                            EntityAttribute {
+                                attribute_id: ATTR_CURRENT_HP,
+                                raw_value: vec![],
+                                decoded: Some(EntityAttributeValue::Integer(777)),
+                            },
+                            EntityAttribute {
+                                attribute_id: ATTR_MAX_HP_FINAL,
+                                raw_value: vec![],
+                                decoded: Some(EntityAttributeValue::Integer(999)),
+                            },
+                            EntityAttribute {
+                                attribute_id: ATTR_SHIELD_LIST,
+                                raw_value: vec![
+                                    10, 17, 8, 240, 1, 16, 12, 24, 144, 147, 2, 32, 190, 201, 1,
+                                    40, 208, 141, 19,
+                                ],
+                                decoded: None,
+                            },
+                            EntityAttribute {
+                                attribute_id: ATTR_BREAKING_STAGE,
+                                raw_value: vec![],
+                                decoded: Some(EntityAttributeValue::Integer(1)),
+                            },
+                        ],
+                    }),
+                }),
+            )));
+            projector.observe(&with_unsupported_region(
+                11,
+                CanonicalEvent::Timeline(TimelineEvent {
+                    sequence: 11,
+                    time: EventTime {
+                        observed_micros: 11_000,
+                        game_time_millis: None,
+                    },
+                    provenance: EventProvenance::wire(11, 1, 1),
+                    kind: TimelineEventKind::Cooldown(CooldownEvent {
+                        actor: local,
+                        ability: AbilityId(12_301),
+                        begin_time_millis: Some(0),
+                        duration_millis: Some(10_000),
+                        valid_duration_millis: None,
+                        cooldown_type: Some(2),
+                        profession_hold_begin_time_millis: None,
+                        charge_count: Some(1),
+                        valid_cooldown_time_millis: None,
+                        sub_cooldown_ratio_raw: None,
+                        sub_cooldown_fixed_raw: None,
+                        accelerate_cooldown_ratio_raw: None,
+                    }),
+                }),
+            ));
+            projector.observe(&with_unsupported_region(
+                12,
+                CanonicalEvent::Timeline(TimelineEvent {
+                    sequence: 12,
+                    time: EventTime {
+                        observed_micros: 12_000,
+                        game_time_millis: None,
+                    },
+                    provenance: EventProvenance::wire(12, 1, 1),
+                    kind: TimelineEventKind::Resource(ResourceEvent {
+                        actor: local,
+                        update_kind: EntityAttributeUpdateKind::Delta,
+                        origin_energy_raw_bits: None,
+                        resource_ids: vec![14_011, 14_017],
+                        resource_values: vec![72, 100],
+                        cooldowns: vec![],
+                    }),
+                }),
+            ));
+            projector.observe(&with_unsupported_region(
+                13,
+                CanonicalEvent::Timeline(TimelineEvent {
+                    sequence: 13,
+                    time: EventTime {
+                        observed_micros: 13_000,
+                        game_time_millis: None,
+                    },
+                    provenance: EventProvenance::wire(13, 1, 1),
+                    kind: TimelineEventKind::Status(StatusEvent {
+                        source: Some(local),
+                        target: local,
+                        effect: StatusEffectId(21_412),
+                        instance_id: None,
+                        origin: None,
+                        state: StatusState::Applied,
+                        stacks: Some(1),
+                        duration_millis: Some(8_000),
+                        level: Some(1),
+                        part_id: None,
+                        count: None,
+                        created_at_millis: None,
+                    }),
+                }),
+            ));
+            projector.observe(&with_unsupported_region(
+                14,
+                CanonicalEvent::Timeline(TimelineEvent {
+                    sequence: 14,
+                    time: EventTime {
+                        observed_micros: 14_000,
+                        game_time_millis: None,
+                    },
+                    provenance: EventProvenance::wire(14, 1, 1),
+                    kind: TimelineEventKind::Position(rlogs_events::PositionEvent {
+                        actor: boss,
+                        x: 31.0,
+                        y: 0.0,
+                        z: 41.0,
+                        facing_radians: None,
+                    }),
+                }),
+            ));
+
+            let snapshot = projector.snapshot();
+            let player = snapshot.player.expect("raw local actor remains available");
+            assert_eq!(player.current_hp, None);
+            assert_eq!(player.max_hp, None);
+            assert_eq!(player.current_shield, None);
+            assert_eq!(player.max_shield, None);
+            assert!(player.statuses.is_empty());
+            assert!(snapshot.target.is_none());
+            assert!(snapshot.action_controls.is_empty());
+            assert!(snapshot.resources.is_empty());
+            let boss = snapshot
+                .entities
+                .iter()
+                .find(|entity| entity.actor_id == 8)
+                .expect("raw positioned monster remains available");
+            assert_eq!(boss.kind, "monster");
+            assert_eq!((boss.x, boss.z), (31.0, 41.0));
+            assert_eq!(snapshot.markers.len(), 1);
+            assert_eq!(snapshot.markers[0].marker_number, Some(1));
+            assert!(projector.attack_targets.is_empty());
+            assert!(projector.cooldowns.is_empty());
+            assert!(projector.resource_values.is_empty());
+            assert!(projector.target_statuses.is_empty());
+        }
+    }
+
+    #[test]
+    fn reviewed_runtime_projects_build_locked_hud_state_and_boss_kind() {
+        let local = entity(7, 42 << 16);
+        let boss = entity(8, 800);
+        let mut projector = MechanicsMapProjector {
+            session_id: Some("session".into()),
+            local_character_id: Some("42".into()),
+            scene_id: Some(1_631),
+            ..Default::default()
+        };
+        let mut local_actor = actor_event(local, ActorKind::Player, Some("42"));
+        local_actor.class_id = Some(4);
+        projector.observe(&envelope(
+            1,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 1,
+                time: EventTime {
+                    observed_micros: 1_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance::wire(1, 1, 1),
+                kind: TimelineEventKind::Actor(local_actor),
+            }),
+        ));
+        let mut boss_actor = actor_event(boss, ActorKind::Monster, None);
+        boss_actor.monster_id = Some(rlogs_events::MonsterId(33_701));
+        projector.observe(&envelope(
+            2,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 2,
+                time: EventTime {
+                    observed_micros: 2_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance::wire(2, 1, 1),
+                kind: TimelineEventKind::Actor(boss_actor),
+            }),
+        ));
+        projector.observe(&envelope(
+            3,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 3,
+                time: EventTime {
+                    observed_micros: 3_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance::wire(3, 1, 1),
+                kind: TimelineEventKind::Position(rlogs_events::PositionEvent {
+                    actor: boss,
+                    x: 30.0,
+                    y: 0.0,
+                    z: 40.0,
+                    facing_radians: None,
+                }),
+            }),
+        ));
+        projector.observe(&envelope(
+            4,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 4,
+                time: EventTime {
+                    observed_micros: 4_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance::wire(4, 1, 1),
+                kind: TimelineEventKind::EntityAttributes(EntityAttributeEvent {
+                    actor: local,
+                    update_kind: EntityAttributeUpdateKind::Delta,
+                    ownership: None,
+                    attributes: vec![
+                        EntityAttribute {
+                            attribute_id: ATTR_CURRENT_HP,
+                            raw_value: vec![],
+                            decoded: Some(EntityAttributeValue::Integer(900)),
+                        },
+                        EntityAttribute {
+                            attribute_id: ATTR_MAX_HP_FINAL,
+                            raw_value: vec![],
+                            decoded: Some(EntityAttributeValue::Integer(1_000)),
+                        },
+                    ],
+                }),
+            }),
+        ));
+        projector.observe(&envelope(
+            5,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 5,
+                time: EventTime {
+                    observed_micros: 5_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance::wire(5, 1, 1),
+                kind: TimelineEventKind::Cooldown(CooldownEvent {
+                    actor: local,
+                    ability: AbilityId(12_301),
+                    begin_time_millis: Some(0),
+                    duration_millis: Some(10_000),
+                    valid_duration_millis: None,
+                    cooldown_type: Some(2),
+                    profession_hold_begin_time_millis: None,
+                    charge_count: Some(1),
+                    valid_cooldown_time_millis: None,
+                    sub_cooldown_ratio_raw: None,
+                    sub_cooldown_fixed_raw: None,
+                    accelerate_cooldown_ratio_raw: None,
+                }),
+            }),
+        ));
+        projector.observe(&envelope(
+            6,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 6,
+                time: EventTime {
+                    observed_micros: 6_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance::wire(6, 1, 1),
+                kind: TimelineEventKind::Resource(ResourceEvent {
+                    actor: local,
+                    update_kind: EntityAttributeUpdateKind::Delta,
+                    origin_energy_raw_bits: None,
+                    resource_ids: vec![14_011, 14_017],
+                    resource_values: vec![72, 100],
+                    cooldowns: vec![],
+                }),
+            }),
+        ));
+        projector.observe(&envelope(
+            7,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 7,
+                time: EventTime {
+                    observed_micros: 7_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance::wire(7, 1, 1),
+                kind: TimelineEventKind::Status(StatusEvent {
+                    source: Some(local),
+                    target: local,
+                    effect: StatusEffectId(21_412),
+                    instance_id: None,
+                    origin: None,
+                    state: StatusState::Applied,
+                    stacks: Some(1),
+                    duration_millis: Some(8_000),
+                    level: Some(1),
+                    part_id: None,
+                    count: None,
+                    created_at_millis: None,
+                }),
+            }),
+        ));
+
+        let snapshot = projector.snapshot();
+        let player = snapshot.player.expect("reviewed local HUD frame");
+        assert_eq!(player.current_hp, Some(900));
+        assert_eq!(player.hp_percent, Some(90.0));
+        assert_eq!(player.statuses.len(), 1);
+        assert_eq!(snapshot.action_controls.len(), 1);
+        assert_eq!(snapshot.resources.len(), 1);
+        assert_eq!(snapshot.resources[0].current, 72);
+        assert_eq!(snapshot.resources[0].max, 100);
+        assert_eq!(
+            snapshot
+                .entities
+                .iter()
+                .find(|entity| entity.actor_id == 8)
+                .expect("positioned reviewed boss")
+                .kind,
+            "boss"
+        );
     }
 
     #[test]
