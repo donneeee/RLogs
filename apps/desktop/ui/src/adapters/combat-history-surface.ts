@@ -4223,7 +4223,7 @@ function observedWeaponSlot(actor: HistoryActorSummary): HTMLElement {
     : actor.weapon_level_min !== null && actor.weapon_level_max !== null
       ? `Lv. ${actor.weapon_level_min}-${actor.weapon_level_max}`
       : "Level not observed";
-  const weaponName = actor.weapon_presentation_name ?? `Equipped weapon item ${itemId}`;
+  const weaponName = actor.weapon_presentation_name ?? `Unlocalized weapon item #${itemId}`;
   const tooltip = `${weaponName} | ${levelLabel} | Item ${itemId}`;
   if (!actor.weapon_icon_asset_path) {
     const unresolved = unresolvedLoadoutSlot(

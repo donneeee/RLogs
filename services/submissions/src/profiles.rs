@@ -117,6 +117,8 @@ pub struct PublicProfile {
     pub created_unix_millis: u64,
     pub updated_unix_millis: u64,
     pub source_client_build: String,
+    #[serde(default)]
+    pub source_protocol_pack_digest: Option<String>,
     pub source_observation_count: u64,
     pub source_last_event_sequence: u64,
     pub deployment: String,
@@ -144,6 +146,8 @@ pub struct PublicProfileLoadoutSummary {
     pub snapshot_available: bool,
     pub updated_unix_millis: u64,
     pub source_client_build: String,
+    #[serde(default)]
+    pub source_protocol_pack_digest: Option<String>,
     pub class_id: Option<i32>,
     pub specialization_id: Option<i32>,
     pub module_inventory_count: usize,
@@ -158,6 +162,8 @@ pub struct PublicProfileLoadout {
     pub project_id: i32,
     pub updated_unix_millis: u64,
     pub source_client_build: String,
+    #[serde(default)]
+    pub source_protocol_pack_digest: Option<String>,
     pub class_id: Option<i32>,
     pub specialization_id: Option<i32>,
     pub module_inventory_count: usize,
@@ -174,6 +180,7 @@ impl PublicProfileLoadout {
             snapshot_available: true,
             updated_unix_millis: self.updated_unix_millis,
             source_client_build: self.source_client_build.clone(),
+            source_protocol_pack_digest: self.source_protocol_pack_digest.clone(),
             class_id: self.class_id,
             specialization_id: self.specialization_id,
             module_inventory_count: self.module_inventory_count,
@@ -194,6 +201,8 @@ pub struct PublicProfileCatalogEntry {
     pub package_id: String,
     pub updated_unix_millis: u64,
     pub source_client_build: String,
+    #[serde(default)]
+    pub source_protocol_pack_digest: Option<String>,
     pub deployment: String,
     pub region: String,
     pub realm: Option<String>,
@@ -362,6 +371,7 @@ impl ProfileRegistry {
                     project_id,
                     updated_unix_millis: accepted_unix_millis,
                     source_client_build: package.source.client_build.clone(),
+                    source_protocol_pack_digest: Some(package.source.protocol_pack_digest.clone()),
                     class_id: loadout_profile.class_id,
                     specialization_id: loadout_profile.specialization_id,
                     module_inventory_count: modules.map_or(0, |value| value.inventory.len()),
@@ -430,6 +440,9 @@ impl ProfileRegistry {
                         snapshot_available: false,
                         updated_unix_millis: accepted_unix_millis,
                         source_client_build: package.source.client_build.clone(),
+                        source_protocol_pack_digest: Some(
+                            package.source.protocol_pack_digest.clone(),
+                        ),
                         class_id: project.profession_id,
                         specialization_id: None,
                         module_inventory_count: 0,
@@ -454,6 +467,7 @@ impl ProfileRegistry {
             ),
             updated_unix_millis: accepted_unix_millis,
             source_client_build: package.source.client_build.clone(),
+            source_protocol_pack_digest: Some(package.source.protocol_pack_digest.clone()),
             source_observation_count: package.source.observation_count,
             source_last_event_sequence: package.source.last_event_sequence,
             deployment: package.request.payload.routing["deployment"].clone(),
@@ -1024,6 +1038,7 @@ impl ProfileRegistry {
                             project_id,
                             updated_unix_millis: public.updated_unix_millis,
                             source_client_build: public.source_client_build.clone(),
+                            source_protocol_pack_digest: public.source_protocol_pack_digest.clone(),
                             class_id: public_profile.class_id,
                             specialization_id: public_profile.specialization_id,
                             module_inventory_count: modules
@@ -1080,6 +1095,7 @@ impl ProfileRegistry {
                         snapshot_available: false,
                         updated_unix_millis: public.updated_unix_millis,
                         source_client_build: public.source_client_build.clone(),
+                        source_protocol_pack_digest: public.source_protocol_pack_digest.clone(),
                         class_id: project.profession_id,
                         specialization_id: None,
                         module_inventory_count: 0,
@@ -1698,6 +1714,7 @@ fn catalog_entry(profile: PublicProfile) -> PublicProfileCatalogEntry {
         package_id: profile.package_id,
         updated_unix_millis: profile.updated_unix_millis,
         source_client_build: profile.source_client_build,
+        source_protocol_pack_digest: profile.source_protocol_pack_digest,
         deployment: profile.deployment,
         region: profile.region,
         realm: profile.realm,
@@ -1943,6 +1960,16 @@ mod tests {
         let published = registry.get(&receipt.profile_id).unwrap();
         assert_eq!(published.character_id, "1000001");
         assert_eq!(
+            published.source_protocol_pack_digest.as_deref(),
+            Some("sha256:pack")
+        );
+        assert_eq!(
+            registry.catalog(None).unwrap().profiles[0]
+                .source_protocol_pack_digest
+                .as_deref(),
+            Some("sha256:pack")
+        );
+        assert_eq!(
             published.envelope.body["modules"]["inventory"]
                 .as_array()
                 .unwrap()
@@ -2019,6 +2046,19 @@ mod tests {
         assert!(public.loadouts[1].snapshot_available);
         let loadout_five = registry.get_loadout(&receipt.profile_id, 5).unwrap();
         let loadout_eight = registry.get_loadout(&receipt.profile_id, 8).unwrap();
+        assert_eq!(
+            loadout_five.source_protocol_pack_digest.as_deref(),
+            Some("sha256:pack")
+        );
+        assert_eq!(
+            loadout_eight.source_protocol_pack_digest.as_deref(),
+            Some("sha256:pack")
+        );
+        assert!(
+            public.loadouts.iter().all(
+                |loadout| loadout.source_protocol_pack_digest.as_deref() == Some("sha256:pack")
+            )
+        );
         assert_eq!(loadout_five.class_id, Some(11));
         assert_eq!(loadout_five.specialization_id, Some(117));
         assert_eq!(loadout_five.module_inventory_count, 3);

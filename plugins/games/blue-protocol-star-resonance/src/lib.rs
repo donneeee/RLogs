@@ -355,7 +355,8 @@ pub use use_skill_attr::{
     decode_world_use_slot_skill_action_into,
 };
 pub use weapon_presentation::{
-    WeaponLevelPresentation, WeaponPresentation, weapon_level_presentation, weapon_presentation,
+    WeaponLevelPresentation, WeaponPresentation, localized_weapon_name_for_identity,
+    weapon_level_presentation, weapon_presentation,
 };
 pub use website::{BPSR_PROFILE_ENDPOINT, BpsrWebsiteProfileError, website_profile_request};
 

@@ -102,10 +102,10 @@ use rlogs_game_bpsr::{
     localized_class_identities, localized_combat_action_name_for_identity,
     localized_monster_name_for_identity, localized_recount_group_name_for_identity,
     localized_scene_name_for_identity, localized_specialization_identities,
-    project_local_profile_packages, proven_state_damage_contribution_effect_ids,
-    rdps_attribution_effect_presentation, record_offline_capture, resolve_actor_combat_identity,
-    resolve_actor_combat_presentation, resolve_live_protocol_pack,
-    resolve_packet_detected_protocol_pack, scene_boss_monster_ids,
+    localized_weapon_name_for_identity, project_local_profile_packages,
+    proven_state_damage_contribution_effect_ids, rdps_attribution_effect_presentation,
+    record_offline_capture, resolve_actor_combat_identity, resolve_actor_combat_presentation,
+    resolve_live_protocol_pack, resolve_packet_detected_protocol_pack, scene_boss_monster_ids,
     scene_boss_monster_ids_for_identity, state_damage_contribution_formula_identity,
     state_damage_contribution_target_matches, status_effect_display_presentation_for_identity,
     status_effect_presentation, stimen_floor_encounter_kind, weapon_level_presentation,
@@ -1108,14 +1108,22 @@ fn live_overlay_actor_identity_presentation(
 fn live_overlay_weapon_badge(
     item_id: Option<i64>,
     breakthrough_count: Option<u32>,
-    localization_supported: bool,
+    deployment_id: &str,
+    client_build: &str,
+    protocol_pack_digest: &str,
 ) -> Option<LiveOverlayBadgePresentation> {
-    if !localization_supported {
-        return None;
-    }
     item_id.map(|item_id| {
         let metadata = weapon_presentation(item_id);
         let level = weapon_level_presentation(item_id, breakthrough_count);
+        let localized_name = localized_weapon_name_for_identity(
+            deployment_id,
+            client_build,
+            protocol_pack_digest,
+            item_id,
+            "en-US",
+        )
+        .ok()
+        .flatten();
         LiveOverlayBadgePresentation {
             slot_id: None,
             ability_id: None,
@@ -1125,9 +1133,9 @@ fn live_overlay_weapon_badge(
             level_min: level.map(|value| value.minimum),
             level_max: level.map(|value| value.maximum),
             badge_kind: metadata.map(|value| value.badge_kind.to_owned()),
-            label: metadata
-                .map(|value| value.english_name.to_owned())
-                .unwrap_or_else(|| format!("Weapon item {item_id}")),
+            label: localized_name
+                .map(str::to_owned)
+                .unwrap_or_else(|| format!("Unlocalized weapon item #{item_id}")),
             icon_asset_path: metadata.map(|value| {
                 format!(
                     "/game-assets/blue-protocol-star-resonance/shared/{}",
@@ -1711,7 +1719,9 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
                     let weapon = live_overlay_weapon_badge(
                         actor.weapon_item_id,
                         actor.weapon_breakthrough_count,
-                        localization_supported,
+                        &snapshot.deployment_id,
+                        &snapshot.client_build,
+                        &snapshot.protocol_pack_digest,
                     );
                     let primary_imagines = live_overlay_primary_imagine_badges(
                         &actor.primary_loadout,
@@ -13112,7 +13122,13 @@ fn enrich_bpsr_history_presentation(
                 actor.character_id = character_id_from_entity_uuid(entity_uuid);
                 enrich_bpsr_loadout_presentation(&mut actor.primary_loadout, locale)?;
                 enrich_bpsr_loadout_presentation(&mut actor.auxiliary_loadout, locale)?;
-                enrich_bpsr_weapon_presentation(actor);
+                enrich_bpsr_weapon_presentation(
+                    actor,
+                    &localization_deployment_id,
+                    &localization_client_build,
+                    &localization_protocol_pack_digest,
+                    locale,
+                )?;
 
                 let class_named_companion = match (actor.class_id, actor.display_name.as_deref()) {
                     (Some(class_id), Some(display_name)) => {
@@ -13851,7 +13867,13 @@ fn bpsr_game_asset_path(relative_path: Option<String>) -> Option<String> {
     relative_path.map(|path| format!("/game-assets/blue-protocol-star-resonance/shared/{path}"))
 }
 
-fn enrich_bpsr_weapon_presentation(actor: &mut rlogs_plugin_combat_meter::HistoryActorSummary) {
+fn enrich_bpsr_weapon_presentation(
+    actor: &mut rlogs_plugin_combat_meter::HistoryActorSummary,
+    deployment_id: &str,
+    client_build: &str,
+    protocol_pack_digest: &str,
+    locale: &str,
+) -> Result<(), String> {
     actor.weapon_icon_asset_path = None;
     actor.weapon_presentation_name = None;
     actor.weapon_level = None;
@@ -13859,21 +13881,29 @@ fn enrich_bpsr_weapon_presentation(actor: &mut rlogs_plugin_combat_meter::Histor
     actor.weapon_level_max = None;
     actor.weapon_badge_kind = None;
     let Some(item_id) = actor.weapon_item_id else {
-        return;
+        return Ok(());
     };
     let Some(metadata) = weapon_presentation(item_id) else {
-        return;
+        return Ok(());
     };
     let level = weapon_level_presentation(item_id, actor.weapon_breakthrough_count);
     actor.weapon_icon_asset_path = Some(format!(
         "/game-assets/blue-protocol-star-resonance/shared/{}",
         metadata.icon
     ));
-    actor.weapon_presentation_name = Some(metadata.english_name.to_owned());
+    actor.weapon_presentation_name = localized_weapon_name_for_identity(
+        deployment_id,
+        client_build,
+        protocol_pack_digest,
+        item_id,
+        locale,
+    )?
+    .map(str::to_owned);
     actor.weapon_level = level.and_then(|value| value.exact);
     actor.weapon_level_min = level.map(|value| value.minimum);
     actor.weapon_level_max = level.map(|value| value.maximum);
     actor.weapon_badge_kind = Some(metadata.badge_kind.to_owned());
+    Ok(())
 }
 
 fn enrich_bpsr_catalog_presentation(
@@ -13922,29 +13952,49 @@ fn enrich_bpsr_catalog_presentation(
             actor.presentation_accent = presentation.accent;
             enrich_bpsr_loadout_presentation(&mut actor.primary_loadout, locale)?;
             enrich_bpsr_loadout_presentation(&mut actor.auxiliary_loadout, locale)?;
-            enrich_bpsr_catalog_weapon_presentation(actor);
+            enrich_bpsr_catalog_weapon_presentation(
+                actor,
+                &entry.deployment_id,
+                &entry.client_build,
+                &entry.protocol_pack_digest,
+                locale,
+            )?;
         }
     }
     Ok(())
 }
 
-fn enrich_bpsr_catalog_weapon_presentation(actor: &mut combat_history::CombatHistoryParticipant) {
+fn enrich_bpsr_catalog_weapon_presentation(
+    actor: &mut combat_history::CombatHistoryParticipant,
+    deployment_id: &str,
+    client_build: &str,
+    protocol_pack_digest: &str,
+    locale: &str,
+) -> Result<(), String> {
     let Some(item_id) = actor.weapon_item_id else {
-        return;
+        return Ok(());
     };
     let Some(metadata) = weapon_presentation(item_id) else {
-        return;
+        return Ok(());
     };
     let level = weapon_level_presentation(item_id, actor.weapon_breakthrough_count);
     actor.weapon_icon_asset_path = Some(format!(
         "/game-assets/blue-protocol-star-resonance/shared/{}",
         metadata.icon
     ));
-    actor.weapon_presentation_name = Some(metadata.english_name.to_owned());
+    actor.weapon_presentation_name = localized_weapon_name_for_identity(
+        deployment_id,
+        client_build,
+        protocol_pack_digest,
+        item_id,
+        locale,
+    )?
+    .map(str::to_owned);
     actor.weapon_level = level.and_then(|value| value.exact);
     actor.weapon_level_min = level.map(|value| value.minimum);
     actor.weapon_level_max = level.map(|value| value.maximum);
     actor.weapon_badge_kind = Some(metadata.badge_kind.to_owned());
+    Ok(())
 }
 
 fn clear_bpsr_catalog_participant_presentation(
@@ -15699,11 +15749,37 @@ mod tests {
         assert_eq!(other_identity.role, None);
         assert_eq!(other_identity.accent, None);
 
-        let exact_weapon = live_overlay_weapon_badge(Some(2_000_631), Some(3), true)
-            .expect("current-build weapon presentation");
+        let exact_weapon = live_overlay_weapon_badge(
+            Some(2_000_631),
+            Some(3),
+            "global",
+            "24687926",
+            "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
+        )
+        .expect("current-build weapon presentation");
         assert_eq!(exact_weapon.label, "Ember - Gaze of the Far Sea");
         assert!(exact_weapon.icon_asset_path.is_some());
-        assert!(live_overlay_weapon_badge(Some(2_000_631), Some(3), false).is_none());
+        let unknown_weapon = live_overlay_weapon_badge(
+            Some(9),
+            Some(3),
+            "global",
+            "24687926",
+            "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
+        )
+        .expect("observed weapon identity remains visible");
+        assert_eq!(unknown_weapon.label, "Unlocalized weapon item #9");
+        let mismatched_weapon = live_overlay_weapon_badge(
+            Some(2_000_631),
+            Some(3),
+            "global",
+            "24687927",
+            "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
+        )
+        .expect("observed weapon identity survives unavailable localization");
+        assert_eq!(mismatched_weapon.label, "Unlocalized weapon item #2000631");
+        assert_eq!(mismatched_weapon.item_id, Some(2_000_631));
+        assert_eq!(mismatched_weapon.level, Some(280));
+        assert!(mismatched_weapon.icon_asset_path.is_some());
 
         let imagine = ActorLoadoutSlot {
             slot_id: 7,
