@@ -315,6 +315,7 @@ struct CrossVantageReplayResult {
     rdps_effects: Vec<PublicRdpsEffectPresentation>,
     rdps_influences: Vec<PublicRdpsInfluence>,
     canonical_run_observed_bounds: Option<CanonicalRunObservedBounds>,
+    aligned_profile_observed_micros: BTreeMap<(String, String, u64), u64>,
     swift_vortex_candidate_audit: Option<SwiftVortexCandidateAuditReport>,
 }
 
@@ -1288,10 +1289,10 @@ impl SubmissionService {
             reconciliation.canonical_spine.run_index,
             &imported_events,
             |envelope, imported| {
-                if imported {
+                if imported.is_some() {
                     stat_resonance_learner.observe(envelope);
                 }
-                if imported && life_wave_trigger_learner.observe(envelope) {
+                if imported.is_some() && life_wave_trigger_learner.observe(envelope) {
                     return Ok(());
                 }
                 remote_factor_learner.observe(envelope);
@@ -1325,13 +1326,29 @@ impl SubmissionService {
         meter.begin_live(&header);
         encounter.begin_live(&header);
         let mut swift_vortex_audit = SwiftVortexCandidateAuditAnalyzer::new();
+        let mut aligned_profile_observed_micros = BTreeMap::new();
         replay_canonical_with_cross_vantage_state(
             canonical_path,
             reconciliation.canonical_spine.run_index,
             &imported_events,
             |envelope, imported| {
                 swift_vortex_audit.observe(envelope);
-                if imported
+                if let Some(imported) = imported
+                    && matches!(
+                        envelope.event,
+                        CanonicalEvent::CharacterProfileObserved { .. }
+                    )
+                {
+                    aligned_profile_observed_micros.insert(
+                        (
+                            imported.report_id.clone(),
+                            imported.character_id.clone(),
+                            imported.envelope.time.observed_micros,
+                        ),
+                        envelope.time.observed_micros,
+                    );
+                }
+                if imported.is_some()
                     && matches!(
                         &envelope.event,
                         CanonicalEvent::Timeline(timeline)
@@ -1344,7 +1361,7 @@ impl SubmissionService {
                     return Ok(());
                 }
                 meter.observe_live(envelope);
-                if !imported {
+                if imported.is_none() {
                     encounter
                         .observe_live(envelope)
                         .map_err(|error| error.to_string())?;
@@ -1469,6 +1486,7 @@ impl SubmissionService {
             },
             rdps_influences: public_rdps_influences(view),
             canonical_run_observed_bounds,
+            aligned_profile_observed_micros,
             swift_vortex_candidate_audit: (swift_vortex_candidate_audit
                 .candidate_status_event_count
                 > 0)
@@ -5256,7 +5274,10 @@ fn replay_canonical_with_cross_vantage_state(
     path: &Path,
     target_run_index: u32,
     imported_events: &[VerifiedCrossVantageStateEvent],
-    mut observe: impl FnMut(&EventEnvelope, bool) -> Result<(), String>,
+    mut observe: impl FnMut(
+        &EventEnvelope,
+        Option<&VerifiedCrossVantageStateEvent>,
+    ) -> Result<(), String>,
 ) -> Result<rlogs_log_format::RlogReplaySummary, ServiceError> {
     let file = File::open(path)?;
     let reader = RlogReader::new(BufReader::new(file), RlogLimits::default())?;
@@ -5305,7 +5326,7 @@ fn replay_canonical_with_cross_vantage_state(
             active_run_index = Some(next_run_index);
             next_run_index = next_run_index.saturating_add(1);
             target_seen |= active_run_index == Some(target_run_index);
-            observe(envelope, false)?;
+            observe(envelope, None)?;
             if active_run_index == Some(target_run_index) {
                 while let Some(imported) = baselines.pop_front() {
                     let aligned = aligned_cross_vantage_envelope(
@@ -5313,7 +5334,7 @@ fn replay_canonical_with_cross_vantage_state(
                         envelope.time.observed_micros,
                         &region,
                     );
-                    observe(&aligned, true)?;
+                    observe(&aligned, Some(&imported))?;
                 }
             }
             return Ok(());
@@ -5340,10 +5361,10 @@ fn replay_canonical_with_cross_vantage_state(
                     envelope.time.observed_micros.saturating_sub(delta_micros),
                     &region,
                 );
-                observe(&aligned, true)?;
+                observe(&aligned, Some(&imported))?;
             }
         }
-        observe(envelope, false)?;
+        observe(envelope, None)?;
         if matches!(
             run_state,
             Some(RunState::Ended | RunState::Completed | RunState::Failed | RunState::Exited)
@@ -5766,21 +5787,12 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
         .iter()
         .map(|report| report.report_id.clone())
         .collect();
-    populate_timeline_loadouts(
+    populate_reconciled_timeline_loadouts(
         &mut timeline,
-        characters.iter().flat_map(|character| {
-            character
-                .selected_report_id
-                .as_deref()
-                .into_iter()
-                .flat_map(move |report_id| {
-                    character
-                        .selected_combat_loadout_phases
-                        .iter()
-                        .enumerate()
-                        .map(move |(phase_index, phase)| (report_id, phase_index, phase))
-                })
-        }),
+        canonical_report_id,
+        &characters,
+        &BTreeMap::new(),
+        None,
     );
 
     let mut hasher = Sha256::new();
@@ -6102,6 +6114,13 @@ pub fn reconcile_hosted_run_group(
                         &mut reconciliation.timeline,
                         &result.participants,
                         &result.rdps_influences,
+                        result.canonical_run_observed_bounds,
+                    );
+                    populate_reconciled_timeline_loadouts(
+                        &mut reconciliation.timeline,
+                        &reconciliation.canonical_spine.report_id,
+                        &reconciliation.characters,
+                        &result.aligned_profile_observed_micros,
                         result.canonical_run_observed_bounds,
                     );
                     reconciliation.status = RunAttributionReconciliationStatus::Reconciled;
@@ -7124,6 +7143,72 @@ fn populate_timeline_loadouts<'a>(
             phase_index,
             source_report_id: report_id.to_owned(),
         });
+    }
+    timeline.loadout_markers.sort_by(|left, right| {
+        (
+            left.at_micros,
+            &left.character_id,
+            &left.source_report_id,
+            left.phase_index,
+        )
+            .cmp(&(
+                right.at_micros,
+                &right.character_id,
+                &right.source_report_id,
+                right.phase_index,
+            ))
+    });
+}
+
+fn populate_reconciled_timeline_loadouts(
+    timeline: &mut PublicCombatTimeline,
+    canonical_report_id: &str,
+    characters: &[PublicReconciliationCharacter],
+    aligned_profile_observed_micros: &BTreeMap<(String, String, u64), u64>,
+    canonical_run_observed_bounds: Option<CanonicalRunObservedBounds>,
+) {
+    timeline.loadout_markers.clear();
+    timeline.omitted.loadout_markers = 0;
+    let canonical_duration_micros = timeline.duration_micros;
+    for character in characters {
+        let Some(report_id) = character.selected_report_id.as_deref() else {
+            continue;
+        };
+        for (phase_index, phase) in character.selected_combat_loadout_phases.iter().enumerate() {
+            if timeline.loadout_markers.len() == MAXIMUM_TIMELINE_LOADOUT_MARKERS {
+                timeline.omitted.loadout_markers =
+                    timeline.omitted.loadout_markers.saturating_add(1);
+                continue;
+            }
+            let at_micros = if report_id == canonical_report_id {
+                Some(phase.run_elapsed_micros)
+            } else {
+                canonical_run_observed_bounds.and_then(|bounds| {
+                    aligned_profile_observed_micros
+                        .get(&(
+                            report_id.to_owned(),
+                            character.character_id.clone(),
+                            phase.observed_micros,
+                        ))
+                        .copied()
+                        .filter(|observed| {
+                            *observed >= bounds.started_micros && *observed <= bounds.ended_micros
+                        })
+                        .map(|observed| observed.saturating_sub(bounds.started_micros))
+                })
+            };
+            let Some(at_micros) = at_micros.filter(|at| *at <= canonical_duration_micros) else {
+                timeline.omitted.loadout_markers =
+                    timeline.omitted.loadout_markers.saturating_add(1);
+                continue;
+            };
+            timeline.loadout_markers.push(PublicTimelineLoadoutMarker {
+                character_id: phase.character_id.clone(),
+                at_micros,
+                phase_index,
+                source_report_id: report_id.to_owned(),
+            });
+        }
     }
     timeline.loadout_markers.sort_by(|left, right| {
         (
@@ -9430,6 +9515,87 @@ mod tests {
     }
 
     #[test]
+    fn secondary_only_loadout_uses_verified_canonical_game_time_alignment() {
+        let mut reconciliation = secondary_loadout_reconciliation();
+        let canonical_duration = reconciliation.timeline.duration_micros;
+        let secondary = reconciliation
+            .characters
+            .iter()
+            .find(|character| character.character_id == "character-b")
+            .unwrap();
+        assert_eq!(
+            secondary.selected_report_id.as_deref(),
+            Some("rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+        );
+        assert_eq!(
+            secondary.selected_combat_loadout_phases[0].run_elapsed_micros,
+            5
+        );
+
+        let aligned = BTreeMap::from([(
+            (
+                "rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_owned(),
+                "character-b".to_owned(),
+                secondary.selected_combat_loadout_phases[0].observed_micros,
+            ),
+            104,
+        )]);
+        populate_reconciled_timeline_loadouts(
+            &mut reconciliation.timeline,
+            "rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            &reconciliation.characters,
+            &aligned,
+            Some(CanonicalRunObservedBounds {
+                started_micros: 100,
+                ended_micros: 100_u64.saturating_add(canonical_duration),
+            }),
+        );
+
+        let marker = reconciliation
+            .timeline
+            .loadout_markers
+            .iter()
+            .find(|marker| marker.character_id == "character-b")
+            .unwrap();
+        assert_eq!(marker.at_micros, 4);
+        assert_eq!(
+            marker.source_report_id,
+            "rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        );
+        assert_eq!(reconciliation.timeline.duration_micros, canonical_duration);
+        assert_eq!(reconciliation.timeline.omitted.loadout_markers, 0);
+    }
+
+    #[test]
+    fn unalignable_secondary_loadout_stays_as_evidence_but_not_a_timeline_marker() {
+        let reconciliation = secondary_loadout_reconciliation();
+        let secondary = reconciliation
+            .characters
+            .iter()
+            .find(|character| character.character_id == "character-b")
+            .unwrap();
+
+        assert_eq!(secondary.selected_combat_loadout_phases.len(), 1);
+        assert!(reconciliation.reports.iter().any(|report| {
+            report.report_id == "rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                && report
+                    .combat_loadout_phases
+                    .iter()
+                    .any(|phase| phase.character_id == "character-b")
+        }));
+        assert!(
+            reconciliation
+                .timeline
+                .loadout_markers
+                .iter()
+                .all(|marker| {
+                    marker.source_report_id == "rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                })
+        );
+        assert_eq!(reconciliation.timeline.omitted.loadout_markers, 1);
+    }
+
+    #[test]
     fn legacy_reconciliation_defaults_combat_loadout_fields() {
         let report =
             fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
@@ -10279,12 +10445,12 @@ mod tests {
         let mut order = Vec::new();
         let mut imported_observed = BTreeMap::new();
         replay_canonical_with_cross_vantage_state(&path, 0, &imported, |event, imported| {
-            if imported {
+            if imported.is_some() {
                 imported_observed.insert(event.sequence, event.time.observed_micros);
             }
             order.push(format!(
                 "{}{}",
-                if imported { "I" } else { "C" },
+                if imported.is_some() { "I" } else { "C" },
                 event.sequence
             ));
             Ok(())
@@ -10547,6 +10713,15 @@ mod tests {
         let result = service
             .replay_cross_vantage_attribution(&reconciliation, imported)
             .unwrap();
+        assert_eq!(
+            result.aligned_profile_observed_micros.get(&(
+                "rpt_secondary".to_owned(),
+                "character-b".to_owned(),
+                1,
+            )),
+            Some(&10),
+            "the sealed secondary profile witness must use the canonical run's verified game-time transform"
+        );
         assert!(result.conservation.conserved);
         assert_eq!(result.conservation.raw_damage, 100);
         assert_eq!(result.conservation.rdps_damage, 100);
@@ -11043,6 +11218,34 @@ mod tests {
             &fixture_analysis("fixture-session", Some("instance-1")),
         );
         report
+    }
+
+    fn secondary_loadout_reconciliation() -> PublicRunReconciliation {
+        let report_a =
+            fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
+        let report_b =
+            fixture_public_report("rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "character-b", 0);
+        let group = CatalogRunGroup {
+            representative: PublicParseCatalogEntry::from_report(&report_a, &report_a.runs[0]),
+            representative_quality: CanonicalSpineQuality::from_report(
+                &report_a,
+                &report_a.runs[0],
+            ),
+            submitters: BTreeSet::new(),
+            local_profile_witnesses: ["character-a".to_owned(), "character-b".to_owned()]
+                .into_iter()
+                .collect(),
+            reconciliation_sources: vec![
+                ReconciliationRunSource::from_report(&report_a, &report_a.runs[0], None),
+                ReconciliationRunSource::from_report(&report_b, &report_b.runs[0], None),
+            ],
+            milestone_source: MilestoneSource {
+                entry: PublicParseCatalogEntry::from_report(&report_a, &report_a.runs[0]),
+                authoritative_completion: true,
+                participants: report_a.runs[0].participants.clone(),
+            },
+        };
+        build_public_reconciliation(&group)
     }
 
     #[test]
