@@ -111,6 +111,9 @@ jobs:
               throw "Windows installer smoke-test script is missing required parameter $requiredParameter"
             }
           }
+      - name: Verify marker capture transport boundary
+        shell: pwsh
+        run: ./tools/windows/test-capture-client-host.ps1
       - name: Build desktop UI
         working-directory: apps/desktop/ui
         run: |

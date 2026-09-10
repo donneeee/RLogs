@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory = $true)][ValidateScript({ $parsed = $null; [System.Net.IPAddress]::TryParse($_, [ref]$parsed) -and $parsed.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork })][string]$ClientIp,
     [Parameter(Mandatory = $true)][string]$Interface,
     [ValidateRange(1, 3600)][int]$DurationSeconds = 180,
+    [ValidateSet('general', 'marker-audit')][string]$CapturePurpose = 'general',
     [ValidateSet('all-ip', 'tcp')][string]$TransportMode = 'all-ip',
     [string]$DumpcapPath = 'C:\Program Files\Wireshark\dumpcap.exe',
     [string]$TsharkPath = 'C:\Program Files\Wireshark\tshark.exe',
@@ -19,8 +20,14 @@ $connectionsPartial = "$connectionsPath.partial"
 $transportsPath = Join-Path $outputRoot "$CaptureId.transports.json"
 $transportsPartial = "$transportsPath.partial"
 $captureFilter = if ($TransportMode -eq 'tcp') { "tcp and host $ClientIp" } else { "host $ClientIp" }
+if ($CapturePurpose -eq 'marker-audit' -and $TransportMode -ne 'all-ip') {
+    throw 'Marker audits require all-ip capture; refusing a TCP-only marker capture.'
+}
+if ($CapturePurpose -eq 'marker-audit' -and $captureFilter -ne "host $ClientIp") {
+    throw "Marker-audit capture filter escaped the explicit-client all-IP boundary: $captureFilter"
+}
 if ($DryRun) {
-    [ordered]@{ capture_filter=$captureFilter; transport_mode=$TransportMode; client_ip=$ClientIp; interface=$Interface; duration_seconds=$DurationSeconds; capture_path=$capturePath; connections_path=$connectionsPath; transports_path=$transportsPath } | ConvertTo-Json
+    [ordered]@{ capture_filter=$captureFilter; capture_purpose=$CapturePurpose; transport_mode=$TransportMode; filter_scope='explicit-client-only'; client_ip=$ClientIp; interface=$Interface; duration_seconds=$DurationSeconds; capture_path=$capturePath; connections_path=$connectionsPath; transports_path=$transportsPath } | ConvertTo-Json
     return
 }
 foreach ($tool in @($DumpcapPath, $TsharkPath)) {
@@ -30,7 +37,7 @@ foreach ($tool in @($DumpcapPath, $TsharkPath)) {
 foreach ($path in @($capturePath, $connectionsPath, $connectionsPartial, $transportsPath, $transportsPartial)) {
     if (Test-Path -LiteralPath $path) { throw "Refusing to overwrite existing research file: $path" }
 }
-Write-Host "Capturing $TransportMode traffic for explicit client $ClientIp; remote-server and transport migration remain in scope."
+Write-Host "RLogs capture starting: purpose=$CapturePurpose; transport=$TransportMode; effective_filter='$captureFilter'; scope=explicit-client-only; remote-server and transport migration remain in scope."
 & $DumpcapPath -q -i $Interface -s 0 -f $captureFilter -a "duration:$DurationSeconds" -w $capturePath
 if ($LASTEXITCODE -ne 0) { throw "dumpcap exited with code $LASTEXITCODE" }
 $connections = @{}
@@ -74,3 +81,4 @@ Move-Item -LiteralPath $transportsPartial -Destination $transportsPath
 Write-Host "Private capture: $capturePath"
 Write-Host "Metadata-only discovered connection sidecar: $connectionsPath"
 Write-Host "Metadata-only bounded transport inventory: $transportsPath"
+Write-Host "RLogs capture complete: purpose=$CapturePurpose; transport=$TransportMode; effective_filter='$captureFilter'; discovered_flows=$($transportInventory.Count)."
