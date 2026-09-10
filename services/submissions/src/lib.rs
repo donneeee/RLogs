@@ -44,6 +44,7 @@ use rlogs_game_bpsr::{
 use rlogs_log_format::{RlogLimits, RlogReader, RlogReplaySummary};
 use rlogs_plugin_combat_meter::{
     CombatHistorySnapshot, CombatHistoryView, CombatTimelinePlugin, HistoryActorSummary,
+    HistoryDeathCause, HistoryDeathCauseEvidence, HistoryDeathEvent, HistoryDeathHit,
     HistoryRateClockPoint,
 };
 use rlogs_plugin_encounter_recorder::EncounterRecorderPlugin;
@@ -78,11 +79,11 @@ use rlogs_game_bpsr::{
 };
 use rlogs_profiles::LocalProfilePackage;
 
-pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 15;
-pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 7;
+pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 16;
+pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 8;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 7;
-pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 18;
-pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 3;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 19;
+pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 4;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
@@ -105,6 +106,9 @@ const MAXIMUM_HOSTED_RECONCILIATION_BYTES: u64 = 64 * 1024 * 1024 * 1024;
 const MAXIMUM_TIMELINE_PARTICIPANTS: usize = 256;
 const MAXIMUM_TIMELINE_SERIES_POINTS: usize = 262_144;
 const MAXIMUM_TIMELINE_DEATH_MARKERS: usize = 4_096;
+const MAXIMUM_TIMELINE_DEATH_PRIOR_HITS: usize = 63;
+const TIMELINE_DEATH_REPLAY_WINDOW_MICROS: u64 = 2_000_000;
+const JAVASCRIPT_MAXIMUM_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 const MAXIMUM_TIMELINE_LOADOUT_MARKERS: usize = 4_096;
 const MAXIMUM_TIMELINE_RDPS_SPANS: usize = 65_536;
 
@@ -318,6 +322,7 @@ pub struct PrivateRunMembership {
 #[derive(Clone)]
 struct CrossVantageReplayResult {
     participants: Vec<PublicReconciledParticipant>,
+    death_events: ProjectedTimelineDeathEvents,
     conservation: PublicAttributionConservation,
     rdps_status: String,
     rate_clock: Vec<HistoryRateClockPoint>,
@@ -1526,6 +1531,7 @@ impl SubmissionService {
         let swift_vortex_candidate_audit = swift_vortex_audit.report();
         Ok(CrossVantageReplayResult {
             participants,
+            death_events: projected_timeline_death_events(Some(view)),
             conservation,
             rdps_status: run.rdps_status.clone(),
             rate_clock: view.rate_clock.clone(),
@@ -3186,7 +3192,48 @@ pub struct PublicTimelineDeathMarker {
     pub actor_id: String,
     pub at_micros: u64,
     pub precision: PublicTimelineMarkerPrecision,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cause: Option<PublicTimelineDeathCause>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicTimelineDeathCause {
+    pub evidence: PublicTimelineDeathCauseEvidence,
+    pub final_hit: PublicTimelineDeathHit,
+    #[serde(default)]
+    pub prior_hits: Vec<PublicTimelineDeathHit>,
+    #[serde(default)]
+    pub prior_hits_truncated: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicTimelineDeathCauseEvidence {
+    PacketTerminalDamage,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicTimelineDeathHit {
+    pub at_micros: u64,
+    pub source_actor_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direct_source_actor_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ability_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub breakdown_ability_id: Option<String>,
+    pub reported_damage: i64,
+    pub effective_damage: i64,
+    pub critical: bool,
+}
+
+#[derive(Debug, Clone)]
+struct ProjectedTimelineDeathEvent {
+    at_micros: u64,
+    cause: Option<PublicTimelineDeathCause>,
+}
+
+type ProjectedTimelineDeathEvents = BTreeMap<String, Vec<ProjectedTimelineDeathEvent>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -6201,6 +6248,7 @@ fn apply_cross_vantage_replay_result(
 ) {
     let CrossVantageReplayResult {
         participants,
+        death_events,
         conservation,
         rdps_status,
         rate_clock,
@@ -6221,6 +6269,7 @@ fn apply_cross_vantage_replay_result(
         &participants,
         &rdps_influences,
         canonical_run_observed_bounds,
+        Some(&death_events),
     );
     // Always replace the inherited canonical projection. An incomplete replay
     // clock deliberately clears those points rather than presenting them as
@@ -7280,12 +7329,96 @@ fn public_rdps_influences(view: &CombatHistoryView) -> Vec<PublicRdpsInfluence> 
         .collect()
 }
 
+fn projected_timeline_death_events(
+    view: Option<&CombatHistoryView>,
+) -> ProjectedTimelineDeathEvents {
+    view.into_iter()
+        .flat_map(|view| &view.actors)
+        .filter(|actor| !actor.death_events.is_empty())
+        .map(|actor| {
+            let events = actor
+                .death_events
+                .iter()
+                .map(|event| ProjectedTimelineDeathEvent {
+                    at_micros: event.at_micros,
+                    cause: event
+                        .cause
+                        .as_ref()
+                        .and_then(|cause| public_timeline_death_cause(event, cause)),
+                })
+                .collect();
+            (actor.actor_id.clone(), events)
+        })
+        .collect()
+}
+
+fn public_timeline_death_cause(
+    event: &HistoryDeathEvent,
+    cause: &HistoryDeathCause,
+) -> Option<PublicTimelineDeathCause> {
+    let cutoff = event
+        .at_micros
+        .saturating_sub(TIMELINE_DEATH_REPLAY_WINDOW_MICROS);
+    if cause.prior_hits.len() > MAXIMUM_TIMELINE_DEATH_PRIOR_HITS
+        || cause.final_hit.at_micros != event.at_micros
+        || !valid_history_death_hit(&cause.final_hit, cutoff, event.at_micros)
+        || cause
+            .prior_hits
+            .iter()
+            .any(|hit| !valid_history_death_hit(hit, cutoff, event.at_micros))
+        || cause
+            .prior_hits
+            .windows(2)
+            .any(|hits| hits[0].at_micros > hits[1].at_micros)
+    {
+        return None;
+    }
+    let evidence = match cause.evidence {
+        HistoryDeathCauseEvidence::PacketTerminalDamage => {
+            PublicTimelineDeathCauseEvidence::PacketTerminalDamage
+        }
+    };
+    Some(PublicTimelineDeathCause {
+        evidence,
+        final_hit: public_timeline_death_hit(&cause.final_hit),
+        prior_hits: cause
+            .prior_hits
+            .iter()
+            .map(public_timeline_death_hit)
+            .collect(),
+        prior_hits_truncated: cause.prior_hits_truncated,
+    })
+}
+
+fn valid_history_death_hit(hit: &HistoryDeathHit, cutoff: u64, death_micros: u64) -> bool {
+    hit.at_micros >= cutoff
+        && hit.at_micros <= death_micros
+        && hit.reported_damage >= 0
+        && hit.reported_damage <= JAVASCRIPT_MAXIMUM_SAFE_INTEGER
+        && hit.effective_damage >= 0
+        && hit.effective_damage <= JAVASCRIPT_MAXIMUM_SAFE_INTEGER
+}
+
+fn public_timeline_death_hit(hit: &HistoryDeathHit) -> PublicTimelineDeathHit {
+    PublicTimelineDeathHit {
+        at_micros: hit.at_micros,
+        source_actor_id: hit.source_actor_id.clone(),
+        direct_source_actor_id: hit.direct_source_actor_id.clone(),
+        ability_id: hit.ability_id.clone(),
+        breakdown_ability_id: hit.breakdown_ability_id.clone(),
+        reported_damage: hit.reported_damage,
+        effective_damage: hit.effective_damage,
+        critical: hit.critical,
+    }
+}
+
 fn public_combat_timeline(
     report_id: &str,
     run: &PublicRun,
     view: Option<&CombatHistoryView>,
     analysis: &RunAnalysis,
 ) -> PublicCombatTimeline {
+    let death_events = projected_timeline_death_events(view);
     let mut timeline = PublicCombatTimeline {
         schema_version: PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION,
         source: PublicTimelineSource::SingleReport,
@@ -7320,6 +7453,7 @@ fn public_combat_timeline(
         &run.participants,
         &run.rdps_influences,
         canonical_run_observed_bounds(analysis),
+        Some(&death_events),
     );
     if let Some(view) = view {
         populate_timeline_rate_clock(&mut timeline, &view.rate_clock, view.rate_clock_complete);
@@ -7410,6 +7544,7 @@ fn populate_timeline_combat_data(
     participants: &[PublicParticipant],
     influences: &[PublicRdpsInfluence],
     canonical_run_observed_bounds: Option<CanonicalRunObservedBounds>,
+    exact_death_events: Option<&ProjectedTimelineDeathEvents>,
 ) {
     let canonical_duration_known = canonical_run_observed_bounds.is_some();
     timeline.participant_tracks.clear();
@@ -7455,31 +7590,67 @@ fn populate_timeline_combat_data(
                 canonical_participant_index: participant_index,
                 series_point_count: kept,
             });
-        for (death_index, second) in participant.death_seconds.iter().enumerate() {
+        let exact_deaths = selected_timeline_death_events(
+            participant,
+            exact_death_events,
+            canonical_duration_known.then_some(timeline.duration_micros),
+        );
+        let death_count = if exact_deaths.is_empty() {
+            participant.death_seconds.len()
+        } else {
+            exact_deaths.len()
+        };
+        for death_index in 0..death_count {
             if timeline.death_markers.len() == MAXIMUM_TIMELINE_DEATH_MARKERS {
                 timeline.omitted.death_markers = timeline
                     .omitted
                     .death_markers
-                    .saturating_add(participant.death_seconds.len() - death_index);
+                    .saturating_add(death_count - death_index);
                 break;
             }
-            let at_micros = u64::from(*second).saturating_mul(1_000_000);
+            let (at_micros, precision, cause, visible_width_micros) =
+                exact_deaths.get(death_index).map_or_else(
+                    || {
+                        (
+                            u64::from(participant.death_seconds[death_index])
+                                .saturating_mul(timeline.series_bucket_micros),
+                            PublicTimelineMarkerPrecision::OneSecondBucket,
+                            None,
+                            timeline.series_bucket_micros,
+                        )
+                    },
+                    |event| {
+                        (
+                            event.at_micros,
+                            PublicTimelineMarkerPrecision::ExactMicrosecond,
+                            event.cause.clone(),
+                            1,
+                        )
+                    },
+                );
             if !canonical_duration_known {
                 timeline.duration_micros = timeline
                     .duration_micros
-                    .max(at_micros.saturating_add(timeline.series_bucket_micros));
+                    .max(at_micros.saturating_add(visible_width_micros));
             }
             timeline.death_markers.push(PublicTimelineDeathMarker {
                 actor_id: participant.actor_id.clone(),
                 at_micros,
-                precision: PublicTimelineMarkerPrecision::OneSecondBucket,
+                precision,
+                cause,
             });
         }
     }
     let omitted_participant_deaths = participants
         .iter()
         .skip(MAXIMUM_TIMELINE_PARTICIPANTS)
-        .map(|participant| participant.death_seconds.len())
+        .map(|participant| {
+            timeline_death_count(
+                participant,
+                exact_death_events,
+                canonical_duration_known.then_some(timeline.duration_micros),
+            )
+        })
         .sum::<usize>();
     let omitted_participant_points = participants
         .iter()
@@ -7501,11 +7672,52 @@ fn populate_timeline_combat_data(
     populate_timeline_rdps_spans(timeline, influences, canonical_run_observed_bounds);
 }
 
+fn timeline_death_count(
+    participant: &PublicParticipant,
+    exact_death_events: Option<&ProjectedTimelineDeathEvents>,
+    maximum_micros: Option<u64>,
+) -> usize {
+    let exact_count = exact_death_events
+        .and_then(|events| events.get(&participant.actor_id))
+        .filter(|events| !events.is_empty())
+        .filter(|events| {
+            events
+                .iter()
+                .all(|event| maximum_micros.is_none_or(|maximum| event.at_micros <= maximum))
+        })
+        .map(Vec::len)
+        .unwrap_or_default();
+    if exact_count == 0 {
+        participant.death_seconds.len()
+    } else {
+        exact_count
+    }
+}
+
+fn selected_timeline_death_events<'a>(
+    participant: &PublicParticipant,
+    exact_death_events: Option<&'a ProjectedTimelineDeathEvents>,
+    maximum_micros: Option<u64>,
+) -> Vec<&'a ProjectedTimelineDeathEvent> {
+    exact_death_events
+        .and_then(|events| events.get(&participant.actor_id))
+        .filter(|events| !events.is_empty())
+        .filter(|events| {
+            events
+                .iter()
+                .all(|event| maximum_micros.is_none_or(|maximum| event.at_micros <= maximum))
+        })
+        .into_iter()
+        .flatten()
+        .collect()
+}
+
 fn populate_reconciled_timeline_combat_data(
     timeline: &mut PublicCombatTimeline,
     participants: &[PublicReconciledParticipant],
     influences: &[PublicRdpsInfluence],
     canonical_run_observed_bounds: Option<CanonicalRunObservedBounds>,
+    exact_death_events: Option<&ProjectedTimelineDeathEvents>,
 ) {
     let participants = participants
         .iter()
@@ -7516,6 +7728,7 @@ fn populate_reconciled_timeline_combat_data(
         &participants,
         influences,
         canonical_run_observed_bounds,
+        exact_death_events,
     );
 }
 
@@ -8270,7 +8483,7 @@ mod tests {
             ..PublicCombatTimeline::default()
         };
 
-        populate_timeline_combat_data(&mut timeline, &[participant], &[], None);
+        populate_timeline_combat_data(&mut timeline, &[participant], &[], None, None);
 
         assert_eq!(timeline.participant_tracks.len(), 1);
         assert_eq!(
@@ -8389,7 +8602,7 @@ mod tests {
             ..PublicCombatTimeline::default()
         };
 
-        populate_reconciled_timeline_combat_data(&mut timeline, &reconciled, &[], None);
+        populate_reconciled_timeline_combat_data(&mut timeline, &reconciled, &[], None, None);
 
         assert_eq!(timeline.participant_tracks.len(), 2);
         assert_eq!(timeline.participant_tracks[1].actor_id, "provider");
@@ -8443,7 +8656,7 @@ mod tests {
             ..PublicCombatTimeline::default()
         };
 
-        populate_reconciled_timeline_combat_data(&mut timeline, &reconciled, &[], None);
+        populate_reconciled_timeline_combat_data(&mut timeline, &reconciled, &[], None, None);
 
         assert_eq!(timeline.duration_micros, 2_000_000);
         assert_eq!(timeline.participant_tracks.len(), 5);
@@ -8540,7 +8753,7 @@ mod tests {
             ..PublicCombatTimeline::default()
         };
 
-        populate_timeline_combat_data(&mut timeline, &participants, &influences, None);
+        populate_timeline_combat_data(&mut timeline, &participants, &influences, None, None);
 
         assert_eq!(
             timeline.participant_tracks.len(),
@@ -8589,6 +8802,7 @@ mod tests {
                 started_micros: 1_000,
                 ended_micros: 2_000,
             }),
+            None,
         );
 
         assert_eq!(timeline.rdps_influence_spans.len(), 3);
@@ -8624,18 +8838,364 @@ mod tests {
             ..PublicCombatTimeline::default()
         };
 
-        populate_timeline_combat_data(&mut timeline, &[participant], &[], None);
+        populate_timeline_combat_data(&mut timeline, &[participant], &[], None, None);
 
         assert_eq!(timeline.death_markers[0].at_micros, 5_000_000);
         assert_eq!(
             timeline.death_markers[0].precision,
             PublicTimelineMarkerPrecision::OneSecondBucket
         );
+        assert!(timeline.death_markers[0].cause.is_none());
         assert_eq!(timeline.duration_micros, 6_000_000);
         assert_eq!(
             timeline.coverage.gap_timing,
             PublicTimelineGapTiming::CountOnly
         );
+    }
+
+    fn history_death_hit(at_micros: u64, source_actor_id: &str) -> HistoryDeathHit {
+        HistoryDeathHit {
+            at_micros,
+            source_actor_id: source_actor_id.into(),
+            source_entity_uuid: "private-source-uuid".into(),
+            direct_source_actor_id: Some("77".into()),
+            direct_source_entity_uuid: Some("private-direct-source-uuid".into()),
+            ability_id: Some("5".into()),
+            breakdown_ability_id: Some("55".into()),
+            reported_damage: 100,
+            effective_damage: 90,
+            critical: true,
+        }
+    }
+
+    fn exact_death_view(event: HistoryDeathEvent) -> CombatHistoryView {
+        let mut actor = redacted_history_player(1, 101);
+        actor.deaths = 1;
+        actor.death_seconds = vec![5];
+        actor.death_events = vec![event];
+        CombatHistoryView {
+            id: "all".into(),
+            label: "Entire run".into(),
+            kind: "all".into(),
+            segment_indices: vec![0],
+            elapsed_micros: 6_000_000,
+            active_combat_micros: 6_000_000,
+            rate_clock: Vec::new(),
+            rate_clock_complete: false,
+            actors: vec![actor],
+            targets: Vec::new(),
+            damage_influences: Vec::new(),
+            rdps_effect_presentations: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn public_timeline_prefers_exact_death_event_and_strips_private_entity_uuids() {
+        let at_micros = 5_500_123;
+        let view = exact_death_view(HistoryDeathEvent {
+            at_micros,
+            cause: Some(HistoryDeathCause {
+                evidence: HistoryDeathCauseEvidence::PacketTerminalDamage,
+                final_hit: history_death_hit(at_micros, "9"),
+                prior_hits: vec![history_death_hit(at_micros - 2_000_000, "8")],
+                prior_hits_truncated: false,
+            }),
+        });
+        let exact = projected_timeline_death_events(Some(&view));
+        let mut participant = timeline_participant("1");
+        participant.death_seconds = vec![5];
+        let mut timeline = PublicCombatTimeline {
+            schema_version: PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION,
+            series_bucket_micros: 1_000_000,
+            ..PublicCombatTimeline::default()
+        };
+
+        populate_timeline_combat_data(&mut timeline, &[participant], &[], None, Some(&exact));
+
+        assert_eq!(timeline.death_markers.len(), 1);
+        let marker = &timeline.death_markers[0];
+        assert_eq!(marker.at_micros, at_micros);
+        assert_eq!(
+            marker.precision,
+            PublicTimelineMarkerPrecision::ExactMicrosecond
+        );
+        let cause = marker.cause.as_ref().unwrap();
+        assert_eq!(
+            cause.evidence,
+            PublicTimelineDeathCauseEvidence::PacketTerminalDamage
+        );
+        assert_eq!(cause.final_hit.source_actor_id, "9");
+        assert_eq!(
+            cause.final_hit.direct_source_actor_id.as_deref(),
+            Some("77")
+        );
+        assert_eq!(cause.prior_hits[0].source_actor_id, "8");
+        assert_eq!(timeline.duration_micros, at_micros + 1);
+        let serialized = serde_json::to_string(marker).unwrap();
+        assert!(!serialized.contains("entity_uuid"));
+        assert!(!serialized.contains("private-source-uuid"));
+        assert!(!serialized.contains("private-direct-source-uuid"));
+    }
+
+    #[test]
+    fn public_timeline_keeps_exact_marker_but_drops_invalid_cause_proof() {
+        let at_micros = 5_500_123;
+        let view = exact_death_view(HistoryDeathEvent {
+            at_micros,
+            cause: Some(HistoryDeathCause {
+                evidence: HistoryDeathCauseEvidence::PacketTerminalDamage,
+                final_hit: history_death_hit(at_micros - 1, "9"),
+                prior_hits: Vec::new(),
+                prior_hits_truncated: false,
+            }),
+        });
+        let exact = projected_timeline_death_events(Some(&view));
+        let timeline_event = &exact["1"][0];
+
+        assert_eq!(timeline_event.at_micros, at_micros);
+        assert!(timeline_event.cause.is_none());
+    }
+
+    #[test]
+    fn public_death_cause_fails_closed_for_malformed_or_unsafe_hit_evidence() {
+        let at_micros = 5_500_123;
+        let event = HistoryDeathEvent {
+            at_micros,
+            cause: None,
+        };
+        let valid = || HistoryDeathCause {
+            evidence: HistoryDeathCauseEvidence::PacketTerminalDamage,
+            final_hit: history_death_hit(at_micros, "9"),
+            prior_hits: vec![history_death_hit(at_micros - 2_000_000, "8")],
+            prior_hits_truncated: false,
+        };
+
+        assert!(public_timeline_death_cause(&event, &valid()).is_some());
+
+        let mut too_many = valid();
+        too_many.prior_hits = (0..=MAXIMUM_TIMELINE_DEATH_PRIOR_HITS)
+            .map(|_| history_death_hit(at_micros, "8"))
+            .collect();
+        assert!(public_timeline_death_cause(&event, &too_many).is_none());
+
+        let mut outside_window = valid();
+        outside_window.prior_hits[0].at_micros = at_micros - 2_000_001;
+        assert!(public_timeline_death_cause(&event, &outside_window).is_none());
+
+        let mut unsorted = valid();
+        unsorted.prior_hits = vec![
+            history_death_hit(at_micros - 1, "8"),
+            history_death_hit(at_micros - 2, "7"),
+        ];
+        assert!(public_timeline_death_cause(&event, &unsorted).is_none());
+
+        let mut negative = valid();
+        negative.final_hit.reported_damage = -1;
+        assert!(public_timeline_death_cause(&event, &negative).is_none());
+
+        let mut safe_boundary = valid();
+        safe_boundary.final_hit.reported_damage = JAVASCRIPT_MAXIMUM_SAFE_INTEGER;
+        safe_boundary.final_hit.effective_damage = JAVASCRIPT_MAXIMUM_SAFE_INTEGER;
+        assert!(public_timeline_death_cause(&event, &safe_boundary).is_some());
+
+        let mut unsafe_integer = safe_boundary;
+        unsafe_integer.final_hit.effective_damage = JAVASCRIPT_MAXIMUM_SAFE_INTEGER + 1;
+        assert!(public_timeline_death_cause(&event, &unsafe_integer).is_none());
+    }
+
+    #[test]
+    fn exact_death_timestamps_require_canonical_duration_but_allow_endpoint() {
+        let duration_micros = 5_500_123;
+        let mut participant = timeline_participant("1");
+        participant.death_seconds = vec![4];
+        let cause = PublicTimelineDeathCause {
+            evidence: PublicTimelineDeathCauseEvidence::PacketTerminalDamage,
+            final_hit: PublicTimelineDeathHit {
+                at_micros: duration_micros,
+                source_actor_id: "boss".into(),
+                direct_source_actor_id: None,
+                ability_id: None,
+                breakdown_ability_id: None,
+                reported_damage: 1,
+                effective_damage: 1,
+                critical: false,
+            },
+            prior_hits: Vec::new(),
+            prior_hits_truncated: false,
+        };
+        let bounds = Some(CanonicalRunObservedBounds {
+            started_micros: 1_000,
+            ended_micros: 1_000 + duration_micros,
+        });
+
+        let endpoint = BTreeMap::from([(
+            "1".into(),
+            vec![ProjectedTimelineDeathEvent {
+                at_micros: duration_micros,
+                cause: Some(cause.clone()),
+            }],
+        )]);
+        let mut timeline = PublicCombatTimeline {
+            duration_micros,
+            series_bucket_micros: 1_000_000,
+            ..PublicCombatTimeline::default()
+        };
+        populate_timeline_combat_data(
+            &mut timeline,
+            std::slice::from_ref(&participant),
+            &[],
+            bounds,
+            Some(&endpoint),
+        );
+        assert_eq!(timeline.death_markers.len(), 1);
+        assert_eq!(timeline.death_markers[0].at_micros, duration_micros);
+        assert_eq!(
+            timeline.death_markers[0].precision,
+            PublicTimelineMarkerPrecision::ExactMicrosecond
+        );
+
+        let after_endpoint = BTreeMap::from([(
+            "1".into(),
+            vec![ProjectedTimelineDeathEvent {
+                at_micros: duration_micros + 1,
+                cause: Some(cause),
+            }],
+        )]);
+        populate_timeline_combat_data(
+            &mut timeline,
+            &[participant],
+            &[],
+            bounds,
+            Some(&after_endpoint),
+        );
+        assert_eq!(timeline.death_markers.len(), 1);
+        assert_eq!(timeline.death_markers[0].at_micros, 4_000_000);
+        assert_eq!(
+            timeline.death_markers[0].precision,
+            PublicTimelineMarkerPrecision::OneSecondBucket
+        );
+        assert!(timeline.death_markers[0].cause.is_none());
+    }
+
+    #[test]
+    fn one_invalid_exact_death_restores_the_full_legacy_death_list() {
+        let duration_micros = 5_500_123;
+        let mut participant = timeline_participant("1");
+        participant.death_seconds = vec![2, 4];
+        let mixed_exact = BTreeMap::from([(
+            "1".into(),
+            vec![
+                ProjectedTimelineDeathEvent {
+                    at_micros: 2_250_000,
+                    cause: None,
+                },
+                ProjectedTimelineDeathEvent {
+                    at_micros: duration_micros + 1,
+                    cause: None,
+                },
+            ],
+        )]);
+        let mut timeline = PublicCombatTimeline {
+            duration_micros,
+            series_bucket_micros: 1_000_000,
+            ..PublicCombatTimeline::default()
+        };
+
+        populate_timeline_combat_data(
+            &mut timeline,
+            &[participant],
+            &[],
+            Some(CanonicalRunObservedBounds {
+                started_micros: 1_000,
+                ended_micros: 1_000 + duration_micros,
+            }),
+            Some(&mixed_exact),
+        );
+
+        assert_eq!(timeline.death_markers.len(), 2);
+        assert_eq!(timeline.death_markers[0].at_micros, 2_000_000);
+        assert_eq!(timeline.death_markers[1].at_micros, 4_000_000);
+        assert!(timeline.death_markers.iter().all(|marker| {
+            marker.precision == PublicTimelineMarkerPrecision::OneSecondBucket
+                && marker.cause.is_none()
+        }));
+    }
+
+    #[test]
+    fn legacy_death_marker_without_cause_deserializes_with_none() {
+        let marker: PublicTimelineDeathMarker = serde_json::from_value(serde_json::json!({
+            "actor_id": "1",
+            "at_micros": 5_000_000,
+            "precision": "one_second_bucket"
+        }))
+        .unwrap();
+
+        assert!(marker.cause.is_none());
+    }
+
+    #[test]
+    fn reconciliation_keeps_death_markers_from_the_canonical_spine_only() {
+        let mut canonical =
+            fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
+        let mut secondary =
+            fixture_public_report("rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "character-b", 0);
+        canonical.runs[0].timeline.death_markers = vec![PublicTimelineDeathMarker {
+            actor_id: "canonical-actor".into(),
+            at_micros: 5_500_123,
+            precision: PublicTimelineMarkerPrecision::ExactMicrosecond,
+            cause: Some(PublicTimelineDeathCause {
+                evidence: PublicTimelineDeathCauseEvidence::PacketTerminalDamage,
+                final_hit: PublicTimelineDeathHit {
+                    at_micros: 5_500_123,
+                    source_actor_id: "boss".into(),
+                    direct_source_actor_id: None,
+                    ability_id: Some("5".into()),
+                    breakdown_ability_id: Some("55".into()),
+                    reported_damage: 100,
+                    effective_damage: 90,
+                    critical: true,
+                },
+                prior_hits: Vec::new(),
+                prior_hits_truncated: false,
+            }),
+        }];
+        secondary.runs[0].timeline.death_markers = vec![PublicTimelineDeathMarker {
+            actor_id: "secondary-actor".into(),
+            at_micros: 9_999_999,
+            precision: PublicTimelineMarkerPrecision::ExactMicrosecond,
+            cause: None,
+        }];
+        let group = CatalogRunGroup {
+            representative: PublicParseCatalogEntry::from_report(&canonical, &canonical.runs[0]),
+            representative_quality: CanonicalSpineQuality::from_report(
+                &canonical,
+                &canonical.runs[0],
+            ),
+            submitters: BTreeSet::new(),
+            local_profile_witnesses: BTreeSet::new(),
+            reconciliation_sources: vec![
+                ReconciliationRunSource::from_report(&secondary, &secondary.runs[0], None),
+                ReconciliationRunSource::from_report(&canonical, &canonical.runs[0], None),
+            ],
+            milestone_source: MilestoneSource {
+                entry: PublicParseCatalogEntry::from_report(&canonical, &canonical.runs[0]),
+                authoritative_completion: true,
+                participants: canonical.runs[0].participants.clone(),
+            },
+        };
+
+        let reconciliation = build_public_reconciliation(&group);
+
+        assert_eq!(
+            reconciliation.timeline.source,
+            PublicTimelineSource::ReconciledCanonicalSpine
+        );
+        assert_eq!(reconciliation.timeline.death_markers.len(), 1);
+        assert_eq!(
+            reconciliation.timeline.death_markers[0].actor_id,
+            "canonical-actor"
+        );
+        assert!(reconciliation.timeline.death_markers[0].cause.is_some());
     }
 
     #[test]
@@ -8662,7 +9222,7 @@ mod tests {
             ..PublicCombatTimeline::default()
         };
 
-        populate_timeline_combat_data(&mut timeline, &[participant], &[], Some(bounds));
+        populate_timeline_combat_data(&mut timeline, &[participant], &[], Some(bounds), None);
 
         assert_eq!(timeline.duration_micros, 2_100_000);
         assert_eq!(timeline.death_markers[0].at_micros, 2_000_000);
@@ -8703,7 +9263,7 @@ mod tests {
             ..PublicCombatTimeline::default()
         };
 
-        populate_timeline_combat_data(&mut timeline, &[participant], &[], None);
+        populate_timeline_combat_data(&mut timeline, &[participant], &[], None, None);
         populate_timeline_loadouts(
             &mut timeline,
             combat_loadout_marker_sources("report-1", &phases),
@@ -12245,7 +12805,7 @@ mod tests {
                 ),
             },
         ];
-        let result = service
+        let mut result = service
             .replay_cross_vantage_attribution(&reconciliation, imported)
             .unwrap();
         assert_eq!(result.rdps_status, "partial_packet_proven_rules");
@@ -12311,6 +12871,27 @@ mod tests {
                 && span.start_micros == 45_000 - bounds.started_micros
                 && span.end_micros == 45_000 - bounds.started_micros
         }));
+        result.death_events = BTreeMap::from([(
+            "22".into(),
+            vec![ProjectedTimelineDeathEvent {
+                at_micros: 40_000,
+                cause: Some(PublicTimelineDeathCause {
+                    evidence: PublicTimelineDeathCauseEvidence::PacketTerminalDamage,
+                    final_hit: PublicTimelineDeathHit {
+                        at_micros: 40_000,
+                        source_actor_id: "canonical-boss".into(),
+                        direct_source_actor_id: None,
+                        ability_id: Some("5".into()),
+                        breakdown_ability_id: Some("55".into()),
+                        reported_damage: 100,
+                        effective_damage: 100,
+                        critical: false,
+                    },
+                    prior_hits: Vec::new(),
+                    prior_hits_truncated: false,
+                }),
+            }],
+        )]);
 
         let mut incomplete_result = result.clone();
         incomplete_result.rate_clock.clear();
@@ -12342,6 +12923,26 @@ mod tests {
         let expected_clock = result.rate_clock.clone();
         let expected_clock_complete = result.rate_clock_complete;
         let mut published_reconciliation = build_public_reconciliation(&group);
+        published_reconciliation.timeline.death_markers = vec![PublicTimelineDeathMarker {
+            actor_id: "22".into(),
+            at_micros: 50_000,
+            precision: PublicTimelineMarkerPrecision::ExactMicrosecond,
+            cause: Some(PublicTimelineDeathCause {
+                evidence: PublicTimelineDeathCauseEvidence::PacketTerminalDamage,
+                final_hit: PublicTimelineDeathHit {
+                    at_micros: 50_000,
+                    source_actor_id: "conflicting-secondary-source".into(),
+                    direct_source_actor_id: None,
+                    ability_id: None,
+                    breakdown_ability_id: None,
+                    reported_damage: 1,
+                    effective_damage: 1,
+                    critical: false,
+                },
+                prior_hits: Vec::new(),
+                prior_hits_truncated: false,
+            }),
+        }];
         apply_cross_vantage_replay_result(&mut published_reconciliation, result);
         assert_eq!(
             published_reconciliation.rdps_status.as_deref(),
@@ -12364,6 +12965,19 @@ mod tests {
                 .all(|(published, replay)| published.second == replay.second
                     && published.edps_elapsed_micros == replay.edps_elapsed_micros
                     && published.adps_elapsed_micros == replay.adps_elapsed_micros)
+        );
+        assert_eq!(published_reconciliation.timeline.death_markers.len(), 1);
+        let replayed_death = &published_reconciliation.timeline.death_markers[0];
+        assert_eq!(replayed_death.actor_id, "22");
+        assert_eq!(replayed_death.at_micros, 40_000);
+        assert_eq!(
+            replayed_death
+                .cause
+                .as_ref()
+                .unwrap()
+                .final_hit
+                .source_actor_id,
+            "canonical-boss"
         );
     }
 
