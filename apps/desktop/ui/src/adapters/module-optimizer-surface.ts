@@ -4,11 +4,13 @@ import {
   type LocalModuleCharacter,
   type LocalModuleInventory,
   type ModuleCandidate,
+  type ModulePresentationCatalog,
   type ModuleSolution,
   type OptimizeRequest,
   type OptimizeResponse,
   type OptimizerCatalog,
   modulePresentation,
+  modulePresentationForCharacter,
   moduleQuality,
   optimizerAssetUrl,
 } from "./module-optimizer";
@@ -51,6 +53,7 @@ export interface ModuleLinkSummary {
 export function summarizeModuleLinks(
   modules: readonly ModuleCandidate[],
   catalog: OptimizerCatalog | null,
+  presentation?: ModulePresentationCatalog | null,
 ): ModuleLinkSummary[] {
   const attributes = new Map(
     (catalog?.attributes ?? []).map((attribute) => [attribute.id, attribute]),
@@ -65,7 +68,11 @@ export function summarizeModuleLinks(
   return [...totals.entries()]
     .map(([attributeId, totalLink]) => ({
       attributeId,
-      name: attributes.get(attributeId)?.name ?? `Effect ${attributeId}`,
+      name: presentation === null
+        ? `Unlocalized combat module effect #${attributeId}`
+        : presentation
+          ? presentation.module_effects[String(attributeId)] ?? `Unlocalized combat module effect #${attributeId}`
+          : attributes.get(attributeId)?.name ?? `Effect ${attributeId}`,
       icon: attributes.get(attributeId)?.icon ?? null,
       totalLink,
     }))
@@ -303,9 +310,10 @@ export function mountModuleOptimizerSurface(
         ),
       );
     } else {
-      renderModuleLinkSummary(currentLinkSummary, equipped, catalog);
+      const presentation = modulePresentationForCharacter(selectedCharacter);
+      renderModuleLinkSummary(currentLinkSummary, equipped, catalog, null, presentation);
       equippedPreview.append(
-        ...equipped.map((module) => compactModuleCard(module, catalog)),
+        ...equipped.map((module) => compactModuleCard(module, catalog, presentation)),
       );
     }
     run.disabled = busy || !selectedCharacter.module_snapshot_available;
@@ -568,13 +576,15 @@ export function mountModuleOptimizerSurface(
         require_target_match: requireTarget.input.checked,
       });
       if (!alive) return;
-      renderResults(results, result, catalog);
+      const presentation = modulePresentationForCharacter(selectedCharacter);
+      renderResults(results, result, catalog, presentation);
       if (result.current_setup) {
         renderModuleLinkSummary(
           currentLinkSummary,
           result.current_setup.modules,
           catalog,
           result.current_setup,
+          presentation,
         );
       }
       const elapsed = Math.max(0, performance.now() - started);
@@ -662,7 +672,12 @@ export function mountModuleOptimizerSurface(
   return { dispose() { alive = false; } };
 }
 
-function renderResults(container: HTMLElement, result: OptimizeResponse, catalog: OptimizerCatalog): void {
+function renderResults(
+  container: HTMLElement,
+  result: OptimizeResponse,
+  catalog: OptimizerCatalog,
+  presentation: ModulePresentationCatalog | null,
+): void {
   container.replaceChildren();
   const heading = element("div", "module-results-heading");
   const title = element("div");
@@ -676,18 +691,23 @@ function renderResults(container: HTMLElement, result: OptimizeResponse, catalog
     return;
   }
   for (const [index, solution] of result.solutions.entries()) {
-    container.append(solutionCard(`#${index + 1}`, solution, catalog));
+    container.append(solutionCard(`#${index + 1}`, solution, catalog, presentation));
   }
 }
 
-function solutionCard(label: string, solution: ModuleSolution, catalog: OptimizerCatalog): HTMLElement {
+function solutionCard(
+  label: string,
+  solution: ModuleSolution,
+  catalog: OptimizerCatalog,
+  presentation: ModulePresentationCatalog | null,
+): HTMLElement {
   const card = element("article", "content-card module-solution-card");
   const heading = element("div", "module-solution-heading");
   const linkSummary = element("div", "module-loadout-link-summary");
-  renderModuleLinkSummary(linkSummary, solution.modules, catalog, solution);
+  renderModuleLinkSummary(linkSummary, solution.modules, catalog, solution, presentation);
   heading.append(text("span", label, "module-solution-rank"), linkSummary);
   const modules = element("div", "module-solution-module-strip");
-  modules.append(...solution.modules.map((module) => solutionModuleTile(module, catalog)));
+  modules.append(...solution.modules.map((module) => solutionModuleTile(module, catalog, presentation)));
   card.append(heading, modules);
   return card;
 }
@@ -697,9 +717,10 @@ function renderModuleLinkSummary(
   modules: readonly ModuleCandidate[],
   catalog: OptimizerCatalog | null,
   solution: ModuleSolution | null = null,
+  presentation: ModulePresentationCatalog | null = null,
 ): void {
   const effects = element("div", "module-solution-effects");
-  for (const score of summarizeModuleLinks(modules, catalog)) {
+  for (const score of summarizeModuleLinks(modules, catalog, presentation)) {
     const chip = element("div", "module-effect-chip");
     chip.append(
       image(optimizerAssetUrl(score.icon), score.name),
@@ -733,8 +754,12 @@ function renderModuleLinkSummary(
   container.hidden = effects.childElementCount === 0 && solution === null;
 }
 
-function solutionModuleTile(value: ModuleCandidate, catalog: OptimizerCatalog): HTMLElement {
-  const presentation = modulePresentation(value);
+function solutionModuleTile(
+  value: ModuleCandidate,
+  catalog: OptimizerCatalog,
+  localized: ModulePresentationCatalog | null,
+): HTMLElement {
+  const presentation = modulePresentation(value, localized);
   const tile = element("div", "module-solution-tile");
   tile.dataset.quality = String(value.quality ?? presentation.quality);
   tile.append(image(presentation.icon, presentation.name));
@@ -749,7 +774,7 @@ function solutionModuleTile(value: ModuleCandidate, catalog: OptimizerCatalog): 
     effects.append(
       text(
         "span",
-        `${named.get(part.part_id)?.name ?? "Unknown effect"} ${part.initial_link_points ?? 0}`,
+        `${localized?.module_effects[String(part.part_id)] ?? (localized === null ? `Unlocalized combat module effect #${part.part_id}` : named.get(part.part_id)?.name ?? "Unknown effect")} ${part.initial_link_points ?? 0}`,
       ),
     );
   }
@@ -762,8 +787,9 @@ function solutionModuleTile(value: ModuleCandidate, catalog: OptimizerCatalog): 
 function compactModuleCard(
   value: ModuleCandidate,
   catalog: OptimizerCatalog | null,
+  localized: ModulePresentationCatalog | null,
 ): HTMLElement {
-  const presentation = modulePresentation(value);
+  const presentation = modulePresentation(value, localized);
   const attributes = new Map(
     (catalog?.attributes ?? []).map((attribute) => [attribute.id, attribute]),
   );
@@ -785,7 +811,7 @@ function compactModuleCard(
     effects.append(
       text(
         "span",
-        `${attribute?.name ?? "Unknown effect"} ${part.initial_link_points ?? 0}`,
+        `${localized?.module_effects[String(part.part_id)] ?? (localized === null ? `Unlocalized combat module effect #${part.part_id}` : attribute?.name ?? "Unknown effect")} ${part.initial_link_points ?? 0}`,
         "module-mini-effect",
       ),
     );

@@ -23,11 +23,24 @@ pub struct LocalModuleCharacterView {
     pub deployment: String,
     pub region: String,
     pub source_client_build: String,
+    pub source_protocol_pack_digest: String,
     pub observed_unix_millis: u64,
     pub modules: Vec<ModuleCandidate>,
     pub current_instance_ids: Vec<String>,
     pub module_snapshot_available: bool,
     pub module_snapshot_detail: String,
+    pub module_presentation: Option<ModulePresentationView>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ModulePresentationView {
+    pub schema_version: u16,
+    pub locale: &'static str,
+    pub deployment_id: String,
+    pub client_build: String,
+    pub protocol_pack_digest: String,
+    pub modules: BTreeMap<String, &'static str>,
+    pub module_effects: BTreeMap<String, &'static str>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -106,6 +119,12 @@ pub fn load_local_module_inventories(
                         .into(),
                 ),
             };
+        let source_protocol_pack_digest = inspection.package.source.protocol_pack_digest.clone();
+        let module_presentation = module_presentation_for_identity(
+            &entry.deployment,
+            &inspection.package.source.client_build,
+            &source_protocol_pack_digest,
+        );
         characters.push(LocalModuleCharacterView {
             package_id: entry.package_id,
             character_id: entry.character_id,
@@ -113,17 +132,82 @@ pub fn load_local_module_inventories(
             deployment: entry.deployment,
             region: entry.region,
             source_client_build: entry.source_client_build,
+            source_protocol_pack_digest,
             observed_unix_millis: entry.created_unix_millis,
             modules,
             current_instance_ids,
             module_snapshot_available,
             module_snapshot_detail: detail,
+            module_presentation,
         });
     }
     Ok(LocalModuleInventoryView {
         schema_version: MODULE_OPTIMIZER_INVENTORY_SCHEMA_VERSION,
         characters,
         issues,
+    })
+}
+
+fn module_presentation_for_identity(
+    deployment_id: &str,
+    client_build: &str,
+    protocol_pack_digest: &str,
+) -> Option<ModulePresentationView> {
+    // Presentation-only mirror of the reviewed module namespaces shipped by
+    // the website schema-4 catalog. The runtime localization identity gate is
+    // deliberately independent of the older optimizer mechanics catalog.
+    if !rlogs_game_bpsr::bundled_localization_supports_identity(
+        deployment_id,
+        client_build,
+        protocol_pack_digest,
+    )
+    .unwrap_or(false)
+    {
+        return None;
+    }
+    Some(ModulePresentationView {
+        schema_version: 1,
+        locale: "en-US",
+        deployment_id: deployment_id.to_owned(),
+        client_build: client_build.to_owned(),
+        protocol_pack_digest: protocol_pack_digest.to_owned(),
+        modules: BTreeMap::from([
+            ("5500101".into(), "Basic Attack Module"),
+            ("5500102".into(), "Advanced Attack Module"),
+            ("5500103".into(), "Excellent Attack Module"),
+            ("5500104".into(), "Excellent Attack Module - Premium"),
+            ("5500201".into(), "Basic Support Module"),
+            ("5500202".into(), "Advanced Support Module"),
+            ("5500203".into(), "Excellent Support Module"),
+            ("5500204".into(), "Excellent Support Module - Premium"),
+            ("5500301".into(), "Basic Guard Module"),
+            ("5500302".into(), "Advanced Guard Module"),
+            ("5500303".into(), "Excellent Guard Module"),
+            ("5500304".into(), "Excellent Guard Module - Premium"),
+        ]),
+        module_effects: BTreeMap::from([
+            ("1110".into(), "Strength Boost"),
+            ("1111".into(), "Agility Boost"),
+            ("1112".into(), "Intellect Boost"),
+            ("1113".into(), "Special Attack"),
+            ("1114".into(), "Elite Strike"),
+            ("1205".into(), "Healing Boost"),
+            ("1206".into(), "Healing Enhance"),
+            ("1307".into(), "Resistance"),
+            ("1308".into(), "Armor"),
+            ("1407".into(), "Cast Focus"),
+            ("1408".into(), "Attack SPD"),
+            ("1409".into(), "Crit Focus"),
+            ("1410".into(), "Luck Focus"),
+            ("2104".into(), "DMG Stack"),
+            ("2105".into(), "Agile"),
+            ("2204".into(), "Life Condense"),
+            ("2205".into(), "First Aid"),
+            ("2304".into(), "Final Protection"),
+            ("2404".into(), "Life Wave"),
+            ("2405".into(), "Life Steal"),
+            ("2406".into(), "Team Luck & Crit"),
+        ]),
     })
 }
 
@@ -206,5 +290,25 @@ mod tests {
         }))
         .expect_err("missing equipped module must fail");
         assert!(error.contains("missing from inventory"));
+    }
+
+    #[test]
+    fn module_presentation_is_bound_to_the_exact_runtime_identity() {
+        const DIGEST: &str =
+            "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
+        let presentation = module_presentation_for_identity("global", "24687926", DIGEST)
+            .expect("current exact identity has presentation authority");
+        assert_eq!(
+            presentation.modules.get("5500104"),
+            Some(&"Excellent Attack Module - Premium")
+        );
+        assert_eq!(
+            presentation.module_effects.get("1110"),
+            Some(&"Strength Boost")
+        );
+        assert!(module_presentation_for_identity("global", "24687927", DIGEST).is_none());
+        assert!(
+            module_presentation_for_identity("global", "24687926", "sha256:wrong-pack").is_none()
+        );
     }
 }

@@ -37,11 +37,23 @@ export interface LocalModuleCharacter {
   deployment: string;
   region: string;
   source_client_build: string;
+  source_protocol_pack_digest: string;
   observed_unix_millis: number;
   modules: readonly ModuleCandidate[];
   current_instance_ids: readonly string[];
   module_snapshot_available: boolean;
   module_snapshot_detail: string;
+  module_presentation: ModulePresentationCatalog | null;
+}
+
+export interface ModulePresentationCatalog {
+  schema_version: 1;
+  locale: "en-US";
+  deployment_id: string;
+  client_build: string;
+  protocol_pack_digest: string;
+  modules: Readonly<Record<string, string>>;
+  module_effects: Readonly<Record<string, string>>;
 }
 
 export interface LocalModuleInventory {
@@ -157,14 +169,33 @@ function module(name: string, icon: string, quality: number): ModulePresentation
   };
 }
 
-export function modulePresentation(value: ModuleCandidate): ModulePresentation {
-  return (
-    MODULES[String(value.config_id)] ?? {
-      name: `Module ${value.config_id.toLocaleString()}`,
-      icon: "/game-assets/blue-protocol-star-resonance/shared/icons/modules/types/4-universal.png",
-      quality: value.quality ?? 0,
-    }
-  );
+export function modulePresentation(
+  value: ModuleCandidate,
+  presentation?: ModulePresentationCatalog | null,
+): ModulePresentation {
+  const bundled = MODULES[String(value.config_id)];
+  const name = presentation === null
+    ? `Unlocalized combat module #${value.config_id}`
+    : presentation
+      ? presentation.modules[String(value.config_id)] ?? `Unlocalized combat module #${value.config_id}`
+      : bundled?.name ?? `Module ${value.config_id.toLocaleString()}`;
+  return {
+    name,
+    icon: bundled?.icon ?? "/game-assets/blue-protocol-star-resonance/shared/icons/modules/types/4-universal.png",
+    quality: bundled?.quality ?? value.quality ?? 0,
+  };
+}
+
+export function modulePresentationForCharacter(
+  character: LocalModuleCharacter,
+): ModulePresentationCatalog | null {
+  const presentation = character.module_presentation;
+  return presentation &&
+    presentation.deployment_id === character.deployment &&
+    presentation.client_build === character.source_client_build &&
+    presentation.protocol_pack_digest === character.source_protocol_pack_digest
+    ? presentation
+    : null;
 }
 
 export function moduleQuality(value: ModuleCandidate): string {
@@ -261,13 +292,30 @@ function isCharacter(value: unknown): boolean {
     typeof value.deployment === "string" &&
     typeof value.region === "string" &&
     typeof value.source_client_build === "string" &&
+    typeof value.source_protocol_pack_digest === "string" &&
     positiveInteger(value.observed_unix_millis) &&
     Array.isArray(value.modules) &&
     value.modules.every(isModuleCandidate) &&
     isStringArray(value.current_instance_ids) &&
     typeof value.module_snapshot_available === "boolean" &&
-    typeof value.module_snapshot_detail === "string"
+    typeof value.module_snapshot_detail === "string" &&
+    (value.module_presentation === null || isModulePresentationCatalog(value.module_presentation))
   );
+}
+
+function isModulePresentationCatalog(value: unknown): boolean {
+  return isRecord(value) &&
+    value.schema_version === 1 &&
+    value.locale === "en-US" &&
+    typeof value.deployment_id === "string" &&
+    typeof value.client_build === "string" &&
+    typeof value.protocol_pack_digest === "string" &&
+    isStringRecord(value.modules) &&
+    isStringRecord(value.module_effects);
+}
+
+function isStringRecord(value: unknown): boolean {
+  return isRecord(value) && Object.values(value).every((entry) => typeof entry === "string");
 }
 
 function isModuleCandidate(value: unknown): boolean {

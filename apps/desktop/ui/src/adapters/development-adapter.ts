@@ -300,6 +300,7 @@ const DEVELOPMENT_OPTIMIZER_INVENTORY: LocalModuleInventory = {
       deployment: "global",
       region: "na",
       source_client_build: "24687926",
+      source_protocol_pack_digest: "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
       observed_unix_millis: Date.now(),
       modules: DEVELOPMENT_MODULES,
       current_instance_ids: DEVELOPMENT_MODULES.slice(0, 4).map(
@@ -307,6 +308,20 @@ const DEVELOPMENT_OPTIMIZER_INVENTORY: LocalModuleInventory = {
       ),
       module_snapshot_available: true,
       module_snapshot_detail: "12 owned modules · 4 equipped",
+      module_presentation: {
+        schema_version: 1,
+        locale: "en-US",
+        deployment_id: "global",
+        client_build: "24687926",
+        protocol_pack_digest: "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
+        modules: {
+          "5500101": "Basic Attack Module", "5500102": "Advanced Attack Module",
+          "5500103": "Excellent Attack Module", "5500104": "Excellent Attack Module - Premium",
+          "5500201": "Basic Support Module", "5500202": "Advanced Support Module",
+          "5500203": "Excellent Support Module", "5500204": "Excellent Support Module - Premium",
+        },
+        module_effects: { "1110": "Strength Boost", "1111": "Agility Boost", "1112": "Intellect Boost", "1113": "Special Attack", "1114": "Elite Strike", "1407": "Cast Focus", "1408": "Attack SPD", "1409": "Crit Focus", "1410": "Luck Focus", "2104": "DMG Stack" },
+      },
     },
   ],
   issues: [],

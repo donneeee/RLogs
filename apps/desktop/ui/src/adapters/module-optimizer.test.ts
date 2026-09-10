@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   modulePresentation,
+  modulePresentationForCharacter,
   parseGpuSupport,
   parseLocalModuleInventory,
   parseOptimizeResponse,
@@ -83,6 +84,7 @@ describe("local module optimizer contracts", () => {
           deployment: "global",
           region: "na",
           source_client_build: "24687926",
+          source_protocol_pack_digest: "sha256:pack",
           observed_unix_millis: 1_788_313_443_000,
           modules: [
             {
@@ -95,6 +97,7 @@ describe("local module optimizer contracts", () => {
           current_instance_ids: ["9007199254740993"],
           module_snapshot_available: true,
           module_snapshot_detail: "1 owned module · 1 equipped",
+          module_presentation: null,
         },
       ],
       issues: [],
@@ -136,6 +139,46 @@ describe("local module optimizer contracts", () => {
     });
     expect(presentation.name).toBe("Excellent Support Module - Premium");
     expect(presentation.icon).toContain("item_icons_mod_device_5.png");
+  });
+
+  it("uses module and rune labels only for the exact package identity", () => {
+    const presentation = {
+      schema_version: 1 as const,
+      locale: "en-US" as const,
+      deployment_id: "global",
+      client_build: "24687926",
+      protocol_pack_digest: "sha256:pack",
+      modules: { "5500104": "Excellent Attack Module - Premium" },
+      module_effects: { "1110": "Strength Boost" },
+    };
+    const character = {
+      package_id: "a".repeat(64), character_id: "1", display_name: null,
+      deployment: "global", region: "na", source_client_build: "24687926",
+      source_protocol_pack_digest: "sha256:pack", observed_unix_millis: 1,
+      modules: [], current_instance_ids: [], module_snapshot_available: true,
+      module_snapshot_detail: "empty", module_presentation: presentation,
+    };
+    expect(modulePresentationForCharacter(character)).toBe(presentation);
+    expect(modulePresentation({ instance_id: "1", config_id: 5_500_104, quality: 4, parts: [] }, presentation).name)
+      .toBe("Excellent Attack Module - Premium");
+    expect(summarizeModuleLinks([
+      { instance_id: "1", config_id: 5_500_104, quality: 4, parts: [{ part_id: 1110, initial_link_points: 20 }] },
+    ], null, presentation)[0]?.name).toBe("Strength Boost");
+    expect(modulePresentationForCharacter({ ...character, source_client_build: "24687927" })).toBeNull();
+    expect(modulePresentation({ instance_id: "1", config_id: 5_500_104, quality: 4, parts: [] }, null).name)
+      .toBe("Unlocalized combat module #5500104");
+    const staleCatalog = parseOptimizerCatalog({
+      game_id: "blue-protocol-star-resonance", catalog_revision: "sha256:stale",
+      scoring_revision: "reviewed", client_builds: ["old"],
+      attributes: [{ id: 1110, name: "Stale Strength", official_name: null, icon: null, thresholds: [1], fight_values: [1] }],
+      link_power: [0, 5], combination_sizes: [5], default_max_solutions: 5,
+    });
+    expect(summarizeModuleLinks([
+      { instance_id: "1", config_id: 5_500_104, quality: 4, parts: [{ part_id: 1110, initial_link_points: 20 }] },
+    ], staleCatalog, null)[0]?.name)
+      .toBe("Unlocalized combat module effect #1110");
+    expect(modulePresentation({ instance_id: "1", config_id: 9_999_999, quality: 4, parts: [] }, presentation).name)
+      .toBe("Unlocalized combat module #9999999");
   });
 
   it("accepts a dynamically discovered cross-vendor GPU", () => {
