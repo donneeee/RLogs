@@ -27,7 +27,12 @@ async function json(path, expectedStatus = 200) {
   return response.json();
 }
 
-const health = await json("/health");
+let health;
+for (let attempt = 1; attempt <= attempts; attempt += 1) {
+  health = await json("/health");
+  if (!expectedRelease || health.release === expectedRelease || attempt === attempts) break;
+  await new Promise((resolve) => setTimeout(resolve, 3_000));
+}
 assert.equal(health.status, "ok");
 assert.equal(health.service, "rlogs-cloudflare-backend");
 assert.equal(health.storage, "cloudflare-kv+d1");
