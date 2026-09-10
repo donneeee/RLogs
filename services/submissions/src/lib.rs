@@ -3254,6 +3254,8 @@ pub enum PublicTimelineDeathPresentationProvenance {
     PublicParticipant,
     ExactBuildMonsterCatalog,
     ExactBuildActionCatalog,
+    TrustedMonsterCatalogId,
+    TrustedActionCatalogId,
 }
 
 #[derive(Debug, Clone)]
@@ -7522,7 +7524,7 @@ fn public_timeline_death_actor_presentation(
     Some(PublicTimelineDeathActorPresentation {
         actor_id: actor_id.to_owned(),
         name,
-        provenance: PublicTimelineDeathPresentationProvenance::ExactBuildMonsterCatalog,
+        provenance: PublicTimelineDeathPresentationProvenance::TrustedMonsterCatalogId,
     })
 }
 
@@ -7563,7 +7565,7 @@ fn public_timeline_death_ability_presentation(
         return Some(PublicTimelineDeathAbilityPresentation {
             ability_id: ability_id.to_owned(),
             name,
-            provenance: PublicTimelineDeathPresentationProvenance::ExactBuildActionCatalog,
+            provenance: PublicTimelineDeathPresentationProvenance::TrustedActionCatalogId,
         });
     }
     None
@@ -9241,7 +9243,7 @@ mod tests {
             Some(PublicTimelineDeathActorPresentation {
                 actor_id: "9".into(),
                 name: "Tina - Void Reverie".into(),
-                provenance: PublicTimelineDeathPresentationProvenance::ExactBuildMonsterCatalog,
+                provenance: PublicTimelineDeathPresentationProvenance::TrustedMonsterCatalogId,
             })
         );
         assert_eq!(
@@ -9257,7 +9259,7 @@ mod tests {
             Some(PublicTimelineDeathAbilityPresentation {
                 ability_id: "2233".into(),
                 name: "Powerdraw".into(),
-                provenance: PublicTimelineDeathPresentationProvenance::ExactBuildActionCatalog,
+                provenance: PublicTimelineDeathPresentationProvenance::TrustedActionCatalogId,
             })
         );
         assert_ne!(
@@ -9275,7 +9277,7 @@ mod tests {
     }
 
     #[test]
-    fn public_death_presentations_fail_closed_for_wrong_build_reuse_and_late_identity() {
+    fn public_death_catalog_presentations_carry_across_builds_but_late_identity_fails_closed() {
         let mut hit = history_death_hit(10, "9");
         hit.source_entity_uuid = "909".into();
         hit.source_identity = Some(HistoryDeathActorIdentity {
@@ -9298,9 +9300,23 @@ mod tests {
         wrong_build.client_build = "24687927".into();
 
         let projected = public_timeline_death_hit(&hit, &view, &wrong_build);
-        assert!(projected.source_presentation.is_none());
+        assert_eq!(
+            projected.source_presentation,
+            Some(PublicTimelineDeathActorPresentation {
+                actor_id: "9".into(),
+                name: "Tina - Void Reverie".into(),
+                provenance: PublicTimelineDeathPresentationProvenance::TrustedMonsterCatalogId,
+            })
+        );
         assert!(projected.direct_source_presentation.is_none());
-        assert!(projected.ability_presentation.is_none());
+        assert_eq!(
+            projected.ability_presentation,
+            Some(PublicTimelineDeathAbilityPresentation {
+                ability_id: "2233".into(),
+                name: "Powerdraw".into(),
+                provenance: PublicTimelineDeathPresentationProvenance::TrustedActionCatalogId,
+            })
+        );
 
         hit.source_identity = None;
         let exact = public_timeline_death_hit(&hit, &view, &death_test_history());
