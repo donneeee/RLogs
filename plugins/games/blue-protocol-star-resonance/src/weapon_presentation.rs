@@ -109,20 +109,22 @@ fn weapon_names() -> Result<&'static WeaponLocalizationCatalog, String> {
         .map_err(Clone::clone)
 }
 
+/// Resolves the official current-build English weapon name for an equipped
+/// item. The exact Global English `ItemTable` label is the fallback for every
+/// requested desktop locale until independently extracted locale bundles are
+/// shipped. Unknown runtime identities and item IDs remain unresolved.
 pub fn localized_weapon_name_for_identity(
     deployment_id: &str,
     client_build: &str,
     protocol_pack_digest: &str,
     item_id: i64,
-    locale: &str,
+    _locale: &str,
 ) -> Result<Option<&'static str>, String> {
-    if locale != "en-US"
-        || !crate::bundled_localization_supports_identity(
-            deployment_id,
-            client_build,
-            protocol_pack_digest,
-        )?
-    {
+    if !crate::bundled_localization_supports_identity(
+        deployment_id,
+        client_build,
+        protocol_pack_digest,
+    )? {
         return Ok(None);
     }
     let catalog = weapon_names()?;
@@ -276,13 +278,29 @@ mod tests {
                 .unwrap(),
             Some("Ember - Gaze of the Far Sea")
         );
+        assert_eq!(
+            localized_weapon_name_for_identity("global", "24687926", DIGEST, 2_000_631, "fr-FR")
+                .unwrap(),
+            Some("Ember - Gaze of the Far Sea")
+        );
+        assert_eq!(
+            localized_weapon_name_for_identity(
+                "global",
+                "24687926",
+                DIGEST,
+                2_000_631,
+                "unsupported",
+            )
+            .unwrap(),
+            Some("Ember - Gaze of the Far Sea")
+        );
         for (deployment, build, digest) in [
             ("cn", "24687926", DIGEST),
             ("global", "24687927", DIGEST),
             ("global", "24687926", "sha256:wrong"),
         ] {
             assert_eq!(
-                localized_weapon_name_for_identity(deployment, build, digest, 2_000_631, "en-US")
+                localized_weapon_name_for_identity(deployment, build, digest, 2_000_631, "fr-FR")
                     .unwrap(),
                 None
             );

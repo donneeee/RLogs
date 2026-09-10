@@ -17437,6 +17437,46 @@ mod tests {
     }
 
     #[test]
+    fn history_weapon_names_use_exact_build_english_fallback_for_every_locale() {
+        const WEAPON_ITEM_ID: i64 = 2_000_631;
+
+        let mut current = captured_marksman_history();
+        current.client_build = "24687926".into();
+        current.runs[0].views[0].actors[0].weapon_item_id = Some(WEAPON_ITEM_ID);
+        enrich_bpsr_history_presentation(&mut current, "fr-FR").unwrap();
+        assert_eq!(
+            current.runs[0].views[0].actors[0]
+                .weapon_presentation_name
+                .as_deref(),
+            Some("Ember - Gaze of the Far Sea")
+        );
+
+        let mut other_build = current.clone();
+        other_build.client_build = "24687927".into();
+        enrich_bpsr_history_presentation(&mut other_build, "fr-FR").unwrap();
+        assert_eq!(
+            other_build.runs[0].views[0].actors[0].weapon_item_id,
+            Some(WEAPON_ITEM_ID)
+        );
+        assert_eq!(
+            other_build.runs[0].views[0].actors[0].weapon_presentation_name,
+            None
+        );
+
+        let mut wrong_digest = current;
+        wrong_digest.protocol_pack_digest = "sha256:wrong-pack".into();
+        enrich_bpsr_history_presentation(&mut wrong_digest, "fr-FR").unwrap();
+        assert_eq!(
+            wrong_digest.runs[0].views[0].actors[0].weapon_item_id,
+            Some(WEAPON_ITEM_ID)
+        );
+        assert_eq!(
+            wrong_digest.runs[0].views[0].actors[0].weapon_presentation_name,
+            None
+        );
+    }
+
+    #[test]
     fn history_death_presentations_require_exact_event_identity_build_and_selected_ability() {
         let mut snapshot = captured_marksman_history();
         snapshot.client_build = "24687926".into();
