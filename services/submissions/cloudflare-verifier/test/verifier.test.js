@@ -71,6 +71,9 @@ test("container output accepts only the exact current and upcoming report tuples
   };
   assert.equal(validateOutput(output, wakeup), true);
   assert.equal(validateOutput(upcoming, wakeup), true);
+  assert.equal(validateOutput({ ...upcoming, report: {
+    ...upcoming.report, schema_version: CURRENT_REPORT_SCHEMA_VERSION,
+  } }, wakeup), false);
   assert.equal(validateOutput({ ...output, report: { ...output.report, schema_version: 14 } }, wakeup), false);
   assert.equal(validateOutput({ ...output, report: { ...output.report, projection_revision: 6 } }, wakeup), false);
   assert.equal(validateOutput({ ...output, report: {

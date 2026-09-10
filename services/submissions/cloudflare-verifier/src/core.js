@@ -6,7 +6,7 @@ export const BACKFILL_SOURCE_SCHEMA_VERSION = 12;
 export const CURRENT_REPORT_SCHEMA_VERSION = 15;
 export const CURRENT_REPORT_PROJECTION_REVISION = 7;
 export const CURRENT_TIMELINE_SCHEMA_VERSION = 3;
-export const UPCOMING_REPORT_SCHEMA_VERSION = 15;
+export const UPCOMING_REPORT_SCHEMA_VERSION = 16;
 export const UPCOMING_REPORT_PROJECTION_REVISION = 8;
 export const UPCOMING_TIMELINE_SCHEMA_VERSION = 4;
 // Backfill remains pinned to the deployed producer tuple. Advance all three
