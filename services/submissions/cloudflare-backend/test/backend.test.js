@@ -5,6 +5,7 @@ import backend from "../src/index.js";
 
 const PACK_A = `sha256:${"a".repeat(64)}`;
 const PACK_B = `sha256:${"b".repeat(64)}`;
+const RAW_PACK_A = "a".repeat(64);
 
 function environment(values = {}) {
   const store = new Map(Object.entries(values));
@@ -340,7 +341,7 @@ test("schema-2 observed character authority must match one exact report referenc
   assert.equal(rejected.characters[0].reports[0].scene_name, null);
 });
 
-test("milestone schema-2 uses report-specific D1 authority and marks unavailable legacy semantics unknown", async () => {
+test("milestone schema-2 canonicalizes exact raw D1 authority and marks unavailable legacy semantics unknown", async () => {
   const authorizedId = "rpt_authorized";
   const legacy = {
     schema_version: 1,
@@ -358,7 +359,7 @@ test("milestone schema-2 uses report-specific D1 authority and marks unavailable
       report_id: authorizedId, run_index: 0,
       visibility: "public", verification_tier: "replayed",
       catalog_entry_json: JSON.stringify({ deployment_id: "global" }),
-      client_build: "24687926", protocol_pack_digest: PACK_A,
+      client_build: "24687926", protocol_pack_digest: RAW_PACK_A,
     }] }; } };
   } });
   const value = await (await backend.fetch(
@@ -379,7 +380,7 @@ test("milestone schema-2 uses report-specific D1 authority and marks unavailable
   assert.equal(value.entries[1].difficulty_tier, 20);
 });
 
-test("observed public reads remove D1-known ineligible and visibility-overridden reports", async () => {
+test("observed public reads canonicalize raw D1 authority and remove known-ineligible reports", async () => {
   const reportIds = ["rpt_eligible", "rpt_private", "rpt_nonreplayed", "rpt_absent", "rpt_overridden"];
   const catalog = {
     schema_version: 1,
@@ -395,13 +396,13 @@ test("observed public reads remove D1-known ineligible and visibility-overridden
   env.RLOGS_DB.prepare = () => ({ bind() { return { async all() { return { results: [
     { report_id: "rpt_eligible", run_index: 0, visibility: "public", verification_tier: "replayed",
       catalog_entry_json: JSON.stringify({ deployment_id: "global" }), client_build: "24687926",
-      protocol_pack_digest: PACK_A },
+      protocol_pack_digest: RAW_PACK_A },
     { report_id: "rpt_private", run_index: 0, visibility: "private", verification_tier: "replayed",
       catalog_entry_json: JSON.stringify({ deployment_id: "global" }), client_build: "24687926",
-      protocol_pack_digest: PACK_A },
+      protocol_pack_digest: RAW_PACK_A },
     { report_id: "rpt_nonreplayed", run_index: 0, visibility: "public", verification_tier: "corroborated",
       catalog_entry_json: JSON.stringify({ deployment_id: "global" }), client_build: "24687926",
-      protocol_pack_digest: PACK_A },
+      protocol_pack_digest: RAW_PACK_A },
   ] }; } }; } });
 
   const value = await (await backend.fetch(new Request("https://backend/v1/characters"), env)).json();
@@ -429,13 +430,13 @@ test("milestone public reads remove D1-known ineligible and overridden entries",
   env.RLOGS_DB.prepare = () => ({ bind() { return { async all() { return { results: [
     { report_id: "rpt_eligible", run_index: 0, visibility: "public", verification_tier: "replayed",
       catalog_entry_json: JSON.stringify({ deployment_id: "global" }), client_build: "24687926",
-      protocol_pack_digest: PACK_A },
+      protocol_pack_digest: RAW_PACK_A },
     { report_id: "rpt_private", run_index: 0, visibility: "private", verification_tier: "replayed",
       catalog_entry_json: JSON.stringify({ deployment_id: "global" }), client_build: "24687926",
-      protocol_pack_digest: PACK_A },
+      protocol_pack_digest: RAW_PACK_A },
     { report_id: "rpt_nonreplayed", run_index: 0, visibility: "public", verification_tier: "ranked",
       catalog_entry_json: JSON.stringify({ deployment_id: "global" }), client_build: "24687926",
-      protocol_pack_digest: PACK_A },
+      protocol_pack_digest: RAW_PACK_A },
   ] }; } }; } });
   const value = await (await backend.fetch(new Request("https://backend/v1/activity/milestones"), env)).json();
   assert.deepEqual(value.entries.map((entry) => entry.report_id), ["rpt_eligible", "rpt_absent"]);
@@ -518,6 +519,32 @@ test("legacy catalog rows retain raw scene identity but cannot lend derived face
   assert.deepEqual((await derivedFilter.json()).entries, []);
 });
 
+test("published schema-7 catalog authority remains prefixed-only", async () => {
+  const base = {
+    run_index: 0, deployment_id: "global", client_build: "24687926",
+    region_id: "global", scene_id: 6565, scene_name: "Sea-Ringed Reef",
+    activity_id: "scene.6565", activity_family_id: "chaotic.6565",
+    activity_category_id: "dungeons", difficulty_family: "master",
+    terminal_state: "completed",
+  };
+  const env = environment({
+    "fs:catalog.v1.json": JSON.stringify({ schema_version: 7, entries: [
+      { ...base, report_id: "rpt_prefixed", protocol_pack_digest: PACK_A },
+      { ...base, report_id: "rpt_raw", protocol_pack_digest: RAW_PACK_A },
+    ], facets: {} }),
+  });
+  const value = await (await backend.fetch(new Request("https://backend/v1/parses"), env)).json();
+  const prefixed = value.entries.find((entry) => entry.report_id === "rpt_prefixed");
+  const raw = value.entries.find((entry) => entry.report_id === "rpt_raw");
+  assert.equal(prefixed.protocol_pack_digest, PACK_A);
+  assert.equal(prefixed.scene_name, "Sea-Ringed Reef");
+  assert.equal(raw.protocol_pack_digest, null);
+  assert.equal(raw.client_build, null);
+  assert.equal(raw.scene_name, null);
+  assert.equal(raw.activity_id, null);
+  assert.equal(raw.difficulty_family, null);
+});
+
 test("mixed localization identities cannot lend a scene facet label", async () => {
   const exact = {
     run_index: 0, deployment_id: "global", client_build: "24687926",
@@ -552,7 +579,7 @@ test("private visibility overrides disappear from public catalogs and reports", 
   assert.equal(reportResponse.status, 404);
 });
 
-test("new hosted reports and catalog rows are read from D1 and R2", async () => {
+test("new hosted catalog rows canonicalize exact raw D1 digests before publication", async () => {
   const reportId = `rpt_${"b".repeat(32)}`;
   const report = {
     report_id: reportId,
@@ -572,7 +599,7 @@ test("new hosted reports and catalog rows are read from D1 and R2", async () => 
   env.RLOGS_DB.prepare = (query) => {
     if (query.includes("FROM report_runs")) return { async all() { return { results: [{
       catalog_entry_json: JSON.stringify(entry), client_build: "24687926",
-      protocol_pack_digest: PACK_A,
+      protocol_pack_digest: RAW_PACK_A,
     }] }; } };
     if (query.includes("FROM reports r JOIN upload_sessions")) return { bind() { return { async first() {
       return { visibility: "public", projection_object_key: "reports/new.json", submitter_id: "usr_owner" };
@@ -606,6 +633,40 @@ test("new hosted reports and catalog rows are read from D1 and R2", async () => 
       { actor_id: "3", character_id: null, display_name: "Remote Player" },
     ] }],
   });
+});
+
+test("hosted catalog accepts only exact raw lowercase D1 digests", async () => {
+  const invalidAuthorities = [
+    { databaseDigest: PACK_A, deploymentId: "global", clientBuild: "24687926" },
+    { databaseDigest: "A".repeat(64), deploymentId: "global", clientBuild: "24687926" },
+    { databaseDigest: "a".repeat(63), deploymentId: "global", clientBuild: "24687926" },
+    { databaseDigest: ` ${RAW_PACK_A}`, deploymentId: "global", clientBuild: "24687926" },
+    { databaseDigest: RAW_PACK_A, deploymentId: " ", clientBuild: "24687926" },
+    { databaseDigest: RAW_PACK_A, deploymentId: "global", clientBuild: " " },
+  ];
+  for (const { databaseDigest, deploymentId, clientBuild } of invalidAuthorities) {
+    const entry = {
+      report_id: `rpt_${"c".repeat(32)}`, run_index: 0, created_unix_millis: 10,
+      deployment_id: deploymentId, region_id: "global", scene_id: 6565,
+      scene_name: "Sea-Ringed Reef", activity_id: "scene.6565",
+      activity_family_id: "chaotic.6565", activity_category_id: "dungeons",
+      difficulty_family: "master", terminal_state: "completed",
+    };
+    const env = environment({ "fs:catalog.v1.json": JSON.stringify({ schema_version: 7, entries: [], facets: {} }) });
+    env.RLOGS_DB.prepare = (query) => {
+      if (query.includes("FROM report_runs")) return { async all() { return { results: [{
+        catalog_entry_json: JSON.stringify(entry), client_build: clientBuild,
+        protocol_pack_digest: databaseDigest,
+      }] }; } };
+      throw new Error(`unexpected query: ${query}`);
+    };
+    const value = await (await backend.fetch(new Request("https://backend/v1/parses"), env)).json();
+    assert.equal(value.entries[0].client_build, null, databaseDigest);
+    assert.equal(value.entries[0].protocol_pack_digest, null, databaseDigest);
+    assert.equal(value.entries[0].scene_name, null, databaseDigest);
+    assert.equal(value.entries[0].activity_id, null, databaseDigest);
+    assert.equal(value.entries[0].difficulty_family, null, databaseDigest);
+  }
 });
 
 test("run-group reconciliation reads the current public D1 pointer from R2", async () => {

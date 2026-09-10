@@ -5,6 +5,7 @@ import { accountView, catalogEntry, RLogsAuthState, tokenHash } from "../src/aut
 import { canonicalJson, canonicalPublishedRouting, liveCaptureProof, profileLeaderboardProjection, reconcileCatalog, reconcilePublishedRouting } from "../src/profile.js";
 
 const PACK_A = `sha256:${"a".repeat(64)}`;
+const RAW_PACK_A = "a".repeat(64);
 
 function authFixture() {
   const durable = new Map();
@@ -376,13 +377,14 @@ test("My Parses ignores conflicting schema-6 catalog semantics and rebuilds from
   assert.equal(value.entries[0].protocol_pack_digest, PACK_A);
 });
 
-test("My Parses filters hosted reports in D1 without a per-report membership query", async () => {
+test("My Parses canonicalizes exact raw hosted D1 digests without a per-report membership query", async () => {
   const { auth, kv } = authFixture();
   const reportId = `rpt_${"9".repeat(32)}`;
   kv.set("fs:profiles/catalog.v1.json", { profiles: [{ profile_id: "prf_one", character_id: "3296036" }] });
   kv.set("fs:profiles/prf_one/claim.json", { submitter_id: "usr_owner" });
   kv.set("fs:catalog.v1.json", { entries: [] });
   const queries = [];
+  let databaseDigest = RAW_PACK_A;
   auth.env.RLOGS_DB = {
     prepare(query) {
       queries.push(query);
@@ -399,7 +401,7 @@ test("My Parses filters hosted reports in D1 without a per-report membership que
                   scene_id: 1, scene_name: "Dungeon", terminal_state: "completed",
                 }),
                 client_build: "24687926",
-                protocol_pack_digest: PACK_A,
+                protocol_pack_digest: databaseDigest,
                 visibility: "unlisted",
                 submitter_id: "usr_other",
                 matched_character_ids: "3296036",
@@ -429,6 +431,15 @@ test("My Parses filters hosted reports in D1 without a per-report membership que
   assert.match(reportQueries[0], /EXISTS \(/u);
   assert.match(reportQueries[1], /GROUP_CONCAT/u);
   assert.ok(reportQueries.every((query) => !query.includes("SELECT character_id FROM report_memberships WHERE report_id=?1")));
+
+  databaseDigest = PACK_A;
+  const rejected = await (await auth.myParses(
+    new Request("https://backend/v1/auth/parses?limit=50"), Date.now(),
+    new URL("https://backend/v1/auth/parses?limit=50"),
+  )).json();
+  assert.equal(rejected.entries[0].client_build, null);
+  assert.equal(rejected.entries[0].protocol_pack_digest, null);
+  assert.equal(rejected.entries[0].scene_name, null);
 });
 
 test("only the uploader can change visibility and the override changes authorized reads", async () => {

@@ -567,7 +567,7 @@ export class RLogsAuthState {
         LIMIT ${hostedLimit}`).bind(...bindings).all();
       for (const row of hosted.results ?? []) {
         hostedLoaded += 1;
-        const parse = normalizeCatalogEntry(
+        const parse = normalizeTrustedDatabaseCatalogEntry(
           JSON.parse(row.catalog_entry_json),
           row.client_build,
           row.protocol_pack_digest,
@@ -947,6 +947,12 @@ function normalizeCatalogEntry(entry, clientBuild = null, protocolPackDigest = n
       difficulty_family: null,
     } : {}),
   };
+}
+
+function normalizeTrustedDatabaseCatalogEntry(entry, clientBuild, protocolPackDigest) {
+  const digest = typeof protocolPackDigest === "string" && /^[0-9a-f]{64}$/u.test(protocolPackDigest)
+    ? `sha256:${protocolPackDigest}` : null;
+  return normalizeCatalogEntry(entry, clientBuild, digest);
 }
 
 export { accountView, catalogEntry, tokenHash };

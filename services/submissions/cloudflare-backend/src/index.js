@@ -36,6 +36,11 @@ function completePresentationAuthority(deploymentId, clientBuild, protocolPackDi
   };
 }
 
+function trustedDatabasePresentationAuthority(deploymentId, clientBuild, protocolPackDigest) {
+  if (typeof protocolPackDigest !== "string" || !/^[0-9a-f]{64}$/u.test(protocolPackDigest)) return null;
+  return completePresentationAuthority(deploymentId, clientBuild, `sha256:${protocolPackDigest}`);
+}
+
 async function authoritativeReportRunIdentities(env, references) {
   const byRun = new Map();
   const reportEligibility = new Map();
@@ -57,7 +62,7 @@ async function authoritativeReportRunIdentities(env, references) {
         if (!eligible || row.run_index == null) continue;
         let catalogEntry = null;
         try { catalogEntry = JSON.parse(row.catalog_entry_json); } catch {}
-        const authority = completePresentationAuthority(
+        const authority = trustedDatabasePresentationAuthority(
           catalogEntry?.deployment_id, row.client_build, row.protocol_pack_digest,
         );
         byRun.set(`${row.report_id}:${row.run_index}`, authority);
@@ -307,9 +312,13 @@ async function hostedCatalogEntries(env) {
       LIMIT 100000`).all();
     return (result.results ?? []).flatMap((row) => {
       try {
-        return [normalizeCatalogEntry(JSON.parse(row.catalog_entry_json), {
-          client_build: row.client_build,
-          protocol_pack_digest: row.protocol_pack_digest,
+        const entry = JSON.parse(row.catalog_entry_json);
+        const authority = trustedDatabasePresentationAuthority(
+          entry?.deployment_id, row.client_build, row.protocol_pack_digest,
+        );
+        return [normalizeCatalogEntry(entry, {
+          client_build: authority?.client_build ?? null,
+          protocol_pack_digest: authority?.protocol_pack_digest ?? null,
         })];
       } catch { return []; }
     });
