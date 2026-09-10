@@ -6,6 +6,7 @@ const JSON_HEADERS = {
   "Cache-Control": "no-store",
   "X-Content-Type-Options": "nosniff",
 };
+const MAXIMUM_LEGACY_CATALOG_PROJECTION_READS = 250;
 
 function json(value, status = 200, headers = {}) {
   return Response.json(value, {
@@ -354,6 +355,60 @@ function normalizeCatalogEntry(entry, authoritativeIdentity = null) {
   return result;
 }
 
+function catalogEntryFromStoredProjection(rawEntry, report, visibilityOverride) {
+  const unavailable = normalizeCatalogEntry(rawEntry, { client_build: null, protocol_pack_digest: null });
+  if (!report || report.report_id !== rawEntry?.report_id || !Array.isArray(report.runs)) return unavailable;
+  if ((visibilityOverride ?? report.visibility) !== "public") return null;
+  const authority = completePresentationAuthority(
+    report.deployment_id, report.client_build, report.protocol_pack_digest,
+  );
+  if (!authority || !Number.isSafeInteger(rawEntry.run_index)) return unavailable;
+  const runs = report.runs.filter((run) => run && run.run_index === rawEntry.run_index);
+  if (runs.length !== 1) return unavailable;
+  const run = runs[0];
+  if (![run.activity_id, run.activity_family_id, run.activity_category_id, run.scene_name, run.difficulty_family]
+      .every((value) => value == null || typeof value === "string") ||
+      !(run.scene_id == null || Number.isSafeInteger(run.scene_id)) ||
+      !(run.difficulty_tier == null || (Number.isSafeInteger(run.difficulty_tier) && run.difficulty_tier >= 0))) {
+    return unavailable;
+  }
+  return normalizeCatalogEntry({
+    ...rawEntry,
+    deployment_id: authority.deployment_id,
+    client_build: authority.client_build,
+    protocol_pack_digest: authority.protocol_pack_digest,
+    activity_id: run.activity_id ?? null,
+    activity_family_id: run.activity_family_id ?? null,
+    activity_category_id: run.activity_category_id ?? null,
+    scene_id: run.scene_id ?? null,
+    scene_name: run.scene_name ?? null,
+    difficulty_family: run.difficulty_family ?? null,
+    difficulty_tier: run.difficulty_tier ?? null,
+  });
+}
+
+function storedCatalogEntryNeedsProjection(entry, schemaVersion) {
+  if (!(Number(schemaVersion) >= 7)) return true;
+  const normalized = normalizeCatalogEntry(entry);
+  return normalized.client_build === null || normalized.protocol_pack_digest === null;
+}
+
+async function storedCatalogProjections(env, catalog) {
+  const reportIds = [...new Set(catalog.entries
+    .filter((entry) => storedCatalogEntryNeedsProjection(entry, catalog.schema_version))
+    .map((entry) => entry?.report_id)
+    .filter((reportId) => typeof reportId === "string" && reportId !== ""))]
+    .slice(0, MAXIMUM_LEGACY_CATALOG_PROJECTION_READS);
+  return new Map(await Promise.all(reportIds.map(async (reportId) => {
+    try {
+      return [reportId, await env.RLOGS_DATA.get(`fs:projections/${reportId}.json`, "json")];
+    } catch (cause) {
+      console.error("rLogs stored catalog projection read failed", reportId, cause);
+      return [reportId, null];
+    }
+  })));
+}
+
 function facetValues(entries, field) {
   const counts = new Map();
   for (const entry of entries) {
@@ -608,13 +663,19 @@ async function parseCatalog(env, url) {
   const catalog = storedCatalog && Array.isArray(storedCatalog.entries)
     ? storedCatalog
     : { schema_version: 7, entries: [], facets: catalogFacets([]) };
-  const overrides = await visibilityOverrides(env);
-  const hosted = await hostedCatalogEntries(env);
+  const [overrides, hosted, storedProjections] = await Promise.all([
+    visibilityOverrides(env), hostedCatalogEntries(env), storedCatalogProjections(env, catalog),
+  ]);
   const merged = new Map();
-  for (const rawEntry of catalog.entries) {
-    const entry = Number(catalog.schema_version) >= 7
-      ? normalizeCatalogEntry(rawEntry)
-      : normalizeCatalogEntry(rawEntry, { client_build: null, protocol_pack_digest: null });
+  const stored = catalog.entries.flatMap((entry) => {
+    const enriched = storedCatalogEntryNeedsProjection(entry, catalog.schema_version)
+      ? catalogEntryFromStoredProjection(
+        entry, storedProjections.get(entry?.report_id), overrides[entry?.report_id],
+      )
+      : normalizeCatalogEntry(entry);
+    return enriched === null ? [] : [enriched];
+  });
+  for (const entry of stored) {
     if (overrides[entry.report_id] !== "private") merged.set(`${entry.report_id}:${entry.run_index}`, entry);
   }
   for (const entry of hosted) merged.set(`${entry.report_id}:${entry.run_index}`, entry);

@@ -519,7 +519,7 @@ test("legacy catalog rows retain raw scene identity but cannot lend derived face
   assert.deepEqual((await derivedFilter.json()).entries, []);
 });
 
-test("published schema-7 catalog authority remains prefixed-only", async () => {
+test("exact schema-7 catalog authority survives without a projection while raw authority fails closed", async () => {
   const base = {
     run_index: 0, deployment_id: "global", client_build: "24687926",
     region_id: "global", scene_id: 6565, scene_name: "Sea-Ringed Reef",
@@ -533,16 +533,173 @@ test("published schema-7 catalog authority remains prefixed-only", async () => {
       { ...base, report_id: "rpt_raw", protocol_pack_digest: RAW_PACK_A },
     ], facets: {} }),
   });
+  const read = env.RLOGS_DATA.get.bind(env.RLOGS_DATA);
+  const projectionReads = [];
+  env.RLOGS_DATA.get = async (key, type) => {
+    if (key.startsWith("fs:projections/")) projectionReads.push(key);
+    return read(key, type);
+  };
   const value = await (await backend.fetch(new Request("https://backend/v1/parses"), env)).json();
   const prefixed = value.entries.find((entry) => entry.report_id === "rpt_prefixed");
   const raw = value.entries.find((entry) => entry.report_id === "rpt_raw");
   assert.equal(prefixed.protocol_pack_digest, PACK_A);
+  assert.equal(prefixed.client_build, "24687926");
   assert.equal(prefixed.scene_name, "Sea-Ringed Reef");
   assert.equal(raw.protocol_pack_digest, null);
   assert.equal(raw.client_build, null);
   assert.equal(raw.scene_name, null);
   assert.equal(raw.activity_id, null);
   assert.equal(raw.difficulty_family, null);
+  assert.deepEqual(projectionReads, ["fs:projections/rpt_raw.json"]);
+});
+
+test("stored catalog enrichment requires one exact authoritative report run and replaces stale semantics", async () => {
+  const entry = (reportId) => ({
+    report_id: reportId, run_index: 3, created_unix_millis: 10,
+    deployment_id: "stale", client_build: null, protocol_pack_digest: PACK_B,
+    region_id: "global", scene_id: 9999, scene_name: "Stale scene",
+    activity_id: "stale.activity", activity_family_id: "stale.family",
+    activity_category_id: "stale-category", difficulty_family: "stale-difficulty",
+    difficulty_tier: 99, terminal_state: "completed",
+  });
+  const run = (overrides = {}) => ({
+    run_index: 3, scene_id: 6565, scene_name: "Sea-Ringed Reef",
+    activity_id: "scene.6565", activity_family_id: "chaotic.6565",
+    activity_category_id: "dungeons", difficulty_family: "master", difficulty_tier: 5,
+    ...overrides,
+  });
+  const projection = (reportId, overrides = {}) => ({
+    report_id: reportId, visibility: "public", deployment_id: "global",
+    client_build: "24687926", protocol_pack_digest: PACK_A, runs: [run()], ...overrides,
+  });
+  const ids = {
+    good: "rpt_stored_good", reportMismatch: "rpt_stored_report_mismatch",
+    runMismatch: "rpt_stored_run_mismatch", duplicateRun: "rpt_stored_duplicate_run",
+    malformedIdentity: "rpt_stored_malformed_identity", malformedScene: "rpt_stored_malformed_scene",
+    malformedProjection: "rpt_stored_malformed_projection", private: "rpt_stored_private",
+  };
+  const values = {
+    "fs:catalog.v1.json": JSON.stringify({
+      schema_version: 7, entries: Object.values(ids).map(entry), facets: {},
+    }),
+    [`fs:projections/${ids.good}.json`]: JSON.stringify(projection(ids.good)),
+    [`fs:projections/${ids.reportMismatch}.json`]: JSON.stringify(projection("rpt_other")),
+    [`fs:projections/${ids.runMismatch}.json`]: JSON.stringify(projection(ids.runMismatch, { runs: [run({ run_index: 4 })] })),
+    [`fs:projections/${ids.duplicateRun}.json`]: JSON.stringify(projection(ids.duplicateRun, { runs: [run(), run()] })),
+    [`fs:projections/${ids.malformedIdentity}.json`]: JSON.stringify(projection(ids.malformedIdentity, { protocol_pack_digest: RAW_PACK_A })),
+    [`fs:projections/${ids.malformedScene}.json`]: JSON.stringify(projection(ids.malformedScene, { runs: [run({ scene_id: "6565" })] })),
+    [`fs:projections/${ids.malformedProjection}.json`]: "{",
+    [`fs:projections/${ids.private}.json`]: JSON.stringify(projection(ids.private, { visibility: "private" })),
+  };
+  const value = await (await backend.fetch(
+    new Request("https://backend/v1/parses"), environment(values),
+  )).json();
+  const byId = new Map(value.entries.map((candidate) => [candidate.report_id, candidate]));
+  assert.equal(byId.has(ids.private), false);
+  assert.deepEqual({
+    deployment_id: byId.get(ids.good).deployment_id,
+    client_build: byId.get(ids.good).client_build,
+    protocol_pack_digest: byId.get(ids.good).protocol_pack_digest,
+    scene_id: byId.get(ids.good).scene_id,
+    scene_name: byId.get(ids.good).scene_name,
+    activity_id: byId.get(ids.good).activity_id,
+    activity_family_id: byId.get(ids.good).activity_family_id,
+    activity_category_id: byId.get(ids.good).activity_category_id,
+    difficulty_family: byId.get(ids.good).difficulty_family,
+    difficulty_tier: byId.get(ids.good).difficulty_tier,
+  }, {
+    deployment_id: "global", client_build: "24687926", protocol_pack_digest: PACK_A,
+    scene_id: 6565, scene_name: "Sea-Ringed Reef", activity_id: "scene.6565",
+    activity_family_id: "chaotic.6565", activity_category_id: "dungeons",
+    difficulty_family: "master", difficulty_tier: 5,
+  });
+  for (const id of [ids.reportMismatch, ids.runMismatch, ids.duplicateRun, ids.malformedIdentity, ids.malformedScene, ids.malformedProjection]) {
+    assert.equal(byId.get(id).client_build, null, id);
+    assert.equal(byId.get(id).protocol_pack_digest, null, id);
+    assert.equal(byId.get(id).scene_name, null, id);
+    assert.equal(byId.get(id).activity_id, null, id);
+    assert.equal(byId.get(id).difficulty_family, null, id);
+  }
+});
+
+test("stored catalog enrichment applies the current visibility override", async () => {
+  const reportId = "rpt_stored_visibility_override";
+  const entry = {
+    report_id: reportId, run_index: 0, deployment_id: "global", region_id: "global",
+    scene_id: 6565, terminal_state: "completed",
+  };
+  const env = environment({
+    "fs:catalog.v1.json": JSON.stringify({ schema_version: 6, entries: [entry], facets: {} }),
+    [`fs:projections/${reportId}.json`]: JSON.stringify({
+      report_id: reportId, visibility: "private", deployment_id: "global",
+      client_build: "24687926", protocol_pack_digest: PACK_A,
+      runs: [{ run_index: 0, scene_id: 6565, scene_name: "Sea-Ringed Reef" }],
+    }),
+  });
+  env.AUTH_STATE.get = () => ({ async fetch() { return Response.json({ [reportId]: "public" }); } });
+  const value = await (await backend.fetch(new Request("https://backend/v1/parses"), env)).json();
+  assert.equal(value.entries.length, 1);
+  assert.equal(value.entries[0].client_build, "24687926");
+  assert.equal(value.entries[0].protocol_pack_digest, PACK_A);
+  assert.equal(value.entries[0].scene_name, "Sea-Ringed Reef");
+});
+
+test("stored catalog enrichment requires effective public visibility", async () => {
+  const cases = [
+    ["projection_unlisted", "unlisted", null],
+    ["projection_missing", undefined, null],
+    ["projection_arbitrary", "friends", null],
+    ["override_unlisted", "public", "unlisted"],
+    ["override_private", "public", "private"],
+  ];
+  const entries = cases.map(([suffix]) => ({
+    report_id: `rpt_stored_${suffix}`, run_index: 0, deployment_id: "global",
+    region_id: "global", scene_id: 6565, terminal_state: "completed",
+  }));
+  const values = Object.fromEntries(cases.map(([suffix, visibility]) => {
+    const projection = {
+      report_id: `rpt_stored_${suffix}`, deployment_id: "global",
+      client_build: "24687926", protocol_pack_digest: PACK_A,
+      runs: [{ run_index: 0, scene_id: 6565, scene_name: "Sea-Ringed Reef" }],
+    };
+    if (visibility !== undefined) projection.visibility = visibility;
+    return [`fs:projections/rpt_stored_${suffix}.json`, JSON.stringify(projection)];
+  }));
+  values["fs:catalog.v1.json"] = JSON.stringify({ schema_version: 6, entries, facets: {} });
+  const env = environment(values);
+  env.AUTH_STATE.get = () => ({ async fetch() {
+    return Response.json(Object.fromEntries(cases.flatMap(([suffix, , override]) =>
+      override === null ? [] : [[`rpt_stored_${suffix}`, override]])));
+  } });
+  const value = await (await backend.fetch(new Request("https://backend/v1/parses"), env)).json();
+  assert.deepEqual(value.entries, []);
+  assert.equal(value.total_entries, 0);
+});
+
+test("stored catalog projection enrichment has a fixed KV read bound", async () => {
+  const entries = Array.from({ length: 251 }, (_, index) => ({
+    report_id: `rpt_bounded_${index}`, run_index: 0, created_unix_millis: index,
+    deployment_id: "global", region_id: "global", scene_id: 6565, terminal_state: "completed",
+  }));
+  const values = Object.fromEntries(entries.map((entry) => [
+    `fs:projections/${entry.report_id}.json`, JSON.stringify({
+      report_id: entry.report_id, visibility: "public", deployment_id: "global",
+      client_build: "24687926", protocol_pack_digest: PACK_A,
+      runs: [{ run_index: 0, scene_id: 6565, scene_name: "Sea-Ringed Reef" }],
+    }),
+  ]));
+  values["fs:catalog.v1.json"] = JSON.stringify({ schema_version: 6, entries, facets: {} });
+  const env = environment(values);
+  const read = env.RLOGS_DATA.get.bind(env.RLOGS_DATA);
+  let projectionReads = 0;
+  env.RLOGS_DATA.get = async (key, type) => {
+    if (key.startsWith("fs:projections/")) projectionReads += 1;
+    return read(key, type);
+  };
+  const value = await (await backend.fetch(new Request("https://backend/v1/parses"), env)).json();
+  assert.equal(projectionReads, 250);
+  assert.equal(value.total_entries, 251);
+  assert.equal(value.entries.find((entry) => entry.report_id === "rpt_bounded_250").client_build, null);
 });
 
 test("mixed localization identities cannot lend a scene facet label", async () => {
@@ -593,9 +750,19 @@ test("new hosted catalog rows canonicalize exact raw D1 digests before publicati
     report_id: reportId, run_index: 0, created_unix_millis: 10,
     deployment_id: "global", client_build: "stale-build",
     protocol_pack_digest: "sha256:stale-pack",
-    region_id: "north-america", terminal_state: "completed",
+    region_id: "north-america", scene_id: 6565, scene_name: "Current D1 scene",
+    terminal_state: "completed",
   };
-  const env = environment({ "fs:catalog.v1.json": JSON.stringify({ schema_version: 6, entries: [], facets: {} }) });
+  const env = environment({
+    "fs:catalog.v1.json": JSON.stringify({ schema_version: 7, entries: [{
+      ...entry, created_unix_millis: 1, scene_id: 9999, scene_name: "Legacy KV scene",
+    }], facets: {} }),
+    [`fs:projections/${reportId}.json`]: JSON.stringify({
+      report_id: reportId, visibility: "public", deployment_id: "global",
+      client_build: "legacy-build", protocol_pack_digest: PACK_B,
+      runs: [{ run_index: 0, scene_id: 9999, scene_name: "Legacy projection scene" }],
+    }),
+  });
   env.RLOGS_DB.prepare = (query) => {
     if (query.includes("FROM report_runs")) return { async all() { return { results: [{
       catalog_entry_json: JSON.stringify(entry), client_build: "24687926",
