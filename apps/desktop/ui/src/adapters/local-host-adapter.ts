@@ -278,6 +278,10 @@ interface RuntimeEnvironment extends CaptureEnvironment {
   npcap_error?: string | null;
 }
 
+export function combatHistoryDetailRequestBody(sessionId: string, locale: string): string {
+  return JSON.stringify({ sessionId, locale });
+}
+
 export async function createLocalHostAdapterIfAvailable(localizer: UiLocalizer): Promise<DesktopHostAdapter | null> {
   try {
     const response = await fetch("/api/runtime/status", {
@@ -597,7 +601,7 @@ function createLocalHostAdapter(localizer: UiLocalizer): DesktopHostAdapter {
                 await apiJson<unknown>("/api/runtime/combat-history/detail", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ sessionId }),
+                  body: combatHistoryDetailRequestBody(sessionId, localizer.locale),
                 }),
               ),
             localizer,

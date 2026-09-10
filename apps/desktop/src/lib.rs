@@ -2372,6 +2372,20 @@ struct CombatHistoryWaitRequest {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct CombatHistoryDetailRequest {
     session_id: String,
+    #[serde(default = "default_bpsr_presentation_locale")]
+    locale: String,
+}
+
+fn default_bpsr_presentation_locale() -> String {
+    "en-US".into()
+}
+
+fn normalized_bpsr_presentation_locale(locale: &str) -> &str {
+    match locale {
+        "de-DE" | "en-US" | "es-ES" | "fr-FR" | "id-ID" | "ja-JP" | "ko-KR" | "pt-BR" | "th-TH"
+        | "zh-CN" | "zh-TW" => locale,
+        _ => "en-US",
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -7278,6 +7292,7 @@ impl RuntimeController {
         &self,
         request: CombatHistoryDetailRequest,
     ) -> Result<CombatHistorySnapshot, String> {
+        let locale = normalized_bpsr_presentation_locale(&request.locale);
         let mut snapshot = self
             .combat_history
             .lock()
@@ -7327,7 +7342,7 @@ impl RuntimeController {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner),
         )?;
-        enrich_bpsr_history_presentation(&mut snapshot, "en-US")?;
+        enrich_bpsr_history_presentation(&mut snapshot, locale)?;
         Ok(snapshot)
     }
 
@@ -16807,6 +16822,121 @@ mod tests {
     }
 
     #[test]
+    fn combat_history_detail_locale_accepts_only_shipped_game_locales() {
+        let request: CombatHistoryDetailRequest = serde_json::from_value(serde_json::json!({
+            "sessionId": "capture-1",
+            "locale": "fr-FR"
+        }))
+        .unwrap();
+        assert_eq!(request.session_id, "capture-1");
+        assert_eq!(request.locale, "fr-FR");
+        let legacy: CombatHistoryDetailRequest = serde_json::from_value(serde_json::json!({
+            "sessionId": "legacy-capture"
+        }))
+        .unwrap();
+        assert_eq!(legacy.locale, "en-US");
+
+        for locale in [
+            "de-DE", "en-US", "es-ES", "fr-FR", "id-ID", "ja-JP", "ko-KR", "pt-BR", "th-TH",
+            "zh-CN", "zh-TW",
+        ] {
+            assert_eq!(normalized_bpsr_presentation_locale(locale), locale);
+        }
+        for unsupported in ["", "en-GB", "fr-CA", "unsupported"] {
+            assert_eq!(normalized_bpsr_presentation_locale(unsupported), "en-US");
+        }
+    }
+
+    #[test]
+    fn combat_history_detail_applies_selected_locale_without_persisting_presentation() {
+        let root = temporary_root();
+        let controller = RuntimeController::new(root.clone()).unwrap();
+        let mut exact = captured_marksman_history();
+        exact.session_id = "localized-history-detail".into();
+        exact.client_build = BUNDLED_RUN_RULE_CLIENT_BUILD.into();
+        exact.protocol_pack_digest = BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into();
+        controller
+            .combat_history
+            .lock()
+            .unwrap()
+            .record(&exact, 1)
+            .unwrap();
+
+        let french = controller
+            .combat_history_detail(CombatHistoryDetailRequest {
+                session_id: exact.session_id.clone(),
+                locale: "fr-FR".into(),
+            })
+            .unwrap();
+        assert_eq!(
+            french.runs[0].views[0].actors[0].abilities[0]
+                .presentation_name
+                .as_deref(),
+            Some("Tension maximale")
+        );
+        let english_fallback = controller
+            .combat_history_detail(CombatHistoryDetailRequest {
+                session_id: exact.session_id.clone(),
+                locale: "fr-CA".into(),
+            })
+            .unwrap();
+        assert_eq!(
+            english_fallback.runs[0].views[0].actors[0].abilities[0]
+                .presentation_name
+                .as_deref(),
+            Some("Powerdraw")
+        );
+        let legacy_request: CombatHistoryDetailRequest =
+            serde_json::from_value(serde_json::json!({ "sessionId": exact.session_id.clone() }))
+                .unwrap();
+        let legacy_english = controller.combat_history_detail(legacy_request).unwrap();
+        assert_eq!(
+            legacy_english.runs[0].views[0].actors[0].abilities[0]
+                .presentation_name
+                .as_deref(),
+            Some("Powerdraw")
+        );
+        let stored = controller
+            .combat_history
+            .lock()
+            .unwrap()
+            .detail(&exact.session_id)
+            .unwrap();
+        assert_eq!(
+            stored.runs[0].views[0].actors[0].abilities[0].presentation_name,
+            None
+        );
+
+        for (suffix, build, digest) in [
+            ("build", "24687927", BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST),
+            ("digest", BUNDLED_RUN_RULE_CLIENT_BUILD, "sha256:wrong-pack"),
+        ] {
+            let mut unsupported = exact.clone();
+            unsupported.session_id = format!("localized-history-detail-{suffix}");
+            unsupported.client_build = build.into();
+            unsupported.protocol_pack_digest = digest.into();
+            controller
+                .combat_history
+                .lock()
+                .unwrap()
+                .record(&unsupported, 1)
+                .unwrap();
+            let returned = controller
+                .combat_history_detail(CombatHistoryDetailRequest {
+                    session_id: unsupported.session_id,
+                    locale: "fr-FR".into(),
+                })
+                .unwrap();
+            assert_eq!(
+                returned.runs[0].views[0].actors[0].abilities[0].presentation_name,
+                None
+            );
+        }
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn reviewed_run_clocks_do_not_undo_the_live_retry_reset() {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../tests/fixtures/replay/reference-combat.rlog");
@@ -16981,6 +17111,7 @@ mod tests {
         let returned = controller
             .combat_history_detail(CombatHistoryDetailRequest {
                 session_id: snapshot.session_id.clone(),
+                locale: "en-US".into(),
             })
             .unwrap();
 
@@ -17048,6 +17179,7 @@ mod tests {
         let returned = controller
             .combat_history_detail(CombatHistoryDetailRequest {
                 session_id: snapshot.session_id.clone(),
+                locale: "en-US".into(),
             })
             .unwrap();
 
@@ -17549,6 +17681,26 @@ mod tests {
             "2233"
         );
         assert_eq!(hit.ability_presentation.as_ref().unwrap().name, "Powerdraw");
+
+        let mut french = snapshot.clone();
+        enrich_bpsr_history_presentation(&mut french, "fr-FR").unwrap();
+        let french_hit = &french.runs[0].views[0].actors[0].death_events[0]
+            .cause
+            .as_ref()
+            .unwrap()
+            .final_hit;
+        assert_eq!(
+            french_hit.source_presentation.as_ref().unwrap().name,
+            "Tina - Rêverie du néant"
+        );
+        assert_eq!(
+            french_hit.direct_source_presentation.as_ref().unwrap().name,
+            "Exact source"
+        );
+        assert_eq!(
+            french_hit.ability_presentation.as_ref().unwrap().name,
+            "Tension maximale"
+        );
 
         let mut wrong_build = snapshot.clone();
         wrong_build.client_build = "24687927".into();
@@ -18139,6 +18291,16 @@ mod tests {
             Some("Unyielding Spirit")
         );
         assert_eq!(slots[1].tier, None);
+
+        enrich_bpsr_loadout_presentation(&mut slots, "fr-FR").unwrap();
+        assert_eq!(
+            slots[0].presentation_name.as_deref(),
+            Some("Étreinte foudroyante")
+        );
+        assert_eq!(
+            slots[1].presentation_name.as_deref(),
+            Some("Esprit indomptable")
+        );
     }
 
     #[test]
