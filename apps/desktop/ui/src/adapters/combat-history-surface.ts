@@ -37,58 +37,54 @@ type AbilitySortKey = "ability" | "damage" | "rdmgReceived" | "rdpsReceived" | "
 type AbilitySortDirection = "ascending" | "descending";
 const HISTORY_PAGE_SIZE = 50;
 
-const PARTY_SORT_COLUMNS: ReadonlyArray<{
+interface PartySortColumn {
   key: PartySortKey;
   label: string;
   numeric: boolean;
-}> = [
-  { key: "player", label: "Player", numeric: false },
-  { key: "damage", label: "Damage", numeric: true },
-  { key: "effectiveDamage", label: "Effective damage", numeric: true },
-  { key: "damageTaken", label: "Damage taken", numeric: true },
-  { key: "healing", label: "Healing", numeric: true },
-  { key: "effectiveHealing", label: "Effective healing", numeric: true },
-  { key: "shielding", label: "Shielding", numeric: true },
-  { key: "hits", label: "Hits", numeric: true },
-  { key: "criticalRate", label: "Crit %", numeric: true },
-  { key: "dps", label: "eDPS", numeric: true },
-  { key: "encounterDps", label: "aDPS", numeric: true },
-  { key: "hps", label: "HPS", numeric: true },
-  { key: "tps", label: "TPS", numeric: true },
-  { key: "rdmg", label: "rDMG", numeric: true },
-  { key: "rdps", label: "rDPS", numeric: true },
-  { key: "rdpsGiven", label: "rDMG granted", numeric: true },
-  { key: "rdpsReceived", label: "rDMG received", numeric: true },
-  { key: "apm", label: "APM", numeric: true },
-  { key: "deaths", label: "Deaths", numeric: true },
-];
+}
 
-const ABILITY_SORT_COLUMNS: ReadonlyArray<{
+interface AbilitySortColumn {
   key: AbilitySortKey;
   label: string;
   numeric: boolean;
-}> = [
-  { key: "ability", label: "Ability", numeric: false },
-  { key: "damage", label: "Damage", numeric: true },
-  { key: "rdmgReceived", label: "rDMG gained", numeric: true },
-  { key: "rdpsReceived", label: "rDPS gained", numeric: true },
-  { key: "hits", label: "Hits", numeric: true },
-  { key: "casts", label: "Casts", numeric: true },
-  { key: "criticals", label: "Crits", numeric: true },
-  { key: "dps", label: "eDPS", numeric: true },
-  { key: "encounterDps", label: "aDPS", numeric: true },
-  { key: "healing", label: "Healing", numeric: true },
-  { key: "hps", label: "HPS", numeric: true },
-];
+}
 
-const HEALING_ABILITY_SORT_COLUMNS: typeof ABILITY_SORT_COLUMNS = [
-  { key: "ability", label: "Ability", numeric: false },
-  { key: "healing", label: "Healing", numeric: true },
-  { key: "effectiveHealing", label: "Effective healing", numeric: true },
-  { key: "shielding", label: "Shielding", numeric: true },
-  { key: "casts", label: "Casts", numeric: true },
-  { key: "hps", label: "HPS", numeric: true },
-];
+function partySortColumns(localizer: UiLocalizer): readonly PartySortColumn[] {
+  return [
+    ["player", "ui.combat_history.column.player", false], ["damage", "ui.combat_history.column.damage", true],
+    ["effectiveDamage", "ui.combat_history.column.effective_damage", true], ["damageTaken", "ui.combat_history.column.damage_taken", true],
+    ["healing", "ui.combat_history.column.healing", true], ["effectiveHealing", "ui.combat_history.column.effective_healing", true],
+    ["shielding", "ui.combat_history.column.shielding", true], ["hits", "ui.combat_history.column.hits", true],
+    ["criticalRate", "ui.combat_history.column.critical_percent", true], ["dps", "ui.combat_history.column.edps", true],
+    ["encounterDps", "ui.combat_history.column.adps", true], ["hps", "ui.combat_history.column.hps", true],
+    ["tps", "ui.combat_history.column.tps", true], ["rdmg", "ui.combat_history.column.rdmg", true],
+    ["rdps", "ui.combat_history.column.rdps", true], ["rdpsGiven", "ui.combat_history.column.rdmg_granted", true],
+    ["rdpsReceived", "ui.combat_history.column.rdmg_received", true], ["apm", "ui.combat_history.column.apm", true],
+    ["deaths", "ui.combat_history.column.deaths", true],
+  ].map(([key, labelKey, numeric]) => ({
+    key: key as PartySortKey,
+    label: localizer.t(labelKey as string),
+    numeric: numeric as boolean,
+  }));
+}
+
+function abilitySortColumns(localizer: UiLocalizer, healing: boolean): readonly AbilitySortColumn[] {
+  const columns: ReadonlyArray<readonly [AbilitySortKey, string, boolean]> = healing
+    ? [["ability", "ui.combat_history.column.ability", false], ["healing", "ui.combat_history.column.healing", true],
+        ["effectiveHealing", "ui.combat_history.column.effective_healing", true], ["shielding", "ui.combat_history.column.shielding", true],
+        ["casts", "ui.combat_history.column.casts", true], ["hps", "ui.combat_history.column.hps", true]]
+    : [["ability", "ui.combat_history.column.ability", false], ["damage", "ui.combat_history.column.damage", true],
+        ["rdmgReceived", "ui.combat_history.column.rdmg_gained", true], ["rdpsReceived", "ui.combat_history.column.rdps_gained", true],
+        ["hits", "ui.combat_history.column.hits", true], ["casts", "ui.combat_history.column.casts", true],
+        ["criticals", "ui.combat_history.column.crits", true], ["dps", "ui.combat_history.column.edps", true],
+        ["encounterDps", "ui.combat_history.column.adps", true], ["healing", "ui.combat_history.column.healing", true],
+        ["hps", "ui.combat_history.column.hps", true]];
+  return columns.map(([key, labelKey, numeric]) => ({
+    key,
+    label: localizer.t(labelKey),
+    numeric,
+  }));
+}
 
 interface GraphDefinition {
   metric: GraphMetric;
@@ -1043,13 +1039,13 @@ export function mountCombatHistorySurface(
         "div",
         "combat-history-run-row combat-history-run-row-heading",
         element("span", "combat-history-run-column-select", selectPage),
-        element("span", "combat-history-run-column-favorite", "Fav."),
-        element("span", "combat-history-run-column-dungeon", "Dungeon"),
-        element("span", "combat-history-run-column-party", "Party"),
-        element("span", "combat-history-run-column-metric", "Team eDPS"),
-        element("span", "combat-history-run-column-metric", "Team aDPS"),
-        element("span", "combat-history-run-column-metric", "Run time"),
-        element("span", "combat-history-run-column-recorded", "Recorded"),
+        element("span", "combat-history-run-column-favorite", ui.t("ui.combat_history.column.favorite_short")),
+        element("span", "combat-history-run-column-dungeon", ui.t("ui.combat_history.column.dungeon")),
+        element("span", "combat-history-run-column-party", ui.t("ui.combat_history.column.party")),
+        element("span", "combat-history-run-column-metric", ui.t("ui.combat_history.column.team_edps")),
+        element("span", "combat-history-run-column-metric", ui.t("ui.combat_history.column.team_adps")),
+        element("span", "combat-history-run-column-metric", ui.t("ui.combat_history.column.run_time")),
+        element("span", "combat-history-run-column-recorded", ui.t("ui.combat_history.column.recorded")),
         element("span", "combat-history-run-column-open", ""),
       ),
     );
@@ -1122,8 +1118,8 @@ export function mountCombatHistorySurface(
         formatDuration(entry.total_run_time_micros ?? entry.game_time_micros),
       );
       runTime.title = entry.total_run_time_micros === null
-        ? "Legacy index: pruned game time"
-        : "Total run time: instance entry to boss completion";
+        ? ui.t("ui.combat_history.browser.legacy_run_time_help")
+        : ui.t("ui.combat_history.browser.total_run_time_help");
       item.append(
         element("span", "combat-history-run-column-select", selection),
         element("span", "combat-history-run-column-favorite", favorite),
@@ -1487,7 +1483,7 @@ export function mountCombatHistorySurface(
           detailActorId = null;
           render();
         },
-        playerLayerTimeMetadata(run),
+        playerLayerTimeMetadata(run, ui),
       );
     pane.append(
       renderStickyHistoryContext(navigation, renderHistoryFilters(run, view)),
@@ -1546,7 +1542,7 @@ export function mountCombatHistorySurface(
           detailActorId = null;
           render();
         },
-        playerLayerTimeMetadata(run),
+        playerLayerTimeMetadata(run, ui),
       );
     pane.append(
       renderStickyHistoryContext(navigation, renderHistoryFilters(run, view)),
@@ -1590,8 +1586,9 @@ export function mountCombatHistorySurface(
         ),
       ),
     );
+    const availablePartyColumns = partySortColumns(ui);
     const visibleColumns = partyView.columns.map(
-      (key) => PARTY_SORT_COLUMNS.find((column) => column.key === key)!,
+      (key) => availablePartyColumns.find((column) => column.key === key)!,
     );
     if (!visibleColumns.some((column) => column.key === partySortKey)) {
       partySortKey = partyView.sortKey;
@@ -1631,8 +1628,10 @@ export function mountCombatHistorySurface(
       );
       sort.type = "button";
       sort.title = active
-        ? `Sort ${column.label} ${partySortDirection === "descending" ? "lowest to highest" : "highest to lowest"}`
-        : `Sort by ${column.label}`;
+        ? ui.t(partySortDirection === "descending"
+          ? "ui.combat_history.sort.lowest_first"
+          : "ui.combat_history.sort.highest_first", { column: column.label })
+        : ui.t("ui.combat_history.sort.by_column", { column: column.label });
       sort.addEventListener("click", () => {
         if (partySortKey === column.key) {
           partySortDirection = partySortDirection === "descending" ? "ascending" : "descending";
@@ -1669,7 +1668,9 @@ export function mountCombatHistorySurface(
         actorColors.get(actor.actor_id) ?? graphColor(0),
       );
       row.style.setProperty("--combat-history-row-bar-width", `${barWidth}%`);
-      row.setAttribute("aria-label", `Open ${actorLabel(actor)} skill details`);
+      row.setAttribute("aria-label", ui.t("ui.combat_history.breakdown.open_skills_aria", {
+        actor: actorLabel(actor),
+      }));
       for (const column of visibleColumns) {
         switch (column.key) {
           case "player":
@@ -1794,11 +1795,11 @@ export function mountCombatHistorySurface(
     const heading = document.createElement("tr");
     for (const [label, numericColumn] of [
       ["", false],
-      ["Source", false],
-      ["Ability", false],
-      ["Damage taken", true],
-      ["Hits", true],
-      ["TPS", true],
+      [ui.t("ui.combat_history.column.source"), false],
+      [ui.t("ui.combat_history.column.ability"), false],
+      [ui.t("ui.combat_history.column.damage_taken"), true],
+      [ui.t("ui.combat_history.column.hits"), true],
+      [ui.t("ui.combat_history.column.tps"), true],
     ] as const) {
       const cell = document.createElement("th");
       if (numericColumn) cell.className = "meter-number";
@@ -1835,7 +1836,11 @@ export function mountCombatHistorySurface(
       toggle.setAttribute("aria-expanded", String(!collapsed));
       toggle.setAttribute(
         "aria-label",
-        `${collapsed ? "Expand" : "Collapse"} incoming damage from ${sourceEntry.source ? actorLabel(sourceEntry.source) : sourceEntry.sourceActorId}`,
+        ui.t(collapsed
+          ? "ui.combat_history.breakdown.expand_incoming_aria"
+          : "ui.combat_history.breakdown.collapse_incoming_aria", {
+            source: sourceEntry.source ? actorLabel(sourceEntry.source) : sourceEntry.sourceActorId,
+          }),
       );
       toggle.addEventListener("click", () => {
         const next = new Set(collapsedRecountGroups);
@@ -1856,9 +1861,11 @@ export function mountCombatHistorySurface(
             "",
             sourceEntry.source
               ? actorLabel(sourceEntry.source)
-              : `Source actor ${sourceEntry.sourceActorId}`,
+              : ui.t("ui.combat_history.breakdown.source_actor", { actor: sourceEntry.sourceActorId }),
           ),
-          element("small", "", `Entity ${sourceEntry.sourceEntityUuid}`),
+          element("small", "", ui.t("ui.combat_history.identity.entity", {
+            entity: sourceEntry.sourceEntityUuid,
+          })),
         ),
       );
       parent.append(
@@ -1904,6 +1911,7 @@ export function mountCombatHistorySurface(
             child.ability.presentation_resolution,
             child.ability.icon_asset_path,
             "ability",
+            ui,
           );
         } else {
           abilityCell = document.createElement("td");
@@ -1912,8 +1920,8 @@ export function mountCombatHistorySurface(
             element(
               "span",
               "combat-history-combat-copy",
-              element("strong", "", "Unattributed packet damage"),
-              element("small", "", "Preserved difference between incoming and mapped ability totals"),
+              element("strong", "", ui.t("ui.combat_history.breakdown.unattributed_damage")),
+              element("small", "", ui.t("ui.combat_history.breakdown.unattributed_damage_description")),
             ),
           );
         }
@@ -1949,7 +1957,9 @@ export function mountCombatHistorySurface(
     if (presentation === "popover") {
       dialog.setAttribute("role", "dialog");
       dialog.setAttribute("aria-modal", "true");
-      dialog.setAttribute("aria-label", `${actorLabel(actor)} skill details`);
+      dialog.setAttribute("aria-label", ui.t("ui.combat_history.breakdown.skill_details_aria", {
+        actor: actorLabel(actor),
+      }));
       dialog.tabIndex = -1;
     }
     const dialogHeader = element(
@@ -1963,13 +1973,19 @@ export function mountCombatHistorySurface(
         element(
           "p",
           "card-copy",
-          `${actor.character_id ? `UID ${actor.character_id} · ` : ""}Entity ${actor.entity_uuid} · ${view.label}`,
+          ui.t(actor.character_id
+            ? "ui.combat_history.identity.player_context_uid"
+            : "ui.combat_history.identity.player_context", {
+              uid: actor.character_id ?? "",
+              entity: actor.entity_uuid,
+              view: view.label,
+            }),
         ),
       ),
     );
     if (presentation === "popover") {
-      const close = button("Close", "quiet-button combat-history-dialog-close");
-      close.setAttribute("aria-label", "Close player details");
+      const close = button(ui.t("ui.combat_history.breakdown.close"), "quiet-button combat-history-dialog-close");
+      close.setAttribute("aria-label", ui.t("ui.combat_history.breakdown.close_details_aria"));
       close.addEventListener("click", () => {
         detailActorId = null;
         render();
@@ -1978,22 +1994,22 @@ export function mountCombatHistorySurface(
     }
     const actorMetrics = displayedMetrics(actor, view, targetActorId);
     const overview = metricGrid([
-      [INTEGER.format(actorMetrics.damage), "Damage"],
-      [NUMBER.format(actorMetrics.dps), "eDPS"],
-      [NUMBER.format(actorMetrics.encounterDps), "aDPS"],
-      [rdpsDisplay(actor.rdps_damage, true, actor.rdps_incomplete), "rDMG"],
-      [rdpsDisplay(actor.rdps, false, actor.rdps_incomplete), "rDPS"],
+      [INTEGER.format(actorMetrics.damage), ui.t("ui.combat_history.column.damage")],
+      [NUMBER.format(actorMetrics.dps), ui.t("ui.combat_history.column.edps")],
+      [NUMBER.format(actorMetrics.encounterDps), ui.t("ui.combat_history.column.adps")],
+      [rdpsDisplay(actor.rdps_damage, true, actor.rdps_incomplete), ui.t("ui.combat_history.column.rdmg")],
+      [rdpsDisplay(actor.rdps, false, actor.rdps_incomplete), ui.t("ui.combat_history.column.rdps")],
       [
         rdpsDisplay(actor.rdps_contribution_given, true, actor.rdps_incomplete),
-        "rDMG granted",
+        ui.t("ui.combat_history.column.rdmg_granted"),
       ],
       [
         rdpsDisplay(actor.rdps_contribution_received, true, actor.rdps_incomplete),
-        "rDMG received",
+        ui.t("ui.combat_history.column.rdmg_received"),
       ],
-      [NUMBER.format(actorMetrics.hps), "HPS"],
-      [NUMBER.format(actorMetrics.tps), "TPS"],
-      [INTEGER.format(actor.deaths), "Deaths"],
+      [NUMBER.format(actorMetrics.hps), ui.t("ui.combat_history.column.hps")],
+      [NUMBER.format(actorMetrics.tps), ui.t("ui.combat_history.column.tps")],
+      [INTEGER.format(actor.deaths), ui.t("ui.combat_history.column.deaths")],
     ]);
     const partyView = settings.historyPartyViews.find(
       (candidate) => candidate.id === historyPartyViewId,
@@ -2009,9 +2025,7 @@ export function mountCombatHistorySurface(
         ? dialog
         : playerDetailBackdrop(dialog);
     }
-    const abilityColumns = detailMode === "healing"
-      ? HEALING_ABILITY_SORT_COLUMNS
-      : ABILITY_SORT_COLUMNS;
+    const abilityColumns = abilitySortColumns(ui, detailMode === "healing");
     if (!abilityColumns.some((column) => column.key === abilitySortKey)) {
       abilitySortKey = detailMode === "healing" ? "hps" : "damage";
       abilitySortDirection = "descending";
@@ -2041,7 +2055,7 @@ export function mountCombatHistorySurface(
     const heading = document.createElement("tr");
     const treeHeading = document.createElement("th");
     treeHeading.className = "combat-history-tree-column";
-    treeHeading.setAttribute("aria-label", "Recount tree");
+    treeHeading.setAttribute("aria-label", ui.t("ui.combat_history.breakdown.recount_tree_aria"));
     heading.append(treeHeading);
     for (const column of abilityColumns) {
       const cell = document.createElement("th");
@@ -2058,8 +2072,10 @@ export function mountCombatHistorySurface(
       );
       sort.type = "button";
       sort.title = active
-        ? `Sort ${column.label} ${abilitySortDirection === "descending" ? "lowest to highest" : "highest to lowest"}`
-        : `Sort by ${column.label}`;
+        ? ui.t(abilitySortDirection === "descending"
+          ? "ui.combat_history.sort.lowest_first"
+          : "ui.combat_history.sort.highest_first", { column: column.label })
+        : ui.t("ui.combat_history.sort.by_column", { column: column.label });
       sort.addEventListener("click", () => {
         if (abilitySortKey === column.key) {
           abilitySortDirection = abilitySortDirection === "descending" ? "ascending" : "descending";
@@ -2128,6 +2144,7 @@ export function mountCombatHistorySurface(
           ability.presentationResolution,
           ability.iconAssetPath,
           "ability",
+          ui,
         );
       const treeCell = document.createElement("td");
       treeCell.className = "combat-history-tree-cell";
@@ -2137,9 +2154,13 @@ export function mountCombatHistorySurface(
         toggle.setAttribute("aria-expanded", String(!collapsed));
         toggle.setAttribute(
           "aria-label",
-          `${collapsed ? "Expand" : "Collapse"} Recount ${ability.abilityId}`,
+          ui.t(collapsed
+            ? "ui.combat_history.breakdown.expand_recount_aria"
+            : "ui.combat_history.breakdown.collapse_recount_aria", { ability: ability.abilityId }),
         );
-        toggle.title = `${entry.childCount} child action${entry.childCount === 1 ? "" : "s"}`;
+        toggle.title = ui.t(entry.childCount === 1
+          ? "ui.combat_history.count.child_action_one"
+          : "ui.combat_history.count.child_actions", { count: ui.formatNumber(entry.childCount) });
         toggle.addEventListener("click", () => {
           const next = new Set(collapsedRecountGroups);
           if (next.has(groupKey)) next.delete(groupKey);
@@ -2192,7 +2213,7 @@ export function mountCombatHistorySurface(
     }
     if (run.apm_status !== "ready") {
       pendingFeatures.push(
-        "APM waits for reviewed active-skill, role-skill, and Imagine action classification; passive effects and hit packets will not be counted.",
+        ui.t("ui.combat_history.breakdown.apm_pending"),
       );
     }
     if (pendingFeatures.length > 0) {
@@ -2301,11 +2322,18 @@ export function mountCombatHistorySurface(
             effect.presentation_resolution,
             effect.icon_asset_path,
             "effect",
+            ui,
           ),
           element(
             "span",
             "",
-            `Applied ${effect.applied} · Refreshed ${effect.refreshed} · Stacked ${effect.stacked} · Consumed ${effect.consumed} · Removed ${effect.removed}`,
+            ui.t("ui.combat_history.breakdown.effect_lifecycle", {
+              applied: ui.formatNumber(effect.applied),
+              refreshed: ui.formatNumber(effect.refreshed),
+              stacked: ui.formatNumber(effect.stacked),
+              consumed: ui.formatNumber(effect.consumed),
+              removed: ui.formatNumber(effect.removed),
+            }),
           ),
         ),
       );
@@ -2379,9 +2407,16 @@ export function mountCombatHistorySurface(
       table.className = "meter-table combat-history-rdps-summary-table";
       const head = document.createElement("thead");
       const heading = document.createElement("tr");
-      for (const label of ["Support effect", "Component", "rDMG granted", "rDPS granted", "Events"]) {
+      const labels = [
+        ui.t("ui.combat_history.column.support_effect"),
+        ui.t("ui.combat_history.column.component"),
+        ui.t("ui.combat_history.column.rdmg_granted"),
+        ui.t("ui.combat_history.column.rdps_granted"),
+        ui.t("ui.combat_history.column.events"),
+      ];
+      for (const label of labels) {
         const cell = document.createElement("th");
-        if (["rDMG granted", "rDPS granted", "Events"].includes(label)) cell.className = "meter-number";
+        if (labels.indexOf(label) >= 2) cell.className = "meter-number";
         cell.textContent = label;
         heading.append(cell);
       }
@@ -2399,6 +2434,7 @@ export function mountCombatHistorySurface(
             effect?.presentation_resolution ?? null,
             effect?.icon_asset_path ?? null,
             "effect",
+            ui,
           ),
         );
         row.append(
@@ -2406,7 +2442,7 @@ export function mountCombatHistorySurface(
           textTableCell(
             granted.attributionComponent
               ? attributionComponentLabel(granted.attributionComponent)
-              : "Complete effect",
+              : ui.t("ui.combat_history.breakdown.complete_effect"),
           ),
           rdpsSummaryExactCell(granted.attributedRdps, granted.unresolvedRelationshipCount),
           relativeDamageRateCell(granted.attributedRdps, view.elapsed_micros),
@@ -2501,19 +2537,16 @@ export function mountCombatHistorySurface(
     table.className = "meter-table combat-history-influence-table";
     const head = document.createElement("thead");
     const heading = document.createElement("tr");
-    for (const label of [
-      "Effect",
-      "Component",
-      "Provider",
-      "Recipient",
-      "Affected damage ID",
-      "Target",
-      "Events",
-      "Observed damage",
-      "Attributed rDMG",
-    ]) {
+    const influenceLabels = [
+      ui.t("ui.combat_history.column.effect"), ui.t("ui.combat_history.column.component"),
+      ui.t("ui.combat_history.column.provider"), ui.t("ui.combat_history.column.recipient"),
+      ui.t("ui.combat_history.column.affected_damage_id"), ui.t("ui.combat_history.column.target"),
+      ui.t("ui.combat_history.column.events"), ui.t("ui.combat_history.column.observed_damage"),
+      ui.t("ui.combat_history.column.attributed_rdmg"),
+    ];
+    for (const [index, label] of influenceLabels.entries()) {
       const cell = document.createElement("th");
-      if (["Events", "Observed damage", "Attributed rDMG"].includes(label)) {
+      if (index >= 6) {
         cell.className = "meter-number";
       }
       cell.textContent = label;
@@ -2549,6 +2582,7 @@ export function mountCombatHistorySurface(
           effect?.presentation_resolution ?? null,
           effect?.icon_asset_path ?? null,
           "effect",
+          ui,
         ),
       );
       const abilityCell = document.createElement("td");
@@ -2561,10 +2595,11 @@ export function mountCombatHistorySurface(
             ability?.presentation_resolution ?? null,
             ability?.icon_asset_path ?? null,
             "ability",
+            ui,
           ),
         );
       } else {
-        abilityCell.textContent = "Context unresolved";
+        abilityCell.textContent = ui.t("ui.combat_history.breakdown.context_unresolved");
         abilityCell.dataset.contextComplete = "false";
       }
       row.dataset.contextComplete = String(influence.damage_context_complete);
@@ -2573,17 +2608,23 @@ export function mountCombatHistorySurface(
         textTableCell(
           influence.attribution_component
             ? attributionComponentLabel(influence.attribution_component)
-            : "Complete effect",
+            : ui.t("ui.combat_history.breakdown.complete_effect"),
         ),
-        textTableCell(provider ? actorLabel(provider) : `Actor ${influence.provider_actor_id}`),
-        textTableCell(recipient ? actorLabel(recipient) : `Actor ${influence.recipient_actor_id}`),
+        textTableCell(provider ? actorLabel(provider) : ui.t("ui.combat_history.identity.actor", {
+          actor: influence.provider_actor_id,
+        })),
+        textTableCell(recipient ? actorLabel(recipient) : ui.t("ui.combat_history.identity.actor", {
+          actor: influence.recipient_actor_id,
+        })),
         abilityCell,
         textTableCell(
           target
-            ? target.presentation_name?.trim() || target.display_name?.trim() || `Entity ${target.entity_uuid}`
+            ? target.presentation_name?.trim() || target.display_name?.trim() || ui.t("ui.combat_history.identity.entity", {
+                entity: target.entity_uuid,
+              })
             : influence.target_entity_uuid
-              ? `Entity ${influence.target_entity_uuid}`
-              : "Context unresolved",
+              ? ui.t("ui.combat_history.identity.entity", { entity: influence.target_entity_uuid })
+              : ui.t("ui.combat_history.breakdown.context_unresolved"),
         ),
         numeric(influence.damage_event_count, true),
         exactIntegerCell(influence.observed_damage),
@@ -2640,7 +2681,9 @@ export function mountCombatHistorySurface(
         }
       },
       (error) => {
-        if (alive) status.textContent = `Automatic history refresh is reconnecting: ${errorMessage(error)}`;
+        if (alive) status.textContent = ui.t("ui.combat_history.status.refresh_reconnecting", {
+          error: errorMessage(error),
+        });
       },
     );
   });
@@ -3178,15 +3221,19 @@ export function abilitySortMaximum(
 
 function playerLayerTimeMetadata(
   run: CombatRunHistory,
+  localizer: UiLocalizer,
 ): ReadonlyArray<readonly [string, string]> {
   const entireRun = run.views.find((candidate) => candidate.id === "all") ?? run.views[0];
   const trueTime = run.views.find((candidate) => candidate.id === "true_time");
   return [
-    ["Run", formatDuration(run.total_run_time_micros ?? totalRunTime(run))],
-    ["Game", formatDuration(run.game_time_micros)],
-    ["Active", formatDuration(entireRun?.active_combat_micros ?? null)],
-    ["True", formatDuration(run.true_time_micros ?? trueTime?.elapsed_micros ?? null)],
-    ["Retries", `${run.retry_count} / ${run.boss_retry_count} boss`],
+    [localizer.t("ui.combat_history.summary.run_short"), formatDuration(run.total_run_time_micros ?? totalRunTime(run))],
+    [localizer.t("ui.combat_history.summary.game_short"), formatDuration(run.game_time_micros)],
+    [localizer.t("ui.combat_history.summary.active_short"), formatDuration(entireRun?.active_combat_micros ?? null)],
+    [localizer.t("ui.combat_history.summary.true_short"), formatDuration(run.true_time_micros ?? trueTime?.elapsed_micros ?? null)],
+    [localizer.t("ui.combat_history.summary.retries"), localizer.t("ui.combat_history.summary.retry_short", {
+      total: localizer.formatNumber(run.retry_count),
+      boss: localizer.formatNumber(run.boss_retry_count),
+    })],
   ];
 }
 
@@ -3197,10 +3244,11 @@ function combatPresentationCell(
   resolution: string | null,
   iconPath: string | null,
   namespace: "ability" | "effect",
+  localizer: UiLocalizer,
 ): HTMLTableCellElement {
   const cell = document.createElement("td");
   cell.className = "meter-actor combat-history-combat-presentation-cell";
-  cell.append(combatPresentationIdentity(id, name, kind, resolution, iconPath, namespace));
+  cell.append(combatPresentationIdentity(id, name, kind, resolution, iconPath, namespace, localizer));
   return cell;
 }
 
@@ -3211,6 +3259,7 @@ function combatPresentationIdentity(
   resolution: string | null,
   iconPath: string | null,
   namespace: "ability" | "effect",
+  localizer: UiLocalizer,
 ): HTMLElement {
   const identity = element("span", "combat-history-combat-presentation");
   const icon = element("span", "combat-history-combat-icon", iconPath ? "" : "?");
@@ -3223,7 +3272,9 @@ function combatPresentationIdentity(
     icon.append(image);
   }
   const kindLabel = kind ? humanizePresentationKind(kind) : null;
-  const unresolvedLabel = namespace === "ability" ? "Unresolved action" : "Unresolved effect";
+  const unresolvedLabel = localizer.t(namespace === "ability"
+    ? "ui.combat_history.breakdown.unresolved_action"
+    : "ui.combat_history.breakdown.unresolved_effect");
   const copy = element(
     "span",
     "combat-history-combat-copy",
@@ -3231,7 +3282,12 @@ function combatPresentationIdentity(
     element(
       "span",
       "combat-history-combat-metadata",
-      `${namespace === "ability" ? "ID" : "Effect"} ${id}${kindLabel ? ` · ${kindLabel}` : ""}`,
+      localizer.t(namespace === "ability"
+        ? "ui.combat_history.breakdown.action_identity"
+        : "ui.combat_history.breakdown.effect_identity", {
+          id,
+          kind: kindLabel ? ` · ${kindLabel}` : "",
+        }),
     ),
   );
   identity.dataset.resolution = resolution ?? "unresolved";
