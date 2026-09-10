@@ -4,10 +4,12 @@ import test from "node:test";
 
 import {
   BACKFILL_SOURCE_SCHEMA_VERSION, BACKFILL_TARGET_PROJECTION_REVISION,
-  BACKFILL_TARGET_SCHEMA_VERSION,
+  BACKFILL_TARGET_SCHEMA_VERSION, BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION,
   CURRENT_REPORT_PROJECTION_REVISION, CURRENT_REPORT_SCHEMA_VERSION,
   CURRENT_TIMELINE_SCHEMA_VERSION,
   RECONCILIATION_SCHEMA_VERSION,
+  UPCOMING_RECONCILIATION_SCHEMA_VERSION, UPCOMING_REPORT_PROJECTION_REVISION,
+  UPCOMING_REPORT_SCHEMA_VERSION, UPCOMING_TIMELINE_SCHEMA_VERSION,
   catalogEntry, compatibleProfileName, expectedReportId, reconcileCatalogEntry,
   isSchema12BackfillCandidate,
   sameChunkCommitments, runOneShotVerifier, validateOutput, validateReconciliationOutput,
@@ -46,7 +48,7 @@ test("container output must preserve report and artifact identities", () => {
   assert.equal(validateOutput(output, wakeup), false);
 });
 
-test("container output must use the exact current report and timeline tuple", () => {
+test("container output accepts only the exact current and upcoming report tuples", () => {
   const output = {
     schema_version: 1,
     report: {
@@ -58,6 +60,17 @@ test("container output must use the exact current report and timeline tuple", ()
     },
     membership: { report_id: wakeup.expected_report_id, artifact_sha256: digest, runs: [] },
   };
+  const upcoming = {
+    ...output,
+    report: {
+      ...output.report,
+      schema_version: UPCOMING_REPORT_SCHEMA_VERSION,
+      projection_revision: UPCOMING_REPORT_PROJECTION_REVISION,
+      runs: [{ timeline: { schema_version: UPCOMING_TIMELINE_SCHEMA_VERSION } }],
+    },
+  };
+  assert.equal(validateOutput(output, wakeup), true);
+  assert.equal(validateOutput(upcoming, wakeup), true);
   assert.equal(validateOutput({ ...output, report: { ...output.report, schema_version: 14 } }, wakeup), false);
   assert.equal(validateOutput({ ...output, report: { ...output.report, projection_revision: 6 } }, wakeup), false);
   assert.equal(validateOutput({ ...output, report: {
@@ -65,6 +78,18 @@ test("container output must use the exact current report and timeline tuple", ()
   } }, wakeup), false);
   assert.equal(validateOutput({ ...output, report: {
     ...output.report, runs: [{ timeline: { schema_version: 4 } }],
+  } }, wakeup), false);
+  assert.equal(validateOutput({ ...output, report: {
+    ...output.report, runs: [{ timeline: undefined }],
+  } }, wakeup), false);
+  assert.equal(validateOutput({ ...upcoming, report: {
+    ...upcoming.report, runs: [{ timeline: { schema_version: CURRENT_TIMELINE_SCHEMA_VERSION } }],
+  } }, wakeup), false);
+  assert.equal(validateOutput({ ...upcoming, report: {
+    ...upcoming.report, runs: [
+      { timeline: { schema_version: UPCOMING_TIMELINE_SCHEMA_VERSION } },
+      { timeline: { schema_version: CURRENT_TIMELINE_SCHEMA_VERSION } },
+    ],
   } }, wakeup), false);
 });
 
@@ -105,7 +130,8 @@ test("backfill output can add schema fields but cannot change identity, owner, v
       projection_revision: BACKFILL_TARGET_PROJECTION_REVISION,
       verification: { ...original.verification }, runs: [{
         run_index: 0, run_group_id: "run_fixture",
-        timeline: { schema_version: CURRENT_TIMELINE_SCHEMA_VERSION },
+        // Backfill replay still emits the deployed tuple until its producer bumps.
+        timeline: { schema_version: BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION },
       }],
     },
     membership: {
@@ -126,6 +152,11 @@ test("backfill output can add schema fields but cannot change identity, owner, v
   assert.equal(validateBackfillOutput(output, wakeup, original, row, "short"), false);
   assert.equal(validateBackfillOutput({ ...output, report: {
     ...output.report, runs: [{ ...output.report.runs[0], timeline: { schema_version: 2 } }],
+  } }, wakeup, original, row, "new-release"), false);
+  assert.equal(validateBackfillOutput({ ...output, report: {
+    ...output.report,
+    projection_revision: UPCOMING_REPORT_PROJECTION_REVISION,
+    runs: [{ ...output.report.runs[0], timeline: { schema_version: UPCOMING_TIMELINE_SCHEMA_VERSION } }],
   } }, wakeup, original, row, "new-release"), false);
 });
 
@@ -213,11 +244,22 @@ test("reconciliation output must preserve the exact source set and canonical spi
     timeline: { schema_version: CURRENT_TIMELINE_SCHEMA_VERSION },
   };
   assert.equal(validateReconciliationOutput(output, "run_exact", sources), true);
+  assert.equal(validateReconciliationOutput({
+    ...output,
+    schema_version: UPCOMING_RECONCILIATION_SCHEMA_VERSION,
+    timeline: { schema_version: UPCOMING_TIMELINE_SCHEMA_VERSION },
+  }, "run_exact", sources), true);
   assert.equal(validateReconciliationOutput({ ...output, rdps_status: "partial_packet_proven_rules" }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, schema_version: 16 }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, timeline: { schema_version: 2 } }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, timeline: { schema_version: 4 } }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, timeline: undefined }, "run_exact", sources), false);
+  assert.equal(validateReconciliationOutput({
+    ...output, schema_version: UPCOMING_RECONCILIATION_SCHEMA_VERSION,
+  }, "run_exact", sources), false);
+  assert.equal(validateReconciliationOutput({
+    ...output, timeline: { schema_version: UPCOMING_TIMELINE_SCHEMA_VERSION },
+  }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, reports: [sources[0]] }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, canonical_spine: {
     report_id: `rpt_${"d".repeat(32)}`, run_index: 0, artifact_sha256: "d".repeat(64),
@@ -275,6 +317,11 @@ test("completed reconciliation requires replay-authored status, conservation, an
     },
   };
   assert.equal(validateReconciliationOutput(output, "run_exact", sources), true);
+  assert.equal(validateReconciliationOutput({
+    ...output,
+    schema_version: UPCOMING_RECONCILIATION_SCHEMA_VERSION,
+    timeline: { ...output.timeline, schema_version: UPCOMING_TIMELINE_SCHEMA_VERSION },
+  }, "run_exact", sources), true);
 
   for (const rdpsStatus of [undefined, "", " "]) {
     assert.equal(validateReconciliationOutput({ ...output, rdps_status: rdpsStatus }, "run_exact", sources), false);

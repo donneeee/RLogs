@@ -6,8 +6,29 @@ export const BACKFILL_SOURCE_SCHEMA_VERSION = 12;
 export const CURRENT_REPORT_SCHEMA_VERSION = 15;
 export const CURRENT_REPORT_PROJECTION_REVISION = 7;
 export const CURRENT_TIMELINE_SCHEMA_VERSION = 3;
+export const UPCOMING_REPORT_SCHEMA_VERSION = 15;
+export const UPCOMING_REPORT_PROJECTION_REVISION = 8;
+export const UPCOMING_TIMELINE_SCHEMA_VERSION = 4;
+// Backfill remains pinned to the deployed producer tuple. Advance all three
+// constants together only when the backfill container starts emitting v4.
 export const BACKFILL_TARGET_SCHEMA_VERSION = CURRENT_REPORT_SCHEMA_VERSION;
 export const BACKFILL_TARGET_PROJECTION_REVISION = CURRENT_REPORT_PROJECTION_REVISION;
+export const BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION = CURRENT_TIMELINE_SCHEMA_VERSION;
+
+function validReportTuple(report) {
+  const timelineSchemaVersion = report?.runs?.[0]?.timeline?.schema_version;
+  const validTuple = (
+    report?.schema_version === CURRENT_REPORT_SCHEMA_VERSION &&
+    report?.projection_revision === CURRENT_REPORT_PROJECTION_REVISION &&
+    timelineSchemaVersion === CURRENT_TIMELINE_SCHEMA_VERSION
+  ) || (
+    report?.schema_version === UPCOMING_REPORT_SCHEMA_VERSION &&
+    report?.projection_revision === UPCOMING_REPORT_PROJECTION_REVISION &&
+    timelineSchemaVersion === UPCOMING_TIMELINE_SCHEMA_VERSION
+  );
+  return validTuple && report.runs.every((run) =>
+    run?.timeline?.schema_version === timelineSchemaVersion);
+}
 
 export function expectedReportId(digest) {
   return `rpt_${digest.slice(0, 32)}`;
@@ -47,10 +68,7 @@ export function validateOutput(value, wakeup) {
     value.report?.verification?.artifact_sha256 === wakeup.artifact_sha256 &&
     value.membership?.report_id === wakeup.expected_report_id &&
     value.membership?.artifact_sha256 === wakeup.artifact_sha256 && Array.isArray(value.report?.runs) &&
-    value.report.runs.length > 0 &&
-    value.report.schema_version === CURRENT_REPORT_SCHEMA_VERSION &&
-    value.report.projection_revision === CURRENT_REPORT_PROJECTION_REVISION &&
-    value.report.runs.every((run) => run?.timeline?.schema_version === CURRENT_TIMELINE_SCHEMA_VERSION) &&
+    value.report.runs.length > 0 && validReportTuple(value.report) &&
     Array.isArray(value.membership?.runs);
 }
 
@@ -68,6 +86,8 @@ export function validateBackfillOutput(value, wakeup, original, row, targetRelea
   if (!validateOutput(value, wakeup) ||
       value.report.schema_version !== BACKFILL_TARGET_SCHEMA_VERSION ||
       value.report.projection_revision !== BACKFILL_TARGET_PROJECTION_REVISION ||
+      value.report.runs.some((run) =>
+        run?.timeline?.schema_version !== BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION) ||
       value.report.visibility !== "public" ||
       value.report.verification?.tier !== "replayed" ||
       value.report.verification?.artifact_sha256 !== row.artifact_sha256 ||
@@ -127,6 +147,7 @@ export function reconciliationSourceIdentity(source) {
 }
 
 export const RECONCILIATION_SCHEMA_VERSION = 18;
+export const UPCOMING_RECONCILIATION_SCHEMA_VERSION = 19;
 const MAXIMUM_TIMELINE_RATE_CLOCK_POINTS = 262_144;
 
 function validConservedReplay(value) {
@@ -167,10 +188,16 @@ function validReplayRateClock(timeline) {
 }
 
 export function validateReconciliationOutput(value, runGroupId, sources) {
-  if (value?.schema_version !== RECONCILIATION_SCHEMA_VERSION || value?.run_group_id !== runGroupId ||
+  const validTuple = (
+    value?.schema_version === RECONCILIATION_SCHEMA_VERSION &&
+    value?.timeline?.schema_version === CURRENT_TIMELINE_SCHEMA_VERSION
+  ) || (
+    value?.schema_version === UPCOMING_RECONCILIATION_SCHEMA_VERSION &&
+    value?.timeline?.schema_version === UPCOMING_TIMELINE_SCHEMA_VERSION
+  );
+  if (!validTuple || value?.run_group_id !== runGroupId ||
       !RECONCILIATION_ID.test(value?.reconciliation_id ?? "") ||
-      !Array.isArray(value?.reports) || !value?.canonical_spine ||
-      value?.timeline?.schema_version !== CURRENT_TIMELINE_SCHEMA_VERSION) return false;
+      !Array.isArray(value?.reports) || !value?.canonical_spine) return false;
   if (value.reports.some((report) =>
     typeof report?.deployment_id !== "string" || report.deployment_id.length === 0 ||
     typeof report?.client_build !== "string" || report.client_build.length === 0 ||
