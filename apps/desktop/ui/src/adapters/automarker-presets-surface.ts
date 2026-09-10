@@ -1,15 +1,17 @@
 import type { MountedSurface } from "../shell/types";
 import type {
   AutomarkerLoadResult,
+  AutomarkerPoint,
   AutomarkerPresetView,
   SaveAutomarkerPresetRequest,
 } from "./automarker-presets";
-import { automarkerSaveRequest, newlyCreatedPresetId } from "./automarker-presets";
+import { AUTOMARKER_PREVIEW_STORAGE_KEY, automarkerSaveRequest, newlyCreatedPresetId, publishAutomarkerPreview } from "./automarker-presets";
 
 export interface AutomarkerPresetDependencies {
   loadPresets(): Promise<AutomarkerPresetView>;
   saveCurrent(request: SaveAutomarkerPresetRequest): Promise<AutomarkerPresetView>;
   loadPreset(presetId: string): Promise<AutomarkerLoadResult>;
+  openOverlay(): Promise<void>;
 }
 
 export function mountAutomarkerPresetsSurface(
@@ -20,15 +22,19 @@ export function mountAutomarkerPresetsSurface(
   let view: AutomarkerPresetView | null = null;
   let selectedId: string | null = null;
   let busy = false;
+  let editorDirty = false;
   let contextRefresh: number | null = null;
 
   const root = el("div", "plugin-surface overlay-workspace-surface automarker-presets-surface");
+  // Re-entering the editor starts a fresh deliberate preview gesture. Old
+  // preview state must never silently reappear from a previous visit.
+  window.localStorage.removeItem(AUTOMARKER_PREVIEW_STORAGE_KEY);
   const intro = el("section", "content-card overlay-workspace-intro");
   const heading = el("div", "overlay-workspace-heading");
   heading.append(
     text("span", "AUTOMARKERS", "eyebrow"),
     text("h2", "Marker presets"),
-    text("p", "Save numbered ground markers exactly where they are now, then choose a saved setup for the current scene.", "card-copy"),
+    text("p", "Enter 1–6 numbered XYZ points, save them locally, and preview them on the Mechanics Map without sending anything to the game.", "card-copy"),
   );
   const sceneBadge = text("span", "NO SCENE", "overlay-menu-preview-badge");
   intro.append(heading, sceneBadge);
@@ -43,28 +49,48 @@ export function mountAutomarkerPresetsSurface(
   const presetLabel = text("label", "Load → saved setup", "automarker-field");
   const select = document.createElement("select");
   presetLabel.append(select);
+  const editor = el("section", "automarker-point-editor");
+  const editorHeading = el("div", "automarker-point-editor-heading");
+  editorHeading.append(text("strong", "Manual marker points"), text("span", "Local coordinates only"));
+  const pointRows = el("div", "automarker-point-rows");
+  const addPoint = button("Add point", "quiet-button");
+  editor.append(editorHeading, pointRows, addPoint);
   const controls = el("div", "automarker-controls");
   const save = button("Save", "primary-button");
   const saveAs = button("Save As…", "quiet-button");
+  const preview = button("Preview on map", "quiet-button");
   const load = button("Load", "primary-button");
   const refresh = button("Refresh scene", "quiet-button");
-  controls.append(save, saveAs, load, refresh);
+  controls.append(save, saveAs, preview, load, refresh);
   const status = text("p", "Connecting to the local marker store…", "card-copy automarker-status");
   const detail = el("div", "automarker-preset-detail");
-  card.append(nameLabel, presetLabel, controls, status, detail);
+  card.append(nameLabel, presetLabel, editor, controls, status, detail);
   root.append(intro, card);
   container.replaceChildren(root);
 
   select.addEventListener("change", () => {
     selectedId = select.value || null;
     const preset = selectedPreset();
-    if (preset !== undefined) name.value = preset.name;
+    if (preset !== undefined) {
+      name.value = preset.name;
+      setEditorPoints(preset.points);
+    }
+    render();
+  });
+  addPoint.addEventListener("click", () => {
+    if (pointRows.children.length >= 6) return;
+    const used = new Set(readEditorPoints(false).map((point) => point.markerNumber));
+    const markerNumber = [1, 2, 3, 4, 5, 6].find((candidate) => !used.has(candidate)) ?? 1;
+    appendPointRow({ markerNumber, x: 0, y: 0, z: 0 });
+    editorDirty = true;
     render();
   });
   save.addEventListener("click", () => void persist(false));
   saveAs.addEventListener("click", () => void persist(true));
+  preview.addEventListener("click", () => void previewOnMap());
   load.addEventListener("click", () => void requestLoad());
   refresh.addEventListener("click", () => void refreshView());
+  setEditorPoints([{ markerNumber: 1, x: 0, y: 0, z: 0 }]);
   void refreshView();
   contextRefresh = window.setInterval(() => { void refreshContext(); }, 2_000);
 
@@ -76,6 +102,7 @@ export function mountAutomarkerPresetsSurface(
       view = next;
       selectedId = view.presets[0]?.presetId ?? null;
       name.value = view.presets[0]?.name ?? "";
+      setEditorPoints(view.presets[0]?.points ?? [{ markerNumber: 1, x: 0, y: 0, z: 0 }]);
       status.textContent = view.context === null
         ? "Enter a scene and wait for its build/map identity before saving or selecting presets."
         : view.presets.length === 0
@@ -96,6 +123,7 @@ export function mountAutomarkerPresetsSurface(
       if (!view.presets.some((preset) => preset.presetId === selectedId)) selectedId = view.presets[0]?.presetId ?? null;
       const preset = selectedPreset();
       if (preset !== undefined && name.value.trim() === "") name.value = preset.name;
+      if (!editorDirty && preset !== undefined) setEditorPoints(preset.points);
       status.textContent = view.context === null
         ? "Enter a scene and wait for its build/map identity before saving or selecting presets."
         : view.presets.length === 0
@@ -113,7 +141,13 @@ export function mountAutomarkerPresetsSurface(
     if (view?.context === null || view === null) return;
     let request: SaveAutomarkerPresetRequest;
     try {
-      request = automarkerSaveRequest(saveAsNew ? "save-as" : "save", selectedId, name.value);
+      request = automarkerSaveRequest(
+        saveAsNew ? "save-as" : "save",
+        selectedId,
+        name.value,
+        readEditorPoints(),
+        view.context,
+      );
     } catch (error) {
       status.textContent = message(error);
       return;
@@ -125,12 +159,31 @@ export function mountAutomarkerPresetsSurface(
       view = await dependencies.saveCurrent(request);
       if (!alive) return;
       if (saveAsNew) selectedId = newlyCreatedPresetId(priorIds, view) ?? view.presets[0]?.presetId ?? null;
+      editorDirty = false;
       status.textContent = saveAsNew ? "Saved a new marker setup on this computer." : "Updated the selected marker setup on this computer.";
     } catch (error) {
       status.textContent = message(error);
     } finally {
       busy = false;
       if (alive) render();
+    }
+  }
+
+  async function previewOnMap(): Promise<void> {
+    if (view?.context === null || view === null) return;
+    try {
+      const points = readEditorPoints();
+      publishAutomarkerPreview(
+        window.localStorage,
+        view.context,
+        name.value,
+        points,
+        view.previewSessionId,
+      );
+      status.textContent = `Previewing ${points.length} local marker${points.length === 1 ? "" : "s"} on the Mechanics Map. Nothing was sent to the game.`;
+      await dependencies.openOverlay();
+    } catch (error) {
+      status.textContent = message(error);
     }
   }
 
@@ -167,10 +220,12 @@ export function mountAutomarkerPresetsSurface(
     }
     const preset = selectedPreset();
     select.disabled = busy || context === null || view?.presets.length === 0;
-    save.disabled = busy || context === null || preset === undefined || view?.captureSupported !== true;
-    saveAs.disabled = busy || context === null || view?.captureSupported !== true;
-    save.title = view?.captureSupported === true ? "Overwrite the selected setup with current markers" : "Unavailable until native marker observation is protocol-verified";
-    saveAs.title = view?.captureSupported === true ? "Save current markers as a new setup" : "Unavailable until native marker observation is protocol-verified";
+    save.disabled = busy || context === null || preset === undefined;
+    saveAs.disabled = busy || context === null;
+    preview.disabled = busy || context === null;
+    save.title = "Overwrite the selected setup with these explicitly entered local points";
+    saveAs.title = "Save these explicitly entered local points as a new setup";
+    preview.title = "Draw these points on the local Mechanics Map only";
     refresh.disabled = busy;
     load.disabled = busy || preset === undefined || view?.nativeLoadSupported !== true;
     load.title = view?.nativeLoadSupported === true
@@ -191,8 +246,54 @@ export function mountAutomarkerPresetsSurface(
       detail.append(text("p", "Load is visible but disabled: rLogs will not emit a guessed game packet.", "card-copy automarker-safety-note"));
     }
     if (view !== null && !view.captureSupported) {
-      detail.append(text("p", "Save and Save As are visible but disabled: the current capture does not yet prove native waymark state.", "card-copy automarker-safety-note"));
+      detail.append(text("p", "Capture current in-game markers is unavailable (native_waymark_state_unverified). Save uses only the XYZ points entered above.", "card-copy automarker-safety-note"));
     }
+  }
+
+  function setEditorPoints(points: readonly AutomarkerPoint[]): void {
+    pointRows.replaceChildren();
+    for (const point of points) appendPointRow(point);
+    editorDirty = false;
+  }
+
+  function appendPointRow(point: AutomarkerPoint): void {
+    const row = el("div", "automarker-point-row");
+    const number = coordinateInput("#", point.markerNumber, 1, 6, 1);
+    const x = coordinateInput("X", point.x);
+    const y = coordinateInput("Y", point.y);
+    const z = coordinateInput("Z", point.z);
+    number.input.dataset.coordinate = "markerNumber";
+    x.input.dataset.coordinate = "x";
+    y.input.dataset.coordinate = "y";
+    z.input.dataset.coordinate = "z";
+    const remove = button("Remove", "quiet-button");
+    remove.addEventListener("click", () => {
+      if (pointRows.children.length <= 1) return;
+      row.remove();
+      editorDirty = true;
+      render();
+    });
+    for (const field of [number.input, x.input, y.input, z.input]) {
+      field.addEventListener("input", () => { editorDirty = true; });
+    }
+    row.append(number.label, x.label, y.label, z.label, remove);
+    pointRows.append(row);
+  }
+
+  function readEditorPoints(strict = true): AutomarkerPoint[] {
+    const points = [...pointRows.querySelectorAll<HTMLElement>(".automarker-point-row")].map((row) => {
+      const values = ["markerNumber", "x", "y", "z"].map((coordinate) =>
+        row.querySelector<HTMLInputElement>(`[data-coordinate="${coordinate}"]`)?.value ?? "",
+      );
+      if (strict && values.some((value) => value.trim() === "")) {
+        throw new Error("Every marker needs a number plus X, Y, and Z coordinates.");
+      }
+      return { markerNumber: Number(values[0]), x: Number(values[1]), y: Number(values[2]), z: Number(values[3]) };
+    });
+    if (strict && points.some((point) => !Number.isFinite(point.markerNumber + point.x + point.y + point.z))) {
+      throw new Error("Every marker needs finite X, Y, and Z coordinates.");
+    }
+    return points;
   }
 
   function selectedPreset() {
@@ -202,15 +303,26 @@ export function mountAutomarkerPresetsSurface(
   return { dispose() { alive = false; if (contextRefresh !== null) window.clearInterval(contextRefresh); } };
 }
 
-export function automarkerPresetContextKey(view: Pick<AutomarkerPresetView, "context"> | null): string {
+export function automarkerPresetContextKey(view: Pick<AutomarkerPresetView, "context" | "previewSessionId"> | null): string {
   const context = view?.context;
   return context === null || context === undefined
     ? "none"
-    : `${context.activityFamilyId}:${context.clientBuild}:${context.sceneId}:${context.mapId}`;
+    : `${view?.previewSessionId ?? ""}:${context.activityFamilyId}:${context.clientBuild}:${context.sceneId}:${context.mapId}`;
 }
 
 function format(value: number): string { return value.toFixed(3).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1"); }
 function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 function button(label: string, className: string): HTMLButtonElement { const node = text("button", label, className); node.type = "button"; return node; }
+function coordinateInput(labelText: string, value: number, min?: number, max?: number, step: string | number = "any") {
+  const label = text("label", labelText);
+  const input = document.createElement("input");
+  input.type = "number";
+  input.value = String(value);
+  input.step = String(step);
+  if (min !== undefined) input.min = String(min);
+  if (max !== undefined) input.max = String(max);
+  label.append(input);
+  return { label, input };
+}
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] { const node = document.createElement(tag); if (className) node.className = className; return node; }
 function text<K extends keyof HTMLElementTagNameMap>(tag: K, value: string, className?: string): HTMLElementTagNameMap[K] { const node = el(tag, className); node.textContent = value; return node; }

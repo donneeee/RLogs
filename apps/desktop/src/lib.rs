@@ -884,6 +884,7 @@ const DEFAULT_LIVE_COMBAT_WAIT_MILLIS: u64 = 1_000;
 const MAXIMUM_LIVE_COMBAT_WAIT_MILLIS: u64 = 5_000;
 const DEFAULT_LIVE_CHARACTER_STATS_WAIT_MILLIS: u64 = 5_000;
 const MAXIMUM_LIVE_CHARACTER_STATS_WAIT_MILLIS: u64 = 30_000;
+static NEXT_AUTOMARKER_PREVIEW_SESSION: AtomicU64 = AtomicU64::new(1);
 const COMBAT_HISTORY_FEED_SCHEMA_VERSION: u16 = 2;
 const DEFAULT_COMBAT_HISTORY_WAIT_MILLIS: u64 = 5_000;
 const MAXIMUM_COMBAT_HISTORY_WAIT_MILLIS: u64 = 30_000;
@@ -5538,6 +5539,7 @@ struct RuntimeController {
     combat_overlay_settings: Arc<Mutex<CombatOverlaySettingsStore>>,
     automarker_presets: Mutex<AutomarkerPresetStore>,
     automarker_scene_families: BTreeMap<i32, String>,
+    automarker_preview_session_id: String,
     artifact_verification: Mutex<()>,
     profile_projection: Mutex<()>,
     live_combat_feed: Arc<LiveCombatFeed>,
@@ -5810,6 +5812,12 @@ impl RuntimeController {
             combat_overlay_settings: Arc::new(Mutex::new(combat_overlay_settings)),
             automarker_presets: Mutex::new(automarker_presets),
             automarker_scene_families,
+            automarker_preview_session_id: format!(
+                "preview-{}-{}-{}",
+                std::process::id(),
+                unix_millis(),
+                NEXT_AUTOMARKER_PREVIEW_SESSION.fetch_add(1, Ordering::Relaxed)
+            ),
             artifact_verification: Mutex::new(()),
             profile_projection: Mutex::new(()),
             live_combat_feed: Arc::new(LiveCombatFeed::default()),
@@ -6725,17 +6733,36 @@ impl RuntimeController {
             .automarker_presets
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        match automarker_scene_context(&snapshot, &self.automarker_scene_families) {
+        let mut view = match automarker_scene_context(&snapshot, &self.automarker_scene_families) {
             Some(context) => store.compatible(context),
             None => store.unavailable(),
-        }
+        };
+        view.preview_session_id = self.automarker_preview_session_id.clone();
+        view
     }
 
     fn save_automarker_preset(
         &self,
-        _request: SaveAutomarkerPresetRequest,
+        request: SaveAutomarkerPresetRequest,
     ) -> Result<AutomarkerPresetView, String> {
-        Err("saving current in-game markers is locked until native waymark state is protocol-verified".into())
+        let snapshot = self.live_mechanics_map_feed.current().snapshot;
+        let context = automarker_scene_context(&snapshot, &self.automarker_scene_families).ok_or_else(|| {
+            "a reviewed dungeon family plus packet-observed build, scene, and map are required before saving manual markers".to_owned()
+        })?;
+        if request.expected_context.client_build != context.client_build
+            || request.expected_context.scene_id != context.scene_id
+            || request.expected_context.map_id != context.map_id
+            || request.expected_context.activity_family_id != context.activity_family_id
+        {
+            return Err("the live automarker context changed after the editor loaded; refresh the scene before saving".into());
+        }
+        let mut view = self
+            .automarker_presets
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .save(request, context, unix_millis())?;
+        view.preview_session_id = self.automarker_preview_session_id.clone();
+        Ok(view)
     }
 
     fn prepare_automarker_load(

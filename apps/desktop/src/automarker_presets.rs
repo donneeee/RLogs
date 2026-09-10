@@ -58,7 +58,7 @@ struct LegacyAutomarkerPresetV1 {
     points: Vec<AutomarkerPoint>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AutomarkerSceneContext {
     pub client_build: String,
@@ -78,13 +78,16 @@ pub struct AutomarkerPresetView {
     pub capture_reason: &'static str,
     pub native_load_supported: bool,
     pub native_load_reason: &'static str,
+    pub preview_session_id: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SaveAutomarkerPresetRequest {
     pub preset_id: Option<String>,
     pub name: String,
+    pub points: Vec<AutomarkerPoint>,
+    pub expected_context: AutomarkerSceneContext,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -136,16 +139,22 @@ impl AutomarkerPresetStore {
         view(None, Vec::new())
     }
 
-    #[allow(dead_code)]
     pub fn save(
         &mut self,
         request: SaveAutomarkerPresetRequest,
         context: AutomarkerSceneContext,
-        points: Vec<AutomarkerPoint>,
         now_unix_millis: u64,
     ) -> Result<AutomarkerPresetView, String> {
+        if request.expected_context.client_build != context.client_build
+            || request.expected_context.scene_id != context.scene_id
+            || request.expected_context.map_id != context.map_id
+            || request.expected_context.activity_family_id != context.activity_family_id
+        {
+            return Err("the live automarker context changed after the editor loaded; refresh the scene before saving".into());
+        }
         validate_name(&request.name)?;
-        validate_points(&points)?;
+        validate_points(&request.points)?;
+        let points = request.points;
         let preset_id = match request.preset_id {
             Some(preset_id) => {
                 validate_id(&preset_id)?;
@@ -242,6 +251,7 @@ fn view(
         capture_reason: "native_waymark_state_unverified",
         native_load_supported: false,
         native_load_reason: "native_waymark_request_unverified",
+        preview_session_id: String::new(),
     }
 }
 
@@ -418,9 +428,15 @@ fn write(path: &Path, presets: &[AutomarkerPreset]) -> Result<(), String> {
         let _ = std::fs::remove_file(&temporary);
         return Err(format!("could not replace automarker preset file: {error}"));
     }
+    // The live rename above is the commit point. Backup cleanup is recovery
+    // hygiene only; reporting it as a save failure after commit would leave
+    // the caller's memory and the successfully replaced file divergent.
+    finish_committed_write(&backup)
+}
+
+fn finish_committed_write(backup: &Path) -> Result<(), String> {
     if backup.exists() {
-        std::fs::remove_file(&backup)
-            .map_err(|error| format!("could not remove automarker preset backup: {error}"))?;
+        let _ = std::fs::remove_file(backup);
     }
     Ok(())
 }
@@ -507,9 +523,10 @@ mod tests {
                 SaveAutomarkerPresetRequest {
                     preset_id: None,
                     name: "Opener".into(),
+                    points: points(1.0),
+                    expected_context: mech(),
                 },
                 mech(),
-                points(1.0),
                 10,
             )
             .unwrap();
@@ -519,9 +536,10 @@ mod tests {
                 SaveAutomarkerPresetRequest {
                     preset_id: None,
                     name: "Alternate".into(),
+                    points: points(4.0),
+                    expected_context: mech(),
                 },
                 mech(),
-                points(4.0),
                 10,
             )
             .unwrap();
@@ -538,9 +556,10 @@ mod tests {
                 SaveAutomarkerPresetRequest {
                     preset_id: Some(first_id.clone()),
                     name: "Adjusted".into(),
+                    points: points(7.0),
+                    expected_context: mech(),
                 },
                 mech(),
-                points(7.0),
                 12,
             )
             .unwrap();
@@ -580,9 +599,10 @@ mod tests {
                 SaveAutomarkerPresetRequest {
                     preset_id: None,
                     name: "M1".into(),
+                    points: points(1.0),
+                    expected_context: tina(1_633),
                 },
                 tina(1_633),
-                points(1.0),
                 10,
             )
             .unwrap();
@@ -616,9 +636,10 @@ mod tests {
                 SaveAutomarkerPresetRequest {
                     preset_id: None,
                     name: "M1".into(),
+                    points: points(1.0),
+                    expected_context: mech(),
                 },
                 mech(),
-                points(1.0),
                 10,
             )
             .unwrap();
@@ -651,9 +672,10 @@ mod tests {
                 SaveAutomarkerPresetRequest {
                     preset_id: None,
                     name: "Safe".into(),
+                    points: points(1.0),
+                    expected_context: mech(),
                 },
                 mech(),
-                points(1.0),
                 10,
             )
             .unwrap();
@@ -676,14 +698,15 @@ mod tests {
                 SaveAutomarkerPresetRequest {
                     preset_id: None,
                     name: "Exact".into(),
+                    points: vec![AutomarkerPoint {
+                        marker_number: 6,
+                        x: -1.25,
+                        y: 9.5,
+                        z: 44.125,
+                    }],
+                    expected_context: mech(),
                 },
                 mech(),
-                vec![AutomarkerPoint {
-                    marker_number: 6,
-                    x: -1.25,
-                    y: 9.5,
-                    z: 44.125,
-                }],
                 10,
             )
             .unwrap();
@@ -701,6 +724,87 @@ mod tests {
             }
         );
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn rejects_duplicate_numbers_and_unbounded_manual_coordinates_before_persisting() {
+        let path = temporary_path("manual-validation");
+        let mut store = open(&path);
+        let duplicate = store.save(
+            SaveAutomarkerPresetRequest {
+                preset_id: None,
+                name: "Duplicate".into(),
+                points: vec![
+                    AutomarkerPoint {
+                        marker_number: 1,
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    AutomarkerPoint {
+                        marker_number: 1,
+                        x: 1.0,
+                        y: 1.0,
+                        z: 1.0,
+                    },
+                ],
+                expected_context: mech(),
+            },
+            mech(),
+            10,
+        );
+        assert!(duplicate.unwrap_err().contains("must be unique"));
+        let unbounded = store.save(
+            SaveAutomarkerPresetRequest {
+                preset_id: None,
+                name: "Unbounded".into(),
+                points: vec![AutomarkerPoint {
+                    marker_number: 2,
+                    x: 1_000_001.0,
+                    y: 0.0,
+                    z: 0.0,
+                }],
+                expected_context: mech(),
+            },
+            mech(),
+            11,
+        );
+        assert!(unbounded.unwrap_err().contains("coordinates are invalid"));
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn rejects_a_save_when_the_editor_context_changed_even_within_one_family() {
+        let path = temporary_path("context-race");
+        let mut store = open(&path);
+        let result = store.save(
+            SaveAutomarkerPresetRequest {
+                preset_id: None,
+                name: "Stale editor".into(),
+                points: points(1.0),
+                expected_context: tina(1_633),
+            },
+            tina(1_631),
+            10,
+        );
+        assert!(result.unwrap_err().contains("context changed"));
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn committed_backup_cleanup_failure_is_non_fatal() {
+        let live = temporary_path("cleanup-live");
+        let backup = temporary_path("cleanup-failure");
+        std::fs::write(&live, b"committed").unwrap();
+        std::fs::create_dir_all(&backup).unwrap();
+        assert!(finish_committed_write(&backup).is_ok());
+        assert_eq!(std::fs::read(&live).unwrap(), b"committed");
+        assert!(
+            backup.is_dir(),
+            "the injected remove-file failure remains recoverable hygiene"
+        );
+        std::fs::remove_dir(&backup).unwrap();
+        std::fs::remove_file(&live).unwrap();
     }
 
     #[test]

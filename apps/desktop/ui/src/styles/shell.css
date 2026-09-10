@@ -8486,6 +8486,32 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
   gap: 9px;
 }
 
+.automarker-point-editor {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(129, 165, 196, .2);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(4, 13, 23, .4);
+}
+
+.automarker-point-editor-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-primary, #f2f6fb);
+}
+
+.automarker-point-editor-heading span { color: var(--text-muted, #9fb0c2); font-size: 11px; }
+.automarker-point-rows { display: grid; gap: 8px; }
+.automarker-point-row { display: grid; grid-template-columns: 74px repeat(3, minmax(100px, 1fr)) auto; gap: 8px; align-items: end; }
+.automarker-point-row label { display: grid; gap: 4px; color: var(--text-muted, #9fb0c2); font-size: 11px; font-weight: 700; }
+.automarker-point-row input { min-width: 0; height: 36px; border: 1px solid rgba(129, 165, 196, .28); border-radius: 7px; padding: 0 8px; color: var(--text-primary, #f2f6fb); background: rgba(4, 13, 23, .8); font-family: ui-monospace, "Cascadia Mono", monospace; }
+
+@media (max-width: 760px) {
+  .automarker-point-row { grid-template-columns: repeat(2, minmax(100px, 1fr)); }
+}
+
 .automarker-status {
   min-height: 20px;
   margin: 0;

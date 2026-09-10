@@ -1,13 +1,27 @@
 import { describe, expect, it } from "vitest";
 import type { UiLocalizer } from "../localization/ui-locale";
 
-import { formatDungeonAttemptTime, formatDungeonObjectiveValue, mechanicsMapMarkerLabel, mechanicsMapReadabilityProfile, nextMapDim, parseMechanicsMapCanvasPreferences, shouldDrawRadarFallbackArena, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
+import { formatDungeonAttemptTime, formatDungeonObjectiveValue, mechanicsMapMarkerLabel, mechanicsMapReadabilityProfile, nextMapDim, parseMechanicsMapCanvasPreferences, projectAutomarkerPreviewMarkers, shouldDrawRadarFallbackArena, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
+import type { MechanicsMapSnapshot } from "./mechanics-map";
 
 describe("Mechanics Map overlay canvas preferences", () => {
   it("prefers the visible numbered marker label", () => {
     expect(mechanicsMapMarkerLabel({ marker_id: null, marker_number: 4 })).toBe("4");
     expect(mechanicsMapMarkerLabel({ marker_id: 77, marker_number: null })).toBe("77");
     expect(mechanicsMapMarkerLabel({ marker_id: null, marker_number: null })).toBeNull();
+  });
+  it("projects manual preview markers with large, explicit numeric labels on the real map coordinates", () => {
+    const snapshot = {
+      map_model: "absolute_scene_map", map_origin_x: -50, map_origin_z: -50,
+      map_span_x: 100, map_span_z: 100,
+    } as MechanicsMapSnapshot;
+    expect(projectAutomarkerPreviewMarkers(snapshot, [
+      { markerNumber: 1, x: 0, y: 999, z: 0 },
+      { markerNumber: 6, x: 25, y: -10, z: -25 },
+    ], false)).toEqual([
+      { markerNumber: 1, label: "1", mapX: 50, mapY: 50 },
+      { markerNumber: 6, label: "6", mapX: 75, mapY: 75 },
+    ]);
   });
   it("does not rebuild the overlay after an unchanged long-poll timeout", () => {
     const current = { revision: 12 };

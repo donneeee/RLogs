@@ -1,6 +1,7 @@
 import type { MountedSurface } from "../shell/types";
 import type { UiLocalizer } from "../localization/ui-locale";
-import type { AutomarkerLoadResult, AutomarkerPresetView } from "./automarker-presets";
+import type { AutomarkerLoadResult, AutomarkerPoint, AutomarkerPresetView, AutomarkerPreview } from "./automarker-presets";
+import { AUTOMARKER_PREVIEW_STORAGE_KEY, readActiveAutomarkerPreview } from "./automarker-presets";
 import {
   actionControlRemainingMillis,
   fitMechanicsMapCanvasRect,
@@ -253,6 +254,8 @@ export function mountMechanicsMapOverlay(
   let alertsRenderedAtMillis = 0;
   let automarkerView: AutomarkerPresetView | null = null;
   let automarkerSceneKey = "";
+  let automarkerPreview: AutomarkerPreview | null = null;
+  let automarkerPreviewTimer: number | null = null;
 
   const root = element("main", "overlay-canvas-runtime");
   root.dataset.locked = String(preferences.locked);
@@ -571,6 +574,11 @@ export function mountMechanicsMapOverlay(
     scheduleDraw();
   };
   window.addEventListener("resize", handleScreenResize);
+  const handlePreviewStorage = (event: StorageEvent): void => {
+    if (event.key === AUTOMARKER_PREVIEW_STORAGE_KEY) refreshAutomarkerPreview();
+  };
+  window.addEventListener("storage", handlePreviewStorage);
+  automarkerPreviewTimer = window.setInterval(refreshAutomarkerPreview, 500);
 
   void dependencies.setInteractive(!preferences.locked);
   void dependencies.onInteractivity((interactive) => {
@@ -632,6 +640,7 @@ export function mountMechanicsMapOverlay(
       automarkerView = await dependencies.loadAutomarkerPresets();
       if (!alive) return;
       renderAutomarkerPresets();
+      refreshAutomarkerPreview();
     } catch (error) {
       automarkerView = null;
       automarkerSelect.replaceChildren(new Option("Preset catalog unavailable", ""));
@@ -639,6 +648,24 @@ export function mountMechanicsMapOverlay(
       automarkerLoad.disabled = true;
       automarkerNote.textContent = error instanceof Error ? error.message : String(error);
     }
+  }
+
+  function refreshAutomarkerPreview(): void {
+    let next: AutomarkerPreview | null = null;
+    const context = automarkerView?.context;
+    if (context !== null && context !== undefined) {
+      next = readActiveAutomarkerPreview(
+        window.localStorage,
+        automarkerView!.previewSessionId,
+        context,
+      );
+    }
+    if (JSON.stringify(next) === JSON.stringify(automarkerPreview)) return;
+    automarkerPreview = next;
+    if (next !== null) {
+      automarkerNote.textContent = `${next.name}: ${next.points.length} local preview marker${next.points.length === 1 ? "" : "s"}. No game transmission.`;
+    }
+    scheduleDraw();
   }
 
   function renderAutomarkerPresets(): void {
@@ -1275,7 +1302,7 @@ export function mountMechanicsMapOverlay(
     context.scale(content.width / width, content.height / height);
     drawArena(context, snapshot, width, height);
     drawRegions(context, snapshot, width, height, preferences.highContrastMechanics);
-    drawEntities(context, snapshot, width, height, preferences);
+    drawEntities(context, snapshot, width, height, preferences, automarkerPreview?.points ?? []);
     context.restore();
     context.restore();
   }
@@ -1613,6 +1640,8 @@ export function mountMechanicsMapOverlay(
       stopAlertsTimer();
       resizeObserver.disconnect();
       window.removeEventListener("resize", handleScreenResize);
+      window.removeEventListener("storage", handlePreviewStorage);
+      if (automarkerPreviewTimer !== null) window.clearInterval(automarkerPreviewTimer);
       removeInteractivityListener?.();
       removeFocusHeldListener?.();
       image = null;
@@ -1729,6 +1758,7 @@ function drawEntities(
   width: number,
   height: number,
   preferences: MechanicsMapCanvasPreferences,
+  previewPoints: readonly AutomarkerPoint[],
 ): void {
   const sceneMap = snapshot.map_model === "absolute_scene_map";
   const entities = projectMechanicsMapEntities(snapshot, sceneMap ? false : preferences.rotateWithPlayer)
@@ -1807,6 +1837,29 @@ function drawEntities(
     }
     context.restore();
   }
+  for (const marker of projectAutomarkerPreviewMarkers(snapshot, previewPoints, sceneMap ? false : preferences.rotateWithPlayer)) {
+    const x = marker.mapX / 100 * width;
+    const y = marker.mapY / 100 * height;
+    context.save();
+    context.shadowBlur = 12;
+    context.shadowColor = "#5ce4d4";
+    context.fillStyle = "rgba(5, 24, 34, .94)";
+    context.strokeStyle = "#5ce4d4";
+    context.lineWidth = 4;
+    context.beginPath();
+    context.arc(x, y, 14, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.shadowBlur = 0;
+    context.fillStyle = "#ffffff";
+    context.font = "950 15px system-ui";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    drawOutlinedText(context, marker.label, x, y, 5);
+    context.font = "800 9px system-ui";
+    drawOutlinedText(context, "PREVIEW", x, y + 23, 4);
+    context.restore();
+  }
   for (const annotation of projectVoidTowerMapAnnotations(snapshot)) {
     const x = annotation.mapX / 100 * width;
     const y = annotation.mapY / 100 * height;
@@ -1840,6 +1893,19 @@ function drawEntities(
     }
     context.restore();
   }
+}
+
+export function projectAutomarkerPreviewMarkers(
+  snapshot: MechanicsMapSnapshot,
+  points: readonly AutomarkerPoint[],
+  rotateWithPlayer: boolean,
+): Array<{ markerNumber: number; label: string; mapX: number; mapY: number }> {
+  return points.flatMap((point) => {
+    const projected = projectMechanicsMapPoint(snapshot, point.x, point.z, rotateWithPlayer);
+    return projected?.visible
+      ? [{ markerNumber: point.markerNumber, label: String(point.markerNumber), mapX: projected.mapX, mapY: projected.mapY }]
+      : [];
+  });
 }
 
 export function mechanicsMapMarkerLabel(
