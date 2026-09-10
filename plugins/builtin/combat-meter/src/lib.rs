@@ -41,6 +41,8 @@ const MAXIMUM_RUN_ENTRY_BOUNDARIES: usize = 256;
 const MAXIMUM_LIVE_RDPS_INFLUENCE_RELATIONSHIPS: usize = 4_096;
 const MAXIMUM_HISTORY_RATE_CLOCK_POINTS: usize = 86_400;
 const HISTORY_SERIES_BUCKET_MICROS: u64 = 1_000_000;
+const DEATH_REPLAY_WINDOW_MICROS: u64 = 2_000_000;
+const MAXIMUM_DEATH_REPLAY_HITS: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CombatHistorySnapshot {
@@ -292,6 +294,10 @@ pub struct HistoryActorSummary {
     /// history artifacts deserialize with an empty list.
     #[serde(default)]
     pub death_seconds: Vec<u32>,
+    /// Exact death offsets and packet-proven recent damage evidence. Entity
+    /// UUIDs intentionally remain confined to the private history artifact.
+    #[serde(default)]
+    pub death_events: Vec<HistoryDeathEvent>,
     /// Damage divided by the selected elapsed time.
     pub dps: f64,
     /// Damage divided by selected active-combat time. Downtime never lowers it.
@@ -319,6 +325,47 @@ pub struct HistoryActorSummary {
     pub targets: Vec<HistoryTargetSummary>,
     pub effects: Vec<HistoryEffectSummary>,
     pub series: Vec<HistorySeriesPoint>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryDeathEvent {
+    pub at_micros: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cause: Option<HistoryDeathCause>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryDeathCause {
+    pub evidence: HistoryDeathCauseEvidence,
+    pub final_hit: HistoryDeathHit,
+    #[serde(default)]
+    pub prior_hits: Vec<HistoryDeathHit>,
+    #[serde(default)]
+    pub prior_hits_truncated: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryDeathCauseEvidence {
+    PacketTerminalDamage,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryDeathHit {
+    pub at_micros: u64,
+    pub source_actor_id: String,
+    pub source_entity_uuid: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direct_source_actor_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direct_source_entity_uuid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ability_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub breakdown_ability_id: Option<String>,
+    pub reported_damage: i64,
+    pub effective_damage: i64,
+    pub critical: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -989,6 +1036,9 @@ enum CombatFactKind {
         reported: i64,
         effective: i64,
         critical: bool,
+        direct_source: Option<(u64, i64)>,
+        packet_dead: bool,
+        event_sequence: u64,
     },
     Healing {
         reported: i64,
@@ -999,6 +1049,7 @@ enum CombatFactKind {
     },
     Life {
         state: LifeState,
+        event_sequence: u64,
     },
     Status {
         effect_id: i64,
@@ -1075,6 +1126,7 @@ struct HistoryValueAccumulator {
     shielding: i64,
     deaths: u64,
     death_seconds: Vec<u32>,
+    death_events: Vec<HistoryDeathEvent>,
     rdps_damage: Option<i64>,
     rdps_contribution_given: Option<i64>,
     rdps_contribution_received: Option<i64>,
@@ -1083,6 +1135,51 @@ struct HistoryValueAccumulator {
     targets: BTreeMap<u64, HistoryTargetAccumulator>,
     effects: BTreeMap<(i64, u64), HistoryEffectAccumulator>,
     series: BTreeMap<u32, HistorySeriesAccumulator>,
+}
+
+#[derive(Debug, Clone)]
+struct HistoryDeathHitFact {
+    observed_micros: u64,
+    at_micros: u64,
+    source_actor_id: u64,
+    source_entity_uuid: i64,
+    direct_source: Option<(u64, i64)>,
+    ability_id: Option<i64>,
+    breakdown_ability_id: Option<i64>,
+    target: (u64, i64),
+    reported: i64,
+    effective: i64,
+    critical: bool,
+    packet_dead: bool,
+    event_sequence: u64,
+}
+
+impl HistoryDeathHitFact {
+    fn into_history_hit(self) -> HistoryDeathHit {
+        HistoryDeathHit {
+            at_micros: self.at_micros,
+            source_actor_id: self.source_actor_id.to_string(),
+            source_entity_uuid: self.source_entity_uuid.to_string(),
+            direct_source_actor_id: self.direct_source.map(|(actor_id, _)| actor_id.to_string()),
+            direct_source_entity_uuid: self
+                .direct_source
+                .map(|(_, entity_uuid)| entity_uuid.to_string()),
+            ability_id: self.ability_id.map(|ability_id| ability_id.to_string()),
+            breakdown_ability_id: self
+                .breakdown_ability_id
+                .map(|ability_id| ability_id.to_string()),
+            reported_damage: self.reported,
+            effective_damage: self.effective,
+            critical: self.critical,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct HistoryDeathHitWindow {
+    interval_index: Option<usize>,
+    hits: Vec<HistoryDeathHitFact>,
+    latest_omitted_observed_micros: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -2045,6 +2142,11 @@ impl CombatTimelinePlugin {
                         reported,
                         effective,
                         critical: damage.flags.critical == Some(true),
+                        direct_source: damage
+                            .direct_source
+                            .map(|source| (source.actor_id.0, source.entity_uuid.0)),
+                        packet_dead: damage.packet.dead == Some(true),
+                        event_sequence: envelope.sequence,
                     },
                 });
                 let target_actor_id = self.canonical_actor_id(target.actor_id.0);
@@ -2149,7 +2251,10 @@ impl CombatTimelinePlugin {
                     target: None,
                     breakdown_ability_id: None,
                     ability_id: None,
-                    kind: CombatFactKind::Life { state: *state },
+                    kind: CombatFactKind::Life {
+                        state: *state,
+                        event_sequence: envelope.sequence,
+                    },
                 });
             }
             TimelineEventKind::Position(position) => {
@@ -3337,6 +3442,27 @@ impl CombatTimelinePlugin {
             )
         });
         let kind = match &fact.kind {
+            CombatFactKind::Damage {
+                reported,
+                effective,
+                critical,
+                direct_source,
+                packet_dead,
+                event_sequence,
+            } => CombatFactKind::Damage {
+                reported: *reported,
+                effective: *effective,
+                critical: *critical,
+                direct_source: direct_source.map(|(actor_id, entity_uuid)| {
+                    let source = resolve(actor_id, entity_uuid);
+                    (
+                        self.canonical_actor_id(source.actor_id.0),
+                        source.entity_uuid.0,
+                    )
+                }),
+                packet_dead: *packet_dead,
+                event_sequence: *event_sequence,
+            },
             CombatFactKind::Status {
                 effect_id,
                 attribution_source_actor_id,
@@ -3462,6 +3588,7 @@ impl CombatTimelinePlugin {
             .max()
             .unwrap_or_default();
         let mut values = BTreeMap::<u64, HistoryValueAccumulator>::new();
+        let mut death_hit_windows = BTreeMap::<(u64, i64), HistoryDeathHitWindow>::new();
         let mut damage_influences =
             BTreeMap::<HistoryDamageInfluenceKey, HistoryDamageInfluenceAccumulator>::new();
         let mut rdps_series_transfers = BTreeMap::<(u64, u32), HistorySeriesTransfer>::new();
@@ -3742,10 +3869,53 @@ impl CombatTimelinePlugin {
                     reported,
                     effective,
                     critical,
+                    direct_source,
+                    packet_dead,
+                    event_sequence,
                 } => {
                     let Some((target_actor_id, target_entity_uuid)) = fact.target else {
                         continue;
                     };
+                    let interval_index =
+                        history_fact_interval_index(fact.observed_micros, &spec.intervals)
+                            .expect("selected history fact belongs to an interval");
+                    let window = death_hit_windows
+                        .entry((target_actor_id, target_entity_uuid))
+                        .or_default();
+                    if window.interval_index != Some(interval_index) {
+                        window.interval_index = Some(interval_index);
+                        window.hits.clear();
+                        window.latest_omitted_observed_micros = None;
+                    }
+                    let cutoff = fact
+                        .observed_micros
+                        .saturating_sub(DEATH_REPLAY_WINDOW_MICROS);
+                    window.hits.retain(|hit| hit.observed_micros >= cutoff);
+                    if window
+                        .latest_omitted_observed_micros
+                        .is_some_and(|omitted| omitted < cutoff)
+                    {
+                        window.latest_omitted_observed_micros = None;
+                    }
+                    if window.hits.len() == MAXIMUM_DEATH_REPLAY_HITS {
+                        let omitted = window.hits.remove(0);
+                        window.latest_omitted_observed_micros = Some(omitted.observed_micros);
+                    }
+                    window.hits.push(HistoryDeathHitFact {
+                        observed_micros: fact.observed_micros,
+                        at_micros: offset_micros,
+                        source_actor_id: fact.source_actor_id,
+                        source_entity_uuid: fact.source_entity_uuid,
+                        direct_source,
+                        ability_id: fact.ability_id,
+                        breakdown_ability_id: fact.breakdown_ability_id,
+                        target: (target_actor_id, target_entity_uuid),
+                        reported,
+                        effective,
+                        critical,
+                        packet_dead,
+                        event_sequence,
+                    });
                     {
                         let source = values.entry(fact.source_actor_id).or_default();
                         source.damage = source.damage.saturating_add(reported);
@@ -3847,11 +4017,59 @@ impl CombatTimelinePlugin {
                         target.shielding = target.shielding.saturating_add(amount);
                     }
                 }
-                CombatFactKind::Life { state } => {
+                CombatFactKind::Life {
+                    state,
+                    event_sequence,
+                } => {
                     if state == LifeState::Died {
+                        let victim = (fact.source_actor_id, fact.source_entity_uuid);
+                        let interval_index =
+                            history_fact_interval_index(fact.observed_micros, &spec.intervals)
+                                .expect("selected history fact belongs to an interval");
+                        let cause = death_hit_windows.get_mut(&victim).and_then(|window| {
+                            if window.interval_index != Some(interval_index) {
+                                return None;
+                            }
+                            let cutoff = fact
+                                .observed_micros
+                                .saturating_sub(DEATH_REPLAY_WINDOW_MICROS);
+                            window.hits.retain(|hit| hit.observed_micros >= cutoff);
+                            if window
+                                .latest_omitted_observed_micros
+                                .is_some_and(|omitted| omitted < cutoff)
+                            {
+                                window.latest_omitted_observed_micros = None;
+                            }
+                            let final_hit = window.hits.last()?;
+                            if final_hit.observed_micros != fact.observed_micros
+                                || final_hit.target != victim
+                                || !final_hit.packet_dead
+                                || final_hit.event_sequence.checked_add(1) != Some(event_sequence)
+                            {
+                                return None;
+                            }
+                            let mut hits = window.hits.clone();
+                            let final_hit = hits.pop()?.into_history_hit();
+                            Some(HistoryDeathCause {
+                                evidence: HistoryDeathCauseEvidence::PacketTerminalDamage,
+                                final_hit,
+                                prior_hits: hits
+                                    .into_iter()
+                                    .map(HistoryDeathHitFact::into_history_hit)
+                                    .collect(),
+                                prior_hits_truncated: window
+                                    .latest_omitted_observed_micros
+                                    .is_some(),
+                            })
+                        });
+                        death_hit_windows.remove(&victim);
                         let actor = values.entry(fact.source_actor_id).or_default();
                         actor.deaths = actor.deaths.saturating_add(1);
                         actor.death_seconds.push(second);
+                        actor.death_events.push(HistoryDeathEvent {
+                            at_micros: offset_micros,
+                            cause,
+                        });
                     }
                 }
                 CombatFactKind::Status {
@@ -4172,6 +4390,7 @@ impl CombatTimelinePlugin {
             critical_hits: value.critical_hits,
             deaths: value.deaths,
             death_seconds: value.death_seconds,
+            death_events: value.death_events,
             dps: rate_per_second(value.damage, elapsed_seconds),
             encounter_dps: rate_per_second(value.damage, active_seconds),
             hps: rate_per_second(value.healing, elapsed_seconds),
@@ -4882,6 +5101,12 @@ fn history_fact_offset(
     None
 }
 
+fn history_fact_interval_index(observed_micros: u64, intervals: &[(u64, u64)]) -> Option<usize> {
+    intervals
+        .iter()
+        .position(|(started, ended)| observed_micros >= *started && observed_micros <= *ended)
+}
+
 fn history_active_intervals(
     run: &RunAnalysis,
     selected_intervals: &[(u64, u64)],
@@ -5491,6 +5716,9 @@ mod tests {
                 reported: 2_000,
                 effective: 2_000,
                 critical: false,
+                direct_source: None,
+                packet_dead: false,
+                event_sequence: 0,
             },
         });
         plugin.last_event_micros = Some(12_000_000);
@@ -5957,6 +6185,9 @@ mod tests {
                 reported: 100,
                 effective: 100,
                 critical: false,
+                direct_source: None,
+                packet_dead: false,
+                event_sequence: 0,
             },
         });
 
@@ -5981,6 +6212,275 @@ mod tests {
         assert_eq!(actor.series[0].second, 2);
     }
 
+    fn death_history_view(plugin: &CombatTimelinePlugin) -> CombatHistoryView {
+        plugin.build_history_view(&HistoryViewSpec {
+            id: "all".into(),
+            label: "Entire run".into(),
+            kind: "all".into(),
+            segment_indices: vec![0],
+            intervals: vec![(0, 5_000_000)],
+            active_intervals: Vec::new(),
+            series_origin_micros: 0,
+            elapsed_micros: 5_000_000,
+            active_combat_micros: 5_000_000,
+            compress_intervals: false,
+        })
+    }
+
+    fn push_death_test_hit(
+        plugin: &mut CombatTimelinePlugin,
+        observed_micros: u64,
+        source: (u64, i64),
+        victim: (u64, i64),
+        packet_dead: bool,
+    ) {
+        plugin.push_history_fact(CombatFact {
+            observed_micros,
+            source_actor_id: source.0,
+            source_entity_uuid: source.1,
+            target: Some(victim),
+            breakdown_ability_id: Some(55),
+            ability_id: Some(5),
+            kind: CombatFactKind::Damage {
+                reported: 100,
+                effective: 90,
+                critical: true,
+                direct_source: Some((source.0 + 100, source.1 + 100)),
+                packet_dead,
+                event_sequence: observed_micros.saturating_mul(2),
+            },
+        });
+    }
+
+    fn push_death_test_life(
+        plugin: &mut CombatTimelinePlugin,
+        observed_micros: u64,
+        victim: (u64, i64),
+    ) {
+        plugin.push_history_fact(CombatFact {
+            observed_micros,
+            source_actor_id: victim.0,
+            source_entity_uuid: victim.1,
+            target: None,
+            breakdown_ability_id: None,
+            ability_id: None,
+            kind: CombatFactKind::Life {
+                state: LifeState::Died,
+                event_sequence: observed_micros.saturating_mul(2).saturating_add(1),
+            },
+        });
+    }
+
+    #[test]
+    fn history_death_event_requires_packet_terminal_hit_and_keeps_two_second_window() {
+        let mut plugin = CombatTimelinePlugin::new();
+        let victim = (9, 900);
+        push_death_test_hit(&mut plugin, 999_999, (1, 101), victim, false);
+        push_death_test_hit(&mut plugin, 1_000_000, (2, 102), victim, false);
+        push_death_test_hit(&mut plugin, 2_500_000, (3, 103), victim, false);
+        push_death_test_hit(&mut plugin, 3_000_000, (4, 104), victim, true);
+        push_death_test_life(&mut plugin, 3_000_000, victim);
+
+        let history = death_history_view(&plugin);
+        let actor = history
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "9")
+            .unwrap();
+        assert_eq!(actor.death_seconds, vec![3]);
+        assert_eq!(actor.death_events.len(), 1);
+        let death = &actor.death_events[0];
+        assert_eq!(death.at_micros, 3_000_000);
+        let cause = death.cause.as_ref().unwrap();
+        assert_eq!(
+            cause.evidence,
+            HistoryDeathCauseEvidence::PacketTerminalDamage
+        );
+        assert_eq!(cause.final_hit.source_actor_id, "4");
+        assert_eq!(cause.final_hit.source_entity_uuid, "104");
+        assert_eq!(
+            cause.final_hit.direct_source_actor_id.as_deref(),
+            Some("104")
+        );
+        assert_eq!(
+            cause.final_hit.direct_source_entity_uuid.as_deref(),
+            Some("204")
+        );
+        assert_eq!(cause.final_hit.ability_id.as_deref(), Some("5"));
+        assert_eq!(cause.final_hit.breakdown_ability_id.as_deref(), Some("55"));
+        assert_eq!(cause.final_hit.reported_damage, 100);
+        assert_eq!(cause.final_hit.effective_damage, 90);
+        assert!(cause.final_hit.critical);
+        assert_eq!(
+            cause
+                .prior_hits
+                .iter()
+                .map(|hit| hit.at_micros)
+                .collect::<Vec<_>>(),
+            vec![1_000_000, 2_500_000]
+        );
+        assert!(!cause.prior_hits_truncated);
+    }
+
+    #[test]
+    fn history_death_event_fails_closed_without_matching_terminal_packet() {
+        let mut plugin = CombatTimelinePlugin::new();
+        let victim = (9, 900);
+        push_death_test_hit(&mut plugin, 3_000_000, (4, 104), victim, false);
+        push_death_test_life(&mut plugin, 3_000_000, victim);
+
+        let history = death_history_view(&plugin);
+        let actor = history
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "9")
+            .unwrap();
+        assert_eq!(actor.death_seconds, vec![3]);
+        assert_eq!(actor.death_events.len(), 1);
+        assert!(actor.death_events[0].cause.is_none());
+    }
+
+    #[test]
+    fn history_death_event_requires_immediately_adjacent_terminal_damage() {
+        let mut plugin = CombatTimelinePlugin::new();
+        let victim = (9, 900);
+        push_death_test_hit(&mut plugin, 3_000_000, (4, 104), victim, true);
+        if let CombatFactKind::Damage { event_sequence, .. } =
+            &mut plugin.history_facts.last_mut().unwrap().kind
+        {
+            *event_sequence = 10;
+        }
+        push_death_test_life(&mut plugin, 3_000_000, victim);
+        if let CombatFactKind::Life { event_sequence, .. } =
+            &mut plugin.history_facts.last_mut().unwrap().kind
+        {
+            *event_sequence = 12;
+        }
+
+        let history = death_history_view(&plugin);
+        let death = &history
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "9")
+            .unwrap()
+            .death_events[0];
+        assert!(death.cause.is_none());
+    }
+
+    #[test]
+    fn history_death_replay_is_bounded_and_marks_truncation() {
+        let mut plugin = CombatTimelinePlugin::new();
+        let victim = (9, 900);
+        for index in 0..65 {
+            push_death_test_hit(
+                &mut plugin,
+                1_000_000 + index,
+                (index + 1, 100 + index as i64),
+                victim,
+                index == 64,
+            );
+        }
+        push_death_test_life(&mut plugin, 1_000_064, victim);
+
+        let history = death_history_view(&plugin);
+        let cause = history
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "9")
+            .unwrap()
+            .death_events[0]
+            .cause
+            .as_ref()
+            .unwrap();
+        assert_eq!(cause.prior_hits.len(), 63);
+        assert!(cause.prior_hits_truncated);
+        assert_eq!(cause.final_hit.source_actor_id, "65");
+    }
+
+    #[test]
+    fn history_death_replay_clears_truncation_after_omitted_hits_age_out() {
+        let mut plugin = CombatTimelinePlugin::new();
+        let victim = (9, 900);
+        for index in 0..65 {
+            push_death_test_hit(
+                &mut plugin,
+                index,
+                (index + 1, 100 + index as i64),
+                victim,
+                false,
+            );
+        }
+        push_death_test_hit(&mut plugin, 3_000_000, (70, 170), victim, true);
+        push_death_test_life(&mut plugin, 3_000_000, victim);
+
+        let cause = death_history_view(&plugin)
+            .actors
+            .into_iter()
+            .find(|actor| actor.actor_id == "9")
+            .unwrap()
+            .death_events
+            .into_iter()
+            .next()
+            .unwrap()
+            .cause
+            .unwrap();
+        assert!(cause.prior_hits.is_empty());
+        assert!(!cause.prior_hits_truncated);
+    }
+
+    #[test]
+    fn history_death_replay_does_not_bridge_selected_intervals() {
+        let mut plugin = CombatTimelinePlugin::new();
+        let victim = (9, 900);
+        push_death_test_hit(&mut plugin, 1_000_000, (1, 101), victim, false);
+        push_death_test_hit(&mut plugin, 3_000_000, (2, 102), victim, true);
+        push_death_test_life(&mut plugin, 3_000_000, victim);
+
+        let history = plugin.build_history_view(&HistoryViewSpec {
+            id: "selected".into(),
+            label: "Selected".into(),
+            kind: "selected".into(),
+            segment_indices: vec![0, 1],
+            intervals: vec![(0, 1_000_000), (3_000_000, 5_000_000)],
+            active_intervals: Vec::new(),
+            series_origin_micros: 0,
+            elapsed_micros: 3_000_000,
+            active_combat_micros: 3_000_000,
+            compress_intervals: true,
+        });
+        let cause = history
+            .actors
+            .into_iter()
+            .find(|actor| actor.actor_id == "9")
+            .unwrap()
+            .death_events
+            .into_iter()
+            .next()
+            .unwrap()
+            .cause
+            .unwrap();
+        assert!(cause.prior_hits.is_empty());
+        assert_eq!(cause.final_hit.source_actor_id, "2");
+    }
+
+    #[test]
+    fn legacy_history_actor_without_death_events_deserializes_empty() {
+        let mut plugin = CombatTimelinePlugin::new();
+        push_death_test_life(&mut plugin, 3_000_000, (9, 900));
+        let history = death_history_view(&plugin);
+        let actor = history
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "9")
+            .unwrap();
+        let mut legacy = serde_json::to_value(actor).unwrap();
+        legacy.as_object_mut().unwrap().remove("death_events");
+
+        let restored: HistoryActorSummary = serde_json::from_value(legacy).unwrap();
+        assert_eq!(restored.death_seconds, vec![3]);
+        assert!(restored.death_events.is_empty());
+    }
+
     #[test]
     fn context_incomplete_contribution_fails_closed_for_every_rdps_bucket() {
         let rule = DamageContributionRule {
@@ -6001,6 +6501,9 @@ mod tests {
                 reported: 100,
                 effective: 100,
                 critical: false,
+                direct_source: None,
+                packet_dead: false,
+                event_sequence: 0,
             },
         });
         plugin.push_history_fact(CombatFact {
@@ -7561,6 +8064,9 @@ mod tests {
                 reported: 100,
                 effective: 100,
                 critical: false,
+                direct_source: None,
+                packet_dead: false,
+                event_sequence: 0,
             },
         });
 
@@ -8411,6 +8917,7 @@ mod tests {
             ability_id: None,
             kind: CombatFactKind::Life {
                 state: LifeState::Died,
+                event_sequence: 0,
             },
         });
         for (observed_micros, state) in [
@@ -8463,6 +8970,9 @@ mod tests {
                 reported: 500,
                 effective: 400,
                 critical: false,
+                direct_source: None,
+                packet_dead: false,
+                event_sequence: 0,
             },
         });
 
