@@ -211,6 +211,7 @@ export interface HistoryActorSummary {
   critical_hits: number;
   deaths: number;
   death_seconds: number[];
+  death_events: HistoryDeathEvent[];
   dps: number;
   encounter_dps: number;
   hps: number;
@@ -226,6 +227,58 @@ export interface HistoryActorSummary {
   targets: HistoryTargetSummary[];
   effects: HistoryEffectSummary[];
   series: HistorySeriesPoint[];
+}
+
+export type HistoryDeathPresentationProvenance =
+  | "exact_history_participant"
+  | "exact_build_monster_catalog"
+  | "exact_build_action_catalog";
+
+export interface HistoryDeathActorPresentation {
+  actor_id: string;
+  name: string;
+  provenance: HistoryDeathPresentationProvenance;
+}
+
+export interface HistoryDeathAbilityPresentation {
+  ability_id: string;
+  name: string;
+  provenance: HistoryDeathPresentationProvenance;
+}
+
+export interface HistoryDeathActorIdentity {
+  monster_id?: string;
+  actor_kind?: string;
+}
+
+export interface HistoryDeathHit {
+  at_micros: number;
+  source_actor_id: string;
+  source_entity_uuid: string;
+  source_identity?: HistoryDeathActorIdentity;
+  direct_source_actor_id?: string;
+  direct_source_entity_uuid?: string;
+  direct_source_identity?: HistoryDeathActorIdentity;
+  ability_id?: string;
+  breakdown_ability_id?: string;
+  source_presentation?: HistoryDeathActorPresentation;
+  direct_source_presentation?: HistoryDeathActorPresentation;
+  ability_presentation?: HistoryDeathAbilityPresentation;
+  reported_damage: number;
+  effective_damage: number;
+  critical: boolean;
+}
+
+export interface HistoryDeathCause {
+  evidence: "packet_terminal_damage";
+  final_hit: HistoryDeathHit;
+  prior_hits: HistoryDeathHit[];
+  prior_hits_truncated: boolean;
+}
+
+export interface HistoryDeathEvent {
+  at_micros: number;
+  cause: HistoryDeathCause | null;
 }
 
 export interface HistoryLoadoutSlot {
@@ -509,7 +562,8 @@ export function parseCombatHistorySnapshot(value: unknown): CombatHistorySnapsho
       text(parsed.label, "view label");
       counter(parsed.elapsed_micros, "elapsed time");
       counter(parsed.active_combat_micros, "active combat time");
-      array(parsed.actors, "view actors", 100_000).forEach((actor, actorIndex) => {
+      const parsedActors = array(parsed.actors, "view actors", 100_000);
+      parsedActors.forEach((actor, actorIndex) => {
         const parsedActor = record(
           actor,
           `run ${runIndex} view ${viewIndex} actor ${actorIndex}`,
@@ -517,6 +571,7 @@ export function parseCombatHistorySnapshot(value: unknown): CombatHistorySnapsho
         if (parsedActor.death_seconds === undefined) {
           parsedActor.death_seconds = [];
         }
+        normalizeHistoryDeathEvents(parsedActor, parsed.elapsed_micros as number);
         if (parsedActor.character_id === undefined) {
           parsedActor.character_id = null;
         }
@@ -632,6 +687,7 @@ export function parseCombatHistorySnapshot(value: unknown): CombatHistorySnapsho
           (second) => counter(second, "actor death second"),
         );
       });
+      enforceHistoryParticipantDeathPresentationBindings(parsedActors);
       const parsedTargets = array(parsed.targets, "view targets", 100_000);
       parsedTargets.forEach((target, targetIndex) => {
         const parsedTarget = record(
@@ -753,6 +809,174 @@ function normalizeHistorySeries(value: unknown, label: string): void {
     integer(parsed.effective_healing, `${label} effective healing`);
     integer(parsed.damage_taken, `${label} damage taken`);
   });
+}
+
+function normalizeHistoryDeathEvents(actor: Record<string, unknown>, elapsedMicros: number): void {
+  if (actor.death_events === undefined) actor.death_events = [];
+  const events = array(actor.death_events, "actor death events", 10_000);
+  let previousMicros = -1;
+  let invalidExactTimestamp = false;
+  events.forEach((value, index) => {
+    const event = record(value, `actor death event ${index}`);
+    counter(event.at_micros, `actor death event ${index} timestamp`);
+    if ((event.at_micros as number) > elapsedMicros ||
+        (event.at_micros as number) < previousMicros) invalidExactTimestamp = true;
+    previousMicros = event.at_micros as number;
+    if (event.cause === undefined) event.cause = null;
+    if (event.cause === null) return;
+    if (!isValidHistoryDeathCause(event.cause, event.at_micros as number)) {
+      // Retain the packet-proven death timestamp even when optional replay or
+      // presentation evidence is malformed. A bad tooltip must not erase a
+      // valid marker or make the complete history unreadable.
+      event.cause = null;
+    }
+  });
+  if (invalidExactTimestamp) actor.death_events = [];
+}
+
+function isValidHistoryDeathCause(value: unknown, deathMicros: number): value is HistoryDeathCause {
+  if (!isRecord(value) || value.evidence !== "packet_terminal_damage" ||
+      !Array.isArray(value.prior_hits) || value.prior_hits.length > 63 ||
+      typeof value.prior_hits_truncated !== "boolean" ||
+      !isValidHistoryDeathHit(value.final_hit, deathMicros, deathMicros)) return false;
+  const priorHits = value.prior_hits;
+  const cutoff = Math.max(0, deathMicros - 2_000_000);
+  if (!priorHits.every((hit) => isValidHistoryDeathHit(hit, cutoff, deathMicros))) {
+    return false;
+  }
+  const typedHits = priorHits as HistoryDeathHit[];
+  return typedHits.every((hit, index) => index === 0 ||
+    hit.at_micros >= typedHits[index - 1]!.at_micros);
+}
+
+function isValidHistoryDeathHit(value: unknown, earliest: number, latest: number): value is HistoryDeathHit {
+  if (!isRecord(value) || !isSafeCounter(value.at_micros) ||
+      value.at_micros < earliest || value.at_micros > latest ||
+      !isBoundedIdentifier(value.source_actor_id) ||
+      !isBoundedIdentifier(value.source_entity_uuid) ||
+      !isOptionalIdentifier(value.direct_source_actor_id) ||
+      !isOptionalIdentifier(value.direct_source_entity_uuid) ||
+      !isOptionalIdentifier(value.ability_id) ||
+      !isOptionalIdentifier(value.breakdown_ability_id) ||
+      !isSafeCounter(value.reported_damage) || !isSafeCounter(value.effective_damage) ||
+      typeof value.critical !== "boolean" ||
+      !isOptionalDeathIdentity(value.source_identity) ||
+      !isOptionalDeathIdentity(value.direct_source_identity)) return false;
+  if ((value.direct_source_actor_id === undefined) !==
+      (value.direct_source_entity_uuid === undefined)) return false;
+  if (value.direct_source_identity !== undefined && value.direct_source_actor_id === undefined) {
+    return false;
+  }
+  return isOptionalDeathActorPresentation(
+    value.source_presentation,
+    value.source_actor_id,
+    value.source_identity,
+  ) && isOptionalDeathActorPresentation(
+    value.direct_source_presentation,
+    value.direct_source_actor_id,
+    value.direct_source_identity,
+  ) && isOptionalDeathAbilityPresentation(
+    value.ability_presentation,
+    value.breakdown_ability_id,
+    value.ability_id,
+  );
+}
+
+function isOptionalDeathIdentity(value: unknown): boolean {
+  return value === undefined || (isRecord(value) &&
+    isOptionalIdentifier(value.monster_id) && isOptionalIdentifier(value.actor_kind));
+}
+
+function isOptionalDeathActorPresentation(
+  value: unknown,
+  actorId: unknown,
+  identity: unknown,
+): boolean {
+  if (value === undefined) return true;
+  if (!isRecord(value) || !isRecord(identity) || value.actor_id !== actorId ||
+      !isBoundedPresentationName(value.name)) return false;
+  return (value.provenance === "exact_history_participant" && identity.actor_kind === "player") ||
+    (value.provenance === "exact_build_monster_catalog" && identity.actor_kind === "monster");
+}
+
+function isOptionalDeathAbilityPresentation(
+  value: unknown,
+  breakdownAbilityId: unknown,
+  abilityId: unknown,
+): boolean {
+  if (value === undefined) return true;
+  return isRecord(value) && value.provenance === "exact_build_action_catalog" &&
+    isBoundedPresentationName(value.name) &&
+    (value.ability_id === breakdownAbilityId || value.ability_id === abilityId);
+}
+
+function isBoundedPresentationName(value: unknown): value is string {
+  return typeof value === "string" && value.trim() !== "" && value.length <= 96;
+}
+
+function isBoundedIdentifier(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 4_096;
+}
+
+function isOptionalIdentifier(value: unknown): boolean {
+  return value === undefined || isBoundedIdentifier(value);
+}
+
+function isSafeCounter(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function enforceHistoryParticipantDeathPresentationBindings(actors: unknown[]): void {
+  for (const actorValue of actors) {
+    const actor = actorValue as Record<string, unknown>;
+    for (const eventValue of actor.death_events as unknown[]) {
+      const event = eventValue as Record<string, unknown>;
+      if (!isRecord(event.cause)) continue;
+      const cause = event.cause;
+      const hits = [cause.final_hit, ...(cause.prior_hits as unknown[])];
+      if (hits.some((hit) => !historyParticipantPresentationsMatch(hit, actors))) {
+        event.cause = null;
+      }
+    }
+  }
+}
+
+function historyParticipantPresentationsMatch(hitValue: unknown, actors: unknown[]): boolean {
+  const hit = hitValue as Record<string, unknown>;
+  return participantPresentationMatches(
+    hit.source_presentation,
+    hit.source_actor_id,
+    hit.source_entity_uuid,
+    actors,
+  ) && participantPresentationMatches(
+    hit.direct_source_presentation,
+    hit.direct_source_actor_id,
+    hit.direct_source_entity_uuid,
+    actors,
+  );
+}
+
+function participantPresentationMatches(
+  presentationValue: unknown,
+  actorId: unknown,
+  entityUuid: unknown,
+  actors: unknown[],
+): boolean {
+  if (!isRecord(presentationValue) ||
+      presentationValue.provenance !== "exact_history_participant") return true;
+  const matches = actors.filter((candidate) => {
+    if (!isRecord(candidate)) return false;
+    return candidate.actor_id === actorId && candidate.entity_uuid === entityUuid &&
+      candidate.actor_kind === "player";
+  });
+  if (matches.length !== 1) return false;
+  const actor = matches[0] as Record<string, unknown>;
+  return presentationValue.name === actor.presentation_name ||
+    presentationValue.name === actor.display_name;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function normalizeCombatPresentationRows(

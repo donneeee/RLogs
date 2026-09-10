@@ -7,6 +7,122 @@ import {
 } from "./combat-history";
 
 describe("combat history contracts", () => {
+  const deathHistory = () => ({
+    schema_version: 1,
+    session_id: "death-run",
+    deployment_id: "global",
+    region_id: "global",
+    world_id: null,
+    client_build: "24687926",
+    protocol_pack_digest: `sha256:${"a".repeat(64)}`,
+    rdps_formula_identity: null,
+    runs: [{
+      run_index: 0,
+      rdps_status: "unavailable",
+      views: [{
+        id: "all", label: "Entire run", elapsed_micros: 5_000_000,
+        active_combat_micros: 5_000_000, targets: [], damage_influences: [],
+        actors: [{
+          actor_id: "1", entity_uuid: "101", actor_kind: "player",
+          display_name: "Alice", presentation_name: "Alice",
+          death_seconds: [3], targets: [], series: [], abilities: [], effects: [],
+          death_events: [{
+            at_micros: 3_000_000,
+            cause: {
+              evidence: "packet_terminal_damage",
+              final_hit: {
+                at_micros: 3_000_000,
+                source_actor_id: "9", source_entity_uuid: "909",
+                source_identity: { monster_id: "33701", actor_kind: "monster" },
+                ability_id: "5", breakdown_ability_id: "2233",
+                source_presentation: {
+                  actor_id: "9", name: "Tina - Void Reverie",
+                  provenance: "exact_build_monster_catalog",
+                },
+                ability_presentation: {
+                  ability_id: "2233", name: "Powerdraw",
+                  provenance: "exact_build_action_catalog",
+                },
+                reported_damage: 100, effective_damage: 90, critical: true,
+              },
+              prior_hits: [{
+                at_micros: 1_000_000,
+                source_actor_id: "8", source_entity_uuid: "808",
+                reported_damage: 50, effective_damage: 50, critical: false,
+              }],
+              prior_hits_truncated: false,
+            },
+          }],
+        }],
+      }],
+    }],
+  });
+
+  it("accepts bounded exact death replay and defaults legacy events", () => {
+    const exact = parseCombatHistorySnapshot(deathHistory());
+    expect(exact.runs[0]?.views[0]?.actors[0]?.death_events[0]?.cause?.final_hit)
+      .toMatchObject({
+        source_actor_id: "9",
+        source_presentation: { name: "Tina - Void Reverie" },
+        ability_presentation: { ability_id: "2233", name: "Powerdraw" },
+      });
+
+    const legacy = deathHistory();
+    delete (legacy.runs[0]!.views[0]!.actors[0] as { death_events?: unknown }).death_events;
+    expect(parseCombatHistorySnapshot(legacy).runs[0]?.views[0]?.actors[0]?.death_events)
+      .toEqual([]);
+
+    const outsideView = deathHistory();
+    outsideView.runs[0]!.views[0]!.actors[0]!.death_events[0]!.at_micros = 5_000_001;
+    expect(parseCombatHistorySnapshot(outsideView).runs[0]?.views[0]?.actors[0]?.death_events)
+      .toEqual([]);
+  });
+
+  it("keeps a death marker but nulls malformed replay or presentation evidence", () => {
+    const mutations = [
+      (cause: any) => { cause.final_hit.at_micros -= 1; },
+      (cause: any) => { cause.prior_hits[0].at_micros -= 1; },
+      (cause: any) => { cause.prior_hits = Array.from({ length: 64 }, () => cause.prior_hits[0]); },
+      (cause: any) => { cause.final_hit.reported_damage = -1; },
+      (cause: any) => { cause.final_hit.source_presentation.actor_id = "wrong"; },
+      (cause: any) => { cause.final_hit.source_presentation.provenance = "packet_name"; },
+      (cause: any) => { cause.final_hit.source_presentation.name = "x".repeat(97); },
+      (cause: any) => { cause.final_hit.ability_presentation.ability_id = "other"; },
+    ];
+    for (const mutate of mutations) {
+      const candidate = deathHistory();
+      mutate(candidate.runs[0]!.views[0]!.actors[0]!.death_events[0]!.cause);
+      const event = parseCombatHistorySnapshot(candidate)
+        .runs[0]!.views[0]!.actors[0]!.death_events[0]!;
+      expect(event.at_micros).toBe(3_000_000);
+      expect(event.cause).toBeNull();
+    }
+  });
+
+  it("accepts a private participant label only for one exact actor and entity", () => {
+    const exact = deathHistory();
+    const hit: any = exact.runs[0]!.views[0]!.actors[0]!.death_events[0]!.cause!.final_hit;
+    hit.source_actor_id = "1";
+    hit.source_entity_uuid = "101";
+    hit.source_identity = { actor_kind: "player" };
+    hit.source_presentation = {
+      actor_id: "1", name: "Alice", provenance: "exact_history_participant",
+    };
+    expect(parseCombatHistorySnapshot(exact).runs[0]!.views[0]!.actors[0]!
+      .death_events[0]!.cause).not.toBeNull();
+
+    const duplicate = deathHistory();
+    const duplicateHit = duplicate.runs[0]!.views[0]!.actors[0]!
+      .death_events[0]!.cause!.final_hit;
+    Object.assign(duplicateHit, hit);
+    duplicate.runs[0]!.views[0]!.actors.push({
+      ...structuredClone(duplicate.runs[0]!.views[0]!.actors[0]!),
+      death_events: [],
+    });
+    expect(parseCombatHistorySnapshot(duplicate).runs[0]!.views[0]!.actors[0]!
+      .death_events[0]!.cause).toBeNull();
+  });
+
   it("accepts a lightweight indexed run and exact active-time view", () => {
     const catalog = parseCombatHistoryCatalog({
       schema_version: 1,

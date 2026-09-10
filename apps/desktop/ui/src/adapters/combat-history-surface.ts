@@ -11,6 +11,8 @@ import type {
   HistoryDamageInfluenceSummary,
   HistoryAbilitySummary,
   HistoryActorSummary,
+  HistoryDeathEvent,
+  HistoryDeathHit,
   HistoryTargetIdentity,
 } from "./combat-history";
 import {
@@ -3330,7 +3332,8 @@ function renderMetricGraph(
       ),
     )
     .filter((entry) =>
-      entry.peak > 0 || (targetActorId === null && entry.actor.death_seconds.length > 0),
+      entry.peak > 0 || (targetActorId === null &&
+        ((entry.actor.death_events?.length ?? 0) > 0 || entry.actor.death_seconds.length > 0)),
     );
   const visibleSeries = allSeries.filter(
     (entry) => !hiddenActorIds.has(entry.actor.actor_id),
@@ -3570,10 +3573,20 @@ function partyLineChart(
     );
     svg.append(polyline);
     if (!showDeathMarkers) continue;
-    for (const deathSecond of entry.actor.death_seconds) {
-      const second = Math.min(durationSeconds, deathSecond);
+    const deaths = (entry.actor.death_events?.length ?? 0) > 0
+      ? entry.actor.death_events
+      : entry.actor.death_seconds.map((second) => ({
+        at_micros: second * 1_000_000,
+        cause: null,
+      } satisfies HistoryDeathEvent));
+    for (const death of deaths) {
+      const second = Math.min(durationSeconds, death.at_micros / 1_000_000);
       const value = entry.values[Math.round(second)] ?? 0;
-      svg.append(deathMarker(xFor(second), yFor(value), actorLabel(entry.actor), second));
+      svg.append(historyDeathMarker(
+        xFor(second),
+        yFor(value),
+        historyDeathSummary(actorLabel(entry.actor), death),
+      ));
     }
   }
 
@@ -3686,17 +3699,51 @@ export function historyTargetLabel(target: HistoryTargetIdentity): string {
     : `${kind} · Entity ${target.entity_uuid}`;
 }
 
-function deathMarker(x: number, lineY: number, actorName: string, second: number): SVGGElement {
+export function historyDeathMarker(x: number, lineY: number, summary: string): SVGGElement {
   const y = Math.min(268, Math.max(16, lineY));
   const group = svgNode("g", "combat-history-death-marker", {
     transform: `translate(${x.toFixed(2)} ${y.toFixed(2)})`,
+    role: "img",
+    tabindex: 0,
+    "aria-label": summary,
   });
   group.append(
     svgNode("circle", "combat-history-death-marker-halo", { cx: 0, cy: 0, r: 10 }),
     svgText(0, 5.5, "☠", "combat-history-death-marker-skull", "middle"),
-    svgTitle(`${actorName} died at ${formatGraphTime(second)}`),
+    svgTitle(summary),
   );
   return group;
+}
+
+export function historyDeathSummary(actorName: string, death: HistoryDeathEvent): string {
+  const time = formatExactGraphTime(death.at_micros);
+  if (!death.cause) return `${actorName} died at ${time}; cause unavailable.`;
+  const final = historyDeathHitSummary(death.cause.final_hit);
+  const recent = death.cause.prior_hits.length === 0
+    ? "No earlier hits in the two-second replay."
+    : `${death.cause.prior_hits.length} earlier hit${death.cause.prior_hits.length === 1 ? "" : "s"} in the two-second replay.`;
+  const truncated = death.cause.prior_hits_truncated ? " Earlier hits were truncated." : "";
+  return `${actorName} died at ${time}. Final hit: ${final} ${recent}${truncated}`;
+}
+
+function historyDeathHitSummary(hit: HistoryDeathHit): string {
+  const source = hit.source_presentation?.name?.trim() || `Actor ${hit.source_actor_id}`;
+  const abilityId = hit.ability_presentation?.ability_id ??
+    hit.breakdown_ability_id ?? hit.ability_id;
+  const ability = hit.ability_presentation?.name?.trim() ||
+    (abilityId ? `Ability ${abilityId}` : "Unknown ability");
+  const direct = hit.direct_source_actor_id
+    ? `; direct source ${hit.direct_source_presentation?.name?.trim() || `Actor ${hit.direct_source_actor_id}`} [actor ${hit.direct_source_actor_id}]`
+    : "";
+  return `${ability} [ability ${abilityId ?? "unknown"}] by ${source} [actor ${hit.source_actor_id}]${direct}; ${INTEGER.format(hit.reported_damage)} damage, ${INTEGER.format(hit.effective_damage)} effective${hit.critical ? ", critical" : ""}.`;
+}
+
+function formatExactGraphTime(micros: number): string {
+  const totalMillis = Math.max(0, Math.round(micros / 1_000));
+  const minutes = Math.floor(totalMillis / 60_000);
+  const seconds = Math.floor(totalMillis / 1_000) % 60;
+  const millis = totalMillis % 1_000;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}.${millis.toString().padStart(3, "0")}`;
 }
 
 function graphTimeTicks(durationSeconds: number): number[] {

@@ -120,7 +120,9 @@ use rlogs_log_format::{RlogHeader, RlogLimits, RlogReader, RlogReplaySummary};
 use rlogs_plugin_api::{PluginCapability, PluginDependency, PluginRuntime, PluginWorkspaceTabKind};
 use rlogs_plugin_combat_meter::{
     COMBAT_SNAPSHOT_SCHEMA_ID, COMBAT_SNAPSHOT_SCHEMA_VERSION, CombatHistorySnapshot,
-    CombatRunHistory, CombatTimelinePlugin, CombatTimelineSnapshot, HistoryLoadoutSlot,
+    CombatRunHistory, CombatTimelinePlugin, CombatTimelineSnapshot,
+    HistoryDeathAbilityPresentation, HistoryDeathActorIdentity, HistoryDeathActorPresentation,
+    HistoryDeathHit, HistoryDeathPresentationProvenance, HistoryLoadoutSlot,
     HistoryRdpsEffectPresentation, LiveHealthAttributeMapping,
 };
 use rlogs_plugin_encounter_recorder::{
@@ -13008,6 +13010,7 @@ fn enrich_bpsr_history_presentation(
     snapshot: &mut CombatHistorySnapshot,
     locale: &str,
 ) -> Result<(), String> {
+    const MAXIMUM_DEATH_PRESENTATION_NAME_UTF16: usize = 96;
     let localization_deployment_id = snapshot.deployment_id.clone();
     let localization_client_build = snapshot.client_build.clone();
     let localization_protocol_pack_digest = snapshot.protocol_pack_digest.clone();
@@ -13183,9 +13186,224 @@ fn enrich_bpsr_history_presentation(
                 }
                 .or_else(|| target.display_name.clone());
             }
+            enrich_bpsr_history_death_presentations(
+                view,
+                &localization_deployment_id,
+                &localization_client_build,
+                &localization_protocol_pack_digest,
+                locale,
+                MAXIMUM_DEATH_PRESENTATION_NAME_UTF16,
+            )?;
         }
     }
     Ok(())
+}
+
+fn enrich_bpsr_history_death_presentations(
+    view: &mut rlogs_plugin_combat_meter::CombatHistoryView,
+    deployment_id: &str,
+    client_build: &str,
+    protocol_pack_digest: &str,
+    locale: &str,
+    maximum_name_utf16: usize,
+) -> Result<(), String> {
+    let mut participants = BTreeMap::<(String, String), Option<String>>::new();
+    for actor in view
+        .actors
+        .iter()
+        .filter(|actor| actor.actor_kind.as_deref() == Some("player"))
+    {
+        let key = (actor.actor_id.clone(), actor.entity_uuid.clone());
+        let name = actor
+            .presentation_name
+            .as_deref()
+            .or(actor.display_name.as_deref())
+            .and_then(|name| bounded_history_death_presentation_name(name, maximum_name_utf16));
+        if participants.insert(key.clone(), name).is_some() {
+            participants.insert(key, None);
+        }
+    }
+
+    for actor in &mut view.actors {
+        for event in &mut actor.death_events {
+            let Some(cause) = event.cause.as_mut() else {
+                continue;
+            };
+            for hit in std::iter::once(&mut cause.final_hit).chain(cause.prior_hits.iter_mut()) {
+                enrich_bpsr_history_death_hit_presentation(
+                    hit,
+                    &participants,
+                    deployment_id,
+                    client_build,
+                    protocol_pack_digest,
+                    locale,
+                    maximum_name_utf16,
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn enrich_bpsr_history_death_hit_presentation(
+    hit: &mut HistoryDeathHit,
+    participants: &BTreeMap<(String, String), Option<String>>,
+    deployment_id: &str,
+    client_build: &str,
+    protocol_pack_digest: &str,
+    locale: &str,
+    maximum_name_utf16: usize,
+) -> Result<(), String> {
+    hit.source_presentation = history_death_actor_presentation(
+        &hit.source_actor_id,
+        &hit.source_entity_uuid,
+        hit.source_identity.as_ref(),
+        participants,
+        deployment_id,
+        client_build,
+        protocol_pack_digest,
+        locale,
+        maximum_name_utf16,
+    )?;
+    hit.direct_source_presentation = hit
+        .direct_source_actor_id
+        .as_deref()
+        .zip(hit.direct_source_entity_uuid.as_deref())
+        .zip(hit.direct_source_identity.as_ref())
+        .map(|((actor_id, entity_uuid), identity)| {
+            history_death_actor_presentation(
+                actor_id,
+                entity_uuid,
+                Some(identity),
+                participants,
+                deployment_id,
+                client_build,
+                protocol_pack_digest,
+                locale,
+                maximum_name_utf16,
+            )
+        })
+        .transpose()?
+        .flatten();
+    hit.ability_presentation = history_death_ability_presentation(
+        hit,
+        deployment_id,
+        client_build,
+        protocol_pack_digest,
+        locale,
+        maximum_name_utf16,
+    )?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn history_death_actor_presentation(
+    actor_id: &str,
+    entity_uuid: &str,
+    identity: Option<&HistoryDeathActorIdentity>,
+    participants: &BTreeMap<(String, String), Option<String>>,
+    deployment_id: &str,
+    client_build: &str,
+    protocol_pack_digest: &str,
+    locale: &str,
+    maximum_name_utf16: usize,
+) -> Result<Option<HistoryDeathActorPresentation>, String> {
+    let Some(identity) = identity else {
+        return Ok(None);
+    };
+    let (name, provenance) = match identity.actor_kind.as_deref() {
+        Some("player") => {
+            let Some(name) = participants
+                .get(&(actor_id.to_owned(), entity_uuid.to_owned()))
+                .and_then(Clone::clone)
+            else {
+                return Ok(None);
+            };
+            (
+                name,
+                HistoryDeathPresentationProvenance::ExactHistoryParticipant,
+            )
+        }
+        Some("monster") => {
+            let Some(monster_id) = identity
+                .monster_id
+                .as_deref()
+                .and_then(|value| value.parse::<i64>().ok())
+            else {
+                return Ok(None);
+            };
+            let Some(name) = localized_monster_name_for_identity(
+                deployment_id,
+                client_build,
+                protocol_pack_digest,
+                monster_id,
+                locale,
+            )?
+            .and_then(|name| bounded_history_death_presentation_name(name, maximum_name_utf16)) else {
+                return Ok(None);
+            };
+            (
+                name,
+                HistoryDeathPresentationProvenance::ExactBuildMonsterCatalog,
+            )
+        }
+        _ => return Ok(None),
+    };
+    Ok(Some(HistoryDeathActorPresentation {
+        actor_id: actor_id.to_owned(),
+        name,
+        provenance,
+    }))
+}
+
+fn history_death_ability_presentation(
+    hit: &HistoryDeathHit,
+    deployment_id: &str,
+    client_build: &str,
+    protocol_pack_digest: &str,
+    locale: &str,
+    maximum_name_utf16: usize,
+) -> Result<Option<HistoryDeathAbilityPresentation>, String> {
+    let mut prior_id = None;
+    for ability_id in [
+        hit.breakdown_ability_id.as_deref(),
+        hit.ability_id.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if prior_id == Some(ability_id) {
+            continue;
+        }
+        prior_id = Some(ability_id);
+        let Ok(parsed) = ability_id.parse::<i64>() else {
+            continue;
+        };
+        if combat_action_presentation(parsed)?.is_none() {
+            continue;
+        }
+        let Some(name) = localized_combat_action_name_for_identity(
+            deployment_id,
+            client_build,
+            protocol_pack_digest,
+            parsed,
+            locale,
+        )?
+        .and_then(|name| bounded_history_death_presentation_name(name, maximum_name_utf16)) else {
+            continue;
+        };
+        return Ok(Some(HistoryDeathAbilityPresentation {
+            ability_id: ability_id.to_owned(),
+            name,
+            provenance: HistoryDeathPresentationProvenance::ExactBuildActionCatalog,
+        }));
+    }
+    Ok(None)
+}
+
+fn bounded_history_death_presentation_name(name: &str, maximum_utf16: usize) -> Option<String> {
+    (!name.trim().is_empty() && name.encode_utf16().count() <= maximum_utf16)
+        .then(|| name.to_owned())
 }
 
 fn clear_bpsr_run_presentation(run: &mut CombatRunHistory) {
@@ -13238,6 +13456,16 @@ fn clear_bpsr_actor_presentation(actor: &mut rlogs_plugin_combat_meter::HistoryA
         effect.presentation_kind = None;
         effect.presentation_resolution = None;
         effect.icon_asset_path = None;
+    }
+    for event in &mut actor.death_events {
+        let Some(cause) = event.cause.as_mut() else {
+            continue;
+        };
+        for hit in std::iter::once(&mut cause.final_hit).chain(cause.prior_hits.iter_mut()) {
+            hit.source_presentation = None;
+            hit.direct_source_presentation = None;
+            hit.ability_presentation = None;
+        }
     }
 }
 
@@ -17206,6 +17434,138 @@ mod tests {
         assert_eq!(wrong_actor.abilities[0].presentation_name, None);
         assert_eq!(wrong_actor.abilities[0].presentation_recount_group_id, None);
         assert_eq!(wrong_actor.abilities[0].icon_asset_path, None);
+    }
+
+    #[test]
+    fn history_death_presentations_require_exact_event_identity_build_and_selected_ability() {
+        let mut snapshot = captured_marksman_history();
+        snapshot.client_build = "24687926".into();
+        let view = &mut snapshot.runs[0].views[0];
+        let mut direct_source = view.actors[0].clone();
+        direct_source.actor_id = "player:source".into();
+        direct_source.entity_uuid = "777".into();
+        direct_source.display_name = Some("Exact source".into());
+        direct_source.death_events.clear();
+        view.actors.push(direct_source);
+        let mut reused_source = view.actors[0].clone();
+        reused_source.actor_id = "9".into();
+        reused_source.entity_uuid = "999".into();
+        reused_source.actor_kind = Some("monster".into());
+        reused_source.monster_id = Some("80017".into());
+        reused_source.display_name = Some("Wrong later spawn".into());
+        reused_source.death_events.clear();
+        view.actors.push(reused_source);
+        view.actors[0].death_events.push(
+            serde_json::from_value(serde_json::json!({
+                "at_micros": 3_000_000,
+                "cause": {
+                    "evidence": "packet_terminal_damage",
+                    "final_hit": {
+                        "at_micros": 3_000_000,
+                        "source_actor_id": "9",
+                        "source_entity_uuid": "909",
+                        "source_identity": { "monster_id": "33701", "actor_kind": "monster" },
+                        "direct_source_actor_id": "player:source",
+                        "direct_source_entity_uuid": "777",
+                        "direct_source_identity": { "actor_kind": "player" },
+                        "ability_id": "5",
+                        "breakdown_ability_id": "2233",
+                        "reported_damage": 100,
+                        "effective_damage": 90,
+                        "critical": true
+                    },
+                    "prior_hits": [],
+                    "prior_hits_truncated": false
+                }
+            }))
+            .unwrap(),
+        );
+
+        enrich_bpsr_history_presentation(&mut snapshot, "en-US").unwrap();
+
+        let hit = &snapshot.runs[0].views[0].actors[0].death_events[0]
+            .cause
+            .as_ref()
+            .unwrap()
+            .final_hit;
+        assert_eq!(
+            hit.source_presentation.as_ref().unwrap().name,
+            "Tina - Void Reverie"
+        );
+        assert_eq!(
+            hit.source_presentation.as_ref().unwrap().provenance,
+            HistoryDeathPresentationProvenance::ExactBuildMonsterCatalog
+        );
+        assert_eq!(
+            hit.direct_source_presentation.as_ref().unwrap().name,
+            "Exact source"
+        );
+        assert_eq!(
+            hit.direct_source_presentation.as_ref().unwrap().provenance,
+            HistoryDeathPresentationProvenance::ExactHistoryParticipant
+        );
+        assert_eq!(
+            hit.ability_presentation.as_ref().unwrap().ability_id,
+            "2233"
+        );
+        assert_eq!(hit.ability_presentation.as_ref().unwrap().name, "Powerdraw");
+
+        let mut wrong_build = snapshot.clone();
+        wrong_build.client_build = "24687927".into();
+        enrich_bpsr_history_presentation(&mut wrong_build, "en-US").unwrap();
+        let wrong_hit = &wrong_build.runs[0].views[0].actors[0].death_events[0]
+            .cause
+            .as_ref()
+            .unwrap()
+            .final_hit;
+        assert!(wrong_hit.source_presentation.is_none());
+        assert!(wrong_hit.direct_source_presentation.is_none());
+        assert!(wrong_hit.ability_presentation.is_none());
+
+        let mut wrong_digest = snapshot.clone();
+        wrong_digest.protocol_pack_digest = "sha256:wrong-pack".into();
+        enrich_bpsr_history_presentation(&mut wrong_digest, "en-US").unwrap();
+        let wrong_digest_hit = &wrong_digest.runs[0].views[0].actors[0].death_events[0]
+            .cause
+            .as_ref()
+            .unwrap()
+            .final_hit;
+        assert!(wrong_digest_hit.source_presentation.is_none());
+        assert!(wrong_digest_hit.ability_presentation.is_none());
+
+        let mut missing_direct_identity = snapshot.clone();
+        missing_direct_identity.runs[0].views[0].actors[0].death_events[0]
+            .cause
+            .as_mut()
+            .unwrap()
+            .final_hit
+            .direct_source_identity = None;
+        enrich_bpsr_history_presentation(&mut missing_direct_identity, "en-US").unwrap();
+        assert!(
+            missing_direct_identity.runs[0].views[0].actors[0].death_events[0]
+                .cause
+                .as_ref()
+                .unwrap()
+                .final_hit
+                .direct_source_presentation
+                .is_none()
+        );
+
+        let mut duplicate = snapshot.clone();
+        let duplicate_source = duplicate.runs[0].views[0].actors[1].clone();
+        duplicate.runs[0].views[0].actors.push(duplicate_source);
+        enrich_bpsr_history_presentation(&mut duplicate, "en-US").unwrap();
+        let duplicate_hit = &duplicate.runs[0].views[0].actors[0].death_events[0]
+            .cause
+            .as_ref()
+            .unwrap()
+            .final_hit;
+        assert!(duplicate_hit.direct_source_presentation.is_none());
+        assert_eq!(
+            duplicate_hit.source_presentation.as_ref().unwrap().name,
+            "Tina - Void Reverie",
+            "monster presentation must use event-time identity, not a run-end actor row"
+        );
     }
 
     #[test]

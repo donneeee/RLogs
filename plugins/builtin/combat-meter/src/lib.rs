@@ -367,9 +367,39 @@ pub struct HistoryDeathHit {
     pub ability_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub breakdown_ability_id: Option<String>,
+    /// Desktop-only display data. The reducer leaves these values absent and
+    /// public projections independently derive their privacy-reviewed labels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_presentation: Option<HistoryDeathActorPresentation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direct_source_presentation: Option<HistoryDeathActorPresentation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ability_presentation: Option<HistoryDeathAbilityPresentation>,
     pub reported_damage: i64,
     pub effective_damage: i64,
     pub critical: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryDeathActorPresentation {
+    pub actor_id: String,
+    pub name: String,
+    pub provenance: HistoryDeathPresentationProvenance,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryDeathAbilityPresentation {
+    pub ability_id: String,
+    pub name: String,
+    pub provenance: HistoryDeathPresentationProvenance,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryDeathPresentationProvenance {
+    ExactHistoryParticipant,
+    ExactBuildMonsterCatalog,
+    ExactBuildActionCatalog,
 }
 
 /// Private, event-time presentation evidence for a death hit. The static
@@ -1197,6 +1227,9 @@ impl HistoryDeathHitFact {
             breakdown_ability_id: self
                 .breakdown_ability_id
                 .map(|ability_id| ability_id.to_string()),
+            source_presentation: None,
+            direct_source_presentation: None,
+            ability_presentation: None,
             reported_damage: self.reported,
             effective_damage: self.effective,
             critical: self.critical,
@@ -6535,6 +6568,9 @@ mod tests {
         let restored: HistoryDeathHit = serde_json::from_value(value).unwrap();
         assert!(restored.source_identity.is_none());
         assert!(restored.direct_source_identity.is_none());
+        assert!(restored.source_presentation.is_none());
+        assert!(restored.direct_source_presentation.is_none());
+        assert!(restored.ability_presentation.is_none());
     }
 
     #[test]

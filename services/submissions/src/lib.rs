@@ -9028,6 +9028,9 @@ mod tests {
             direct_source_identity: None,
             ability_id: Some("5".into()),
             breakdown_ability_id: Some("55".into()),
+            source_presentation: None,
+            direct_source_presentation: None,
+            ability_presentation: None,
             reported_damage: 100,
             effective_damage: 90,
             critical: true,
@@ -9202,6 +9205,22 @@ mod tests {
         });
         hit.ability_id = Some("5".into());
         hit.breakdown_ability_id = Some("2233".into());
+        hit.source_presentation = Some(
+            rlogs_plugin_combat_meter::HistoryDeathActorPresentation {
+                actor_id: "attacker-controlled".into(),
+                name: "Private untrusted source".into(),
+                provenance:
+                    rlogs_plugin_combat_meter::HistoryDeathPresentationProvenance::ExactHistoryParticipant,
+            },
+        );
+        hit.ability_presentation = Some(
+            rlogs_plugin_combat_meter::HistoryDeathAbilityPresentation {
+                ability_id: "5".into(),
+                name: "Private untrusted ability".into(),
+                provenance:
+                    rlogs_plugin_combat_meter::HistoryDeathPresentationProvenance::ExactBuildActionCatalog,
+            },
+        );
         let event = HistoryDeathEvent {
             at_micros,
             cause: Some(HistoryDeathCause {
@@ -9240,6 +9259,14 @@ mod tests {
                 name: "Powerdraw".into(),
                 provenance: PublicTimelineDeathPresentationProvenance::ExactBuildActionCatalog,
             })
+        );
+        assert_ne!(
+            hit.source_presentation.as_ref().unwrap().name,
+            "Private untrusted source"
+        );
+        assert_ne!(
+            hit.ability_presentation.as_ref().unwrap().name,
+            "Private untrusted ability"
         );
         let serialized = serde_json::to_string(hit).unwrap();
         assert!(!serialized.contains("entity_uuid"));
