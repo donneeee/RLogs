@@ -6,6 +6,12 @@ on:
       - main
     paths:
       - ".github/workflows/deploy-cloudflare.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "**/Cargo.toml"
+      - "**/*.rs"
+      - "plugins/games/blue-protocol-star-resonance/game-data/**"
+      - "protocol-packs/**"
       - "services/submissions/cloudflare-backend/**"
       - "services/submissions/cloudflare-gateway/**"
       - "services/submissions/cloudflare-verifier/**"
