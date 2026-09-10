@@ -8395,6 +8395,114 @@ mod tests {
     }
 
     #[test]
+    fn reconciled_timeline_preserves_five_party_multi_provider_bucket_conservation() {
+        let rows = [
+            ("a", [100, 50], [85, 45], [0, 0], [15, 5]),
+            ("b", [80, 50], [76, 30], [0, 0], [4, 20]),
+            ("c", [20, 50], [24, 50], [4, 0], [0, 0]),
+            ("d", [0, 50], [10, 55], [10, 5], [0, 0]),
+            ("e", [0, 0], [5, 20], [5, 20], [0, 0]),
+        ];
+        let reconciled = rows
+            .into_iter()
+            .map(|(actor_id, damage, rdps_damage, given, received)| {
+                let mut participant = timeline_participant(actor_id);
+                participant.damage = damage.into_iter().sum();
+                participant.rdps = Some(rdps_damage.into_iter().sum::<i64>() as f64 / 2.0);
+                participant.series = (0..2)
+                    .map(|second| PublicSeriesPoint {
+                        second: second as u32,
+                        damage: damage[second],
+                        effective_healing: 0,
+                        damage_taken: 0,
+                        rdps_damage: Some(rdps_damage[second]),
+                        rdps_contribution_given: Some(given[second]),
+                        rdps_contribution_received: Some(received[second]),
+                    })
+                    .collect();
+                PublicReconciledParticipant {
+                    participant,
+                    rdps_damage: Some(rdps_damage.into_iter().sum()),
+                    contribution_given: Some(given.into_iter().sum()),
+                    contribution_received: Some(received.into_iter().sum()),
+                    rdps_incomplete: false,
+                }
+            })
+            .collect::<Vec<_>>();
+        let mut timeline = PublicCombatTimeline {
+            schema_version: PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION,
+            series_bucket_micros: 1_000_000,
+            ..PublicCombatTimeline::default()
+        };
+
+        populate_reconciled_timeline_combat_data(&mut timeline, &reconciled, &[], None);
+
+        assert_eq!(timeline.duration_micros, 2_000_000);
+        assert_eq!(timeline.participant_tracks.len(), 5);
+        for (index, track) in timeline.participant_tracks.iter().enumerate() {
+            assert_eq!(track.actor_id, reconciled[index].participant.actor_id);
+            assert_eq!(track.canonical_participant_index, index);
+            assert_eq!(track.series_point_count, 2);
+        }
+        for second in 0..2 {
+            let raw = reconciled
+                .iter()
+                .map(|participant| participant.participant.series[second].damage)
+                .sum::<i64>();
+            let rdps = reconciled
+                .iter()
+                .map(|participant| participant.participant.series[second].rdps_damage.unwrap())
+                .sum::<i64>();
+            let given = reconciled
+                .iter()
+                .map(|participant| {
+                    participant.participant.series[second]
+                        .rdps_contribution_given
+                        .unwrap()
+                })
+                .sum::<i64>();
+            let received = reconciled
+                .iter()
+                .map(|participant| {
+                    participant.participant.series[second]
+                        .rdps_contribution_received
+                        .unwrap()
+                })
+                .sum::<i64>();
+            assert_eq!(raw, rdps, "bucket {second} must conserve adjusted damage");
+            assert_eq!(given, received, "bucket {second} must conserve transfers");
+        }
+        assert_eq!(
+            reconciled
+                .iter()
+                .map(|participant| participant.participant.damage)
+                .sum::<i64>(),
+            400
+        );
+        assert_eq!(
+            reconciled
+                .iter()
+                .map(|participant| participant.rdps_damage.unwrap())
+                .sum::<i64>(),
+            400
+        );
+        assert_eq!(
+            reconciled
+                .iter()
+                .map(|participant| participant.contribution_given.unwrap())
+                .sum::<i64>(),
+            44
+        );
+        assert_eq!(
+            reconciled
+                .iter()
+                .map(|participant| participant.contribution_received.unwrap())
+                .sum::<i64>(),
+            44
+        );
+    }
+
+    #[test]
     fn public_timeline_bounds_rows_and_rejects_invalid_influence_spans() {
         let participants = (0..MAXIMUM_TIMELINE_PARTICIPANTS + 1)
             .map(|index| {
