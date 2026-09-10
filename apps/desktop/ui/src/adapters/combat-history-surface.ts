@@ -3309,7 +3309,7 @@ function humanizePresentationKind(kind: string): string {
   return words ? words[0]!.toUpperCase() + words.slice(1) : "";
 }
 
-function renderMetricGraph(
+export function renderMetricGraph(
   actors: HistoryActorSummary[],
   definition: GraphDefinition,
   elapsedMicros: number,
@@ -3373,6 +3373,7 @@ function renderMetricGraph(
       visibleSeries,
       definition,
       durationSeconds,
+      elapsedMicros,
       scaleMaximum,
       targetActorId === null,
       localizer,
@@ -3483,6 +3484,7 @@ function partyLineChart(
   series: ActorGraphSeries[],
   definition: GraphDefinition,
   durationSeconds: number,
+  durationMicros: number,
   scaleMaximum: number,
   showDeathMarkers: boolean,
   localizer: UiLocalizer,
@@ -3574,18 +3576,19 @@ function partyLineChart(
     svg.append(polyline);
     if (!showDeathMarkers) continue;
     const deaths = (entry.actor.death_events?.length ?? 0) > 0
-      ? entry.actor.death_events
+      ? entry.actor.death_events.map((death) => ({ death, precision: "exact_microsecond" as const }))
       : entry.actor.death_seconds.map((second) => ({
-        at_micros: second * 1_000_000,
-        cause: null,
-      } satisfies HistoryDeathEvent));
-    for (const death of deaths) {
+        death: { at_micros: second * 1_000_000, cause: null } satisfies HistoryDeathEvent,
+        precision: "one_second_bucket" as const,
+      }));
+    for (const { death, precision } of deaths) {
       const second = Math.min(durationSeconds, death.at_micros / 1_000_000);
       const value = entry.values[Math.round(second)] ?? 0;
       svg.append(historyDeathMarker(
         xFor(second),
         yFor(value),
-        historyDeathSummary(actorLabel(entry.actor), death),
+        historyDeathSummary(actorLabel(entry.actor), death, precision, durationMicros),
+        entry.color,
       ));
     }
   }
@@ -3673,7 +3676,15 @@ function partyLineChart(
         : (inspectedSecond ?? 0) + (event.key === "ArrowLeft" ? -1 : 1);
     renderInspection(next);
   });
-  frame.append(svg, readout);
+  const deathSummary = element("div", "combat-history-death-summary");
+  deathSummary.id = `combat-history-death-summary-${historyDeathSummarySequence++}`;
+  deathSummary.setAttribute("role", "tooltip");
+  deathSummary.hidden = true;
+  wireHistoryDeathSummaries(
+    [...svg.querySelectorAll<SVGGElement>(".combat-history-death-marker")],
+    deathSummary,
+  );
+  frame.append(svg, readout, deathSummary);
   return frame;
 }
 
@@ -3699,7 +3710,14 @@ export function historyTargetLabel(target: HistoryTargetIdentity): string {
     : `${kind} · Entity ${target.entity_uuid}`;
 }
 
-export function historyDeathMarker(x: number, lineY: number, summary: string): SVGGElement {
+let historyDeathSummarySequence = 0;
+
+export function historyDeathMarker(
+  x: number,
+  lineY: number,
+  summary: string,
+  participantColor: string | null = null,
+): SVGGElement {
   const y = Math.min(268, Math.max(16, lineY));
   const group = svgNode("g", "combat-history-death-marker", {
     transform: `translate(${x.toFixed(2)} ${y.toFixed(2)})`,
@@ -3707,6 +3725,8 @@ export function historyDeathMarker(x: number, lineY: number, summary: string): S
     tabindex: 0,
     "aria-label": summary,
   });
+  group.dataset.deathSummary = summary;
+  if (participantColor !== null) group.style.setProperty("--death-marker-color", participantColor);
   group.append(
     svgNode("circle", "combat-history-death-marker-halo", { cx: 0, cy: 0, r: 10 }),
     svgText(0, 5.5, "☠", "combat-history-death-marker-skull", "middle"),
@@ -3715,15 +3735,63 @@ export function historyDeathMarker(x: number, lineY: number, summary: string): S
   return group;
 }
 
-export function historyDeathSummary(actorName: string, death: HistoryDeathEvent): string {
-  const time = formatExactGraphTime(death.at_micros);
-  if (!death.cause) return `${actorName} died at ${time}; cause unavailable.`;
+export function wireHistoryDeathSummaries(
+  markers: readonly SVGGElement[],
+  summary: HTMLElement,
+): void {
+  let hovered: SVGGElement | null = null;
+  let focused: SVGGElement | null = null;
+  const show = (marker: SVGGElement) => {
+    markers.forEach((candidate) => candidate.removeAttribute("aria-describedby"));
+    summary.textContent = marker.dataset.deathSummary ?? marker.getAttribute("aria-label") ?? "";
+    summary.hidden = false;
+    marker.setAttribute("aria-describedby", summary.id);
+  };
+  const hide = () => {
+    summary.hidden = true;
+    summary.textContent = "";
+    markers.forEach((marker) => marker.removeAttribute("aria-describedby"));
+  };
+  for (const marker of markers) {
+    marker.addEventListener("pointerenter", () => {
+      hovered = marker;
+      show(marker);
+    });
+    marker.addEventListener("pointerleave", () => {
+      if (hovered === marker) hovered = null;
+      if (focused) show(focused);
+      else hide();
+    });
+    marker.addEventListener("focus", () => {
+      focused = marker;
+      show(marker);
+    });
+    marker.addEventListener("blur", () => {
+      if (focused === marker) focused = null;
+      if (hovered) show(hovered);
+      else hide();
+    });
+  }
+}
+
+export function historyDeathSummary(
+  actorName: string,
+  death: HistoryDeathEvent,
+  precision: "exact_microsecond" | "one_second_bucket" = "exact_microsecond",
+  durationMicros = death.at_micros + 1_000_000,
+): string {
+  const occurrence = precision === "one_second_bucket"
+    ? `${actorName} death observed in the ${formatExactGraphTime(death.at_micros)}–${formatExactGraphTime(
+      Math.min(Math.max(death.at_micros, durationMicros), death.at_micros + 1_000_000),
+    )} one-second bucket`
+    : `${actorName} died at ${formatExactGraphTime(death.at_micros)}`;
+  if (!death.cause) return `${occurrence}; cause unavailable.`;
   const final = historyDeathHitSummary(death.cause.final_hit);
   const recent = death.cause.prior_hits.length === 0
     ? "No earlier hits in the two-second replay."
     : `${death.cause.prior_hits.length} earlier hit${death.cause.prior_hits.length === 1 ? "" : "s"} in the two-second replay.`;
   const truncated = death.cause.prior_hits_truncated ? " Earlier hits were truncated." : "";
-  return `${actorName} died at ${time}. Final hit: ${final} ${recent}${truncated}`;
+  return `${occurrence}. Final hit: ${final} ${recent}${truncated}`;
 }
 
 function historyDeathHitSummary(hit: HistoryDeathHit): string {
