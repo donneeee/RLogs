@@ -3,9 +3,12 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  BACKFILL_SOURCE_SCHEMA_VERSION, BACKFILL_TARGET_PROJECTION_REVISION,
+  BACKFILL_TARGET_SCHEMA_VERSION,
   catalogEntry, compatibleProfileName, expectedReportId, reconcileCatalogEntry,
+  isSchema12BackfillCandidate,
   sameChunkCommitments, runOneShotVerifier, validateOutput, validateReconciliationOutput,
-  validateTrainingOutput, validateWakeup,
+  validateBackfillOutput, validateTrainingOutput, validateWakeup,
 } from "../src/core.js";
 
 const digest = "a".repeat(64);
@@ -32,6 +35,61 @@ test("container output must preserve report and artifact identities", () => {
   assert.equal(validateOutput(output, wakeup), true);
   output.report.verification.artifact_sha256 = "b".repeat(64);
   assert.equal(validateOutput(output, wakeup), false);
+});
+
+test("backfill eligibility is limited to current public schema-12 replay evidence", () => {
+  const row = {
+    report_id: wakeup.expected_report_id, artifact_sha256: digest,
+    visibility: "public", verification_tier: "replayed",
+  };
+  const report = {
+    schema_version: BACKFILL_SOURCE_SCHEMA_VERSION, report_id: wakeup.expected_report_id,
+    visibility: "public", verification: { artifact_sha256: digest },
+  };
+  assert.equal(isSchema12BackfillCandidate(report, row), true);
+  assert.equal(isSchema12BackfillCandidate({ ...report, schema_version: 13 }, row), false);
+  assert.equal(isSchema12BackfillCandidate({ ...report, visibility: "unlisted" }, row), false);
+  assert.equal(isSchema12BackfillCandidate(report, { ...row, verification_tier: "ranked" }), false);
+});
+
+test("backfill output can add schema fields but cannot change identity, owner, visibility, or evidence", () => {
+  const submitter = "usr_fixture";
+  const row = {
+    report_id: wakeup.expected_report_id, artifact_sha256: digest, submitter_id: submitter,
+    visibility: "public", verifier_release: "old-release",
+  };
+  const original = {
+    schema_version: 12, report_id: wakeup.expected_report_id, visibility: "public",
+    deployment_id: "global", region_id: "north-america", created_unix_millis: 42,
+    submission_provenance: { submitter_id: submitter },
+    verification: {
+      artifact_sha256: digest, tier: "replayed", canonical_content_sha256: "sha256:content",
+      event_count: 10, privacy_policy_digest: "sha256:privacy",
+    },
+  };
+  const output = {
+    schema_version: 1,
+    report: {
+      ...original, schema_version: BACKFILL_TARGET_SCHEMA_VERSION,
+      projection_revision: BACKFILL_TARGET_PROJECTION_REVISION,
+      verification: { ...original.verification }, runs: [{ run_index: 0, run_group_id: "run_fixture" }],
+    },
+    membership: {
+      report_id: wakeup.expected_report_id, artifact_sha256: digest,
+      character_by_actor: {}, runs: [],
+    },
+  };
+  assert.equal(validateBackfillOutput(output, wakeup, original, row, "new-release"), true);
+  assert.equal(validateBackfillOutput({ ...output, report: {
+    ...output.report, visibility: "unlisted",
+  } }, wakeup, original, row, "new-release"), false);
+  assert.equal(validateBackfillOutput({ ...output, report: {
+    ...output.report, submission_provenance: { submitter_id: "usr_other" },
+  } }, wakeup, original, row, "new-release"), false);
+  assert.equal(validateBackfillOutput({ ...output, report: {
+    ...output.report, region_id: "asia",
+  } }, wakeup, original, row, "new-release"), false);
+  assert.equal(validateBackfillOutput(output, wakeup, original, row, "short"), false);
 });
 
 test("training output must be an exact server-replayed solo dummy result", () => {

@@ -7,6 +7,12 @@
   "observability": {
     "enabled": true
   },
+  "vars": {
+    "VERIFIER_RELEASE": "development-only"
+  },
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
   "containers": [
     {
       "class_name": "RLogsVerifierContainer",

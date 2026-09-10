@@ -4,6 +4,7 @@ import {
   sameChunkCommitments, validateOutput, validateReconciliationOutput, validateTrainingOutput,
   validateWakeup,
 } from "./core.js";
+import { runProjectionBackfillBatch } from "./backfill.js";
 
 // Cloudflare requires this named export whenever a Container class installs
 // outbound handlers. It keeps the R2 binding in the trusted Worker while the
@@ -510,5 +511,10 @@ export default {
       return reconcileRunGroup(env, reconciliation[1]);
     }
     return json({ error: "not found" }, 404);
+  },
+  async scheduled(_controller, env, context) {
+    // Scheduled execution only consumes explicit operator-created requests.
+    // An empty queue is a no-op; it never discovers or mutates reports on its own.
+    context.waitUntil(runProjectionBackfillBatch(env, context, reconcileRunGroup));
   },
 };

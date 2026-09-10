@@ -2,6 +2,9 @@ const IDENTIFIER = /^[A-Za-z0-9_-]{1,128}$/;
 const DIGEST = /^[a-f0-9]{64}$/;
 const REPORT_ID = /^rpt_[a-f0-9]{32}$/;
 const RECONCILIATION_ID = /^rec_[a-f0-9]{32}$/;
+export const BACKFILL_SOURCE_SCHEMA_VERSION = 12;
+export const BACKFILL_TARGET_SCHEMA_VERSION = 15;
+export const BACKFILL_TARGET_PROJECTION_REVISION = 6;
 
 export function expectedReportId(digest) {
   return `rpt_${digest.slice(0, 32)}`;
@@ -42,6 +45,61 @@ export function validateOutput(value, wakeup) {
     value.membership?.report_id === wakeup.expected_report_id &&
     value.membership?.artifact_sha256 === wakeup.artifact_sha256 && Array.isArray(value.report?.runs) &&
     value.report.runs.length > 0 && Array.isArray(value.membership?.runs);
+}
+
+export function isSchema12BackfillCandidate(report, row) {
+  return report?.schema_version === BACKFILL_SOURCE_SCHEMA_VERSION &&
+    report?.report_id === row?.report_id && report?.visibility === "public" &&
+    report?.verification?.artifact_sha256 === row?.artifact_sha256 &&
+    row?.visibility === "public" && row?.verification_tier === "replayed";
+}
+
+// A backfill may add fields derived by a newer trusted replay, but it may not
+// change the durable identity, owner, visibility, or sealed evidence that made
+// the original report publishable.
+export function validateBackfillOutput(value, wakeup, original, row, targetRelease) {
+  if (!validateOutput(value, wakeup) ||
+      value.report.schema_version !== BACKFILL_TARGET_SCHEMA_VERSION ||
+      value.report.projection_revision !== BACKFILL_TARGET_PROJECTION_REVISION ||
+      value.report.visibility !== "public" ||
+      value.report.verification?.tier !== "replayed" ||
+      value.report.verification?.artifact_sha256 !== row.artifact_sha256 ||
+      value.report.submission_provenance?.submitter_id !== row.submitter_id ||
+      original.submission_provenance?.submitter_id !== row.submitter_id ||
+      value.membership?.report_id !== row.report_id ||
+      value.membership?.artifact_sha256 !== row.artifact_sha256) return false;
+
+  if (typeof targetRelease !== "string" || targetRelease.length < 7) return false;
+  const runIndexes = new Set();
+  if (!value.report.runs.every((run) => Number.isInteger(run?.run_index) && run.run_index >= 0 &&
+      typeof run.run_group_id === "string" && run.run_group_id.length > 0 &&
+      run.run_group_id.length <= 96 && !runIndexes.has(run.run_index) && runIndexes.add(run.run_index))) {
+    return false;
+  }
+  if (!value.membership.runs.every((run) => runIndexes.has(run?.run_index) &&
+      Array.isArray(run.character_ids) && run.character_ids.every((id) =>
+        typeof id === "string" && id.length > 0 && id.length <= 128)) ||
+      value.membership.character_by_actor == null ||
+      typeof value.membership.character_by_actor !== "object" ||
+      Array.isArray(value.membership.character_by_actor)) return false;
+
+  const immutable = [
+    "report_id", "game_plugin_id", "deployment_id", "region_id", "world_id",
+    "client_build", "protocol_pack_digest", "created_unix_millis",
+  ];
+  const verificationEvidence = [
+    "tier", "artifact_sha256", "canonical_content_sha256", "event_count",
+    "privacy_policy_digest",
+  ];
+  const originalVerification = original.verification ?? {};
+  return typeof originalVerification.canonical_content_sha256 === "string" &&
+    originalVerification.canonical_content_sha256.length > 0 &&
+    typeof originalVerification.privacy_policy_digest === "string" &&
+    originalVerification.privacy_policy_digest.length > 0 &&
+    Number.isSafeInteger(originalVerification.event_count) && originalVerification.event_count >= 0 &&
+    immutable.every((field) => value.report[field] === original[field]) &&
+    verificationEvidence.every((field) =>
+      value.report.verification?.[field] === original.verification?.[field]);
 }
 
 export function validateTrainingOutput(value, wakeup) {
