@@ -80,7 +80,7 @@ use rlogs_profiles::LocalProfilePackage;
 
 pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 15;
 pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 7;
-pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 6;
+pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 7;
 pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 18;
 pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 3;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
@@ -90,7 +90,7 @@ const MAXIMUM_UPLOAD_CHUNKS: usize = 16_384;
 const UPLOAD_OWNER_SCHEMA_VERSION: u16 = 1;
 const AUTH_INTROSPECTION_SCHEMA_VERSION: u16 = 1;
 const PRIVATE_PARSE_MEMBERSHIP_SCHEMA_VERSION: u16 = 1;
-const MY_PARSE_CATALOG_SCHEMA_VERSION: u16 = 1;
+const MY_PARSE_CATALOG_SCHEMA_VERSION: u16 = 2;
 const COMMUNITY_MILESTONE_CATALOG_SCHEMA_VERSION: u16 = 1;
 const LIFE_WAVE_SOURCE_TYPE_ID: i32 = 1;
 const LIFE_WAVE_SOURCE_CONFIG_ID: i64 = 2_302_420;
@@ -3714,6 +3714,10 @@ pub struct PublicParseCatalogEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub submitter_id: Option<String>,
     pub deployment_id: String,
+    #[serde(default)]
+    pub client_build: Option<String>,
+    #[serde(default)]
+    pub protocol_pack_digest: Option<String>,
     pub region_id: String,
     pub activity_id: Option<String>,
     pub activity_family_id: Option<String>,
@@ -3917,7 +3921,7 @@ impl PublicParseCatalogEntry {
         } else {
             run.run_group_id.clone()
         };
-        Self {
+        let mut entry = Self {
             report_id: report.report_id.clone(),
             report_ids: vec![report.report_id.clone()],
             run_index: run.run_index,
@@ -3931,6 +3935,8 @@ impl PublicParseCatalogEntry {
             created_unix_millis: report.created_unix_millis,
             submitter_id: report.submission_provenance.submitter_id.clone(),
             deployment_id: report.deployment_id.clone(),
+            client_build: Some(report.client_build.clone()),
+            protocol_pack_digest: Some(report.protocol_pack_digest.clone()),
             region_id: report.region_id.clone(),
             activity_id: run.activity_id.clone(),
             activity_family_id: run.activity_family_id.clone(),
@@ -3942,7 +3948,31 @@ impl PublicParseCatalogEntry {
             terminal_state: run.terminal_state.clone(),
             total_run_time_micros: run.total_run_time_micros,
             participant_count: run.participants.len(),
+        };
+        entry.require_localization_authority();
+        entry
+    }
+
+    fn require_localization_authority(&mut self) {
+        let has_authority = !self.deployment_id.trim().is_empty()
+            && self
+                .client_build
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty())
+            && self
+                .protocol_pack_digest
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty());
+        if has_authority {
+            return;
         }
+        self.client_build = None;
+        self.protocol_pack_digest = None;
+        self.activity_id = None;
+        self.activity_family_id = None;
+        self.activity_category_id = None;
+        self.scene_name = None;
+        self.difficulty_family = None;
     }
 }
 
@@ -3978,10 +4008,37 @@ impl CatalogFacets {
             }
             increment(&mut terminal_states, entry.terminal_state.clone());
             if let Some(scene_id) = entry.scene_id {
-                let value = scenes
-                    .entry(scene_id)
-                    .or_insert_with(|| (entry.scene_name.clone(), 0_usize));
+                let candidate_authority = entry.scene_name.as_ref().and_then(|_| {
+                    Some((
+                        entry.deployment_id.clone(),
+                        entry.client_build.as_ref()?.clone(),
+                        entry.protocol_pack_digest.as_ref()?.clone(),
+                    ))
+                    .filter(|(deployment, build, digest)| {
+                        !deployment.is_empty() && !build.is_empty() && !digest.is_empty()
+                    })
+                });
+                let value = scenes.entry(scene_id).or_insert_with(|| {
+                    (
+                        entry
+                            .scene_name
+                            .clone()
+                            .filter(|_| candidate_authority.is_some()),
+                        0_usize,
+                        candidate_authority.clone(),
+                        candidate_authority.is_none(),
+                    )
+                });
                 value.1 += 1;
+                if value.3
+                    || candidate_authority.is_none()
+                    || value.0 != entry.scene_name
+                    || value.2 != candidate_authority
+                {
+                    value.0 = None;
+                    value.2 = None;
+                    value.3 = true;
+                }
             }
         }
         Self {
@@ -3990,7 +4047,21 @@ impl CatalogFacets {
             activities: facet_values(activities),
             scenes: scenes
                 .into_iter()
-                .map(|(id, (label, count))| SceneFacetValue { id, label, count })
+                .map(|(id, (label, count, authority, _mixed))| {
+                    let (deployment_id, client_build, protocol_pack_digest) = authority
+                        .map(|(deployment, build, digest)| {
+                            (Some(deployment), Some(build), Some(digest))
+                        })
+                        .unwrap_or_default();
+                    SceneFacetValue {
+                        id,
+                        label,
+                        deployment_id,
+                        client_build,
+                        protocol_pack_digest,
+                        count,
+                    }
+                })
                 .collect(),
             difficulties: facet_values(difficulties),
             terminal_states: facet_values(terminal_states),
@@ -4008,6 +4079,12 @@ pub struct FacetValue {
 pub struct SceneFacetValue {
     pub id: i32,
     pub label: Option<String>,
+    #[serde(default)]
+    pub deployment_id: Option<String>,
+    #[serde(default)]
+    pub client_build: Option<String>,
+    #[serde(default)]
+    pub protocol_pack_digest: Option<String>,
     pub count: usize,
 }
 
@@ -8671,6 +8748,8 @@ mod tests {
             created_unix_millis: 1,
             submitter_id: None,
             deployment_id: "global".into(),
+            client_build: Some("24687926".into()),
+            protocol_pack_digest: Some("sha256:test-pack".into()),
             region_id: "north-america".into(),
             activity_id: Some("chaotic".into()),
             activity_family_id: Some("chaotic".into()),
@@ -8687,7 +8766,115 @@ mod tests {
         assert_eq!(facets.regions[0].id, "north-america");
         assert_eq!(facets.activities[0].id, "dungeons");
         assert_eq!(facets.scenes[0].id, 6565);
+        assert_eq!(
+            facets.scenes[0].label.as_deref(),
+            Some("Chaotic - Sea-Ringed Reef")
+        );
+        assert_eq!(facets.scenes[0].deployment_id.as_deref(), Some("global"));
+        assert_eq!(facets.scenes[0].client_build.as_deref(), Some("24687926"));
+        assert_eq!(
+            facets.scenes[0].protocol_pack_digest.as_deref(),
+            Some("sha256:test-pack")
+        );
         assert_eq!(facets.difficulties[0].id, "master");
+    }
+
+    #[test]
+    fn catalog_scene_facets_fail_closed_for_mixed_localization_identity() {
+        let base = PublicParseCatalogEntry {
+            report_id: "rpt_a".into(),
+            report_ids: vec!["rpt_a".into()],
+            run_index: 0,
+            run_group_id: "run_a".into(),
+            contribution_count: 1,
+            distinct_submitter_count: 1,
+            local_profile_witness_character_count: 1,
+            attribution_reconciliation_status: RunAttributionReconciliationStatus::SingleVantage,
+            created_unix_millis: 1,
+            submitter_id: None,
+            deployment_id: "global".into(),
+            client_build: Some("24687926".into()),
+            protocol_pack_digest: Some("sha256:test-pack".into()),
+            region_id: "global".into(),
+            activity_id: Some("chaotic".into()),
+            activity_family_id: Some("chaotic".into()),
+            activity_category_id: Some("dungeons".into()),
+            scene_id: Some(6565),
+            scene_name: Some("Chaotic - Sea-Ringed Reef".into()),
+            difficulty_family: Some("master".into()),
+            difficulty_tier: Some(5),
+            terminal_state: "completed".into(),
+            total_run_time_micros: Some(10),
+            participant_count: 5,
+        };
+        let mut wrong_digest = base.clone();
+        wrong_digest.report_id = "rpt_b".into();
+        wrong_digest.report_ids = vec!["rpt_b".into()];
+        wrong_digest.protocol_pack_digest = Some("sha256:other-pack".into());
+
+        let facets = CatalogFacets::from_entries(&[base, wrong_digest]);
+        assert_eq!(facets.scenes[0].count, 2);
+        assert!(facets.scenes[0].label.is_none());
+        assert!(facets.scenes[0].deployment_id.is_none());
+        assert!(facets.scenes[0].client_build.is_none());
+        assert!(facets.scenes[0].protocol_pack_digest.is_none());
+    }
+
+    #[test]
+    fn legacy_catalog_entries_deserialize_without_localization_identity() {
+        let value = serde_json::json!({
+            "report_id": "rpt_a",
+            "report_ids": ["rpt_a"],
+            "run_index": 0,
+            "run_group_id": "run_a",
+            "contribution_count": 1,
+            "distinct_submitter_count": 1,
+            "local_profile_witness_character_count": 0,
+            "attribution_reconciliation_status": "single_vantage",
+            "created_unix_millis": 1,
+            "deployment_id": "global",
+            "region_id": "global",
+            "activity_id": "chaotic",
+            "activity_family_id": "chaotic",
+            "scene_id": 6565,
+            "scene_name": "Legacy label",
+            "difficulty_family": "master",
+            "difficulty_tier": 5,
+            "terminal_state": "completed",
+            "total_run_time_micros": 10,
+            "participant_count": 5
+        });
+        let entry: PublicParseCatalogEntry = serde_json::from_value(value).unwrap();
+        assert!(entry.client_build.is_none());
+        assert!(entry.protocol_pack_digest.is_none());
+        let serialized = serde_json::to_value(entry).unwrap();
+        assert!(serialized["client_build"].is_null());
+        assert!(serialized["protocol_pack_digest"].is_null());
+    }
+
+    #[test]
+    fn catalog_entry_creation_requires_nonblank_localization_authority() {
+        for missing_axis in ["deployment", "build", "digest"] {
+            let mut report =
+                fixture_public_report("rpt_dddddddddddddddddddddddddddddddd", "3296036", 0);
+            match missing_axis {
+                "deployment" => report.deployment_id = "  ".into(),
+                "build" => report.client_build = "  ".into(),
+                "digest" => report.protocol_pack_digest = "  ".into(),
+                _ => unreachable!(),
+            }
+            let entry = PublicParseCatalogEntry::from_report(&report, &report.runs[0]);
+            assert!(entry.client_build.is_none(), "axis: {missing_axis}");
+            assert!(entry.protocol_pack_digest.is_none(), "axis: {missing_axis}");
+            assert!(entry.activity_id.is_none(), "axis: {missing_axis}");
+            assert!(entry.activity_family_id.is_none(), "axis: {missing_axis}");
+            assert!(entry.activity_category_id.is_none(), "axis: {missing_axis}");
+            assert!(entry.scene_name.is_none(), "axis: {missing_axis}");
+            assert!(entry.difficulty_family.is_none(), "axis: {missing_axis}");
+            assert_eq!(entry.scene_id, report.runs[0].scene_id);
+            assert_eq!(entry.difficulty_tier, report.runs[0].difficulty_tier);
+            assert_eq!(entry.terminal_state, report.runs[0].terminal_state);
+        }
     }
 
     #[test]
@@ -8704,6 +8891,8 @@ mod tests {
             created_unix_millis: 1,
             submitter_id: None,
             deployment_id: "global".into(),
+            client_build: Some("24687926".into()),
+            protocol_pack_digest: Some("sha256:test-pack".into()),
             region_id: "global".into(),
             activity_id: Some("scene.32160".into()),
             activity_family_id: Some("stimen-vaults".into()),
@@ -8758,6 +8947,8 @@ mod tests {
                     created_unix_millis: created,
                     submitter_id: None,
                     deployment_id: "global".into(),
+                    client_build: Some("24687926".into()),
+                    protocol_pack_digest: Some("sha256:test-pack".into()),
                     region_id: "global".into(),
                     activity_id: Some("scene.6500".into()),
                     activity_family_id: Some("test".into()),
@@ -8826,6 +9017,8 @@ mod tests {
             created_unix_millis: 1,
             submitter_id: None,
             deployment_id: "global".into(),
+            client_build: Some("24687926".into()),
+            protocol_pack_digest: Some("sha256:test-pack".into()),
             region_id: "north-america".into(),
             activity_id: Some("chaotic".into()),
             activity_family_id: None,
@@ -10210,6 +10403,25 @@ mod tests {
             },
         )
         .unwrap();
+        let mut report =
+            fixture_public_report("rpt_dddddddddddddddddddddddddddddddd", "3296036", 0);
+        report.protocol_pack_digest = " ".into();
+        write_json_atomic(
+            &service.projection_path(&report.report_id).unwrap(),
+            &report,
+        )
+        .unwrap();
+        write_json_atomic(
+            &service.membership_path(&report.report_id).unwrap(),
+            &PrivateParseMembership {
+                schema_version: PRIVATE_PARSE_MEMBERSHIP_SCHEMA_VERSION,
+                report_id: report.report_id.clone(),
+                artifact_sha256: report.verification.artifact_sha256.clone(),
+                character_by_actor: None,
+                runs: Vec::new(),
+            },
+        )
+        .unwrap();
         drop(service);
 
         let reopened =
@@ -10218,6 +10430,16 @@ mod tests {
         let catalog: PublicParseCatalog = read_json(&reopened.catalog_path()).unwrap();
 
         assert_eq!(catalog.schema_version, PUBLIC_CATALOG_SCHEMA_VERSION);
+        assert_eq!(catalog.entries.len(), 1);
+        assert!(catalog.entries[0].protocol_pack_digest.is_none());
+        assert!(catalog.entries[0].scene_name.is_none());
+        assert!(catalog.entries[0].activity_id.is_none());
+        assert!(catalog.entries[0].difficulty_family.is_none());
+        assert_eq!(catalog.entries[0].scene_id, report.runs[0].scene_id);
+        assert_eq!(
+            catalog.entries[0].difficulty_tier,
+            report.runs[0].difficulty_tier
+        );
     }
 
     #[test]
@@ -11480,6 +11702,17 @@ mod tests {
                 &MyParsesQuery::default(),
             )
             .unwrap();
+        assert_eq!(catalog.schema_version, MY_PARSE_CATALOG_SCHEMA_VERSION);
+        assert!(catalog.entries.iter().all(|entry| {
+            entry.parse.client_build.as_deref() == Some(unlisted.client_build.as_str())
+                || entry.parse.client_build.as_deref() == Some(private_owned.client_build.as_str())
+        }));
+        assert!(catalog.entries.iter().all(|entry| {
+            entry.parse.protocol_pack_digest.as_deref()
+                == Some(unlisted.protocol_pack_digest.as_str())
+                || entry.parse.protocol_pack_digest.as_deref()
+                    == Some(private_owned.protocol_pack_digest.as_str())
+        }));
         assert_eq!(
             catalog
                 .entries
@@ -11946,6 +12179,8 @@ mod tests {
                 created_unix_millis: created,
                 submitter_id: None,
                 deployment_id: "global".into(),
+                client_build: Some("24687926".into()),
+                protocol_pack_digest: Some("sha256:test-pack".into()),
                 region_id: "north-america".into(),
                 activity_id: None,
                 activity_family_id: None,
@@ -12013,6 +12248,8 @@ mod tests {
             created_unix_millis: u64::from(index),
             submitter_id: None,
             deployment_id: "global".into(),
+            client_build: Some("24687926".into()),
+            protocol_pack_digest: Some("sha256:test-pack".into()),
             region_id: region.into(),
             activity_id: Some("chaotic".into()),
             activity_family_id: Some("chaotic".into()),

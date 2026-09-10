@@ -161,18 +161,51 @@ export function normalizePublishedParseRouting(value) {
 async function hostedCatalogEntries(env) {
   if (!env.RLOGS_DB) return [];
   try {
-    const result = await env.RLOGS_DB.prepare(`SELECT rr.catalog_entry_json
+    const result = await env.RLOGS_DB.prepare(`SELECT rr.catalog_entry_json,
+        r.game_build AS client_build, r.protocol_pack_digest
       FROM report_runs rr JOIN reports r ON r.report_id=rr.report_id
       WHERE r.visibility='public'
       ORDER BY rr.created_unix_millis DESC, rr.report_id, rr.run_index
       LIMIT 100000`).all();
     return (result.results ?? []).flatMap((row) => {
-      try { return [normalizePublishedParseRouting(JSON.parse(row.catalog_entry_json))]; } catch { return []; }
+      try {
+        return [normalizeCatalogEntry(JSON.parse(row.catalog_entry_json), {
+          client_build: row.client_build,
+          protocol_pack_digest: row.protocol_pack_digest,
+        })];
+      } catch { return []; }
     });
   } catch (cause) {
     console.error("rLogs hosted parse catalog read failed", cause);
     return [];
   }
+}
+
+function normalizeCatalogEntry(entry, authoritativeIdentity = null) {
+  const normalized = normalizePublishedParseRouting(entry);
+  const clientBuild = authoritativeIdentity === null
+    ? normalized.client_build ?? null
+    : authoritativeIdentity.client_build ?? null;
+  const protocolPackDigest = authoritativeIdentity === null
+    ? normalized.protocol_pack_digest ?? null
+    : authoritativeIdentity.protocol_pack_digest ?? null;
+  const hasAuthority = typeof normalized.deployment_id === "string" &&
+    normalized.deployment_id.trim() !== "" && typeof clientBuild === "string" &&
+    clientBuild.trim() !== "" && typeof protocolPackDigest === "string" &&
+    protocolPackDigest.trim() !== "";
+  const result = {
+    ...normalized,
+    client_build: hasAuthority ? clientBuild : null,
+    protocol_pack_digest: hasAuthority ? protocolPackDigest : null,
+  };
+  if (!hasAuthority) {
+    result.activity_id = null;
+    result.activity_family_id = null;
+    result.activity_category_id = null;
+    result.scene_name = null;
+    result.difficulty_family = null;
+  }
+  return result;
 }
 
 function facetValues(entries, field) {
@@ -190,16 +223,37 @@ function catalogFacets(entries) {
   for (const entry of entries) {
     if (entry.scene_id == null) continue;
     const id = String(entry.scene_id);
-    const current = scenes.get(id) ?? { id: Number(entry.scene_id), label: entry.scene_name ?? null, count: 0 };
+    const labelIdentity = entry.scene_name != null && entry.deployment_id && entry.client_build &&
+      entry.protocol_pack_digest
+      ? `${entry.deployment_id}\0${entry.client_build}\0${entry.protocol_pack_digest}\0${entry.scene_name}`
+      : null;
+    const current = scenes.get(id) ?? {
+      id: Number(entry.scene_id),
+      label: labelIdentity ? entry.scene_name : null,
+      deployment_id: labelIdentity ? entry.deployment_id : null,
+      client_build: labelIdentity ? entry.client_build : null,
+      protocol_pack_digest: labelIdentity ? entry.protocol_pack_digest : null,
+      label_identity: labelIdentity,
+      mixed_identity: labelIdentity == null,
+      count: 0,
+    };
     current.count += 1;
-    current.label ??= entry.scene_name ?? null;
+    if (current.mixed_identity || labelIdentity == null || current.label_identity !== labelIdentity) {
+      current.label = null;
+      current.deployment_id = null;
+      current.client_build = null;
+      current.protocol_pack_digest = null;
+      current.label_identity = null;
+      current.mixed_identity = true;
+    }
     scenes.set(id, current);
   }
   return {
     deployments: facetValues(entries, "deployment_id"),
     regions: facetValues(entries, "region_id"),
     activities: facetValues(entries, "activity_category_id"),
-    scenes: [...scenes.values()].sort((left, right) => left.id - right.id),
+    scenes: [...scenes.values()].map(({ label_identity: _identity, mixed_identity: _mixed, ...scene }) => scene)
+      .sort((left, right) => left.id - right.id),
     difficulties: facetValues(entries, "difficulty_family"),
     terminal_states: facetValues(entries, "terminal_state"),
   };
@@ -407,11 +461,14 @@ async function parseCatalog(env, url) {
   const storedCatalog = await env.RLOGS_DATA.get("fs:catalog.v1.json", "json");
   const catalog = storedCatalog && Array.isArray(storedCatalog.entries)
     ? storedCatalog
-    : { schema_version: 6, entries: [], facets: catalogFacets([]) };
+    : { schema_version: 7, entries: [], facets: catalogFacets([]) };
   const overrides = await visibilityOverrides(env);
   const hosted = await hostedCatalogEntries(env);
   const merged = new Map();
-  for (const entry of catalog.entries) {
+  for (const rawEntry of catalog.entries) {
+    const entry = Number(catalog.schema_version) >= 7
+      ? normalizeCatalogEntry(rawEntry)
+      : normalizeCatalogEntry(rawEntry, { client_build: null, protocol_pack_digest: null });
     if (overrides[entry.report_id] !== "private") merged.set(`${entry.report_id}:${entry.run_index}`, entry);
   }
   for (const entry of hosted) merged.set(`${entry.report_id}:${entry.run_index}`, entry);
@@ -463,6 +520,7 @@ async function parseCatalog(env, url) {
   }));
   return json({
     ...catalog,
+    schema_version: 7,
     facets: catalogFacets(entries),
     total_entries: entries.length,
     offset,

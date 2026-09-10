@@ -488,7 +488,9 @@ export class RLogsAuthState {
       : 100;
     const claimedCharacterIds = await this.claimedCharacterIds(account.submitter_id);
     const baseCatalog = await this.env.RLOGS_DATA.get("fs:catalog.v1.json", "json");
-    const catalogEntries = Array.isArray(baseCatalog?.entries) ? baseCatalog.entries : [];
+    const catalogEntries = Number(baseCatalog?.schema_version) >= 7 && Array.isArray(baseCatalog?.entries)
+      ? baseCatalog.entries
+      : [];
     const byRun = new Map(catalogEntries.map((entry) => [`${entry.report_id}:${entry.run_index}`, entry]));
     // KV contains the fixed legacy import only. Fetch those immutable objects
     // concurrently; new reports live in indexed D1/R2 and never increase this
@@ -513,7 +515,11 @@ export class RLogsAuthState {
           .filter((characterId) => claimedCharacterIds.has(String(characterId)))
           .map(String);
         if (!submittedByYou && matchedCharacterIds.length === 0) return [];
-        const parse = byRun.get(`${report.report_id}:${run.run_index}`) ?? catalogEntry(report, run);
+        const parse = normalizeCatalogEntry(
+          byRun.get(`${report.report_id}:${run.run_index}`) ?? catalogEntry(report, run),
+          report.client_build,
+          report.protocol_pack_digest,
+        );
         return [{ ...parse, visibility, submitted_by_you: submittedByYou, matched_character_ids: matchedCharacterIds }];
       });
     }));
@@ -551,7 +557,8 @@ export class RLogsAuthState {
       // only to the requested account rather than every report on rLogs.
       const hostedLimit = Math.min(100_000, offset + limit + entries.length + 1);
       const hosted = await this.env.RLOGS_DB.prepare(`SELECT rr.catalog_entry_json,
-          r.visibility, u.submitter_id, ${matchedProjection} AS matched_character_ids
+          r.visibility, r.game_build AS client_build, r.protocol_pack_digest,
+          u.submitter_id, ${matchedProjection} AS matched_character_ids
         FROM report_runs rr
         JOIN reports r ON r.report_id=rr.report_id
         JOIN upload_sessions u ON u.upload_id=r.upload_id
@@ -560,7 +567,11 @@ export class RLogsAuthState {
         LIMIT ${hostedLimit}`).bind(...bindings).all();
       for (const row of hosted.results ?? []) {
         hostedLoaded += 1;
-        const parse = JSON.parse(row.catalog_entry_json);
+        const parse = normalizeCatalogEntry(
+          JSON.parse(row.catalog_entry_json),
+          row.client_build,
+          row.protocol_pack_digest,
+        );
         const submittedByYou = row.submitter_id === account.submitter_id;
         const matchedCharacterIds = typeof row.matched_character_ids === "string"
           ? row.matched_character_ids.split(",").filter(Boolean)
@@ -596,7 +607,7 @@ export class RLogsAuthState {
       ? uniqueEntries.length
       : Math.max(uniqueEntries.length, legacyEntries.length + hostedTotal);
     return json({
-      schema_version: 1,
+      schema_version: 2,
       total_entries: totalEntries,
       offset: boundedOffset,
       next_offset: boundedOffset + page.length < totalEntries ? boundedOffset + page.length : null,
@@ -891,7 +902,7 @@ async function photoLikeDigest(submitterId) {
 }
 
 function catalogEntry(report, run) {
-  return {
+  return normalizeCatalogEntry({
     report_id: report.report_id,
     report_ids: [report.report_id],
     run_index: run.run_index,
@@ -902,6 +913,8 @@ function catalogEntry(report, run) {
     attribution_reconciliation_status: "single_vantage",
     created_unix_millis: report.created_unix_millis,
     deployment_id: report.deployment_id,
+    client_build: report.client_build ?? null,
+    protocol_pack_digest: report.protocol_pack_digest ?? null,
     region_id: report.region_id,
     activity_id: run.activity_id,
     activity_family_id: run.activity_family_id,
@@ -913,6 +926,25 @@ function catalogEntry(report, run) {
     terminal_state: run.terminal_state,
     total_run_time_micros: run.total_run_time_micros ?? null,
     participant_count: run.participants?.length ?? 0,
+  }, report.client_build, report.protocol_pack_digest);
+}
+
+function normalizeCatalogEntry(entry, clientBuild = null, protocolPackDigest = null) {
+  const build = clientBuild ?? null;
+  const digest = protocolPackDigest ?? null;
+  const hasAuthority = typeof entry.deployment_id === "string" && entry.deployment_id.trim() !== "" &&
+    typeof build === "string" && build.trim() !== "" && typeof digest === "string" && digest.trim() !== "";
+  return {
+    ...entry,
+    client_build: hasAuthority ? build : null,
+    protocol_pack_digest: hasAuthority ? digest : null,
+    ...(!hasAuthority ? {
+      activity_id: null,
+      activity_family_id: null,
+      activity_category_id: null,
+      scene_name: null,
+      difficulty_family: null,
+    } : {}),
   };
 }
 

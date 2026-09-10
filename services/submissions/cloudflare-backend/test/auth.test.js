@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { accountView, RLogsAuthState, tokenHash } from "../src/auth.js";
+import { accountView, catalogEntry, RLogsAuthState, tokenHash } from "../src/auth.js";
 import { canonicalJson, canonicalPublishedRouting, liveCaptureProof, profileLeaderboardProjection, reconcileCatalog, reconcilePublishedRouting } from "../src/profile.js";
 
 function authFixture() {
@@ -310,10 +310,68 @@ test("My Parses includes uploader reports and non-private claimed-character repo
   kv.set("fs:catalog.v1.json", { entries: [] });
   const response = await auth.myParses(new Request("https://backend/v1/auth/parses?limit=250"), Date.now(), new URL("https://backend/v1/auth/parses?limit=250"));
   const value = await response.json();
+  assert.equal(value.schema_version, 2);
   assert.deepEqual(value.claimed_character_ids, ["3296036"]);
   assert.deepEqual(value.entries.map((entry) => entry.report_id), [ownerReportId, participantReportId]);
   assert.equal(value.entries[0].submitted_by_you, true);
   assert.deepEqual(value.entries[1].matched_character_ids, ["3296036"]);
+  assert.ok(value.entries.every((entry) => entry.client_build === "24687926"));
+  assert.ok(value.entries.every((entry) => entry.protocol_pack_digest === "sha256:test-pack"));
+});
+
+test("legacy My Parses reports fail closed for derived localization semantics", () => {
+  const entry = catalogEntry({
+    report_id: "rpt_legacy", created_unix_millis: 1, deployment_id: "global", region_id: "global",
+    submission_provenance: {},
+  }, {
+    run_index: 0, run_group_id: "run_legacy", activity_id: "chaotic",
+    activity_family_id: "chaotic", activity_category_id: "dungeons", scene_id: 6565,
+    scene_name: "Unproven scene", difficulty_family: "master", difficulty_tier: 5,
+    terminal_state: "completed", participants: [],
+  });
+  assert.equal(entry.client_build, null);
+  assert.equal(entry.protocol_pack_digest, null);
+  assert.equal(entry.scene_id, 6565);
+  assert.equal(entry.difficulty_tier, 5);
+  assert.equal(entry.scene_name, null);
+  assert.equal(entry.activity_id, null);
+  assert.equal(entry.activity_family_id, null);
+  assert.equal(entry.activity_category_id, null);
+  assert.equal(entry.difficulty_family, null);
+});
+
+test("My Parses ignores conflicting schema-6 catalog semantics and rebuilds from the projection", async () => {
+  const { auth, kv } = authFixture();
+  const reportId = `rpt_${"8".repeat(32)}`;
+  kv.set(`fs:projections/${reportId}.json`, reportFixture(reportId, "private", "usr_owner", 4));
+  kv.set(`fs:memberships/${reportId}.json`, { runs: [{ run_index: 0, character_ids: [] }] });
+  kv.set("fs:catalog.v1.json", {
+    schema_version: 6,
+    entries: [{
+      report_id: reportId, run_index: 0, deployment_id: "global",
+      client_build: "24687926", protocol_pack_digest: "sha256:test-pack",
+      scene_id: 9999, scene_name: "Wrong cached scene", activity_id: "wrong.activity",
+      activity_family_id: "wrong.family", activity_category_id: "wrong-category",
+      difficulty_family: "wrong-difficulty", difficulty_tier: 1,
+    }],
+  });
+
+  const response = await auth.myParses(
+    new Request("https://backend/v1/auth/parses"), Date.now(),
+    new URL("https://backend/v1/auth/parses"),
+  );
+  const value = await response.json();
+  assert.equal(value.schema_version, 2);
+  assert.equal(value.entries.length, 1);
+  assert.equal(value.entries[0].scene_id, 1);
+  assert.equal(value.entries[0].scene_name, "Dungeon");
+  assert.equal(value.entries[0].activity_id, "scene.1");
+  assert.equal(value.entries[0].activity_family_id, "dungeon.1");
+  assert.equal(value.entries[0].activity_category_id, "dungeons");
+  assert.equal(value.entries[0].difficulty_family, "master");
+  assert.equal(value.entries[0].difficulty_tier, 20);
+  assert.equal(value.entries[0].client_build, "24687926");
+  assert.equal(value.entries[0].protocol_pack_digest, "sha256:test-pack");
 });
 
 test("My Parses filters hosted reports in D1 without a per-report membership query", async () => {
@@ -335,8 +393,11 @@ test("My Parses filters hosted reports in D1 without a per-report membership que
                 catalog_entry_json: JSON.stringify({
                   report_id: reportId, run_index: 0, created_unix_millis: 10,
                   deployment_id: "global", region_id: "north-america",
+                  client_build: "stale-build", protocol_pack_digest: "sha256:stale-pack",
                   scene_id: 1, scene_name: "Dungeon", terminal_state: "completed",
                 }),
+                client_build: "24687926",
+                protocol_pack_digest: "sha256:hosted-pack",
                 visibility: "unlisted",
                 submitter_id: "usr_other",
                 matched_character_ids: "3296036",
@@ -356,8 +417,11 @@ test("My Parses filters hosted reports in D1 without a per-report membership que
   const value = await response.json();
 
   assert.equal(value.total_entries, 1);
+  assert.equal(value.schema_version, 2);
   assert.deepEqual(value.entries.map((entry) => entry.report_id), [reportId]);
   assert.deepEqual(value.entries[0].matched_character_ids, ["3296036"]);
+  assert.equal(value.entries[0].client_build, "24687926");
+  assert.equal(value.entries[0].protocol_pack_digest, "sha256:hosted-pack");
   const reportQueries = queries.filter((query) => query.includes("FROM report_runs"));
   assert.equal(reportQueries.length, 2);
   assert.match(reportQueries[0], /EXISTS \(/u);
@@ -669,6 +733,8 @@ function reportFixture(reportId, visibility, submitterId, createdUnixMillis) {
     visibility,
     created_unix_millis: createdUnixMillis,
     deployment_id: "global",
+    client_build: "24687926",
+    protocol_pack_digest: "sha256:test-pack",
     region_id: "north-america",
     submission_provenance: { submitter_id: submitterId },
     runs: [{

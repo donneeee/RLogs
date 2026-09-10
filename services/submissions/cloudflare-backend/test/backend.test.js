@@ -304,6 +304,7 @@ test("parse catalog applies public filters and pagination", async () => {
     }),
   );
   const value = await response.json();
+  assert.equal(value.schema_version, 7);
   assert.equal(value.total_entries, 2);
   assert.equal(value.next_offset, 1);
   assert.deepEqual(value.entries, [{
@@ -311,6 +312,64 @@ test("parse catalog applies public filters and pagination", async () => {
     region_id: "north-america",
     submitter_id: "usr_owner",
     submitter_name: "Donne",
+    client_build: null,
+    protocol_pack_digest: null,
+    activity_id: null,
+    activity_family_id: null,
+    activity_category_id: null,
+    scene_name: null,
+    difficulty_family: null,
+  }]);
+});
+
+test("legacy catalog rows retain raw scene identity but cannot lend derived facets or filters", async () => {
+  const legacy = {
+    report_id: "rpt_legacy", run_index: 0, deployment_id: "global", region_id: "global",
+    client_build: "uncontracted-build", protocol_pack_digest: "sha256:uncontracted-pack",
+    scene_id: 6565, scene_name: "Unproven scene", activity_id: "chaotic",
+    activity_family_id: "chaotic", activity_category_id: "dungeons",
+    difficulty_family: "master", difficulty_tier: 5, terminal_state: "completed",
+  };
+  const env = environment({
+    "fs:catalog.v1.json": JSON.stringify({ schema_version: 6, entries: [legacy], facets: {} }),
+  });
+  const response = await backend.fetch(new Request("https://backend/v1/parses?scene=6565"), env);
+  const value = await response.json();
+  assert.equal(value.schema_version, 7);
+  assert.equal(value.entries[0].scene_id, 6565);
+  assert.equal(value.entries[0].difficulty_tier, 5);
+  assert.equal(value.entries[0].client_build, null);
+  assert.equal(value.entries[0].protocol_pack_digest, null);
+  assert.equal(value.entries[0].scene_name, null);
+  assert.equal(value.entries[0].activity_id, null);
+  assert.equal(value.entries[0].difficulty_family, null);
+  assert.deepEqual(value.facets.activities, []);
+  assert.deepEqual(value.facets.difficulties, []);
+  assert.deepEqual(value.facets.scenes, [{
+    id: 6565, label: null, deployment_id: null, client_build: null,
+    protocol_pack_digest: null, count: 1,
+  }]);
+
+  const derivedFilter = await backend.fetch(new Request("https://backend/v1/parses?activity=chaotic"), env);
+  assert.deepEqual((await derivedFilter.json()).entries, []);
+});
+
+test("mixed localization identities cannot lend a scene facet label", async () => {
+  const exact = {
+    run_index: 0, deployment_id: "global", client_build: "24687926",
+    protocol_pack_digest: "sha256:pack-a", region_id: "global", scene_id: 6565,
+    scene_name: "Sea-Ringed Reef", terminal_state: "completed",
+  };
+  const env = environment({
+    "fs:catalog.v1.json": JSON.stringify({ schema_version: 7, entries: [
+      { ...exact, report_id: "rpt_a" },
+      { ...exact, report_id: "rpt_b", protocol_pack_digest: "sha256:pack-b" },
+    ], facets: {} }),
+  });
+  const value = await (await backend.fetch(new Request("https://backend/v1/parses"), env)).json();
+  assert.deepEqual(value.facets.scenes, [{
+    id: 6565, label: null, deployment_id: null, client_build: null,
+    protocol_pack_digest: null, count: 2,
   }]);
 });
 
@@ -341,11 +400,16 @@ test("new hosted reports and catalog rows are read from D1 and R2", async () => 
   };
   const entry = {
     report_id: reportId, run_index: 0, created_unix_millis: 10,
+    deployment_id: "global", client_build: "stale-build",
+    protocol_pack_digest: "sha256:stale-pack",
     region_id: "north-america", terminal_state: "completed",
   };
   const env = environment({ "fs:catalog.v1.json": JSON.stringify({ schema_version: 6, entries: [], facets: {} }) });
   env.RLOGS_DB.prepare = (query) => {
-    if (query.includes("FROM report_runs")) return { async all() { return { results: [{ catalog_entry_json: JSON.stringify(entry) }] }; } };
+    if (query.includes("FROM report_runs")) return { async all() { return { results: [{
+      catalog_entry_json: JSON.stringify(entry), client_build: "24687926",
+      protocol_pack_digest: "sha256:hosted-pack",
+    }] }; } };
     if (query.includes("FROM reports r JOIN upload_sessions")) return { bind() { return { async first() {
       return { visibility: "public", projection_object_key: "reports/new.json", submitter_id: "usr_owner" };
     } }; } };
@@ -365,7 +429,11 @@ test("new hosted reports and catalog rows are read from D1 and R2", async () => 
     return { async json() { return report; } };
   } };
   const catalog = await backend.fetch(new Request("https://backend/v1/parses"), env);
-  assert.deepEqual((await catalog.json()).entries, [entry]);
+  assert.deepEqual((await catalog.json()).entries, [{
+    ...entry,
+    client_build: "24687926",
+    protocol_pack_digest: "sha256:hosted-pack",
+  }]);
   const projection = await backend.fetch(new Request(`https://backend/v1/parses/${reportId}`), env);
   assert.deepEqual(await projection.json(), {
     ...report,

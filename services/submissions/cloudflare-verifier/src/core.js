@@ -233,6 +233,8 @@ export function catalogEntry(report, run) {
     created_unix_millis: report.created_unix_millis,
     ...(report.submission_provenance?.submitter_id ? { submitter_id: report.submission_provenance.submitter_id } : {}),
     deployment_id: report.deployment_id,
+    client_build: report.client_build,
+    protocol_pack_digest: report.protocol_pack_digest,
     region_id: report.region_id,
     activity_id: run.activity_id ?? null,
     activity_family_id: run.activity_family_id ?? null,

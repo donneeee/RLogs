@@ -136,6 +136,8 @@ test("verified runs materialize the public catalog contract", () => {
     report_id: wakeup.expected_report_id,
     created_unix_millis: 42,
     deployment_id: "global",
+    client_build: "24687926",
+    protocol_pack_digest: "sha256:test-pack",
     region_id: "north-america",
     submission_provenance: { submitter_id: "usr_fixture" },
   }, {
@@ -149,6 +151,8 @@ test("verified runs materialize the public catalog contract", () => {
   assert.equal(entry.participant_count, 2);
   assert.equal(entry.submitter_id, "usr_fixture");
   assert.equal(entry.attribution_reconciliation_status, "single_vantage");
+  assert.equal(entry.client_build, "24687926");
+  assert.equal(entry.protocol_pack_digest, "sha256:test-pack");
 });
 
 test("reconciliation output must preserve the exact source set and canonical spine", () => {
