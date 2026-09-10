@@ -13,6 +13,8 @@ const MARKER_FIRST: i32 = 1101;
 const MARKER_LAST: i32 = 1106;
 const MAX_ACTIVE_MARKERS: usize = 16_384;
 const MAX_EVIDENCE: usize = 100_000;
+const MAX_UNTYPED_VARINT_COLLISIONS: usize = 100_000;
+const MAX_PROTO_DEPTH: usize = 12;
 
 fn main() {
     if let Err(error) = run() {
@@ -49,6 +51,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let game_build = stream.session().game_build.build_id.clone();
     let mut state = BTreeMap::new();
     let mut evidence = Vec::new();
+    let mut untyped_varint_collisions = Vec::new();
     let mut inspected_packet_counts = BTreeMap::new();
     let mut first_inspected_wall_clock_unix_micros = None;
     let mut last_inspected_wall_clock_unix_micros = None;
@@ -69,9 +72,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         audit_record(&record, &capture_id, &mut state, &mut evidence)?;
+        audit_untyped_varint_collisions(&record, &mut untyped_varint_collisions)?;
     }
     let report = Report {
-        schema_version: 1,
+        schema_version: 2,
         capture_id,
         game_build,
         inspected_routes: [route_label(6), route_label(45), route_label(46)],
@@ -79,9 +83,133 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         first_inspected_wall_clock_unix_micros,
         last_inspected_wall_clock_unix_micros,
         evidence,
+        untyped_varint_collisions,
     };
     println!("{}", serde_json::to_string_pretty(&report)?);
     Ok(())
+}
+
+fn audit_untyped_varint_collisions(
+    record: &CaptureRecord,
+    output: &mut Vec<UntypedVarintCollision>,
+) -> Result<(), AuditError> {
+    let CaptureRecordKind::Packet(packet) = &record.kind else {
+        return Ok(());
+    };
+    let Some(routed) = packet.route else {
+        return Ok(());
+    };
+    if !matches!(routed.key.method_id, 6 | 45 | 46) || routed.key != route(routed.key.method_id) {
+        return Ok(());
+    }
+    let Some(payload) = packet.payload.decode_input() else {
+        return Ok(());
+    };
+    let mut matches = Vec::new();
+    scan_marker_varints(payload, 0, &mut Vec::new(), &mut matches);
+    for (marker_number, field_path) in matches {
+        if output.len() >= MAX_UNTYPED_VARINT_COLLISIONS {
+            return Err(AuditError::UntypedVarintCollisionLimit);
+        }
+        output.push(UntypedVarintCollision {
+            sequence: record.sequence,
+            wall_clock_unix_micros: record.wall_clock_unix_micros,
+            route: route_label(routed.key.method_id),
+            marker_number,
+            field_path,
+        });
+    }
+    Ok(())
+}
+
+fn scan_marker_varints(
+    mut bytes: &[u8],
+    depth: usize,
+    path: &mut Vec<u32>,
+    output: &mut Vec<(i32, String)>,
+) {
+    if depth > MAX_PROTO_DEPTH {
+        return;
+    }
+    while !bytes.is_empty() {
+        let Some((key, key_len)) = read_varint(bytes) else {
+            return;
+        };
+        bytes = &bytes[key_len..];
+        let field = (key >> 3) as u32;
+        if field == 0 {
+            return;
+        }
+        path.push(field);
+        match key & 7 {
+            0 => {
+                let Some((value, len)) = read_varint(bytes) else {
+                    path.pop();
+                    return;
+                };
+                if (MARKER_FIRST as u64..=MARKER_LAST as u64).contains(&value) {
+                    output.push(((value as i32) - 1100, format_field_path(path)));
+                }
+                bytes = &bytes[len..];
+            }
+            1 => {
+                if bytes.len() >= 8 {
+                    bytes = &bytes[8..]
+                } else {
+                    path.pop();
+                    return;
+                }
+            }
+            2 => {
+                let Some((len, prefix)) = read_varint(bytes) else {
+                    path.pop();
+                    return;
+                };
+                let Ok(len) = usize::try_from(len) else {
+                    path.pop();
+                    return;
+                };
+                bytes = &bytes[prefix..];
+                if bytes.len() < len {
+                    path.pop();
+                    return;
+                }
+                scan_marker_varints(&bytes[..len], depth + 1, path, output);
+                bytes = &bytes[len..];
+            }
+            5 => {
+                if bytes.len() >= 4 {
+                    bytes = &bytes[4..]
+                } else {
+                    path.pop();
+                    return;
+                }
+            }
+            _ => {
+                path.pop();
+                return;
+            }
+        }
+        path.pop();
+    }
+}
+
+fn read_varint(bytes: &[u8]) -> Option<(u64, usize)> {
+    let mut value = 0_u64;
+    for (index, byte) in bytes.iter().copied().take(10).enumerate() {
+        value |= u64::from(byte & 0x7f) << (index * 7);
+        if byte & 0x80 == 0 {
+            return Some((value, index + 1));
+        }
+    }
+    None
+}
+
+fn format_field_path(path: &[u32]) -> String {
+    path.iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(".")
 }
 
 fn validate_routes(pack: &ProtocolPack) -> Result<(), Box<dyn std::error::Error>> {
@@ -228,6 +356,8 @@ enum AuditError {
     ActiveMarkerLimit,
     #[error("marker evidence exceeded the fail-closed limit")]
     EvidenceLimit,
+    #[error("untyped marker-range varint collisions exceeded the fail-closed limit")]
+    UntypedVarintCollisionLimit,
 }
 
 fn decode_position(bytes: Option<&[u8]>) -> Option<PositionAudit> {
@@ -294,6 +424,16 @@ struct Report {
     first_inspected_wall_clock_unix_micros: Option<i64>,
     last_inspected_wall_clock_unix_micros: Option<i64>,
     evidence: Vec<MarkerEvidence>,
+    untyped_varint_collisions: Vec<UntypedVarintCollision>,
+}
+
+#[derive(Debug, Serialize)]
+struct UntypedVarintCollision {
+    sequence: u64,
+    wall_clock_unix_micros: Option<i64>,
+    route: String,
+    marker_number: i32,
+    field_path: String,
 }
 #[derive(Debug, Clone, PartialEq)]
 struct MarkerState {
@@ -621,5 +761,29 @@ mod tests {
             ),
             Err(AuditError::ActiveMarkerLimit)
         ));
+    }
+
+    #[test]
+    fn untyped_collision_scan_reports_only_field_paths() {
+        let payload = SyncNearDeltaInfo {
+            deltas: vec![AoiSyncDelta {
+                passive_skill_infos: Some(SeqPassiveSkillInfo {
+                    actor_uuid: Some(44),
+                    passive_infos: vec![PassiveSkillInfo {
+                        uuid: Some(22),
+                        target_uuid: None,
+                        skill_id: Some(1104),
+                        target_position: None,
+                    }],
+                }),
+                passive_skill_end_infos: None,
+            }],
+        }
+        .encode_to_vec();
+        let mut candidates = Vec::new();
+        audit_untyped_varint_collisions(&record(45, payload), &mut candidates).unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].marker_number, 4);
+        assert_eq!(candidates[0].field_path, "1.8.2.6");
     }
 }
