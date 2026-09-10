@@ -6,6 +6,7 @@ on:
       - "v*"
 
 permissions:
+  actions: read
   contents: write
 
 concurrency:
@@ -48,6 +49,49 @@ jobs:
           $version = (Get-Content apps/desktop-tauri/tauri.conf.json | ConvertFrom-Json).version
           if ("v$version" -ne "${{ github.ref_name }}") {
             throw "Tag ${{ github.ref_name }} does not match desktop version v$version"
+          }
+
+          $notesPath = "docs/releases/v$version.md"
+          if (-not (Test-Path -LiteralPath $notesPath -PathType Leaf)) {
+            throw "Release notes are required at $notesPath"
+          }
+          $notes = Get-Content -Raw -LiteralPath $notesPath
+          $requiredPatterns = [ordered]@{
+            title = "(?m)^# rLogs v$([regex]::Escape($version))\s*$"
+            highlights = "(?m)^## Highlights\s*$"
+            compatibility = "(?m)^## Compatibility\s*$"
+            platform = "(?mi)^\s*-\s*Platform:\s*\S.+$"
+            game_deployment = "(?mi)^\s*-\s*Game deployment:\s*\S.+$"
+            game_builds = "(?mi)^\s*-\s*Game build\(s\):\s*\S.+$"
+            public_report_schema = "(?mi)^\s*-\s*Public report schema:\s*\S.+$"
+            capability_status = "(?m)^## Capability status\s*$"
+            available_capabilities = "(?mi)^\s*-\s*Available:\s*\S.+$"
+            locked_capabilities = "(?mi)^\s*-\s*Locked:\s*\S.+$"
+            known_limitations = "(?m)^## Known limitations\s*$"
+          }
+          foreach ($requirement in $requiredPatterns.GetEnumerator()) {
+            if ($notes -notmatch $requirement.Value) {
+              throw "Release notes at $notesPath are missing required field '$($requirement.Key)'. Start from docs/releases/TEMPLATE.md."
+            }
+          }
+
+      - name: Verify the tagged commit passed main CI
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $repository = "${{ github.repository }}"
+          $commit = "${{ github.sha }}"
+          $defaultBranch = "${{ github.event.repository.default_branch }}"
+          $runs = gh api "/repos/$repository/actions/workflows/ci.yml/runs?head_sha=$commit&status=success&per_page=100" | ConvertFrom-Json
+          $passedMain = @($runs.workflow_runs | Where-Object {
+            $_.event -eq "push" -and
+            $_.head_branch -eq $defaultBranch -and
+            $_.head_sha -eq $commit -and
+            $_.conclusion -eq "success"
+          })
+          if ($passedMain.Count -eq 0) {
+            throw "Commit $commit has no successful CI push run on $defaultBranch. Finish and verify the major feature on main before tagging it."
           }
 
       - name: Build and attach the Windows installer
@@ -105,7 +149,34 @@ jobs:
           $sha256 = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash
           $stableInstaller = Join-Path $installer.DirectoryName "rLogs_x64-setup.exe"
           Copy-Item -LiteralPath $installer.FullName -Destination $stableInstaller -Force
-          gh release upload "${{ github.ref_name }}" $stableInstaller --clobber
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
+          $signingStatus = switch ($signature.Status) {
+            "Valid" {
+              $subject = $signature.SignerCertificate.Subject -replace "[\r\n]+", " "
+              "Authenticode valid ($subject)"
+            }
+            "NotSigned" { "Not Authenticode signed" }
+            default {
+              throw "Installer Authenticode status is $($signature.Status): $($signature.StatusMessage)"
+            }
+          }
+          $checksumsName = "rLogs_${version}_SHA256SUMS.txt"
+          $checksumsPath = Join-Path $installer.DirectoryName $checksumsName
+          @(
+            "$sha256 *$($installer.Name)"
+            "$sha256 *$([System.IO.Path]::GetFileName($stableInstaller))"
+          ) | Set-Content -LiteralPath $checksumsPath -Encoding ascii
+          gh release upload "${{ github.ref_name }}" $stableInstaller $checksumsPath --clobber
           $notes = (Get-Content -Raw -LiteralPath $notesPath).Trim()
-          $body = @($notes, "", "Installer SHA-256: $sha256") -join [Environment]::NewLine
+          $body = @(
+            $notes
+            ""
+            "## Build provenance"
+            ""
+            ('- Source commit: `{0}`' -f "${{ github.sha }}")
+            ('- Artifact: `{0}` (Windows x64, NSIS)' -f $installer.Name)
+            ('- Installer SHA-256: `{0}`' -f $sha256)
+            "- Signing status: $signingStatus"
+            ('- Checksums: `{0}`' -f $checksumsName)
+          ) -join [Environment]::NewLine
           gh release edit "${{ github.ref_name }}" --title "rLogs v$version" --notes $body --draft=false --latest
