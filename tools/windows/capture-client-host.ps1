@@ -52,7 +52,7 @@ $connections = @{}
 }
 if ($LASTEXITCODE -ne 0) { throw "tshark tuple discovery exited with code $LASTEXITCODE" }
 $document=[ordered]@{schema_version=1;connections=@($connections.Values|Sort-Object {"$($_.client.port)|$($_.server.address)|$($_.server.port)"})}
-[System.IO.File]::WriteAllText($connectionsPartial,($document|ConvertTo-Json -Depth 6),[System.Text.UTF8Encoding]::new($false))
+[System.IO.File]::WriteAllText($connectionsPartial,($document|ConvertTo-Json -Depth 6),(New-Object System.Text.UTF8Encoding($false)))
 Move-Item -LiteralPath $connectionsPartial -Destination $connectionsPath
 
 $transportInventory = @{}
@@ -76,7 +76,7 @@ $transportInventory = @{}
 if ($LASTEXITCODE -ne 0) { throw "tshark transport inventory exited with code $LASTEXITCODE" }
 if ($transportInventory.Count -eq 0) { throw 'Capture contained no IP packets for the explicit client; no transport inventory was written.' }
 $transportDocument=[ordered]@{schema_version=1;client_ip=$ClientIp;capture_filter=$captureFilter;flows=@($transportInventory.Values|Sort-Object direction,transport,remote_address,client_port,remote_port)}
-[System.IO.File]::WriteAllText($transportsPartial,($transportDocument|ConvertTo-Json -Depth 6),[System.Text.UTF8Encoding]::new($false))
+[System.IO.File]::WriteAllText($transportsPartial,($transportDocument|ConvertTo-Json -Depth 6),(New-Object System.Text.UTF8Encoding($false)))
 Move-Item -LiteralPath $transportsPartial -Destination $transportsPath
 Write-Host "Private capture: $capturePath"
 Write-Host "Metadata-only discovered connection sidecar: $connectionsPath"

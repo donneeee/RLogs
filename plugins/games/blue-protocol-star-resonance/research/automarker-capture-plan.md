@@ -97,6 +97,48 @@ window. Because the markers were reportedly placed once and then persisted
 through later pulls, start recording **before the first placement**, not at
 boss engagement.
 
+Use `tools/windows/capture-marker-audit.ps1` for this controlled sequence.
+It wraps the explicit-client capture launcher in `marker-audit`/`all-ip` mode,
+starts capture before accepting any action, enforces the idle and spacing
+windows, and interactively timestamps the visible result of markers `1..6`.
+It also fails if the capture ends before its post-engagement state window.
+It requires a schema-1 action plan with the exact scene, initiating character,
+expected action, marker/icon identity, and either a ground coordinate or actor
+target for every marker. It also requires the installed game executable, the
+repository-reviewed complete installed-file manifest for that exact build that
+authorizes its hash and byte length,
+the protocol-pack path, and the authoritative protocol-pack digest; it refuses
+an executable/build/pack mismatch rather than inferring one. On completion it
+writes a private action ledger and session manifest with
+SHA-256 hashes, executable/build/pack identity, the all-IPv4 transport
+inventory, and an outbound-during-placement followed by inbound-on-the-same-flow
+preservation check for every action window. The plan, pack, executable, and build-manifest hashes are frozen
+before capture and checked again before completion. Failed sessions keep
+self-describing partial evidence and a failed manifest with the reason and all
+available artifact hashes.
+The client-host filter is intentionally a superset of process-owned traffic so
+transport and remote-flow changes cannot escape it. Review the dry run before
+capturing; the harness never injects, replays, or sends game-protocol data.
+
+Example action plan (keep real actor identifiers and coordinates private):
+
+```json
+{
+  "schema_version": 1,
+  "scene_id": 1633,
+  "scene_name": "Tina M1",
+  "initiating_character": { "character_id": "character-id", "entity_uuid": "current-entity-uuid" },
+  "actions": [
+    { "marker_number": 1, "marker_identity": { "slot_number": 1, "icon_id": "marker-1" }, "expected_action": "place marker 1", "target": { "kind": "ground", "coordinates": { "x": 1.0, "y": 2.0, "z": 3.0 } } },
+    { "marker_number": 2, "marker_identity": { "slot_number": 2, "icon_id": "marker-2" }, "expected_action": "place marker 2", "target": { "kind": "actor", "target_id": "entity-or-character-id" } },
+    { "marker_number": 3, "marker_identity": { "slot_number": 3, "icon_id": "marker-3" }, "expected_action": "place marker 3", "target": { "kind": "ground", "coordinates": { "x": 4.0, "y": 5.0, "z": 6.0 } } },
+    { "marker_number": 4, "marker_identity": { "slot_number": 4, "icon_id": "marker-4" }, "expected_action": "place marker 4", "target": { "kind": "actor", "target_id": "entity-or-character-id" } },
+    { "marker_number": 5, "marker_identity": { "slot_number": 5, "icon_id": "marker-5" }, "expected_action": "place marker 5", "target": { "kind": "ground", "coordinates": { "x": 7.0, "y": 8.0, "z": 9.0 } } },
+    { "marker_number": 6, "marker_identity": { "slot_number": 6, "icon_id": "marker-6" }, "expected_action": "place marker 6", "target": { "kind": "actor", "target_id": "entity-or-character-id" } }
+  ]
+}
+```
+
 1. Capture the client that can successfully place markers through the normal
    game UI. No separate leader-identity capture is required. Start already
    authenticated and inside the chosen dungeon, and record its exact name,
