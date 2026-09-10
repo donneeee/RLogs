@@ -40,6 +40,7 @@ const MAXIMUM_RUN_ENTRY_BOUNDARIES: usize = 256;
 /// compact facts; only the ephemeral overlay relationship ledger uses this cap.
 const MAXIMUM_LIVE_RDPS_INFLUENCE_RELATIONSHIPS: usize = 4_096;
 const MAXIMUM_HISTORY_RATE_CLOCK_POINTS: usize = 86_400;
+const HISTORY_SERIES_BUCKET_MICROS: u64 = 1_000_000;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CombatHistorySnapshot {
@@ -3453,6 +3454,7 @@ impl CombatTimelinePlugin {
 
     fn build_history_view(&self, spec: &HistoryViewSpec) -> CombatHistoryView {
         let origin_micros = spec.series_origin_micros;
+        let projected_duration = history_projected_duration(spec);
         let last_selected_micros = spec
             .intervals
             .iter()
@@ -3530,10 +3532,7 @@ impl CombatTimelinePlugin {
                             },
                         );
                         if let Some(offset_micros) = offset_micros {
-                            let second = offset_micros
-                                .saturating_div(1_000_000)
-                                .min(u64::from(u32::MAX))
-                                as u32;
+                            let second = history_series_second(offset_micros, projected_duration);
                             for transfer in transfers {
                                 rdps_rational_series_valid &= add_history_series_transfer(
                                     &mut rdps_series_transfers,
@@ -3574,10 +3573,8 @@ impl CombatTimelinePlugin {
                             if let (Some(damage_event_sequence), Some(affected_target)) =
                                 (damage_event_sequence, affected_target)
                             {
-                                let second = offset_micros
-                                    .saturating_div(1_000_000)
-                                    .min(u64::from(u32::MAX))
-                                    as u32;
+                                let second =
+                                    history_series_second(offset_micros, projected_duration);
                                 rdps_rational_series_valid &= record_history_rdps_damage_event(
                                     &mut rdps_damage_events,
                                     recipient_actor_id,
@@ -3658,10 +3655,7 @@ impl CombatTimelinePlugin {
                     );
                     if accepted {
                         if let Some(offset_micros) = offset_micros {
-                            let second = offset_micros
-                                .saturating_div(1_000_000)
-                                .min(u64::from(u32::MAX))
-                                as u32;
+                            let second = history_series_second(offset_micros, projected_duration);
                             if let (Some(damage_event_sequence), Some(affected_target)) =
                                 (damage_event_sequence, affected_target)
                             {
@@ -3728,9 +3722,7 @@ impl CombatTimelinePlugin {
             if let Some((target_actor_id, target_entity_uuid)) = fact.target {
                 values.entry(target_actor_id).or_default().entity_uuid = target_entity_uuid;
             }
-            let second = offset_micros
-                .saturating_div(1_000_000)
-                .min(u64::from(u32::MAX)) as u32;
+            let second = history_series_second(offset_micros, projected_duration);
             match fact.kind {
                 CombatFactKind::StatusReset => {}
                 CombatFactKind::Cast => {
@@ -4914,8 +4906,8 @@ fn history_active_intervals(
     intervals
 }
 
-fn history_rate_clock(spec: &HistoryViewSpec) -> (Vec<HistoryRateClockPoint>, bool) {
-    let projected_duration = if spec.compress_intervals {
+fn history_projected_duration(spec: &HistoryViewSpec) -> u64 {
+    if spec.compress_intervals {
         spec.intervals
             .iter()
             .map(|(started, ended)| ended.saturating_sub(*started))
@@ -4926,10 +4918,26 @@ fn history_rate_clock(spec: &HistoryViewSpec) -> (Vec<HistoryRateClockPoint>, bo
             .map(|(_, ended)| ended.saturating_sub(spec.series_origin_micros))
             .max()
             .unwrap_or_default()
-    };
+    }
+}
+
+fn history_series_second(offset_micros: u64, projected_duration: u64) -> u32 {
+    // Selected intervals include their closed terminal boundary so damage on
+    // the packet that closes a pull remains in the view. A boundary exactly
+    // on a whole second still belongs to the final visible bucket, not a new
+    // bucket beyond the projected duration.
+    let last_visible_micros = projected_duration.saturating_sub(1);
+    offset_micros
+        .min(last_visible_micros)
+        .saturating_div(HISTORY_SERIES_BUCKET_MICROS)
+        .min(u64::from(u32::MAX)) as u32
+}
+
+fn history_rate_clock(spec: &HistoryViewSpec) -> (Vec<HistoryRateClockPoint>, bool) {
+    let projected_duration = history_projected_duration(spec);
     let point_count = projected_duration
-        .saturating_add(999_999)
-        .saturating_div(1_000_000)
+        .saturating_add(HISTORY_SERIES_BUCKET_MICROS.saturating_sub(1))
+        .saturating_div(HISTORY_SERIES_BUCKET_MICROS)
         .min(u64::from(u32::MAX)) as usize;
     if point_count == 0 || point_count > MAXIMUM_HISTORY_RATE_CLOCK_POINTS {
         return (
@@ -4941,7 +4949,7 @@ fn history_rate_clock(spec: &HistoryViewSpec) -> (Vec<HistoryRateClockPoint>, bo
     let points = (0..point_count)
         .map(|index| {
             let projected_end = ((index as u64).saturating_add(1))
-                .saturating_mul(1_000_000)
+                .saturating_mul(HISTORY_SERIES_BUCKET_MICROS)
                 .min(projected_duration);
             let (edps_elapsed_micros, adps_elapsed_micros) =
                 history_rate_clock_at(projected_end, spec);
@@ -7862,6 +7870,63 @@ mod tests {
                 .sum::<i64>(),
             "one-second rDPS buckets must conserve the selected view's damage"
         );
+
+        let endpoint_history = plugin.build_history_view(&HistoryViewSpec {
+            id: "endpoint".into(),
+            label: "One-second endpoint".into(),
+            kind: "segment".into(),
+            segment_indices: vec![0],
+            intervals: vec![(1_000_000, 2_000_000)],
+            active_intervals: vec![(1_000_000, 2_000_000)],
+            series_origin_micros: 1_000_000,
+            elapsed_micros: 1_000_000,
+            active_combat_micros: 1_000_000,
+            compress_intervals: false,
+        });
+        assert!(endpoint_history.rate_clock_complete);
+        assert_eq!(endpoint_history.rate_clock.len(), 1);
+        let endpoint_provider = endpoint_history
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
+        let endpoint_recipient = endpoint_history
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "2")
+            .unwrap();
+        assert_eq!(
+            endpoint_provider
+                .series
+                .iter()
+                .map(|point| (point.second, point.damage, point.rdps_damage))
+                .collect::<Vec<_>>(),
+            vec![(0, 0, Some(100))],
+            "closed-boundary provider credit must stay in the only visible bucket"
+        );
+        assert_eq!(
+            endpoint_recipient
+                .series
+                .iter()
+                .map(|point| (point.second, point.damage, point.rdps_damage))
+                .collect::<Vec<_>>(),
+            vec![(0, 1_100, Some(1_000))],
+            "closed-boundary damage must stay in the only visible bucket"
+        );
+        assert_eq!(
+            endpoint_history
+                .actors
+                .iter()
+                .flat_map(|actor| actor.series.iter())
+                .map(|point| point.damage)
+                .sum::<i64>(),
+            endpoint_history
+                .actors
+                .iter()
+                .flat_map(|actor| actor.series.iter())
+                .map(|point| point.rdps_damage.unwrap())
+                .sum::<i64>()
+        );
     }
 
     #[test]
@@ -8490,6 +8555,14 @@ mod tests {
             history_fact_offset(6_000_000, &intervals, 1_000_000, true),
             None
         );
+    }
+
+    #[test]
+    fn history_series_bucket_clamps_only_the_closed_terminal_boundary() {
+        assert_eq!(history_series_second(999_999, 1_000_000), 0);
+        assert_eq!(history_series_second(1_000_000, 1_000_000), 0);
+        assert_eq!(history_series_second(1_000_000, 1_000_001), 1);
+        assert_eq!(history_series_second(1_000_001, 1_000_001), 1);
     }
 
     #[test]
