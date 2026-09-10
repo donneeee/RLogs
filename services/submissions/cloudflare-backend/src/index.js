@@ -42,10 +42,24 @@ function trustedDatabasePresentationAuthority(deploymentId, clientBuild, protoco
   return completePresentationAuthority(deploymentId, clientBuild, `sha256:${protocolPackDigest}`);
 }
 
+function trustedDifficulty(value, authority) {
+  if (!authority || !value || typeof value !== "object") {
+    return { difficulty_family: null, difficulty_tier: null };
+  }
+  const family = typeof value.difficulty_family === "string" ? value.difficulty_family.trim() : "";
+  const tier = value.difficulty_tier;
+  return {
+    difficulty_family: family.length <= 64 && /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/u.test(family)
+      ? family : null,
+    difficulty_tier: Number.isSafeInteger(tier) && tier >= 0 && tier <= 0xffff_ffff ? tier : null,
+  };
+}
+
 async function authoritativeReportRunIdentities(env, references) {
   const byRun = new Map();
+  const difficultyByRun = new Map();
   const reportEligibility = new Map();
-  if (!env.RLOGS_DB) return { byRun, reportEligibility };
+  if (!env.RLOGS_DB) return { byRun, difficultyByRun, reportEligibility };
   const reportIds = [...new Set(references.map((reference) => reference?.report_id).filter(Boolean))];
   try {
     for (let offset = 0; offset < reportIds.length; offset += 90) {
@@ -66,13 +80,15 @@ async function authoritativeReportRunIdentities(env, references) {
         const authority = trustedDatabasePresentationAuthority(
           catalogEntry?.deployment_id, row.client_build, row.protocol_pack_digest,
         );
-        byRun.set(`${row.report_id}:${row.run_index}`, authority);
+        const runKey = `${row.report_id}:${row.run_index}`;
+        byRun.set(runKey, authority);
+        difficultyByRun.set(runKey, trustedDifficulty(catalogEntry, authority));
       }
     }
   } catch (cause) {
     console.error("rLogs report presentation authority read failed", cause);
   }
-  return { byRun, reportEligibility };
+  return { byRun, difficultyByRun, reportEligibility };
 }
 
 function samePresentationAuthority(left, right) {
@@ -85,7 +101,7 @@ async function observedCharacterCatalog(env) {
   const catalog = await env.RLOGS_DATA.get("fs:characters/catalog.v1.json", "json");
   if (!catalog || !Array.isArray(catalog.characters)) return notFound();
   const references = catalog.characters.flatMap((character) => character.reports ?? []);
-  const [{ byRun: authoritative, reportEligibility }, overrides] = await Promise.all([
+  const [{ byRun: authoritative, difficultyByRun, reportEligibility }, overrides] = await Promise.all([
     authoritativeReportRunIdentities(env, references), visibilityOverrides(env),
   ]);
   const schemaTwo = Number(catalog.schema_version) >= 2;
@@ -107,12 +123,17 @@ async function observedCharacterCatalog(env) {
         : (schemaTwo ? completePresentationAuthority(
           reference.deployment_id, reference.client_build, reference.protocol_pack_digest,
         ) : null);
+      const difficulty = authoritative.has(referenceKey)
+        ? difficultyByRun.get(referenceKey)
+        : (schemaTwo ? trustedDifficulty(reference, authority) : trustedDifficulty(null, null));
       return [{
         ...reference,
         deployment_id: authority?.deployment_id ?? null,
         client_build: authority?.client_build ?? null,
         protocol_pack_digest: authority?.protocol_pack_digest ?? null,
         scene_name: authority ? reference.scene_name ?? null : null,
+        difficulty_family: difficulty?.difficulty_family ?? null,
+        difficulty_tier: difficulty?.difficulty_tier ?? null,
       }];
     });
     // A schema-2 character does not retain the report id that authored its

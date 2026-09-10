@@ -301,7 +301,8 @@ test("legacy observed character catalogs fail closed without fabricating present
   assert.equal(value.characters[0].specialization_name, null);
   assert.deepEqual(value.characters[0].reports[0], {
     ...catalog.characters[0].reports[0], deployment_id: null, client_build: null,
-    protocol_pack_digest: null, scene_name: null,
+    protocol_pack_digest: null, scene_name: null, difficulty_family: null,
+    difficulty_tier: null,
   });
 });
 
@@ -316,7 +317,7 @@ test("schema-2 observed character authority must match one exact report referenc
       presentation_authority: authority, class_id: 4, class_name: "Marksman",
       specialization_id: 2, specialization_name: "Falconry Spec", reports: [{
         report_id: "rpt_current", run_index: 0, scene_id: 6500, scene_name: "Current scene",
-        terminal_state: "completed", ...authority,
+        difficulty_family: "master", difficulty_tier: 20, terminal_state: "completed", ...authority,
       }],
     }],
   };
@@ -327,6 +328,8 @@ test("schema-2 observed character authority must match one exact report referenc
   assert.deepEqual(value.characters[0].presentation_authority, authority);
   assert.equal(value.characters[0].class_name, "Marksman");
   assert.equal(value.characters[0].reports[0].scene_name, "Current scene");
+  assert.equal(value.characters[0].reports[0].difficulty_family, "master");
+  assert.equal(value.characters[0].reports[0].difficulty_tier, 20);
 
   const malformed = structuredClone(catalog);
   malformed.characters[0].presentation_authority.protocol_pack_digest = `sha256:${"A".repeat(64)}`;
@@ -339,6 +342,8 @@ test("schema-2 observed character authority must match one exact report referenc
   assert.equal(rejected.characters[0].class_name, null);
   assert.equal(rejected.characters[0].reports[0].protocol_pack_digest, null);
   assert.equal(rejected.characters[0].reports[0].scene_name, null);
+  assert.equal(rejected.characters[0].reports[0].difficulty_family, null);
+  assert.equal(rejected.characters[0].reports[0].difficulty_tier, null);
 });
 
 test("milestone schema-2 canonicalizes exact raw D1 authority and marks unavailable legacy semantics unknown", async () => {
@@ -388,14 +393,15 @@ test("observed public reads canonicalize raw D1 authority and remove known-ineli
       observed_character_key: `chr_${report_id}`, display_name: report_id,
       class_id: 4, class_name: "Legacy class", report_count: 1,
       reports: [{ report_id, run_index: 0, created_unix_millis: 1,
-        scene_id: 6500, scene_name: `Scene ${report_id}`, terminal_state: "completed" }],
+        scene_id: 6500, scene_name: `Scene ${report_id}`, difficulty_family: "stale",
+        difficulty_tier: 99, terminal_state: "completed" }],
     })),
   };
   const env = environment({ "fs:characters/catalog.v1.json": JSON.stringify(catalog) });
   env.AUTH_STATE.get = () => ({ async fetch() { return Response.json({ rpt_overridden: "private" }); } });
   env.RLOGS_DB.prepare = () => ({ bind() { return { async all() { return { results: [
     { report_id: "rpt_eligible", run_index: 0, visibility: "public", verification_tier: "replayed",
-      catalog_entry_json: JSON.stringify({ deployment_id: "global" }), client_build: "24687926",
+      catalog_entry_json: JSON.stringify({ deployment_id: "global", difficulty_family: "master", difficulty_tier: 20 }), client_build: "24687926",
       protocol_pack_digest: RAW_PACK_A },
     { report_id: "rpt_private", run_index: 0, visibility: "private", verification_tier: "replayed",
       catalog_entry_json: JSON.stringify({ deployment_id: "global" }), client_build: "24687926",
@@ -409,8 +415,12 @@ test("observed public reads canonicalize raw D1 authority and remove known-ineli
   assert.deepEqual(value.characters.map((character) => character.display_name), ["rpt_eligible", "rpt_absent"]);
   assert.equal(value.characters[0].reports[0].scene_name, "Scene rpt_eligible");
   assert.equal(value.characters[0].reports[0].protocol_pack_digest, PACK_A);
+  assert.equal(value.characters[0].reports[0].difficulty_family, "master");
+  assert.equal(value.characters[0].reports[0].difficulty_tier, 20);
   assert.equal(value.characters[1].reports[0].scene_name, null);
   assert.equal(value.characters[1].reports[0].protocol_pack_digest, null);
+  assert.equal(value.characters[1].reports[0].difficulty_family, null);
+  assert.equal(value.characters[1].reports[0].difficulty_tier, null);
   assert.equal(value.characters[1].class_id, 4);
   assert.equal(value.characters[1].class_name, null);
 });
