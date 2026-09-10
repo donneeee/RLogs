@@ -2813,6 +2813,7 @@ impl CombatTimelinePlugin {
             .as_ref()
             .map_or_else(Vec::new, |projector| projector.incomplete_rdps_actor_ids())
             .into_iter()
+            .map(|actor_id| self.canonical_actor_id(actor_id))
             .collect::<BTreeSet<_>>();
         let actors = self
             .actors
@@ -3914,6 +3915,7 @@ impl CombatTimelinePlugin {
             }
             if let Some(projector) = self.exact_contribution_projector.as_ref() {
                 for actor_id in projector.incomplete_rdps_actor_ids() {
+                    let actor_id = self.canonical_actor_id(actor_id);
                     if let Some(value) = values.get_mut(&actor_id) {
                         value.rdps_incomplete = true;
                     }
@@ -6141,7 +6143,7 @@ mod tests {
     }
 
     #[test]
-    fn unresolved_external_formula_marks_known_rdps_subtotal_incomplete() {
+    fn unresolved_external_formula_marks_canonicalized_rdps_subtotal_incomplete() {
         #[derive(Debug)]
         struct IncompleteProjector;
 
@@ -6151,7 +6153,9 @@ mod tests {
             }
 
             fn incomplete_rdps_actor_ids(&self) -> Vec<u64> {
-                vec![1]
+                // The game projector observes raw packet actor IDs. The
+                // generic meter has already joined this rotated ID to actor 1.
+                vec![49]
             }
 
             fn reset(&mut self) {}
@@ -6180,6 +6184,7 @@ mod tests {
         )
         .unwrap();
         plugin.begin_live(&header);
+        plugin.actor_aliases.insert(49, 1);
 
         let mut factory =
             EventEnvelopeFactory::new(header.session_id.clone(), header.region.clone());
@@ -6227,6 +6232,25 @@ mod tests {
         assert_eq!(actor.rdps, Some(2_737_001.0));
         assert_eq!(actor.rdps_contribution_given, Some(0));
         assert_eq!(actor.rdps_contribution_received, Some(0));
+        assert!(actor.rdps_incomplete);
+
+        let history = plugin.build_history_view(&HistoryViewSpec {
+            id: "all".into(),
+            label: "Entire run".into(),
+            kind: "all".into(),
+            segment_indices: vec![0],
+            intervals: vec![(0, 2_000_000)],
+            active_intervals: Vec::new(),
+            series_origin_micros: 0,
+            elapsed_micros: 2_000_000,
+            active_combat_micros: 1_000_000,
+            compress_intervals: false,
+        });
+        let actor = history
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
         assert!(actor.rdps_incomplete);
     }
 
