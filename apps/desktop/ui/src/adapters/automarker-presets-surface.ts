@@ -4,6 +4,7 @@ import type {
   AutomarkerPresetView,
   SaveAutomarkerPresetRequest,
 } from "./automarker-presets";
+import { automarkerSaveRequest, newlyCreatedPresetId } from "./automarker-presets";
 
 export interface AutomarkerPresetDependencies {
   loadPresets(): Promise<AutomarkerPresetView>;
@@ -110,22 +111,20 @@ export function mountAutomarkerPresetsSurface(
 
   async function persist(saveAsNew: boolean): Promise<void> {
     if (view?.context === null || view === null) return;
-    const presetName = name.value.trim();
-    if (presetName === "") {
-      status.textContent = "Enter a name before saving this marker setup.";
-      return;
-    }
-    if (!saveAsNew && selectedId === null) {
-      status.textContent = "Choose an existing setup to overwrite, or use Save As… to create one.";
+    let request: SaveAutomarkerPresetRequest;
+    try {
+      request = automarkerSaveRequest(saveAsNew ? "save-as" : "save", selectedId, name.value);
+    } catch (error) {
+      status.textContent = message(error);
       return;
     }
     busy = true;
     render();
     try {
       const priorIds = new Set(view.presets.map((preset) => preset.presetId));
-      view = await dependencies.saveCurrent({ presetId: saveAsNew ? null : selectedId, name: presetName });
+      view = await dependencies.saveCurrent(request);
       if (!alive) return;
-      if (saveAsNew) selectedId = view.presets.find((preset) => !priorIds.has(preset.presetId))?.presetId ?? view.presets[0]?.presetId ?? null;
+      if (saveAsNew) selectedId = newlyCreatedPresetId(priorIds, view) ?? view.presets[0]?.presetId ?? null;
       status.textContent = saveAsNew ? "Saved a new marker setup on this computer." : "Updated the selected marker setup on this computer.";
     } catch (error) {
       status.textContent = message(error);

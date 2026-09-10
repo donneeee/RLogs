@@ -42,6 +42,31 @@ export interface AutomarkerLoadResult {
   reason: "native_waymark_request_unverified";
 }
 
+export function automarkerSaveRequest(
+  mode: "save" | "save-as",
+  selectedPresetId: string | null,
+  name: string,
+): SaveAutomarkerPresetRequest {
+  const cleanName = name.trim();
+  if (cleanName.length < 1 || cleanName.length > 80) {
+    throw new Error("Preset names must contain 1–80 characters.");
+  }
+  if (mode === "save" && selectedPresetId === null) {
+    throw new Error("Choose an existing setup to overwrite, or use Save As… to create one.");
+  }
+  return {
+    presetId: mode === "save" ? selectedPresetId : null,
+    name: cleanName,
+  };
+}
+
+export function newlyCreatedPresetId(
+  previousPresetIds: ReadonlySet<string>,
+  next: AutomarkerPresetView,
+): string | null {
+  return next.presets.find((preset) => !previousPresetIds.has(preset.presetId))?.presetId ?? null;
+}
+
 export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView {
   if (!record(value) || value.schemaVersion !== 1 ||
       !(value.context === null || validContext(value.context)) ||

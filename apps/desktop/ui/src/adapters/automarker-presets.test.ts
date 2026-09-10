@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseAutomarkerLoadResult, parseAutomarkerPresetView } from "./automarker-presets";
+import {
+  automarkerSaveRequest,
+  newlyCreatedPresetId,
+  parseAutomarkerLoadResult,
+  parseAutomarkerPresetView,
+} from "./automarker-presets";
 
 function view() {
   return {
@@ -39,5 +44,22 @@ describe("automarker preset catalog", () => {
       supported: false, reason: "native_waymark_request_unverified",
     });
     expect(() => parseAutomarkerLoadResult({ supported: true })).toThrow();
+  });
+
+  it("distinguishes Save overwrite from Save As creation", () => {
+    expect(automarkerSaveRequest("save", "preset-existing", " Adjusted ")).toEqual({
+      presetId: "preset-existing", name: "Adjusted",
+    });
+    expect(automarkerSaveRequest("save-as", "preset-existing", "Alternate")).toEqual({
+      presetId: null, name: "Alternate",
+    });
+    expect(() => automarkerSaveRequest("save", null, "Missing")).toThrow(/choose an existing/i);
+  });
+
+  it("selects the distinct ID returned by Save As", () => {
+    const next = view();
+    next.presets.unshift({ ...next.presets[0]!, presetId: "preset-new-distinct", name: "Alternate" });
+    expect(newlyCreatedPresetId(new Set(["preset-000000000001-0000"]), parseAutomarkerPresetView(next)))
+      .toBe("preset-new-distinct");
   });
 });

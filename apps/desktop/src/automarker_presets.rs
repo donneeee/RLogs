@@ -419,14 +419,21 @@ mod tests {
             .save(
                 SaveAutomarkerPresetRequest {
                     preset_id: None,
-                    name: "Opener".into(),
+                    name: "Alternate".into(),
                 },
                 context(1100),
                 points(4.0),
-                11,
+                10,
             )
             .unwrap();
         assert_eq!(second.presets.len(), 2);
+        assert_ne!(second.presets[0].preset_id, second.presets[1].preset_id);
+        assert!(
+            second
+                .presets
+                .iter()
+                .any(|preset| preset.name == "Alternate")
+        );
         let updated = store
             .save(
                 SaveAutomarkerPresetRequest {
@@ -449,6 +456,19 @@ mod tests {
                 .x,
             7.0
         );
+        assert_eq!(
+            updated
+                .presets
+                .iter()
+                .find(|preset| preset.name == "Alternate")
+                .unwrap()
+                .points[0]
+                .x,
+            4.0
+        );
+        drop(store);
+        let reopened = AutomarkerPresetStore::open(&path).unwrap();
+        assert_eq!(reopened.compatible(context(1100)).presets.len(), 2);
         let _ = std::fs::remove_file(path);
     }
 
@@ -472,6 +492,19 @@ mod tests {
         assert!(
             store
                 .prepare_load(LoadAutomarkerPresetRequest { preset_id }, context(1200))
+                .is_err()
+        );
+        let mut other_map = context(1100);
+        other_map.map_id = 2200;
+        assert!(store.compatible(other_map.clone()).presets.is_empty());
+        assert!(
+            store
+                .prepare_load(
+                    LoadAutomarkerPresetRequest {
+                        preset_id: saved.presets[0].preset_id.clone(),
+                    },
+                    other_map,
+                )
                 .is_err()
         );
         let _ = std::fs::remove_file(path);
