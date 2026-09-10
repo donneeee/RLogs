@@ -1,7 +1,7 @@
 schema_version = 1
 id = "app.rlogs.overlay"
 name = "Overlay"
-version = "0.1.7"
+version = "0.1.8"
 api_version = 1
 runtime = "browser_overlay"
 entrypoint = "ui/runtime.html"
@@ -46,6 +46,13 @@ label = "Map"
 entrypoint = "ui/mechanics-map.html"
 section = "tools"
 default_order = 210
+
+[[workspace.tabs]]
+id = "automarkers"
+label = "Automarkers"
+entrypoint = "ui/automarkers.html"
+section = "tools"
+default_order = 220
 
 [[workspace.tabs]]
 id = "settings"

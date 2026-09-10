@@ -83,6 +83,11 @@ import { mountOverlayStatsTrackerSurface } from "./overlay-stats-tracker-surface
 import { parseMechanicsMapUpdate } from "./mechanics-map";
 import { mountMechanicsMapSurface } from "./mechanics-map-surface";
 import {
+  parseAutomarkerLoadResult,
+  parseAutomarkerPresetView,
+} from "./automarker-presets";
+import { mountAutomarkerPresetsSurface } from "./automarker-presets-surface";
+import {
   PHOTO_WALL_CAPTURE_STEPS,
   type PhotoWallPublicationStatus,
   parsePhotoWallPublicationStatus,
@@ -691,6 +696,26 @@ function createLocalHostAdapter(localizer: UiLocalizer): DesktopHostAdapter {
             async openOverlay() {
               await invoke("set_overlay_canvas_interactive", { interactive: true });
               await invoke("show_overlay_canvas");
+            },
+          });
+        case `builtin://${OVERLAY_PLUGIN_ID}/automarkers`:
+          return mountAutomarkerPresetsSurface(container, {
+            async loadPresets() {
+              return parseAutomarkerPresetView(await apiJson<unknown>("/api/automarkers/presets"));
+            },
+            async saveCurrent(request) {
+              return parseAutomarkerPresetView(await apiJson<unknown>("/api/automarkers/presets/save", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(request),
+              }));
+            },
+            async loadPreset(presetId) {
+              return parseAutomarkerLoadResult(await apiJson<unknown>("/api/automarkers/presets/load", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ presetId }),
+              }));
             },
           });
         case `builtin://${OVERLAY_PLUGIN_ID}/trackers`:

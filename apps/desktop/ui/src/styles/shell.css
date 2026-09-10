@@ -5711,6 +5711,7 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
   .target-frame-overlay-toolbar,
   .dungeon-objectives-overlay-toolbar,
   .mechanic-alerts-overlay-toolbar,
+  .automarker-overlay-picker,
   .mechanics-map-overlay-resize,
   .player-frame-overlay-resize,
   .action-controls-overlay-resize,
@@ -5742,6 +5743,12 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
 .mechanics-map-overlay-resize { position: absolute; right: 2px; bottom: 2px; width: 18px; height: 18px; padding: 0; border: 0; background: linear-gradient(135deg, transparent 48%, rgb(92 228 212 / 60%) 49% 56%, transparent 57% 67%, rgb(92 228 212 / 60%) 68% 75%, transparent 76%); cursor: nwse-resize; }
 .mechanics-map-overlay-runtime[data-expanded="true"] .mechanics-map-overlay-resize { display: none; }
 .mechanics-map-overlay-runtime[data-locked="true"] .mechanics-map-overlay-toolbar { opacity: .78; }
+.automarker-overlay-picker { position: absolute; z-index: 16; top: 58px; right: 18px; display: grid; grid-template-columns: minmax(180px, 1fr) auto; align-items: center; gap: 8px; width: min(380px, calc(100vw - 36px)); padding: 10px; border: 1px solid rgb(92 228 212 / 34%); border-radius: 9px; color: #f2f6fb; background: rgb(8 20 33 / 96%); box-shadow: 0 12px 32px rgb(0 0 0 / 42%); }
+.automarker-overlay-picker[hidden] { display: none; }
+.automarker-overlay-picker strong { grid-column: 1 / -1; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.automarker-overlay-picker select { min-width: 0; height: 32px; border: 1px solid rgb(129 165 196 / 32%); border-radius: 6px; padding: 0 7px; color: #f2f6fb; background: #0c1c2c; font-size: 10px; }
+.automarker-overlay-picker button { min-height: 32px; }
+.automarker-overlay-picker small { grid-column: 1 / -1; color: #f2c36b; font-size: 9px; line-height: 1.35; }
 .mechanics-map-overlay-failure { box-sizing: border-box; width: 100vw; min-height: 100vh; padding: 14px; border: 1px solid rgb(255 111 131 / 60%); border-radius: 10px; color: #ff9ca9; background: rgb(5 13 23 / 92%); font: 600 12px/1.45 system-ui; }
 .target-frame-overlay-runtime { position: absolute; box-sizing: border-box; overflow: hidden; border: 1px solid rgb(255 111 131 / 48%); border-radius: 10px; color: #eef6fb; background: rgb(5 13 23 / 88%); box-shadow: 0 8px 28px rgb(0 0 0 / 38%); }
 .target-frame-overlay-runtime[data-stale="true"] { opacity: .72; }
@@ -5881,8 +5888,6 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
 .party-frame-overlay-identity { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
 .party-frame-overlay-name { display: flex; align-items: center; gap: 5px; min-width: 0; }
 .party-frame-overlay-name strong { min-width: 0; }
-.automarker-preview-badge { display: inline-grid; flex: none; place-items: center; min-width: 24px; height: 20px; padding: 0 5px; border: 2px solid rgb(4 12 20 / 96%); border-radius: 999px; color: #071019 !important; background: #ffd65c; box-shadow: 0 0 0 2px rgb(255 214 92 / 34%), 0 0 12px rgb(255 214 92 / 72%); font-size: 8px !important; font-weight: 950 !important; letter-spacing: .04em; }
-.automarker-preview-strip { display: flex; align-items: center; gap: 7px; margin-top: 5px; color: #ffd65c; font-size: 8px; font-weight: 900; letter-spacing: .12em; }
 .party-frame-overlay-identity strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .party-frame-overlay-identity span { flex: none; color: #c9d5e0; font-size: 8px; font-variant-numeric: tabular-nums; font-weight: 800; }
 .party-frame-overlay-health { height: 7px; overflow: hidden; border: 1px solid rgb(92 228 212 / 30%); border-radius: 999px; background: rgb(10 42 42 / 76%); }
@@ -8442,4 +8447,76 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
   .combat-history-player-page .metric-grid strong
 ) {
   font-size: var(--history-metric-font-size, 18px);
+}
+
+.automarker-presets-surface {
+  display: grid;
+  gap: 18px;
+}
+
+.automarker-preset-card {
+  display: grid;
+  gap: 14px;
+  max-width: 860px;
+}
+
+.automarker-field {
+  display: grid;
+  gap: 7px;
+  color: var(--text-muted, #9fb0c2);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.automarker-field :is(input, select) {
+  min-height: 42px;
+  border: 1px solid rgba(129, 165, 196, .28);
+  border-radius: 10px;
+  background: rgba(4, 13, 23, .68);
+  color: var(--text-primary, #f2f6fb);
+  padding: 0 12px;
+  text-transform: none;
+}
+
+.automarker-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.automarker-status {
+  min-height: 20px;
+  margin: 0;
+}
+
+.automarker-preset-detail {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid rgba(129, 165, 196, .18);
+  padding-top: 12px;
+}
+
+.automarker-point-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-primary, #f2f6fb);
+  font-family: ui-monospace, "Cascadia Mono", monospace;
+  font-size: 12px;
+}
+
+.automarker-point-list li {
+  border: 1px solid rgba(92, 228, 212, .2);
+  border-radius: 8px;
+  background: rgba(7, 24, 35, .58);
+  padding: 9px 10px;
+}
+
+.automarker-safety-note {
+  color: #f2c36b;
 }

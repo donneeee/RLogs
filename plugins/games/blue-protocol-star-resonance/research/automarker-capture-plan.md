@@ -85,9 +85,12 @@ not one previously observed remote server. This retains dungeon world-server
 and transport migration. `tools/windows/capture-client-host.ps1` defaults to
 the capture filter `host <client-ip>` (all IPv4 transports), creates the legacy
 exact TCP-flow connection sidecar, and also writes a bounded metadata-only
-transport inventory. Use its explicit `-TransportMode tcp` fallback only for a
-known TCP-only investigation. The PCAPNG and sidecars remain private research
-and must not be committed or uploaded.
+transport inventory. Invoke marker captures with `-CapturePurpose marker-audit`;
+that purpose fails closed if TCP-only mode is requested. Use the explicit
+`-TransportMode tcp` fallback only for a non-marker, known TCP-only
+investigation. The launcher prints the effective capture filter before and
+after capture. The PCAPNG and sidecars remain private research and must not be
+committed or uploaded.
 
 The first capture should stay short and target the user's reported placement
 window. Because the markers were reportedly placed once and then persisted

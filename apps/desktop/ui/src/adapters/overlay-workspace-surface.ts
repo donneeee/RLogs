@@ -10,6 +10,7 @@ export type OverlayWorkspacePage =
   | "editor"
   | "trackers"
   | "mechanics-map"
+  | "automarkers"
   | "settings";
 
 interface MenuItem {
@@ -53,6 +54,12 @@ const PAGE_DEFINITIONS: Record<OverlayWorkspacePage, PageDefinition> = {
         description: "Open the in-game map as an overlay and add encounter guidance on top.",
         items: ["Live map", "Encounter guides", "Markers"],
         destination: destination(OVERLAY_WORKSPACE_ID, "mechanics-map"),
+      },
+      {
+        title: "Automarkers",
+        description: "Save and choose scene-specific numbered ground-marker setups.",
+        items: ["Save", "Save As…", "Load → saved setup"],
+        destination: destination(OVERLAY_WORKSPACE_ID, "automarkers"),
       },
       {
         title: "Automation Connections",
@@ -172,6 +179,16 @@ const PAGE_DEFINITIONS: Record<OverlayWorkspacePage, PageDefinition> = {
         title: "Map Appearance",
         description: "Scale, rotation, opacity, labels, layers, and game-like visual styling.",
       },
+    ],
+  },
+  automarkers: {
+    eyebrow: "MARKER PRESETS",
+    title: "Automarkers",
+    description: "Save and load numbered ground-marker positions independently from combat, timelines, and encounter rules.",
+    items: [
+      { title: "Current scene", description: "Only setups for the current scene and map are shown; their captured build remains visible as provenance." },
+      { title: "Saved setups", description: "Create multiple named setups, or overwrite the selected setup with the markers currently in game." },
+      { title: "Native placement", description: "Loading remains unavailable until the outbound game protocol is verified." },
     ],
   },
   settings: {

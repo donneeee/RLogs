@@ -1,7 +1,6 @@
 import type { MountedSurface } from "../shell/types";
 import type { UiLocalizer } from "../localization/ui-locale";
-import { planAutomarkerPreview } from "./automarker-plan";
-import { captureWaymarkPreset, storeWaymarkPreset } from "./waymark-presets";
+import type { AutomarkerLoadResult, AutomarkerPresetView } from "./automarker-presets";
 import {
   actionControlRemainingMillis,
   fitMechanicsMapCanvasRect,
@@ -34,6 +33,8 @@ export interface MechanicsMapOverlayDependencies {
   setInteractive(interactive: boolean): Promise<void>;
   onInteractivity(handler: (interactive: boolean) => void): Promise<() => void>;
   onFocusHeld(handler: (held: boolean) => void): Promise<() => void>;
+  loadAutomarkerPresets(): Promise<AutomarkerPresetView>;
+  loadAutomarkerPreset(presetId: string): Promise<AutomarkerLoadResult>;
 }
 
 export interface MechanicsMapCanvasPreferences {
@@ -250,6 +251,8 @@ export function mountMechanicsMapOverlay(
   let objectivesRenderedAtMillis = 0;
   let alertsTimer: number | null = null;
   let alertsRenderedAtMillis = 0;
+  let automarkerView: AutomarkerPresetView | null = null;
+  let automarkerSceneKey = "";
 
   const root = element("main", "overlay-canvas-runtime");
   root.dataset.locked = String(preferences.locked);
@@ -302,27 +305,11 @@ export function mountMechanicsMapOverlay(
     scheduleDraw();
   });
   const center = button(localizer.t("ui.mechanics_map.toolbar.center"), false, centerOnPlayer);
-  const saveMarks = button(localizer.t("ui.mechanics_map.waymarks.save"), false, () => {
-    const snapshot = update?.snapshot;
-    if (!snapshot) {
-      saveMarks.title = localizer.t("ui.mechanics_map.waymarks.waiting");
-      return;
-    }
-    try {
-      const preset = captureWaymarkPreset(snapshot, snapshot.scene_name ?? localizer.t("ui.mechanics_map.waymarks.scene_name", {
-        scene: snapshot.scene_id ?? "?",
-      }));
-      storeWaymarkPreset(window.localStorage, preset);
-      saveMarks.textContent = localizer.t("ui.mechanics_map.waymarks.saved", { count: preset.points.length });
-      saveMarks.title = localizer.t("ui.mechanics_map.waymarks.saved_help");
-    } catch {
-      saveMarks.title = localizer.t("ui.mechanics_map.waymarks.save_failed");
-    }
+  const markerPresets = button("Marker presets", false, () => {
+    automarkerPanel.hidden = !automarkerPanel.hidden;
+    markerPresets.dataset.active = String(!automarkerPanel.hidden);
+    if (!automarkerPanel.hidden) void refreshAutomarkerPresets();
   });
-  saveMarks.title = localizer.t("ui.mechanics_map.waymarks.save_help");
-  const loadMarks = button(localizer.t("ui.mechanics_map.waymarks.load"), false, () => undefined);
-  loadMarks.disabled = true;
-  loadMarks.title = localizer.t("ui.mechanics_map.waymarks.load_unverified");
   const expand = button(preferences.expanded ? "Window" : "Full map", preferences.expanded, () => {
     setExpanded(!preferences.expanded);
   });
@@ -330,7 +317,7 @@ export function mountMechanicsMapOverlay(
     void setLocked(!preferences.locked);
   });
   const hide = button("Hide", false, () => { void dependencies.hide(); });
-  actions.append(rotate, monsters, dim, contrast, fit, center, saveMarks, loadMarks, expand, lock, hide);
+  actions.append(rotate, monsters, dim, contrast, fit, center, markerPresets, expand, lock, hide);
   toolbar.append(identity, actions);
 
   const viewport = element("section", "mechanics-map-overlay-viewport");
@@ -424,6 +411,13 @@ export function mountMechanicsMapOverlay(
   alertsResizeHandle.title = "Resize mechanic alerts";
   alertsResizeHandle.setAttribute("aria-label", "Resize mechanic alerts");
   alertsPanel.append(alertsToolbar, alertsBody, alertsResizeHandle);
+  const automarkerPanel = element("section", "automarker-overlay-picker");
+  automarkerPanel.hidden = true;
+  const automarkerTitle = text("strong", "Marker presets");
+  const automarkerSelect = document.createElement("select");
+  const automarkerLoad = button("Load", false, () => { void loadSelectedAutomarkerPreset(); });
+  const automarkerNote = text("small", "Current-scene presets only");
+  automarkerPanel.append(automarkerTitle, automarkerSelect, automarkerLoad, automarkerNote);
   const moduleToggles = [
     moduleVisibilityButton("Player", "showPlayer", playerPanel),
     moduleVisibilityButton("Actions", "showActions", actionsPanel),
@@ -433,7 +427,7 @@ export function mountMechanicsMapOverlay(
     moduleVisibilityButton("Alerts", "showAlerts", alertsPanel),
   ];
   actions.prepend(...moduleToggles);
-  root.append(panel, playerPanel, actionsPanel, partyPanel, targetPanel, objectivesPanel, alertsPanel);
+  root.append(panel, playerPanel, actionsPanel, partyPanel, targetPanel, objectivesPanel, alertsPanel, automarkerPanel);
   container.replaceChildren(root);
   applyModuleGeometry();
 
@@ -633,9 +627,55 @@ export function mountMechanicsMapOverlay(
     }
   }
 
+  async function refreshAutomarkerPresets(): Promise<void> {
+    try {
+      automarkerView = await dependencies.loadAutomarkerPresets();
+      if (!alive) return;
+      renderAutomarkerPresets();
+    } catch (error) {
+      automarkerView = null;
+      automarkerSelect.replaceChildren(new Option("Preset catalog unavailable", ""));
+      automarkerSelect.disabled = true;
+      automarkerLoad.disabled = true;
+      automarkerNote.textContent = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  function renderAutomarkerPresets(): void {
+    automarkerSelect.replaceChildren();
+    const presets = automarkerView?.presets ?? [];
+    if (presets.length === 0) {
+      automarkerSelect.append(new Option(automarkerView?.context === null ? "Enter a scene" : "No setups for this scene", ""));
+    } else {
+      for (const preset of presets) automarkerSelect.append(new Option(`${preset.name} · ${preset.points.length} marks`, preset.presetId));
+    }
+    automarkerSelect.disabled = presets.length === 0;
+    automarkerLoad.disabled = presets.length === 0 || automarkerView?.nativeLoadSupported !== true;
+    automarkerLoad.title = automarkerView?.nativeLoadSupported === true
+      ? "Place the selected setup at its saved coordinates"
+      : "Unavailable until native party-visible placement is protocol-verified";
+    automarkerNote.textContent = automarkerView?.nativeLoadSupported === true
+      ? "Only setups for this scene and map are listed."
+      : "Load is locked until the outbound marker protocol is verified.";
+  }
+
+  async function loadSelectedAutomarkerPreset(): Promise<void> {
+    if (automarkerView?.nativeLoadSupported !== true || automarkerSelect.value === "") return;
+    try {
+      await dependencies.loadAutomarkerPreset(automarkerSelect.value);
+    } catch (error) {
+      automarkerNote.textContent = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   function renderState(): void {
     const snapshot = update?.snapshot;
     if (!snapshot) return;
+    const nextAutomarkerSceneKey = `${snapshot.client_build ?? ""}:${snapshot.scene_id ?? ""}:${snapshot.map_id ?? ""}`;
+    if (nextAutomarkerSceneKey !== automarkerSceneKey) {
+      automarkerSceneKey = nextAutomarkerSceneKey;
+      void refreshAutomarkerPresets();
+    }
     title.textContent = snapshot.scene_name ?? (snapshot.scene_id === null
       ? localizer.t("ui.mechanics_map.status.waiting_for_scene")
       : `Scene ${snapshot.scene_id}`);
@@ -905,7 +945,6 @@ export function mountMechanicsMapOverlay(
   }
 
   function renderParty(snapshot: MechanicsMapSnapshot): void {
-    const markersByActor = automarkersByActor(snapshot);
     partyBody.replaceChildren();
     partyStatus.textContent = snapshot.party.length === 0 ? "WAITING" : `${snapshot.party.length} JOINED`;
     partyStatus.dataset.state = snapshot.party.length === 0 ? "waiting" : "live";
@@ -919,7 +958,6 @@ export function mountMechanicsMapOverlay(
       row.dataset.stale = String(member.stale);
       const identity = element("div", "party-frame-overlay-identity");
       const name = element("div", "party-frame-overlay-name");
-      name.append(...automarkerBadges(markersByActor.get(member.actor_id) ?? []));
       name.append(text("strong", member.display_name ?? `Player ${member.actor_id}`));
       identity.append(
         name,
@@ -1026,12 +1064,7 @@ export function mountMechanicsMapOverlay(
       resources.append(resourceRow);
     }
     resources.hidden = snapshot.resources.length === 0;
-    const automarkerPreview = element("div", "automarker-preview-strip");
-    automarkerPreview.title = "RLogs preview only — native party marker placement is not yet protocol-verified";
-    const playerAutomarkers = automarkerBadges(automarkersByActor(snapshot).get(player.actor_id) ?? []);
-    automarkerPreview.append(...playerAutomarkers, text("span", "PREVIEW"));
-    automarkerPreview.hidden = playerAutomarkers.length === 0;
-    playerBody.replaceChildren(automarkerPreview, identity, vitals, statuses, resources);
+    playerBody.replaceChildren(identity, vitals, statuses, resources);
     playerRenderedAtMillis = performance.now();
     updatePlayerTimers();
     if (player.statuses.some((effect) => effect.remaining_millis !== null)) {
@@ -1697,7 +1730,6 @@ function drawEntities(
   height: number,
   preferences: MechanicsMapCanvasPreferences,
 ): void {
-  const automarkers = new Map(planAutomarkerPreview(snapshot).assignments.map((assignment) => [assignment.actorId, assignment]));
   const sceneMap = snapshot.map_model === "absolute_scene_map";
   const entities = projectMechanicsMapEntities(snapshot, sceneMap ? false : preferences.rotateWithPlayer)
     .filter((entity) => entity.visible && (preferences.showMonsters || !["monster", "npc", "object"].includes(entity.kind)));
@@ -1733,26 +1765,6 @@ function drawEntities(
     context.fill();
     context.stroke();
     context.shadowBlur = 0;
-    const automarker = automarkers.get(entity.actor_id);
-    if (automarker) {
-      if (entity.kind === "local" && entity.facing_radians !== null) {
-        context.rotate(-entity.facing_radians);
-      }
-      const badgeX = entity.kind === "local" && entity.facing_radians !== null ? 0 : x;
-      const badgeY = entity.kind === "local" && entity.facing_radians !== null ? -radius - 14 : y - radius - 12;
-      context.fillStyle = "#ffd65c";
-      context.strokeStyle = "rgba(4,12,20,.98)";
-      context.lineWidth = 2;
-      context.beginPath();
-      context.arc(badgeX, badgeY, 10, 0, Math.PI * 2);
-      context.fill();
-      context.stroke();
-      context.fillStyle = "#071019";
-      context.font = "950 8px system-ui";
-      context.textAlign = "center";
-      context.textBaseline = "middle";
-      context.fillText(automarker.label, badgeX, badgeY + 0.5);
-    }
     if (entity.display_name && ["party", "boss"].includes(entity.kind)) {
       context.fillStyle = "rgba(242,246,251,.92)";
       context.font = "600 10px system-ui";
@@ -1837,25 +1849,6 @@ export function mechanicsMapMarkerLabel(
     return String(marker.marker_number);
   }
   return marker.marker_id === null ? null : String(marker.marker_id);
-}
-
-function automarkersByActor(snapshot: MechanicsMapSnapshot): Map<number, string[]> {
-  const result = new Map<number, string[]>();
-  for (const assignment of planAutomarkerPreview(snapshot).assignments) {
-    const labels = result.get(assignment.actorId) ?? [];
-    labels.push(assignment.label);
-    result.set(assignment.actorId, labels);
-  }
-  return result;
-}
-
-function automarkerBadges(labels: readonly string[]): HTMLElement[] {
-  return labels.map((label) => {
-    const badge = text("span", label, "automarker-preview-badge");
-    badge.title = "RLogs preview only — not a native party-visible game marker";
-    badge.setAttribute("aria-label", `${label} automarker preview`);
-    return badge;
-  });
 }
 
 function drawFloorRegion(context: CanvasRenderingContext2D, region: MechanicsMapProjectedRegion, width: number, height: number, highContrast: boolean): void {

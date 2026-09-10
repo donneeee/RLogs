@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+mod automarker_presets;
 mod character_identities;
 mod combat_history;
 mod combat_meter_settings;
@@ -29,6 +30,10 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use automarker_presets::{
+    AutomarkerLoadResult, AutomarkerPresetStore, AutomarkerPresetView, AutomarkerSceneContext,
+    LoadAutomarkerPresetRequest, SaveAutomarkerPresetRequest,
+};
 use character_identities::{
     CaptureTimeCharacterIdentityStore, CharacterIdentityResolver, CharacterIdentityStore,
 };
@@ -5473,6 +5478,7 @@ struct RuntimeController {
     theme_settings: Mutex<ThemeSettingsStore>,
     combat_meter_settings: Mutex<CombatMeterSettingsStore>,
     combat_overlay_settings: Arc<Mutex<CombatOverlaySettingsStore>>,
+    automarker_presets: Mutex<AutomarkerPresetStore>,
     artifact_verification: Mutex<()>,
     profile_projection: Mutex<()>,
     live_combat_feed: Arc<LiveCombatFeed>,
@@ -5492,6 +5498,17 @@ struct RuntimeController {
     automatic_local_map_refresh_builds: Arc<Mutex<BTreeSet<String>>>,
     #[cfg(windows)]
     live_combat_control: Arc<Mutex<Option<SyncSender<LiveCombatControl>>>>,
+}
+
+fn automarker_scene_context(
+    snapshot: &mechanics_map::MechanicsMapSnapshot,
+) -> Option<AutomarkerSceneContext> {
+    Some(AutomarkerSceneContext {
+        client_build: snapshot.client_build.clone()?,
+        scene_id: snapshot.scene_id?,
+        map_id: snapshot.map_id?,
+        scene_name: snapshot.scene_name.clone(),
+    })
 }
 
 #[cfg(windows)]
@@ -5679,6 +5696,9 @@ impl RuntimeController {
         let combat_overlay_settings = CombatOverlaySettingsStore::open(
             install_root.join("runtime-data/settings/plugins/app.rlogs.combat-overlay.v1.json"),
         )?;
+        let automarker_presets = AutomarkerPresetStore::open(
+            install_root.join("runtime-data/automarkers/presets.v1.json"),
+        )?;
         let parser_health_path =
             install_root.join("runtime-data/diagnostics/parser-health.v1.json");
         let parser_health = ParserHealthStore::open(parser_health_path.clone(), unix_millis())
@@ -5718,6 +5738,7 @@ impl RuntimeController {
             theme_settings: Mutex::new(theme_settings),
             combat_meter_settings: Mutex::new(combat_meter_settings),
             combat_overlay_settings: Arc::new(Mutex::new(combat_overlay_settings)),
+            automarker_presets: Mutex::new(automarker_presets),
             artifact_verification: Mutex::new(()),
             profile_projection: Mutex::new(()),
             live_combat_feed: Arc::new(LiveCombatFeed::default()),
@@ -6625,6 +6646,39 @@ impl RuntimeController {
 
     fn live_mechanics_map_snapshot(&self) -> MechanicsMapUpdate {
         self.live_mechanics_map_feed.current()
+    }
+
+    fn automarker_presets(&self) -> AutomarkerPresetView {
+        let snapshot = self.live_mechanics_map_feed.current().snapshot;
+        let store = self
+            .automarker_presets
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match automarker_scene_context(&snapshot) {
+            Some(context) => store.compatible(context),
+            None => store.unavailable(),
+        }
+    }
+
+    fn save_automarker_preset(
+        &self,
+        _request: SaveAutomarkerPresetRequest,
+    ) -> Result<AutomarkerPresetView, String> {
+        Err("saving current in-game markers is locked until native waymark state is protocol-verified".into())
+    }
+
+    fn prepare_automarker_load(
+        &self,
+        request: LoadAutomarkerPresetRequest,
+    ) -> Result<AutomarkerLoadResult, String> {
+        let snapshot = self.live_mechanics_map_feed.current().snapshot;
+        let context = automarker_scene_context(&snapshot).ok_or_else(|| {
+            "a packet-observed build, scene, and map are required before loading markers".to_owned()
+        })?;
+        self.automarker_presets
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .prepare_load(request, context)
     }
 
     #[cfg(windows)]
@@ -13896,6 +13950,35 @@ fn handle_connection(
                 200,
                 &controller.wait_for_live_mechanics_map(request),
             )?;
+        }
+        ("GET", "/api/automarkers/presets") => {
+            write_json(&mut stream, 200, &controller.automarker_presets())?;
+        }
+        ("POST", "/api/automarkers/presets/save") => {
+            let request: SaveAutomarkerPresetRequest = match serde_json::from_slice(&request.body) {
+                Ok(request) => request,
+                Err(error) => {
+                    write_api_error(&mut stream, 400, format!("invalid request: {error}"))?;
+                    return Ok(());
+                }
+            };
+            match controller.save_automarker_preset(request) {
+                Ok(view) => write_json(&mut stream, 200, &view)?,
+                Err(error) => write_api_error(&mut stream, 400, error)?,
+            }
+        }
+        ("POST", "/api/automarkers/presets/load") => {
+            let request: LoadAutomarkerPresetRequest = match serde_json::from_slice(&request.body) {
+                Ok(request) => request,
+                Err(error) => {
+                    write_api_error(&mut stream, 400, format!("invalid request: {error}"))?;
+                    return Ok(());
+                }
+            };
+            match controller.prepare_automarker_load(request) {
+                Ok(result) => write_json(&mut stream, 200, &result)?,
+                Err(error) => write_api_error(&mut stream, 400, error)?,
+            }
         }
         ("POST", "/api/runtime/local-game-assets/prepare") => {
             match controller.prepare_local_game_maps() {

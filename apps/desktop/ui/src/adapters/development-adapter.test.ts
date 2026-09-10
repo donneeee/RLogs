@@ -18,6 +18,7 @@ describe("development desktop workspaces", () => {
       "Editor",
       "Trackers",
       "Map",
+      "Automarkers",
       "Settings",
     ]);
     expect(triggers?.tabs.map(({ label }) => label)).toEqual([
@@ -27,7 +28,7 @@ describe("development desktop workspaces", () => {
       "Library",
       "Settings",
     ]);
-    expect(overlay?.version).toBe("0.1.7");
+    expect(overlay?.version).toBe("0.1.8");
     expect(triggers?.version).toBe("0.1.2");
   });
 
