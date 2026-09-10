@@ -81,7 +81,7 @@ use rlogs_profiles::LocalProfilePackage;
 pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 15;
 pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 7;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 6;
-pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 17;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 18;
 pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 3;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
@@ -314,9 +314,13 @@ pub struct PrivateRunMembership {
     pub character_ids: Vec<String>,
 }
 
+#[derive(Clone)]
 struct CrossVantageReplayResult {
     participants: Vec<PublicReconciledParticipant>,
     conservation: PublicAttributionConservation,
+    rdps_status: String,
+    rate_clock: Vec<HistoryRateClockPoint>,
+    rate_clock_complete: bool,
     rdps_effects: Vec<PublicRdpsEffectPresentation>,
     rdps_influences: Vec<PublicRdpsInfluence>,
     canonical_run_observed_bounds: Option<CanonicalRunObservedBounds>,
@@ -1522,6 +1526,9 @@ impl SubmissionService {
         Ok(CrossVantageReplayResult {
             participants,
             conservation,
+            rdps_status: run.rdps_status.clone(),
+            rate_clock: view.rate_clock.clone(),
+            rate_clock_complete: view.rate_clock_complete,
             rdps_effects: if localization_supported {
                 public_rdps_effects(view)
             } else {
@@ -1786,21 +1793,7 @@ impl SubmissionService {
                             Some(verified_state_input_digest(&reconciliation, &events)?);
                         match self.replay_cross_vantage_attribution(&reconciliation, events) {
                             Ok(result) => {
-                                populate_reconciled_timeline_combat_data(
-                                    &mut reconciliation.timeline,
-                                    &result.participants,
-                                    &result.rdps_influences,
-                                    result.canonical_run_observed_bounds,
-                                );
-                                reconciliation.status =
-                                    RunAttributionReconciliationStatus::Reconciled;
-                                reconciliation.reconciled_participants = result.participants;
-                                reconciliation.conservation = Some(result.conservation);
-                                reconciliation.rdps_effects = result.rdps_effects;
-                                reconciliation.rdps_influences = result.rdps_influences;
-                                reconciliation.swift_vortex_candidate_audit =
-                                    result.swift_vortex_candidate_audit;
-                                reconciliation.attribution_replay_completed = true;
+                                apply_cross_vantage_replay_result(&mut reconciliation, result);
                             }
                             Err(error) => {
                                 reconciliation.state_replay_readiness =
@@ -3769,6 +3762,11 @@ pub struct PublicRunReconciliation {
     pub reconciled_participants: Vec<PublicReconciledParticipant>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conservation: Option<PublicAttributionConservation>,
+    /// Formula/runtime status authored by the same conserved replay as
+    /// `reconciled_participants`. Absent means reconciliation has not
+    /// completed; callers must not borrow a viewed POV's status.
+    #[serde(default)]
+    pub rdps_status: Option<String>,
     /// These rows come from the conserved replay that consumed all verified
     /// cross-vantage state. They are empty until that replay completes.
     #[serde(default)]
@@ -5985,12 +5983,65 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
         verified_state_input_sha256: None,
         reconciled_participants: Vec::new(),
         conservation: None,
+        rdps_status: None,
         rdps_influences: Vec::new(),
         rdps_effects: Vec::new(),
         swift_vortex_candidate_audit: None,
         attribution_replay_completed: false,
         timeline,
     }
+}
+
+fn apply_cross_vantage_replay_result(
+    reconciliation: &mut PublicRunReconciliation,
+    result: CrossVantageReplayResult,
+) {
+    let CrossVantageReplayResult {
+        participants,
+        conservation,
+        rdps_status,
+        rate_clock,
+        rate_clock_complete,
+        rdps_effects,
+        rdps_influences,
+        canonical_run_observed_bounds,
+        aligned_profile_observed_micros,
+        swift_vortex_candidate_audit,
+    } = result;
+
+    if let Some(bounds) = canonical_run_observed_bounds {
+        reconciliation.timeline.duration_micros =
+            bounds.ended_micros.saturating_sub(bounds.started_micros);
+    }
+    populate_reconciled_timeline_combat_data(
+        &mut reconciliation.timeline,
+        &participants,
+        &rdps_influences,
+        canonical_run_observed_bounds,
+    );
+    // Always replace the inherited canonical projection. An incomplete replay
+    // clock deliberately clears those points rather than presenting them as
+    // if the conserved cross-vantage replay had authored them.
+    populate_timeline_rate_clock(
+        &mut reconciliation.timeline,
+        &rate_clock,
+        rate_clock_complete && canonical_run_observed_bounds.is_some(),
+    );
+    populate_reconciled_timeline_loadouts(
+        &mut reconciliation.timeline,
+        &reconciliation.canonical_spine.report_id,
+        &reconciliation.characters,
+        &aligned_profile_observed_micros,
+        canonical_run_observed_bounds,
+    );
+    reconciliation.status = RunAttributionReconciliationStatus::Reconciled;
+    reconciliation.reconciled_participants = participants;
+    reconciliation.conservation = Some(conservation);
+    reconciliation.rdps_status = Some(rdps_status);
+    reconciliation.rdps_effects = rdps_effects;
+    reconciliation.rdps_influences = rdps_influences;
+    reconciliation.swift_vortex_candidate_audit = swift_vortex_candidate_audit;
+    reconciliation.attribution_replay_completed = true;
 }
 
 /// Reconciles one exact run group from caller-supplied immutable artifact
@@ -6225,27 +6276,7 @@ pub fn reconcile_hosted_run_group(
                 canonical_report,
             ) {
                 Ok(result) => {
-                    populate_reconciled_timeline_combat_data(
-                        &mut reconciliation.timeline,
-                        &result.participants,
-                        &result.rdps_influences,
-                        result.canonical_run_observed_bounds,
-                    );
-                    populate_reconciled_timeline_loadouts(
-                        &mut reconciliation.timeline,
-                        &reconciliation.canonical_spine.report_id,
-                        &reconciliation.characters,
-                        &result.aligned_profile_observed_micros,
-                        result.canonical_run_observed_bounds,
-                    );
-                    reconciliation.status = RunAttributionReconciliationStatus::Reconciled;
-                    reconciliation.reconciled_participants = result.participants;
-                    reconciliation.conservation = Some(result.conservation);
-                    reconciliation.rdps_effects = result.rdps_effects;
-                    reconciliation.rdps_influences = result.rdps_influences;
-                    reconciliation.swift_vortex_candidate_audit =
-                        result.swift_vortex_candidate_audit;
-                    reconciliation.attribution_replay_completed = true;
+                    apply_cross_vantage_replay_result(&mut reconciliation, result);
                 }
                 Err(error) => {
                     reconciliation.state_replay_readiness =
@@ -10067,6 +10098,9 @@ mod tests {
             },
         };
         let mut value = serde_json::to_value(build_public_reconciliation(&group)).unwrap();
+        assert!(value["rdps_status"].is_null());
+        value["schema_version"] = serde_json::json!(17);
+        value.as_object_mut().unwrap().remove("rdps_status");
         for report in value["reports"].as_array_mut().unwrap() {
             let report = report.as_object_mut().unwrap();
             report.remove("deployment_id");
@@ -10084,6 +10118,8 @@ mod tests {
         assert!(decoded.reports[0].deployment_id.is_empty());
         assert!(decoded.reports[0].client_build.is_empty());
         assert!(decoded.reports[0].combat_loadout_phases.is_empty());
+        assert_eq!(decoded.schema_version, 17);
+        assert_eq!(decoded.rdps_status, None);
         assert_eq!(
             decoded.characters[0].combat_loadout_disposition,
             ProfileWitnessDisposition::Missing
@@ -11275,6 +11311,12 @@ mod tests {
         let result = service
             .replay_cross_vantage_attribution(&reconciliation, imported)
             .unwrap();
+        assert_eq!(result.rdps_status, "partial_packet_proven_rules");
+        assert!(result.rate_clock_complete);
+        assert!(!result.rate_clock.is_empty());
+        let replay_clock_terminal = result.rate_clock.last().unwrap();
+        assert!(replay_clock_terminal.edps_elapsed_micros > 0);
+        assert!(replay_clock_terminal.adps_elapsed_micros > 0);
         assert_eq!(
             result.aligned_profile_observed_micros.get(&(
                 "rpt_secondary".to_owned(),
@@ -11332,6 +11374,60 @@ mod tests {
                 && span.start_micros == 45_000 - bounds.started_micros
                 && span.end_micros == 45_000 - bounds.started_micros
         }));
+
+        let mut incomplete_result = result.clone();
+        incomplete_result.rate_clock.clear();
+        incomplete_result.rate_clock_complete = false;
+        let mut incomplete_reconciliation = build_public_reconciliation(&group);
+        incomplete_reconciliation.timeline.rate_clock = vec![PublicTimelineRateClockPoint {
+            second: 0,
+            edps_elapsed_micros: 999,
+            adps_elapsed_micros: 999,
+        }];
+        incomplete_reconciliation.timeline.rate_clock_complete = true;
+        apply_cross_vantage_replay_result(&mut incomplete_reconciliation, incomplete_result);
+        assert!(!incomplete_reconciliation.timeline.rate_clock_complete);
+        assert!(incomplete_reconciliation.timeline.rate_clock.is_empty());
+        assert_eq!(
+            incomplete_reconciliation.rdps_status.as_deref(),
+            Some("partial_packet_proven_rules")
+        );
+
+        let mut no_bounds_result = result.clone();
+        no_bounds_result.canonical_run_observed_bounds = None;
+        let mut no_bounds_reconciliation = build_public_reconciliation(&group);
+        let inherited_duration_micros = no_bounds_reconciliation.timeline.duration_micros;
+        apply_cross_vantage_replay_result(&mut no_bounds_reconciliation, no_bounds_result);
+        assert!(no_bounds_reconciliation.timeline.duration_micros >= inherited_duration_micros);
+        assert!(!no_bounds_reconciliation.timeline.rate_clock_complete);
+        assert!(no_bounds_reconciliation.timeline.rate_clock.is_empty());
+
+        let expected_clock = result.rate_clock.clone();
+        let expected_clock_complete = result.rate_clock_complete;
+        let mut published_reconciliation = build_public_reconciliation(&group);
+        apply_cross_vantage_replay_result(&mut published_reconciliation, result);
+        assert_eq!(
+            published_reconciliation.rdps_status.as_deref(),
+            Some("partial_packet_proven_rules")
+        );
+        assert_eq!(
+            published_reconciliation.timeline.rate_clock_complete,
+            expected_clock_complete
+        );
+        assert_eq!(
+            published_reconciliation.timeline.rate_clock.len(),
+            expected_clock.len()
+        );
+        assert!(
+            published_reconciliation
+                .timeline
+                .rate_clock
+                .iter()
+                .zip(expected_clock)
+                .all(|(published, replay)| published.second == replay.second
+                    && published.edps_elapsed_micros == replay.edps_elapsed_micros
+                    && published.adps_elapsed_micros == replay.adps_elapsed_micros)
+        );
     }
 
     #[test]

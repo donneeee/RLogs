@@ -168,8 +168,11 @@ test("reconciliation output must preserve the exact source set and canonical spi
       client_build: "24687926",
       protocol_pack_digest: "sha256:pack",
     })),
+    attribution_replay_completed: false,
+    rdps_status: null,
   };
   assert.equal(validateReconciliationOutput(output, "run_exact", sources), true);
+  assert.equal(validateReconciliationOutput({ ...output, rdps_status: "partial_packet_proven_rules" }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, schema_version: 16 }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, reports: [sources[0]] }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, canonical_spine: {
@@ -185,6 +188,70 @@ test("reconciliation output must preserve the exact source set and canonical spi
     empty.reports[0][field] = "";
     assert.equal(validateReconciliationOutput(empty, "run_exact", sources), false);
   }
+});
+
+test("completed reconciliation requires replay-authored status, conservation, and an exact rate clock", () => {
+  const sources = [
+    { report_id: `rpt_${"a".repeat(32)}`, run_index: 0, artifact_sha256: "a".repeat(64) },
+    { report_id: `rpt_${"b".repeat(32)}`, run_index: 0, artifact_sha256: "b".repeat(64) },
+  ];
+  const output = {
+    schema_version: RECONCILIATION_SCHEMA_VERSION,
+    reconciliation_id: `rec_${"c".repeat(32)}`,
+    run_group_id: "run_exact",
+    status: "reconciled",
+    canonical_spine: sources[0],
+    reports: sources.map((source) => ({
+      ...source,
+      deployment_id: "global",
+      client_build: "24687926",
+      protocol_pack_digest: "sha256:pack",
+    })),
+    attribution_replay_completed: true,
+    rdps_status: "partial_packet_proven_rules",
+    reconciled_participants: [{ actor_id: "1" }],
+    conservation: {
+      raw_damage: 100,
+      rdps_damage: 100,
+      contribution_given: 10,
+      contribution_received: 10,
+      conserved: true,
+    },
+    timeline: {
+      source: "reconciled_canonical_spine",
+      duration_micros: 2_000_000,
+      series_bucket_micros: 1_000_000,
+      rate_clock_complete: true,
+      rate_clock: [
+        { second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 500_000 },
+        { second: 1, edps_elapsed_micros: 2_000_000, adps_elapsed_micros: 1_500_000 },
+      ],
+      omitted: { rate_clock_points: 0 },
+    },
+  };
+  assert.equal(validateReconciliationOutput(output, "run_exact", sources), true);
+
+  for (const rdpsStatus of [undefined, "", " "]) {
+    assert.equal(validateReconciliationOutput({ ...output, rdps_status: rdpsStatus }, "run_exact", sources), false);
+  }
+  assert.equal(validateReconciliationOutput({ ...output, status: "cross_vantage_evidence_available" }, "run_exact", sources), false);
+  assert.equal(validateReconciliationOutput({ ...output, conservation: { ...output.conservation, rdps_damage: 99 } }, "run_exact", sources), false);
+
+  const noncontiguous = structuredClone(output);
+  noncontiguous.timeline.rate_clock[1].second = 2;
+  assert.equal(validateReconciliationOutput(noncontiguous, "run_exact", sources), false);
+  const nonmonotonic = structuredClone(output);
+  nonmonotonic.timeline.rate_clock[1].adps_elapsed_micros = 100;
+  assert.equal(validateReconciliationOutput(nonmonotonic, "run_exact", sources), false);
+  const pastBucketBoundary = structuredClone(output);
+  pastBucketBoundary.timeline.rate_clock[0].edps_elapsed_micros = 1_000_001;
+  assert.equal(validateReconciliationOutput(pastBucketBoundary, "run_exact", sources), false);
+  const incompleteWithPoints = structuredClone(output);
+  incompleteWithPoints.timeline.rate_clock_complete = false;
+  assert.equal(validateReconciliationOutput(incompleteWithPoints, "run_exact", sources), false);
+  const incomplete = structuredClone(incompleteWithPoints);
+  incomplete.timeline.rate_clock = [];
+  assert.equal(validateReconciliationOutput(incomplete, "run_exact", sources), true);
 });
 
 test("reconciled catalog entries expose one group source set and authority status", () => {

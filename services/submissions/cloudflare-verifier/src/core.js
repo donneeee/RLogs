@@ -119,7 +119,45 @@ export function reconciliationSourceIdentity(source) {
   return `${source.report_id}:${Number(source.run_index)}:${source.artifact_sha256}`;
 }
 
-export const RECONCILIATION_SCHEMA_VERSION = 17;
+export const RECONCILIATION_SCHEMA_VERSION = 18;
+const MAXIMUM_TIMELINE_RATE_CLOCK_POINTS = 262_144;
+
+function validConservedReplay(value) {
+  return Number.isSafeInteger(value?.raw_damage) && Number.isSafeInteger(value?.rdps_damage) &&
+    Number.isSafeInteger(value?.contribution_given) && Number.isSafeInteger(value?.contribution_received) &&
+    value?.conserved === true && value.raw_damage === value.rdps_damage &&
+    value.contribution_given === value.contribution_received;
+}
+
+function validReplayRateClock(timeline) {
+  if (timeline?.source !== "reconciled_canonical_spine" ||
+      !Number.isSafeInteger(timeline.duration_micros) || timeline.duration_micros < 0 ||
+      !Number.isSafeInteger(timeline.series_bucket_micros) || timeline.series_bucket_micros <= 0 ||
+      typeof timeline.rate_clock_complete !== "boolean" || !Array.isArray(timeline.rate_clock) ||
+      !Number.isSafeInteger(timeline.omitted?.rate_clock_points) || timeline.omitted.rate_clock_points < 0 ||
+      timeline.rate_clock.length > MAXIMUM_TIMELINE_RATE_CLOCK_POINTS) return false;
+  if (!timeline.rate_clock_complete) return timeline.rate_clock.length === 0;
+  const expected = Math.ceil(timeline.duration_micros / timeline.series_bucket_micros);
+  if (expected > MAXIMUM_TIMELINE_RATE_CLOCK_POINTS || timeline.omitted.rate_clock_points !== 0 ||
+      timeline.rate_clock.length !== expected) return false;
+  let previousEdps = 0;
+  let previousAdps = 0;
+  return timeline.rate_clock.every((point, index) => {
+    const bucketEndMicros = Math.min(
+      timeline.duration_micros,
+      (index + 1) * timeline.series_bucket_micros,
+    );
+    const valid = point?.second === index && Number.isSafeInteger(point.edps_elapsed_micros) &&
+      Number.isSafeInteger(point.adps_elapsed_micros) && point.edps_elapsed_micros >= previousEdps &&
+      point.adps_elapsed_micros >= previousAdps && point.adps_elapsed_micros <= point.edps_elapsed_micros &&
+      point.edps_elapsed_micros <= bucketEndMicros;
+    if (valid) {
+      previousEdps = point.edps_elapsed_micros;
+      previousAdps = point.adps_elapsed_micros;
+    }
+    return valid;
+  });
+}
 
 export function validateReconciliationOutput(value, runGroupId, sources) {
   if (value?.schema_version !== RECONCILIATION_SCHEMA_VERSION || value?.run_group_id !== runGroupId ||
@@ -140,10 +178,18 @@ export function validateReconciliationOutput(value, runGroupId, sources) {
   if (unique.size !== actual.length || !unique.has(reconciliationSourceIdentity(value.canonical_spine))) {
     return false;
   }
-  return [
+  const validStatus = [
     "single_vantage", "multiple_reports_no_additional_vantage",
     "cross_vantage_evidence_available", "reconciled",
   ].includes(value.status);
+  if (!validStatus || typeof value.attribution_replay_completed !== "boolean") return false;
+  if (!value.attribution_replay_completed) {
+    return value.status !== "reconciled" && value.rdps_status === null;
+  }
+  return value.status === "reconciled" && typeof value.rdps_status === "string" &&
+    value.rdps_status.trim().length > 0 && value.rdps_status.length <= 4_096 &&
+    Array.isArray(value.reconciled_participants) && value.reconciled_participants.length > 0 &&
+    validConservedReplay(value.conservation) && validReplayRateClock(value.timeline);
 }
 
 export function reconcileCatalogEntry(entry, result, sourceCount, distinctSubmitterCount) {
