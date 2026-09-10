@@ -5,14 +5,15 @@ import {
   parseAutomarkerLoadResult,
   parseAutomarkerPresetView,
 } from "./automarker-presets";
+import { automarkerPresetContextKey } from "./automarker-presets-surface";
 
 function view() {
   return {
-    schemaVersion: 1,
-    context: { clientBuild: "24687926", sceneId: 1100, mapId: 1100, sceneName: "Mech Facility M1" },
+    schemaVersion: 2 as const,
+    context: { clientBuild: "24687926", sceneId: 1633, mapId: 1633, activityFamilyId: "tina-mindrealm", sceneName: "Tina M1" },
     presets: [{
       presetId: "preset-000000000001-0000", name: "Opener", clientBuild: "24687926",
-      sceneId: 1100, mapId: 1100, savedAtUnixMillis: 1,
+      sceneId: 1633, mapId: 1633, activityFamilyId: "tina-mindrealm", savedAtUnixMillis: 1,
       points: [{ markerNumber: 1, x: 1.25, y: 2.5, z: -4.75 }],
     }],
     captureSupported: false,
@@ -23,14 +24,33 @@ function view() {
 }
 
 describe("automarker preset catalog", () => {
+  it("refreshes scene provenance when difficulty or build changes within a family", () => {
+    const original = view();
+    const difficultyChange = view();
+    difficultyChange.context.sceneId = 1631;
+    difficultyChange.context.mapId = 1631;
+    const buildChange = view();
+    buildChange.context.clientBuild = "24699999";
+
+    expect(automarkerPresetContextKey(difficultyChange)).not.toBe(automarkerPresetContextKey(original));
+    expect(automarkerPresetContextKey(buildChange)).not.toBe(automarkerPresetContextKey(original));
+  });
+
   it("accepts exact scene-scoped filesystem preset views", () => {
     expect(parseAutomarkerPresetView(view()).presets[0]?.points[0]?.y).toBe(2.5);
   });
 
-  it("fails closed when the native host leaks a preset from another scene", () => {
+  it("allows another difficulty scene in the same reviewed dungeon family", () => {
     const value = view();
-    value.presets[0]!.sceneId = 1200;
-    expect(() => parseAutomarkerPresetView(value)).toThrow(/another scene/i);
+    value.context.sceneId = 1631;
+    value.context.mapId = 1631;
+    expect(parseAutomarkerPresetView(value).presets).toHaveLength(1);
+  });
+
+  it("fails closed when the native host leaks a preset from another dungeon family", () => {
+    const value = view();
+    value.presets[0]!.activityFamilyId = "mech-facility";
+    expect(() => parseAutomarkerPresetView(value)).toThrow(/another dungeon family/i);
   });
 
   it("keeps captured build as provenance across patches in the same scene", () => {

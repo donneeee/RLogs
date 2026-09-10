@@ -11,6 +11,7 @@ export interface AutomarkerPreset {
   clientBuild: string;
   sceneId: number;
   mapId: number;
+  activityFamilyId: string;
   savedAtUnixMillis: number;
   points: readonly AutomarkerPoint[];
 }
@@ -19,11 +20,12 @@ export interface AutomarkerSceneContext {
   clientBuild: string;
   sceneId: number;
   mapId: number;
+  activityFamilyId: string;
   sceneName: string | null;
 }
 
 export interface AutomarkerPresetView {
-  schemaVersion: 1;
+  schemaVersion: 2;
   context: AutomarkerSceneContext | null;
   presets: readonly AutomarkerPreset[];
   captureSupported: boolean;
@@ -68,7 +70,7 @@ export function newlyCreatedPresetId(
 }
 
 export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView {
-  if (!record(value) || value.schemaVersion !== 1 ||
+  if (!record(value) || value.schemaVersion !== 2 ||
       !(value.context === null || validContext(value.context)) ||
       !Array.isArray(value.presets) || !value.presets.every(validPreset) ||
       typeof value.captureSupported !== "boolean" ||
@@ -82,7 +84,7 @@ export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView 
     throw new Error("Automarker presets cannot be listed without a current scene.");
   }
   if (view.context !== null && view.presets.some((preset) => !presetMatchesContext(preset, view.context!))) {
-    throw new Error("The local host returned an automarker preset from another scene.");
+    throw new Error("The local host returned an automarker preset from another dungeon family.");
   }
   return view;
 }
@@ -95,18 +97,19 @@ export function parseAutomarkerLoadResult(value: unknown): AutomarkerLoadResult 
 }
 
 export function presetMatchesContext(preset: AutomarkerPreset, context: AutomarkerSceneContext): boolean {
-  return preset.sceneId === context.sceneId && preset.mapId === context.mapId;
+  return preset.activityFamilyId === context.activityFamilyId;
 }
 
 function validContext(value: unknown): value is AutomarkerSceneContext {
   return record(value) && validBuild(value.clientBuild) && integer(value.sceneId) && integer(value.mapId) &&
-    (value.sceneName === null || typeof value.sceneName === "string");
+    validFamily(value.activityFamilyId) && (value.sceneName === null || typeof value.sceneName === "string");
 }
 
 function validPreset(value: unknown): value is AutomarkerPreset {
   return record(value) && typeof value.presetId === "string" && value.presetId.length >= 8 &&
     typeof value.name === "string" && value.name.trim().length >= 1 && value.name.length <= 80 &&
     validBuild(value.clientBuild) && integer(value.sceneId) && integer(value.mapId) &&
+    validFamily(value.activityFamilyId) &&
     integer(value.savedAtUnixMillis) && Array.isArray(value.points) && value.points.length >= 1 &&
     value.points.length <= 6 && value.points.every(validPoint) &&
     new Set(value.points.map((point) => (point as AutomarkerPoint).markerNumber)).size === value.points.length;
@@ -119,6 +122,10 @@ function validPoint(value: unknown): value is AutomarkerPoint {
 
 function validBuild(value: unknown): value is string {
   return typeof value === "string" && value.length >= 1 && value.length <= 32;
+}
+
+function validFamily(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length >= 1 && value.length <= 128;
 }
 
 function integer(value: unknown): value is number {

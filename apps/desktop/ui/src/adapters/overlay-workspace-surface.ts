@@ -186,7 +186,7 @@ const PAGE_DEFINITIONS: Record<OverlayWorkspacePage, PageDefinition> = {
     title: "Automarkers",
     description: "Save and load numbered ground-marker positions independently from combat, timelines, and encounter rules.",
     items: [
-      { title: "Current scene", description: "Only setups for the current scene and map are shown; their captured build remains visible as provenance." },
+      { title: "Current dungeon", description: "Setups follow the reviewed dungeon family across its difficulties; captured build, scene, and map remain visible as provenance." },
       { title: "Saved setups", description: "Create multiple named setups, or overwrite the selected setup with the markers currently in game." },
       { title: "Native placement", description: "Loading remains unavailable until the outbound game protocol is verified." },
     ],

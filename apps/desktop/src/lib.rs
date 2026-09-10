@@ -5479,6 +5479,7 @@ struct RuntimeController {
     combat_meter_settings: Mutex<CombatMeterSettingsStore>,
     combat_overlay_settings: Arc<Mutex<CombatOverlaySettingsStore>>,
     automarker_presets: Mutex<AutomarkerPresetStore>,
+    automarker_scene_families: BTreeMap<i32, String>,
     artifact_verification: Mutex<()>,
     profile_projection: Mutex<()>,
     live_combat_feed: Arc<LiveCombatFeed>,
@@ -5502,11 +5503,14 @@ struct RuntimeController {
 
 fn automarker_scene_context(
     snapshot: &mechanics_map::MechanicsMapSnapshot,
+    scene_families: &BTreeMap<i32, String>,
 ) -> Option<AutomarkerSceneContext> {
+    let scene_id = snapshot.scene_id?;
     Some(AutomarkerSceneContext {
         client_build: snapshot.client_build.clone()?,
-        scene_id: snapshot.scene_id?,
+        scene_id,
         map_id: snapshot.map_id?,
+        activity_family_id: scene_families.get(&scene_id)?.clone(),
         scene_name: snapshot.scene_name.clone(),
     })
 }
@@ -5696,8 +5700,16 @@ impl RuntimeController {
         let combat_overlay_settings = CombatOverlaySettingsStore::open(
             install_root.join("runtime-data/settings/plugins/app.rlogs.combat-overlay.v1.json"),
         )?;
+        let automarker_scene_families = bundled_scene_run_identities()
+            .map_err(|error| {
+                format!("could not load reviewed automarker dungeon families: {error}")
+            })?
+            .into_iter()
+            .filter_map(|(scene_id, identity)| Some((scene_id, identity.activity_family_id?)))
+            .collect::<BTreeMap<_, _>>();
         let automarker_presets = AutomarkerPresetStore::open(
             install_root.join("runtime-data/automarkers/presets.v1.json"),
+            &automarker_scene_families,
         )?;
         let parser_health_path =
             install_root.join("runtime-data/diagnostics/parser-health.v1.json");
@@ -5739,6 +5751,7 @@ impl RuntimeController {
             combat_meter_settings: Mutex::new(combat_meter_settings),
             combat_overlay_settings: Arc::new(Mutex::new(combat_overlay_settings)),
             automarker_presets: Mutex::new(automarker_presets),
+            automarker_scene_families,
             artifact_verification: Mutex::new(()),
             profile_projection: Mutex::new(()),
             live_combat_feed: Arc::new(LiveCombatFeed::default()),
@@ -6654,7 +6667,7 @@ impl RuntimeController {
             .automarker_presets
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        match automarker_scene_context(&snapshot) {
+        match automarker_scene_context(&snapshot, &self.automarker_scene_families) {
             Some(context) => store.compatible(context),
             None => store.unavailable(),
         }
@@ -6672,8 +6685,8 @@ impl RuntimeController {
         request: LoadAutomarkerPresetRequest,
     ) -> Result<AutomarkerLoadResult, String> {
         let snapshot = self.live_mechanics_map_feed.current().snapshot;
-        let context = automarker_scene_context(&snapshot).ok_or_else(|| {
-            "a packet-observed build, scene, and map are required before loading markers".to_owned()
+        let context = automarker_scene_context(&snapshot, &self.automarker_scene_families).ok_or_else(|| {
+            "a reviewed dungeon family plus packet-observed build, scene, and map are required before loading markers".to_owned()
         })?;
         self.automarker_presets
             .lock()

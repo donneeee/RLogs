@@ -72,14 +72,14 @@ export function mountAutomarkerPresetsSurface(
     if (!alive || busy) return;
     try {
       const next = await dependencies.loadPresets();
-      if (!alive || contextKey(next) === contextKey(view)) return;
+      if (!alive || automarkerPresetContextKey(next) === automarkerPresetContextKey(view)) return;
       view = next;
       selectedId = view.presets[0]?.presetId ?? null;
       name.value = view.presets[0]?.name ?? "";
       status.textContent = view.context === null
         ? "Enter a scene and wait for its build/map identity before saving or selecting presets."
         : view.presets.length === 0
-          ? "No marker setups are saved for this scene and map yet."
+          ? "No marker setups are saved for this dungeon family yet."
           : `${view.presets.length} compatible setup${view.presets.length === 1 ? "" : "s"} available for this scene.`;
       render();
     } catch {
@@ -99,7 +99,7 @@ export function mountAutomarkerPresetsSurface(
       status.textContent = view.context === null
         ? "Enter a scene and wait for its build/map identity before saving or selecting presets."
         : view.presets.length === 0
-          ? "No marker setups are saved for this scene and map yet."
+          ? "No marker setups are saved for this dungeon family yet."
           : `${view.presets.length} compatible setup${view.presets.length === 1 ? "" : "s"} available for this scene.`;
     } catch (error) {
       status.textContent = message(error);
@@ -178,7 +178,7 @@ export function mountAutomarkerPresetsSurface(
       : "Unavailable until native party-visible marker placement is protocol-verified";
     detail.replaceChildren();
     if (context !== null) {
-      detail.append(text("p", `Build ${context.clientBuild} · Scene ${context.sceneId} · Map ${context.mapId}`, "card-copy"));
+      detail.append(text("p", `${context.activityFamilyId} · Build ${context.clientBuild} · Scene ${context.sceneId} · Map ${context.mapId}`, "card-copy"));
     }
     if (preset !== undefined) {
       const list = el("ol", "automarker-point-list");
@@ -202,9 +202,11 @@ export function mountAutomarkerPresetsSurface(
   return { dispose() { alive = false; if (contextRefresh !== null) window.clearInterval(contextRefresh); } };
 }
 
-function contextKey(view: AutomarkerPresetView | null): string {
+export function automarkerPresetContextKey(view: Pick<AutomarkerPresetView, "context"> | null): string {
   const context = view?.context;
-  return context === null || context === undefined ? "none" : `${context.clientBuild}:${context.sceneId}:${context.mapId}`;
+  return context === null || context === undefined
+    ? "none"
+    : `${context.activityFamilyId}:${context.clientBuild}:${context.sceneId}:${context.mapId}`;
 }
 
 function format(value: number): string { return value.toFixed(3).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1"); }

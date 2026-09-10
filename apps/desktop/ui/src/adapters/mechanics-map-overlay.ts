@@ -416,7 +416,7 @@ export function mountMechanicsMapOverlay(
   const automarkerTitle = text("strong", "Marker presets");
   const automarkerSelect = document.createElement("select");
   const automarkerLoad = button("Load", false, () => { void loadSelectedAutomarkerPreset(); });
-  const automarkerNote = text("small", "Current-scene presets only");
+  const automarkerNote = text("small", "Current dungeon-family presets only");
   automarkerPanel.append(automarkerTitle, automarkerSelect, automarkerLoad, automarkerNote);
   const moduleToggles = [
     moduleVisibilityButton("Player", "showPlayer", playerPanel),
@@ -655,7 +655,7 @@ export function mountMechanicsMapOverlay(
       ? "Place the selected setup at its saved coordinates"
       : "Unavailable until native party-visible placement is protocol-verified";
     automarkerNote.textContent = automarkerView?.nativeLoadSupported === true
-      ? "Only setups for this scene and map are listed."
+      ? "Only setups for this dungeon family are listed."
       : "Load is locked until the outbound marker protocol is verified.";
   }
 

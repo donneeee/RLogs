@@ -1,8 +1,11 @@
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 use serde::{Deserialize, Serialize};
 
-const SCHEMA_VERSION: u16 = 1;
+const SCHEMA_VERSION: u16 = 2;
 const MAX_PRESETS: usize = 128;
 const MAX_STORE_BYTES: u64 = 512 * 1024;
 const MAX_NAME_CHARS: usize = 80;
@@ -24,6 +27,7 @@ pub struct AutomarkerPreset {
     pub client_build: String,
     pub scene_id: i32,
     pub map_id: u32,
+    pub activity_family_id: String,
     pub saved_at_unix_millis: u64,
     pub points: Vec<AutomarkerPoint>,
 }
@@ -35,12 +39,32 @@ struct AutomarkerPresetFile {
     presets: Vec<AutomarkerPreset>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LegacyAutomarkerPresetFileV1 {
+    schema_version: u16,
+    presets: Vec<LegacyAutomarkerPresetV1>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LegacyAutomarkerPresetV1 {
+    preset_id: String,
+    name: String,
+    client_build: String,
+    scene_id: i32,
+    map_id: u32,
+    saved_at_unix_millis: u64,
+    points: Vec<AutomarkerPoint>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AutomarkerSceneContext {
     pub client_build: String,
     pub scene_id: i32,
     pub map_id: u32,
+    pub activity_family_id: String,
     pub scene_name: Option<String>,
 }
 
@@ -78,17 +102,23 @@ pub struct AutomarkerLoadResult {
 
 #[derive(Debug)]
 pub struct AutomarkerPresetStore {
-    // Retained while capture-current is capability-gated; it becomes active
-    // without a data migration when native waymark observation is proven.
+    // Retained while capture-current is capability-gated; schema-one files at
+    // this path are migrated through the reviewed scene-family catalog.
     #[allow(dead_code)]
     path: PathBuf,
     presets: Vec<AutomarkerPreset>,
 }
 
 impl AutomarkerPresetStore {
-    pub fn open(path: impl Into<PathBuf>) -> Result<Self, String> {
+    pub fn open(
+        path: impl Into<PathBuf>,
+        scene_families: &BTreeMap<i32, String>,
+    ) -> Result<Self, String> {
         let path = path.into();
-        let presets = load(&path)?;
+        let (presets, migrated) = load(&path, scene_families)?;
+        if migrated {
+            write(&path, &presets)?;
+        }
         Ok(Self { path, presets })
     }
 
@@ -126,7 +156,8 @@ impl AutomarkerPresetStore {
                     .ok_or_else(|| "the selected automarker preset no longer exists".to_owned())?;
                 if !compatible(existing, &context) {
                     return Err(
-                        "the selected automarker preset belongs to a different scene or map".into(),
+                        "the selected automarker preset belongs to a different dungeon family"
+                            .into(),
                     );
                 }
                 preset_id
@@ -139,6 +170,7 @@ impl AutomarkerPresetStore {
             client_build: context.client_build.clone(),
             scene_id: context.scene_id,
             map_id: context.map_id,
+            activity_family_id: context.activity_family_id.clone(),
             saved_at_unix_millis: now_unix_millis,
             points,
         };
@@ -173,7 +205,7 @@ impl AutomarkerPresetStore {
             .ok_or_else(|| "the selected automarker preset no longer exists".to_owned())?;
         if !compatible(preset, &context) {
             return Err(
-                "the selected automarker preset belongs to a different scene or map".into(),
+                "the selected automarker preset belongs to a different dungeon family".into(),
             );
         }
         Ok(AutomarkerLoadResult {
@@ -214,10 +246,10 @@ fn view(
 }
 
 fn compatible(preset: &AutomarkerPreset, context: &AutomarkerSceneContext) -> bool {
-    // World coordinates belong to the scene/map. Keep the captured build as
-    // provenance, but do not hide a saved layout merely because the client
-    // received a patch while the scene and map identity stayed the same.
-    preset.scene_id == context.scene_id && preset.map_id == context.map_id
+    // The reviewed run-rule catalog is the authority for dungeon-family
+    // identity. Scene/map/build remain capture provenance; numeric adjacency
+    // and display-name similarity are never used to infer compatibility.
+    preset.activity_family_id == context.activity_family_id
 }
 
 fn validate_name(name: &str) -> Result<(), String> {
@@ -267,11 +299,16 @@ fn validate_points(points: &[AutomarkerPoint]) -> Result<(), String> {
     Ok(())
 }
 
-fn load(path: &Path) -> Result<Vec<AutomarkerPreset>, String> {
+fn load(
+    path: &Path,
+    scene_families: &BTreeMap<i32, String>,
+) -> Result<(Vec<AutomarkerPreset>, bool), String> {
     recover_interrupted_write(path)?;
     let metadata = match std::fs::metadata(path) {
         Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok((Vec::new(), false));
+        }
         Err(error) => return Err(format!("could not inspect automarker preset file: {error}")),
     };
     if metadata.len() > MAX_STORE_BYTES {
@@ -279,24 +316,61 @@ fn load(path: &Path) -> Result<Vec<AutomarkerPreset>, String> {
     }
     let bytes = std::fs::read(path)
         .map_err(|error| format!("could not read automarker preset file: {error}"))?;
-    let file: AutomarkerPresetFile = serde_json::from_slice(&bytes)
-        .map_err(|error| format!("automarker preset file is invalid: {error}"))?;
-    if file.schema_version != SCHEMA_VERSION || file.presets.len() > MAX_PRESETS {
-        return Err("automarker preset file has an unsupported schema or size".into());
-    }
+    let schema_version = serde_json::from_slice::<serde_json::Value>(&bytes)
+        .ok()
+        .and_then(|value| value.get("schemaVersion")?.as_u64())
+        .ok_or_else(|| "automarker preset file has no valid schema version".to_owned())?;
+    let (presets, migrated) = match schema_version {
+        1 => {
+            let file: LegacyAutomarkerPresetFileV1 = serde_json::from_slice(&bytes)
+                .map_err(|error| format!("legacy automarker preset file is invalid: {error}"))?;
+            if file.schema_version != 1 || file.presets.len() > MAX_PRESETS {
+                return Err(
+                    "legacy automarker preset file has an unsupported schema or size".into(),
+                );
+            }
+            let presets = file.presets.into_iter().map(|preset| {
+                let activity_family_id = scene_families.get(&preset.scene_id).cloned().ok_or_else(|| {
+                    format!("legacy automarker preset {} uses scene {} without a reviewed dungeon-family identity", preset.preset_id, preset.scene_id)
+                })?;
+                Ok(AutomarkerPreset {
+                    preset_id: preset.preset_id,
+                    name: preset.name,
+                    client_build: preset.client_build,
+                    scene_id: preset.scene_id,
+                    map_id: preset.map_id,
+                    activity_family_id,
+                    saved_at_unix_millis: preset.saved_at_unix_millis,
+                    points: preset.points,
+                })
+            }).collect::<Result<Vec<_>, String>>()?;
+            (presets, true)
+        }
+        2 => {
+            let file: AutomarkerPresetFile = serde_json::from_slice(&bytes)
+                .map_err(|error| format!("automarker preset file is invalid: {error}"))?;
+            if file.schema_version != SCHEMA_VERSION || file.presets.len() > MAX_PRESETS {
+                return Err("automarker preset file has an unsupported schema or size".into());
+            }
+            (file.presets, false)
+        }
+        _ => return Err("automarker preset file has an unsupported schema or size".into()),
+    };
     let mut identifiers = std::collections::BTreeSet::new();
-    for preset in &file.presets {
+    for preset in &presets {
         validate_id(&preset.preset_id)?;
         if !identifiers.insert(&preset.preset_id) {
             return Err("automarker preset identifiers must be unique".into());
         }
         validate_name(&preset.name)?;
+        if preset.activity_family_id.trim().is_empty() || preset.activity_family_id.len() > 128 {
+            return Err("automarker preset dungeon-family identity is invalid".into());
+        }
         validate_points(&preset.points)?;
     }
-    Ok(file.presets)
+    Ok((presets, migrated))
 }
 
-#[allow(dead_code)]
 fn write(path: &Path, presets: &[AutomarkerPreset]) -> Result<(), String> {
     let parent = path
         .parent()
@@ -381,13 +455,38 @@ mod tests {
         ))
     }
 
-    fn context(scene_id: i32) -> AutomarkerSceneContext {
+    fn families() -> BTreeMap<i32, String> {
+        [
+            (1_631, "tina-mindrealm"),
+            (1_632, "tina-mindrealm"),
+            (1_633, "tina-mindrealm"),
+            (1_100, "mech-facility"),
+        ]
+        .into_iter()
+        .map(|(scene, family)| (scene, family.to_owned()))
+        .collect()
+    }
+
+    fn open(path: &Path) -> AutomarkerPresetStore {
+        AutomarkerPresetStore::open(path, &families()).unwrap()
+    }
+
+    fn context(scene_id: i32, map_id: u32, activity_family_id: &str) -> AutomarkerSceneContext {
         AutomarkerSceneContext {
             client_build: "24687926".into(),
             scene_id,
-            map_id: scene_id as u32,
+            map_id,
+            activity_family_id: activity_family_id.into(),
             scene_name: Some(format!("Scene {scene_id}")),
         }
+    }
+
+    fn tina(scene_id: i32) -> AutomarkerSceneContext {
+        context(scene_id, scene_id as u32, "tina-mindrealm")
+    }
+
+    fn mech() -> AutomarkerSceneContext {
+        context(1_100, 1_100, "mech-facility")
     }
 
     fn points(x: f32) -> Vec<AutomarkerPoint> {
@@ -402,14 +501,14 @@ mod tests {
     #[test]
     fn supports_multiple_presets_and_overwrites_only_by_stable_id() {
         let path = temporary_path("multiple");
-        let mut store = AutomarkerPresetStore::open(&path).unwrap();
+        let mut store = open(&path);
         let first = store
             .save(
                 SaveAutomarkerPresetRequest {
                     preset_id: None,
                     name: "Opener".into(),
                 },
-                context(1100),
+                mech(),
                 points(1.0),
                 10,
             )
@@ -421,7 +520,7 @@ mod tests {
                     preset_id: None,
                     name: "Alternate".into(),
                 },
-                context(1100),
+                mech(),
                 points(4.0),
                 10,
             )
@@ -440,7 +539,7 @@ mod tests {
                     preset_id: Some(first_id.clone()),
                     name: "Adjusted".into(),
                 },
-                context(1100),
+                mech(),
                 points(7.0),
                 12,
             )
@@ -467,43 +566,41 @@ mod tests {
             4.0
         );
         drop(store);
-        let reopened = AutomarkerPresetStore::open(&path).unwrap();
-        assert_eq!(reopened.compatible(context(1100)).presets.len(), 2);
+        let reopened = open(&path);
+        assert_eq!(reopened.compatible(mech()).presets.len(), 2);
         let _ = std::fs::remove_file(path);
     }
 
     #[test]
-    fn filters_by_scene_and_map_and_rejects_cross_scene_load() {
+    fn filters_by_reviewed_family_and_allows_other_family_scenes_and_maps() {
         let path = temporary_path("scope");
-        let mut store = AutomarkerPresetStore::open(&path).unwrap();
+        let mut store = open(&path);
         let saved = store
             .save(
                 SaveAutomarkerPresetRequest {
                     preset_id: None,
                     name: "M1".into(),
                 },
-                context(1100),
+                tina(1_633),
                 points(1.0),
                 10,
             )
             .unwrap();
         let preset_id = saved.presets[0].preset_id.clone();
-        assert!(store.compatible(context(1200)).presets.is_empty());
+        assert_eq!(store.compatible(tina(1_631)).presets.len(), 1);
         assert!(
             store
-                .prepare_load(LoadAutomarkerPresetRequest { preset_id }, context(1200))
-                .is_err()
+                .prepare_load(LoadAutomarkerPresetRequest { preset_id }, tina(1_632))
+                .is_ok()
         );
-        let mut other_map = context(1100);
-        other_map.map_id = 2200;
-        assert!(store.compatible(other_map.clone()).presets.is_empty());
+        assert!(store.compatible(mech()).presets.is_empty());
         assert!(
             store
                 .prepare_load(
                     LoadAutomarkerPresetRequest {
                         preset_id: saved.presets[0].preset_id.clone(),
                     },
-                    other_map,
+                    mech(),
                 )
                 .is_err()
         );
@@ -513,19 +610,19 @@ mod tests {
     #[test]
     fn keeps_scene_presets_visible_across_build_updates() {
         let path = temporary_path("build-provenance");
-        let mut store = AutomarkerPresetStore::open(&path).unwrap();
+        let mut store = open(&path);
         store
             .save(
                 SaveAutomarkerPresetRequest {
                     preset_id: None,
                     name: "M1".into(),
                 },
-                context(1100),
+                mech(),
                 points(1.0),
                 10,
             )
             .unwrap();
-        let mut patched = context(1100);
+        let mut patched = mech();
         patched.client_build = "24699999".into();
         let view = store.compatible(patched.clone());
         assert_eq!(view.presets.len(), 1);
@@ -548,14 +645,14 @@ mod tests {
     #[test]
     fn recovers_an_atomic_backup_after_an_interrupted_replace() {
         let path = temporary_path("atomic-recovery");
-        let mut store = AutomarkerPresetStore::open(&path).unwrap();
+        let mut store = open(&path);
         store
             .save(
                 SaveAutomarkerPresetRequest {
                     preset_id: None,
                     name: "Safe".into(),
                 },
-                context(1100),
+                mech(),
                 points(1.0),
                 10,
             )
@@ -563,8 +660,8 @@ mod tests {
         drop(store);
         let backup = sibling_path(&path, "backup");
         std::fs::rename(&path, &backup).unwrap();
-        let recovered = AutomarkerPresetStore::open(&path).unwrap();
-        assert_eq!(recovered.compatible(context(1100)).presets[0].name, "Safe");
+        let recovered = open(&path);
+        assert_eq!(recovered.compatible(mech()).presets[0].name, "Safe");
         assert!(path.is_file());
         assert!(!backup.exists());
         let _ = std::fs::remove_file(path);
@@ -573,14 +670,14 @@ mod tests {
     #[test]
     fn persists_exact_xyz_and_keeps_native_loading_locked() {
         let path = temporary_path("persist");
-        let mut store = AutomarkerPresetStore::open(&path).unwrap();
+        let mut store = open(&path);
         let saved = store
             .save(
                 SaveAutomarkerPresetRequest {
                     preset_id: None,
                     name: "Exact".into(),
                 },
-                context(1100),
+                mech(),
                 vec![AutomarkerPoint {
                     marker_number: 6,
                     x: -1.25,
@@ -592,20 +689,75 @@ mod tests {
             .unwrap();
         let preset_id = saved.presets[0].preset_id.clone();
         drop(store);
-        let reopened = AutomarkerPresetStore::open(&path).unwrap();
-        assert_eq!(
-            reopened.compatible(context(1100)).presets[0].points[0].z,
-            44.125
-        );
+        let reopened = open(&path);
+        assert_eq!(reopened.compatible(mech()).presets[0].points[0].z, 44.125);
         assert_eq!(
             reopened
-                .prepare_load(LoadAutomarkerPresetRequest { preset_id }, context(1100))
+                .prepare_load(LoadAutomarkerPresetRequest { preset_id }, mech())
                 .unwrap(),
             AutomarkerLoadResult {
                 supported: false,
                 reason: "native_waymark_request_unverified"
             }
         );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn migrates_schema_one_scene_provenance_through_the_reviewed_family_catalog() {
+        let path = temporary_path("schema-one");
+        let legacy = serde_json::json!({
+            "schemaVersion": 1,
+            "presets": [{
+                "presetId": "preset-legacy-tina",
+                "name": "Tina M1",
+                "clientBuild": "24687926",
+                "sceneId": 1633,
+                "mapId": 1633,
+                "savedAtUnixMillis": 10,
+                "points": [{ "markerNumber": 1, "x": 1.0, "y": 2.0, "z": 3.0 }]
+            }]
+        });
+        std::fs::write(&path, serde_json::to_vec_pretty(&legacy).unwrap()).unwrap();
+        let store = open(&path);
+        let migrated = store.compatible(tina(1_631));
+        assert_eq!(migrated.presets.len(), 1);
+        assert_eq!(migrated.presets[0].activity_family_id, "tina-mindrealm");
+        let persisted: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(persisted["schemaVersion"], 2);
+        assert_eq!(
+            persisted["presets"][0]["activityFamilyId"],
+            "tina-mindrealm"
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn refuses_to_guess_a_family_for_an_unknown_legacy_scene() {
+        let path = temporary_path("schema-one-unknown");
+        let legacy = serde_json::json!({
+            "schemaVersion": 1,
+            "presets": [{
+                "presetId": "preset-legacy-unknown",
+                "name": "Unknown",
+                "clientBuild": "24687926",
+                "sceneId": 999999,
+                "mapId": 999999,
+                "savedAtUnixMillis": 10,
+                "points": [{ "markerNumber": 1, "x": 1.0, "y": 2.0, "z": 3.0 }]
+            }]
+        });
+        std::fs::write(&path, serde_json::to_vec_pretty(&legacy).unwrap()).unwrap();
+        assert!(
+            AutomarkerPresetStore::open(&path, &families())
+                .unwrap_err()
+                .to_string()
+                .contains("without a reviewed dungeon-family identity")
+        );
+        let unchanged: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(unchanged["schemaVersion"], 1);
         let _ = std::fs::remove_file(path);
     }
 }
