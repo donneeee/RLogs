@@ -12,6 +12,7 @@ import { dispatchCombatOverlayHide } from "./shell/combat-overlay-hide";
 import { mountCombatOverlayRuntimeApp } from "../../../../plugins/builtin/desktop/combat-overlay/ui/combat-overlay";
 import { mountMechanicsMapOverlay } from "./adapters/mechanics-map-overlay";
 import { parseMechanicsMapUpdate } from "./adapters/mechanics-map";
+import { parseAutomarkerLoadResult, parseAutomarkerPresetView } from "./adapters/automarker-presets";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
@@ -142,6 +143,16 @@ if (isCombatOverlayRuntime) {
       onFocusHeld: async (handler) => appWindow.listen<boolean>(
         "overlay-canvas-focus-held",
         ({ payload }) => handler(payload),
+      ),
+      loadAutomarkerPresets: async () => parseAutomarkerPresetView(
+        await runtimeJson("/api/automarkers/presets"),
+      ),
+      loadAutomarkerPreset: async (presetId) => parseAutomarkerLoadResult(
+        await runtimeJson("/api/automarkers/presets/load", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ presetId }),
+        }),
       ),
     }, localizer);
     await invoke("overlay_canvas_ready");
