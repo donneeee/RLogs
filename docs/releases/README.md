@@ -17,8 +17,10 @@ A release is ready only when:
 The tag starts `.github/workflows/release.yml`. The workflow rechecks the tag,
 version, release-note contract, and successful main CI run; builds a versioned
 Windows x64 NSIS installer; installs and launches it in a smoke test; records
-its Authenticode status; publishes a SHA-256 checksum file; and only then makes
-the draft GitHub release public.
+its Authenticode status; verifies the release contains exactly that one
+versioned installer; publishes its SHA-256 checksum file; and only then makes
+the draft GitHub release public. The website resolves that asset from GitHub's
+latest-release metadata because the validated filename changes with each version.
 
 If any check fails, leave the release draft unpublished, fix the problem in a
 new commit and version, and use a new tag. Do not move or reuse a published

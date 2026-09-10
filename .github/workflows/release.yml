@@ -147,8 +147,6 @@ jobs:
             throw "Release notes are required at $notesPath"
           }
           $sha256 = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash
-          $stableInstaller = Join-Path $installer.DirectoryName "rLogs_x64-setup.exe"
-          Copy-Item -LiteralPath $installer.FullName -Destination $stableInstaller -Force
           $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
           $signingStatus = switch ($signature.Status) {
             "Valid" {
@@ -162,11 +160,13 @@ jobs:
           }
           $checksumsName = "rLogs_${version}_SHA256SUMS.txt"
           $checksumsPath = Join-Path $installer.DirectoryName $checksumsName
-          @(
-            "$sha256 *$($installer.Name)"
-            "$sha256 *$([System.IO.Path]::GetFileName($stableInstaller))"
-          ) | Set-Content -LiteralPath $checksumsPath -Encoding ascii
-          gh release upload "${{ github.ref_name }}" $stableInstaller $checksumsPath --clobber
+          "$sha256 *$($installer.Name)" | Set-Content -LiteralPath $checksumsPath -Encoding ascii
+          gh release upload "${{ github.ref_name }}" $checksumsPath --clobber
+          $release = gh release view "${{ github.ref_name }}" --json assets | ConvertFrom-Json
+          $installerAssets = @($release.assets | Where-Object { $_.name -match '^rLogs_(?:[0-9]+\.[0-9]+\.[0-9]+_)?x64-setup\.exe$' })
+          if ($installerAssets.Count -ne 1 -or $installerAssets[0].name -ne $installer.Name) {
+            throw "Release must contain exactly the validated versioned installer $($installer.Name)"
+          }
           $notes = (Get-Content -Raw -LiteralPath $notesPath).Trim()
           $body = @(
             $notes
