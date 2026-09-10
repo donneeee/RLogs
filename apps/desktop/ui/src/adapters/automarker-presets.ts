@@ -25,7 +25,7 @@ export interface AutomarkerSceneContext {
 }
 
 export interface AutomarkerPresetView {
-  schemaVersion: 2;
+  schemaVersion: 3;
   context: AutomarkerSceneContext | null;
   presets: readonly AutomarkerPreset[];
   captureSupported: boolean;
@@ -173,7 +173,7 @@ export function newlyCreatedPresetId(
 }
 
 export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView {
-  if (!record(value) || value.schemaVersion !== 2 ||
+  if (!record(value) || value.schemaVersion !== 3 ||
       !(value.context === null || validContext(value.context)) ||
       !Array.isArray(value.presets) || !value.presets.every(validPreset) ||
       typeof value.captureSupported !== "boolean" ||
@@ -202,6 +202,16 @@ export function parseAutomarkerLoadResult(value: unknown): AutomarkerLoadResult 
 
 export function presetMatchesContext(preset: AutomarkerPreset, context: AutomarkerSceneContext): boolean {
   return preset.activityFamilyId === context.activityFamilyId;
+}
+
+export function automarkerResponseIsCurrent(
+  requestGeneration: number,
+  currentGeneration: number,
+  requestedSnapshotKey?: string,
+  currentSnapshotKey?: string,
+): boolean {
+  return requestGeneration === currentGeneration &&
+    (requestedSnapshotKey === undefined || requestedSnapshotKey === currentSnapshotKey);
 }
 
 function validContext(value: unknown): value is AutomarkerSceneContext {

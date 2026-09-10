@@ -1,10 +1,26 @@
 import { describe, expect, it } from "vitest";
 import type { UiLocalizer } from "../localization/ui-locale";
+import { automarkerResponseIsCurrent } from "./automarker-presets";
 
-import { formatDungeonAttemptTime, formatDungeonObjectiveValue, mechanicsMapMarkerLabel, mechanicsMapReadabilityProfile, nextMapDim, parseMechanicsMapCanvasPreferences, projectAutomarkerPreviewMarkers, shouldDrawRadarFallbackArena, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
+import { automarkerPresetViewSnapshotKey, formatDungeonAttemptTime, formatDungeonObjectiveValue, mechanicsMapAutomarkerSnapshotKey, mechanicsMapMarkerLabel, mechanicsMapReadabilityProfile, nextMapDim, parseMechanicsMapCanvasPreferences, projectAutomarkerPreviewMarkers, shouldDrawRadarFallbackArena, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
 import type { MechanicsMapSnapshot } from "./mechanics-map";
 
 describe("Mechanics Map overlay canvas preferences", () => {
+  it("rejects stale automarker responses after a newer request or snapshot transition", () => {
+    const master = mechanicsMapAutomarkerSnapshotKey({ client_build: "24687926", scene_id: 1633, map_id: 1633 });
+    const normal = mechanicsMapAutomarkerSnapshotKey({ client_build: "24687926", scene_id: 1631, map_id: 1631 });
+    expect(automarkerResponseIsCurrent(7, 7, master, master)).toBe(true);
+    expect(automarkerResponseIsCurrent(6, 7, master, master)).toBe(false);
+    expect(automarkerResponseIsCurrent(7, 7, master, normal)).toBe(false);
+    expect(automarkerPresetViewSnapshotKey({
+      schemaVersion: 3,
+      context: { clientBuild: "24687926", sceneId: 1631, mapId: 1631, activityFamilyId: "tina-mindrealm", sceneName: "Tina" },
+      presets: [], captureSupported: false, captureReason: "native_waymark_state_unverified",
+      nativeLoadSupported: false, nativeLoadReason: "native_waymark_request_unverified",
+      previewSessionId: "preview-test-session",
+    })).toBe(normal);
+  });
+
   it("prefers the visible numbered marker label", () => {
     expect(mechanicsMapMarkerLabel({ marker_id: null, marker_number: 4 })).toBe("4");
     expect(mechanicsMapMarkerLabel({ marker_id: 77, marker_number: null })).toBe("77");

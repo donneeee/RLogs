@@ -5575,6 +5575,16 @@ fn automarker_scene_context(
     })
 }
 
+fn automarker_scene_family_id(scene_id: i32, identity: &BpsrSceneRunIdentity) -> Option<String> {
+    if scene_id == 1_633
+        && identity.activity_family_id.as_deref() == Some("tina-mindrealm")
+        && identity.difficulty_family.as_deref() == Some("master")
+    {
+        return Some("dungeon.1633".to_owned());
+    }
+    identity.activity_family_id.clone()
+}
+
 #[cfg(windows)]
 #[derive(Debug, Clone, Copy)]
 enum LiveCombatControl {
@@ -5765,7 +5775,10 @@ impl RuntimeController {
                 format!("could not load reviewed automarker dungeon families: {error}")
             })?
             .into_iter()
-            .filter_map(|(scene_id, identity)| Some((scene_id, identity.activity_family_id?)))
+            .filter_map(|(scene_id, identity)| {
+                automarker_scene_family_id(scene_id, &identity)
+                    .map(|family_id| (scene_id, family_id))
+            })
             .collect::<BTreeMap<_, _>>();
         let automarker_presets = AutomarkerPresetStore::open(
             install_root.join("runtime-data/automarkers/presets.v1.json"),
@@ -14963,6 +14976,23 @@ mod tests {
     };
     use rlogs_log_format::{RlogSeal, RlogWriter};
     use rlogs_network::IpEndpoint;
+
+    #[test]
+    fn automarker_family_isolates_tina_master_without_binding_its_m_tier() {
+        let identities = bundled_scene_run_identities().unwrap();
+        let master = identities.get(&1_633).unwrap();
+
+        assert_eq!(
+            automarker_scene_family_id(1_633, master).as_deref(),
+            Some("dungeon.1633")
+        );
+        for scene_id in [1_621, 1_631, 1_632] {
+            assert_eq!(
+                automarker_scene_family_id(scene_id, identities.get(&scene_id).unwrap()).as_deref(),
+                Some("tina-mindrealm")
+            );
+        }
+    }
 
     #[test]
     fn desktop_run_authority_requires_the_sealed_exact_runtime_identity() {

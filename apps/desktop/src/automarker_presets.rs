@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-const SCHEMA_VERSION: u16 = 2;
+const SCHEMA_VERSION: u16 = 3;
 const MAX_PRESETS: usize = 128;
 const MAX_STORE_BYTES: u64 = 512 * 1024;
 const MAX_NAME_CHARS: usize = 80;
@@ -58,6 +58,13 @@ struct LegacyAutomarkerPresetV1 {
     points: Vec<AutomarkerPoint>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LegacyAutomarkerPresetFileV2 {
+    schema_version: u16,
+    presets: Vec<AutomarkerPreset>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AutomarkerSceneContext {
@@ -105,8 +112,8 @@ pub struct AutomarkerLoadResult {
 
 #[derive(Debug)]
 pub struct AutomarkerPresetStore {
-    // Retained while capture-current is capability-gated; schema-one files at
-    // this path are migrated through the reviewed scene-family catalog.
+    // Retained while capture-current is capability-gated; older files at this
+    // path are migrated through the reviewed automarker-family catalog.
     #[allow(dead_code)]
     path: PathBuf,
     presets: Vec<AutomarkerPreset>,
@@ -357,6 +364,34 @@ fn load(
             (presets, true)
         }
         2 => {
+            let file: LegacyAutomarkerPresetFileV2 =
+                serde_json::from_slice(&bytes).map_err(|error| {
+                    format!("schema-two automarker preset file is invalid: {error}")
+                })?;
+            if file.schema_version != 2 || file.presets.len() > MAX_PRESETS {
+                return Err(
+                    "schema-two automarker preset file has an unsupported schema or size".into(),
+                );
+            }
+            let presets = file
+                .presets
+                .into_iter()
+                .map(|mut preset| {
+                    preset.activity_family_id = scene_families
+                        .get(&preset.scene_id)
+                        .cloned()
+                        .ok_or_else(|| {
+                            format!(
+                                "schema-two automarker preset {} uses scene {} without a reviewed automarker-family identity",
+                                preset.preset_id, preset.scene_id
+                            )
+                        })?;
+                    Ok(preset)
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            (presets, true)
+        }
+        3 => {
             let file: AutomarkerPresetFile = serde_json::from_slice(&bytes)
                 .map_err(|error| format!("automarker preset file is invalid: {error}"))?;
             if file.schema_version != SCHEMA_VERSION || file.presets.len() > MAX_PRESETS {
@@ -375,6 +410,18 @@ fn load(
         validate_name(&preset.name)?;
         if preset.activity_family_id.trim().is_empty() || preset.activity_family_id.len() > 128 {
             return Err("automarker preset dungeon-family identity is invalid".into());
+        }
+        let expected_family_id = scene_families.get(&preset.scene_id).ok_or_else(|| {
+            format!(
+                "automarker preset {} uses scene {} without a reviewed automarker-family identity",
+                preset.preset_id, preset.scene_id
+            )
+        })?;
+        if &preset.activity_family_id != expected_family_id {
+            return Err(format!(
+                "automarker preset {} does not match the reviewed automarker-family identity for scene {}",
+                preset.preset_id, preset.scene_id
+            ));
         }
         validate_points(&preset.points)?;
     }
@@ -473,9 +520,10 @@ mod tests {
 
     fn families() -> BTreeMap<i32, String> {
         [
+            (1_621, "tina-mindrealm"),
             (1_631, "tina-mindrealm"),
             (1_632, "tina-mindrealm"),
-            (1_633, "tina-mindrealm"),
+            (1_633, "dungeon.1633"),
             (1_100, "mech-facility"),
         ]
         .into_iter()
@@ -498,7 +546,15 @@ mod tests {
     }
 
     fn tina(scene_id: i32) -> AutomarkerSceneContext {
-        context(scene_id, scene_id as u32, "tina-mindrealm")
+        context(
+            scene_id,
+            scene_id as u32,
+            if scene_id == 1_633 {
+                "dungeon.1633"
+            } else {
+                "tina-mindrealm"
+            },
+        )
     }
 
     fn mech() -> AutomarkerSceneContext {
@@ -591,7 +647,7 @@ mod tests {
     }
 
     #[test]
-    fn filters_by_reviewed_family_and_allows_other_family_scenes_and_maps() {
+    fn tina_master_presets_are_tier_independent_but_isolated_from_other_scene_families() {
         let path = temporary_path("scope");
         let mut store = open(&path);
         let saved = store
@@ -607,12 +663,25 @@ mod tests {
             )
             .unwrap();
         let preset_id = saved.presets[0].preset_id.clone();
-        assert_eq!(store.compatible(tina(1_631)).presets.len(), 1);
+        assert_eq!(store.compatible(tina(1_633)).presets.len(), 1);
         assert!(
             store
-                .prepare_load(LoadAutomarkerPresetRequest { preset_id }, tina(1_632))
+                .prepare_load(LoadAutomarkerPresetRequest { preset_id }, tina(1_633))
                 .is_ok()
         );
+        for scene_id in [1_621, 1_631, 1_632] {
+            assert!(store.compatible(tina(scene_id)).presets.is_empty());
+            assert!(
+                store
+                    .prepare_load(
+                        LoadAutomarkerPresetRequest {
+                            preset_id: saved.presets[0].preset_id.clone(),
+                        },
+                        tina(scene_id),
+                    )
+                    .is_err()
+            );
+        }
         assert!(store.compatible(mech()).presets.is_empty());
         assert!(
             store
@@ -824,15 +893,66 @@ mod tests {
         });
         std::fs::write(&path, serde_json::to_vec_pretty(&legacy).unwrap()).unwrap();
         let store = open(&path);
-        let migrated = store.compatible(tina(1_631));
+        let migrated = store.compatible(tina(1_633));
         assert_eq!(migrated.presets.len(), 1);
-        assert_eq!(migrated.presets[0].activity_family_id, "tina-mindrealm");
+        assert_eq!(migrated.presets[0].activity_family_id, "dungeon.1633");
         let persisted: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-        assert_eq!(persisted["schemaVersion"], 2);
-        assert_eq!(
-            persisted["presets"][0]["activityFamilyId"],
-            "tina-mindrealm"
+        assert_eq!(persisted["schemaVersion"], 3);
+        assert_eq!(persisted["presets"][0]["activityFamilyId"], "dungeon.1633");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn migrates_schema_two_family_identity_deterministically_from_stored_scene_id() {
+        let path = temporary_path("schema-two");
+        let legacy = serde_json::json!({
+            "schemaVersion": 2,
+            "presets": [{
+                "presetId": "preset-legacy-tina-v2",
+                "name": "Tina master",
+                "clientBuild": "24687926",
+                "sceneId": 1633,
+                "mapId": 1633,
+                "activityFamilyId": "tina-mindrealm",
+                "savedAtUnixMillis": 10,
+                "points": [{ "markerNumber": 1, "x": 1.0, "y": 2.0, "z": 3.0 }]
+            }]
+        });
+        std::fs::write(&path, serde_json::to_vec_pretty(&legacy).unwrap()).unwrap();
+        let store = open(&path);
+        let migrated = store.compatible(tina(1_633));
+        assert_eq!(migrated.presets.len(), 1);
+        assert_eq!(migrated.presets[0].activity_family_id, "dungeon.1633");
+        assert!(store.compatible(tina(1_631)).presets.is_empty());
+        let persisted: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(persisted["schemaVersion"], 3);
+        assert_eq!(persisted["presets"][0]["activityFamilyId"], "dungeon.1633");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn rejects_schema_three_family_identity_that_disagrees_with_the_reviewed_scene() {
+        let path = temporary_path("schema-three-family-mismatch");
+        let invalid = serde_json::json!({
+            "schemaVersion": 3,
+            "presets": [{
+                "presetId": "preset-forged-family-v3",
+                "name": "Wrong family",
+                "clientBuild": "24687926",
+                "sceneId": 1633,
+                "mapId": 1633,
+                "activityFamilyId": "tina-mindrealm",
+                "savedAtUnixMillis": 10,
+                "points": [{ "markerNumber": 1, "x": 1.0, "y": 2.0, "z": 3.0 }]
+            }]
+        });
+        std::fs::write(&path, serde_json::to_vec_pretty(&invalid).unwrap()).unwrap();
+        assert!(
+            AutomarkerPresetStore::open(&path, &families())
+                .unwrap_err()
+                .contains("does not match the reviewed automarker-family identity")
         );
         let _ = std::fs::remove_file(path);
     }

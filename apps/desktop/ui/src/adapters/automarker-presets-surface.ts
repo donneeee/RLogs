@@ -5,7 +5,7 @@ import type {
   AutomarkerPresetView,
   SaveAutomarkerPresetRequest,
 } from "./automarker-presets";
-import { AUTOMARKER_PREVIEW_STORAGE_KEY, automarkerSaveRequest, newlyCreatedPresetId, publishAutomarkerPreview } from "./automarker-presets";
+import { AUTOMARKER_PREVIEW_STORAGE_KEY, automarkerResponseIsCurrent, automarkerSaveRequest, newlyCreatedPresetId, publishAutomarkerPreview } from "./automarker-presets";
 
 export interface AutomarkerPresetDependencies {
   loadPresets(): Promise<AutomarkerPresetView>;
@@ -24,6 +24,7 @@ export function mountAutomarkerPresetsSurface(
   let busy = false;
   let editorDirty = false;
   let contextRefresh: number | null = null;
+  let catalogRequestGeneration = 0;
 
   const root = el("div", "plugin-surface overlay-workspace-surface automarker-presets-surface");
   // Re-entering the editor starts a fresh deliberate preview gesture. Old
@@ -96,9 +97,11 @@ export function mountAutomarkerPresetsSurface(
 
   async function refreshContext(): Promise<void> {
     if (!alive || busy) return;
+    const requestGeneration = ++catalogRequestGeneration;
     try {
       const next = await dependencies.loadPresets();
-      if (!alive || automarkerPresetContextKey(next) === automarkerPresetContextKey(view)) return;
+      if (!alive || !automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration) ||
+          automarkerPresetContextKey(next) === automarkerPresetContextKey(view)) return;
       view = next;
       selectedId = view.presets[0]?.presetId ?? null;
       name.value = view.presets[0]?.name ?? "";
@@ -115,11 +118,13 @@ export function mountAutomarkerPresetsSurface(
   }
 
   async function refreshView(): Promise<void> {
+    const requestGeneration = ++catalogRequestGeneration;
     busy = true;
     render();
     try {
-      view = await dependencies.loadPresets();
-      if (!alive) return;
+      const next = await dependencies.loadPresets();
+      if (!alive || !automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration)) return;
+      view = next;
       if (!view.presets.some((preset) => preset.presetId === selectedId)) selectedId = view.presets[0]?.presetId ?? null;
       const preset = selectedPreset();
       if (preset !== undefined && name.value.trim() === "") name.value = preset.name;
@@ -130,10 +135,14 @@ export function mountAutomarkerPresetsSurface(
           ? "No marker setups are saved for this dungeon family yet."
           : `${view.presets.length} compatible setup${view.presets.length === 1 ? "" : "s"} available for this scene.`;
     } catch (error) {
-      status.textContent = message(error);
+      if (automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration)) {
+        status.textContent = message(error);
+      }
     } finally {
-      busy = false;
-      if (alive) render();
+      if (automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration)) {
+        busy = false;
+        if (alive) render();
+      }
     }
   }
 
@@ -152,20 +161,26 @@ export function mountAutomarkerPresetsSurface(
       status.textContent = message(error);
       return;
     }
+    const requestGeneration = ++catalogRequestGeneration;
     busy = true;
     render();
     try {
       const priorIds = new Set(view.presets.map((preset) => preset.presetId));
-      view = await dependencies.saveCurrent(request);
-      if (!alive) return;
+      const next = await dependencies.saveCurrent(request);
+      if (!alive || !automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration)) return;
+      view = next;
       if (saveAsNew) selectedId = newlyCreatedPresetId(priorIds, view) ?? view.presets[0]?.presetId ?? null;
       editorDirty = false;
       status.textContent = saveAsNew ? "Saved a new marker setup on this computer." : "Updated the selected marker setup on this computer.";
     } catch (error) {
-      status.textContent = message(error);
+      if (automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration)) {
+        status.textContent = message(error);
+      }
     } finally {
-      busy = false;
-      if (alive) render();
+      if (automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration)) {
+        busy = false;
+        if (alive) render();
+      }
     }
   }
 
@@ -300,7 +315,7 @@ export function mountAutomarkerPresetsSurface(
     return view?.presets.find((preset) => preset.presetId === selectedId);
   }
 
-  return { dispose() { alive = false; if (contextRefresh !== null) window.clearInterval(contextRefresh); } };
+  return { dispose() { alive = false; catalogRequestGeneration += 1; if (contextRefresh !== null) window.clearInterval(contextRefresh); } };
 }
 
 export function automarkerPresetContextKey(view: Pick<AutomarkerPresetView, "context" | "previewSessionId"> | null): string {

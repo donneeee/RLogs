@@ -1,7 +1,7 @@
 import type { MountedSurface } from "../shell/types";
 import type { UiLocalizer } from "../localization/ui-locale";
 import type { AutomarkerLoadResult, AutomarkerPoint, AutomarkerPresetView, AutomarkerPreview } from "./automarker-presets";
-import { AUTOMARKER_PREVIEW_STORAGE_KEY, readActiveAutomarkerPreview } from "./automarker-presets";
+import { AUTOMARKER_PREVIEW_STORAGE_KEY, automarkerResponseIsCurrent, readActiveAutomarkerPreview } from "./automarker-presets";
 import {
   actionControlRemainingMillis,
   fitMechanicsMapCanvasRect,
@@ -256,6 +256,7 @@ export function mountMechanicsMapOverlay(
   let automarkerSceneKey = "";
   let automarkerPreview: AutomarkerPreview | null = null;
   let automarkerPreviewTimer: number | null = null;
+  let automarkerRequestGeneration = 0;
 
   const root = element("main", "overlay-canvas-runtime");
   root.dataset.locked = String(preferences.locked);
@@ -636,12 +637,26 @@ export function mountMechanicsMapOverlay(
   }
 
   async function refreshAutomarkerPresets(): Promise<void> {
+    const requestGeneration = ++automarkerRequestGeneration;
+    const requestedSnapshotKey = mechanicsMapAutomarkerSnapshotKey(update?.snapshot);
     try {
-      automarkerView = await dependencies.loadAutomarkerPresets();
-      if (!alive) return;
+      const next = await dependencies.loadAutomarkerPresets();
+      if (!alive || !automarkerResponseIsCurrent(
+        requestGeneration,
+        automarkerRequestGeneration,
+        requestedSnapshotKey,
+        mechanicsMapAutomarkerSnapshotKey(update?.snapshot),
+      ) || automarkerPresetViewSnapshotKey(next) !== requestedSnapshotKey) return;
+      automarkerView = next;
       renderAutomarkerPresets();
       refreshAutomarkerPreview();
     } catch (error) {
+      if (!automarkerResponseIsCurrent(
+        requestGeneration,
+        automarkerRequestGeneration,
+        requestedSnapshotKey,
+        mechanicsMapAutomarkerSnapshotKey(update?.snapshot),
+      )) return;
       automarkerView = null;
       automarkerSelect.replaceChildren(new Option("Preset catalog unavailable", ""));
       automarkerSelect.disabled = true;
@@ -698,9 +713,12 @@ export function mountMechanicsMapOverlay(
   function renderState(): void {
     const snapshot = update?.snapshot;
     if (!snapshot) return;
-    const nextAutomarkerSceneKey = `${snapshot.client_build ?? ""}:${snapshot.scene_id ?? ""}:${snapshot.map_id ?? ""}`;
+    const nextAutomarkerSceneKey = mechanicsMapAutomarkerSnapshotKey(snapshot);
     if (nextAutomarkerSceneKey !== automarkerSceneKey) {
       automarkerSceneKey = nextAutomarkerSceneKey;
+      automarkerView = null;
+      automarkerPreview = null;
+      renderAutomarkerPresets();
       void refreshAutomarkerPresets();
     }
     title.textContent = snapshot.scene_name ?? (snapshot.scene_id === null
@@ -1632,6 +1650,7 @@ export function mountMechanicsMapOverlay(
   return {
     dispose() {
       alive = false;
+      automarkerRequestGeneration += 1;
       if (frame !== null) cancelAnimationFrame(frame);
       stopTargetTimer();
       stopPlayerTimer();
@@ -1648,6 +1667,23 @@ export function mountMechanicsMapOverlay(
       root.remove();
     },
   };
+}
+
+export function mechanicsMapAutomarkerSnapshotKey(
+  snapshot: Pick<MechanicsMapSnapshot, "client_build" | "scene_id" | "map_id"> | null | undefined,
+): string {
+  return snapshot?.client_build === null || snapshot?.client_build === undefined ||
+    snapshot.scene_id === null || snapshot.scene_id === undefined ||
+    snapshot.map_id === null || snapshot.map_id === undefined
+    ? "none"
+    : `${snapshot.client_build}:${snapshot.scene_id}:${snapshot.map_id}`;
+}
+
+export function automarkerPresetViewSnapshotKey(view: AutomarkerPresetView): string {
+  const context = view.context;
+  return context === null
+    ? "none"
+    : `${context.clientBuild}:${context.sceneId}:${context.mapId}`;
 }
 
 function drawBackdrop(
