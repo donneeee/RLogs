@@ -3252,6 +3252,16 @@ function combatPresentationCell(
   return cell;
 }
 
+export function combatPresentationDisplayName(
+  name: string | null,
+  namespace: "ability" | "effect",
+  localizer: UiLocalizer,
+): string {
+  return name?.trim() || localizer.t(namespace === "ability"
+    ? "ui.combat_history.breakdown.unresolved_action"
+    : "ui.combat_history.breakdown.unresolved_effect");
+}
+
 function combatPresentationIdentity(
   id: string,
   name: string | null,
@@ -3272,13 +3282,10 @@ function combatPresentationIdentity(
     icon.append(image);
   }
   const kindLabel = kind ? humanizePresentationKind(kind) : null;
-  const unresolvedLabel = localizer.t(namespace === "ability"
-    ? "ui.combat_history.breakdown.unresolved_action"
-    : "ui.combat_history.breakdown.unresolved_effect");
   const copy = element(
     "span",
     "combat-history-combat-copy",
-    element("strong", "", name?.trim() || unresolvedLabel),
+    element("strong", "", combatPresentationDisplayName(name, namespace, localizer)),
     element(
       "span",
       "combat-history-combat-metadata",

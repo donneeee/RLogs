@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { loadUiLocalizer } from "../localization/ui-locale";
 
 import type {
   CombatHistoryCatalogEntry,
@@ -14,6 +15,7 @@ import {
   catalogParticipantLabel,
   catalogParticipantTooltip,
   comparePartySortValues,
+  combatPresentationDisplayName,
   compactSpecializationName,
   displayedUnmappedRdpsSkill,
   filterAndSortHistoryEntries,
@@ -34,6 +36,13 @@ import {
   supplementalDifficultyLabel,
   terminalPresentationLabel,
 } from "./combat-history-surface";
+
+it("uses reviewed effect names while preserving the explicit unresolved fallback", async () => {
+  const ui = await loadUiLocalizer("en-US");
+  expect(combatPresentationDisplayName("Luminary Bolt Vulnerability", "effect", ui))
+    .toBe("Luminary Bolt Vulnerability");
+  expect(combatPresentationDisplayName(null, "effect", ui)).toBe("Unresolved effect");
+});
 
 describe("Combat History generated skill ownership", () => {
   it("moves Encore to each exact healer across a multi-healer run", () => {

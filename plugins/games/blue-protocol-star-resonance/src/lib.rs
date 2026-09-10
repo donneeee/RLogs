@@ -102,12 +102,13 @@ pub use class_localization::{
     specialization_class_id, specialization_icon_path, specialization_role,
 };
 pub use combat_presentation::{
-    CombatActionPresentation, RdpsAttributionEffectPresentation, StatusEffectPresentation,
-    combat_action_presentation, combat_recount_group_id, localized_combat_action_name,
-    localized_combat_action_name_for_build, localized_recount_group_name,
-    localized_recount_group_name_for_build, localized_status_effect_name,
-    localized_status_effect_name_for_build, rdps_attribution_effect_presentation,
-    status_effect_presentation,
+    CombatActionPresentation, RdpsAttributionEffectPresentation, StatusEffectDisplayPresentation,
+    StatusEffectPresentation, combat_action_presentation, combat_recount_group_id,
+    localized_combat_action_name, localized_combat_action_name_for_build,
+    localized_recount_group_name, localized_recount_group_name_for_build,
+    localized_status_effect_name, localized_status_effect_name_for_build,
+    rdps_attribution_effect_presentation, status_effect_display_presentation,
+    status_effect_display_presentation_for_build, status_effect_presentation,
 };
 pub use continuous_recording::{
     ContinuousBpsrRecorder, ContinuousForcedReset, ContinuousRecordingConfig,

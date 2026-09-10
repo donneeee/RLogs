@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "deployment_id": "global",
+  "channel": "steam",
+  "game_build": "24687926",
+  "scope": "repository-owned-rdps-runtime-observed-status-effects",
+  "source": {
+    "path": "../../runtime/rdps-attribution-effect-presentation.v1.json",
+    "sha256": "c3407baea2ac3a7bbc29c0e0d1650a7750eb8f0bcb798b27b016eaaaf60d8c5d",
+    "effect_count": 29
+  },
+  "summary": {
+    "observed_effect_count": 29,
+    "localized_in_every_shipped_locale_count": 15,
+    "reviewed_english_fallback_count": 14,
+    "display_covered_effect_count": 29,
+    "uncovered_effect_ids": []
+  },
+  "reviewed_english_fallback_ids": [
+    55228,
+    997511,
+    997513,
+    997515,
+    997518,
+    997534,
+    997538,
+    997570,
+    2110099,
+    2204471,
+    2207252,
+    2302121,
+    2404261,
+    2404271
+  ],
+  "policy": {
+    "exact_build_required": true,
+    "all_shipped_locales_audited": true,
+    "reviewed_english_identity_may_backstop_missing_translation": true,
+    "reviewed_identity_is_not_claimed_as_a_translation": true,
+    "raw_id_fallback_is_preserved": true,
+    "invented_labels_are_forbidden": true,
+    "unreported_coverage_drift_fails_ci": true
+  }
+}

@@ -95,14 +95,13 @@ use rlogs_game_bpsr::{
     localized_auxiliary_action_name, localized_battle_imagine_name, localized_class_identities,
     localized_combat_action_name_for_build, localized_monster_name,
     localized_recount_group_name_for_build, localized_scene_name_for_build,
-    localized_specialization_identities, localized_status_effect_name_for_build,
-    project_local_profile_packages, proven_state_damage_contribution_effect_ids,
-    rdps_attribution_effect_presentation, record_offline_capture, resolve_actor_combat_identity,
-    resolve_actor_combat_presentation, resolve_live_protocol_pack,
-    resolve_packet_detected_protocol_pack, scene_boss_monster_ids,
+    localized_specialization_identities, project_local_profile_packages,
+    proven_state_damage_contribution_effect_ids, rdps_attribution_effect_presentation,
+    record_offline_capture, resolve_actor_combat_identity, resolve_actor_combat_presentation,
+    resolve_live_protocol_pack, resolve_packet_detected_protocol_pack, scene_boss_monster_ids,
     state_damage_contribution_formula_identity, state_damage_contribution_target_matches,
-    status_effect_presentation, stimen_floor_encounter_kind, weapon_level_presentation,
-    weapon_presentation,
+    status_effect_display_presentation_for_build, status_effect_presentation,
+    stimen_floor_encounter_kind, weapon_level_presentation, weapon_presentation,
 };
 use rlogs_log_format::{RlogHeader, RlogLimits, RlogReader, RlogReplaySummary};
 use rlogs_plugin_api::{PluginCapability, PluginDependency, PluginRuntime, PluginWorkspaceTabKind};
@@ -13505,12 +13504,22 @@ fn enrich_bpsr_actor_combat_presentation(
         let Some(presentation) = status_effect_presentation(effect_id)? else {
             continue;
         };
-        effect.presentation_name =
-            localized_status_effect_name_for_build(deployment_id, client_build, effect_id, locale)?
-                .map(str::to_owned)
-                .or_else(|| presentation.technical_name.clone());
+        let display = status_effect_display_presentation_for_build(
+            deployment_id,
+            client_build,
+            effect_id,
+            locale,
+        )?;
+        effect.presentation_name = display
+            .as_ref()
+            .map(|value| value.name.to_owned())
+            .or_else(|| presentation.technical_name.clone());
         effect.presentation_kind = Some(presentation.kind.clone());
-        effect.presentation_resolution = Some(presentation.resolution.clone());
+        effect.presentation_resolution = Some(
+            display
+                .map(|value| value.resolution.to_owned())
+                .unwrap_or_else(|| presentation.resolution.clone()),
+        );
         effect.icon_asset_path = presentation
             .icon
             .as_ref()
@@ -16975,6 +16984,44 @@ mod tests {
             ability.presentation_recount_group_name.as_deref(),
             Some("Double Arrow")
         );
+    }
+
+    #[test]
+    fn saved_history_uses_reviewed_observed_effect_identity_and_fails_closed_by_build() {
+        let mut snapshot = captured_marksman_history();
+        snapshot.client_build = "24687926".into();
+        snapshot.runs[0].views[0].actors[0].effects =
+            vec![rlogs_plugin_combat_meter::HistoryEffectSummary {
+                effect_id: "55228".into(),
+                presentation_name: None,
+                presentation_kind: None,
+                presentation_resolution: None,
+                icon_asset_path: None,
+                target_actor_id: "2".into(),
+                target_entity_uuid: "102".into(),
+                applied: 1,
+                refreshed: 0,
+                stacked: 0,
+                consumed: 0,
+                removed: 1,
+            }];
+
+        enrich_bpsr_history_presentation(&mut snapshot, "ja-JP").unwrap();
+        let effect = &snapshot.runs[0].views[0].actors[0].effects[0];
+        assert_eq!(
+            effect.presentation_name.as_deref(),
+            Some("Luminary Bolt Vulnerability")
+        );
+        assert_eq!(
+            effect.presentation_resolution.as_deref(),
+            Some("reviewed-source-name")
+        );
+
+        snapshot.client_build = "24687927".into();
+        enrich_bpsr_history_presentation(&mut snapshot, "en-US").unwrap();
+        let effect = &snapshot.runs[0].views[0].actors[0].effects[0];
+        assert_eq!(effect.presentation_name, None);
+        assert_eq!(effect.presentation_resolution, None);
     }
 
     #[test]

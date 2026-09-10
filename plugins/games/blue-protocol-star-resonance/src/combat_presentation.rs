@@ -31,6 +31,12 @@ pub struct StatusEffectPresentation {
     pub icon: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StatusEffectDisplayPresentation {
+    pub name: &'static str,
+    pub resolution: &'static str,
+}
+
 /// Presentation-only identity for a production rDPS attribution endpoint.
 ///
 /// Numeric effect and exact-build identity remain the runtime authority. These
@@ -656,6 +662,35 @@ pub fn localized_status_effect_name(
         .map(|index| catalog.effects[index].1.as_str()))
 }
 
+/// Resolves the best evidence-backed display identity for an observed status
+/// effect. The richer reviewed rDPS identity wins for English; a locale-native
+/// game label wins for every other locale. Reviewed English is only a fallback
+/// when that locale has no shipped label and is never reported as a translation.
+pub fn status_effect_display_presentation(
+    effect_id: i64,
+    locale: &str,
+) -> Result<Option<StatusEffectDisplayPresentation>, String> {
+    let reviewed = rdps_attribution_effect_presentation(effect_id, "en-US")?;
+    if locale == "en-US"
+        && let Some(reviewed) = reviewed
+    {
+        return Ok(Some(StatusEffectDisplayPresentation {
+            name: reviewed.name.as_str(),
+            resolution: reviewed.resolution.as_str(),
+        }));
+    }
+    if let Some(name) = localized_status_effect_name(effect_id, locale)? {
+        return Ok(Some(StatusEffectDisplayPresentation {
+            name,
+            resolution: "localized-status-effect",
+        }));
+    }
+    Ok(reviewed.map(|reviewed| StatusEffectDisplayPresentation {
+        name: reviewed.name.as_str(),
+        resolution: reviewed.resolution.as_str(),
+    }))
+}
+
 pub fn localized_combat_action_name_for_build(
     deployment_id: &str,
     client_build: &str,
@@ -692,6 +727,18 @@ pub fn localized_status_effect_name_for_build(
     localized_status_effect_name(effect_id, locale)
 }
 
+pub fn status_effect_display_presentation_for_build(
+    deployment_id: &str,
+    client_build: &str,
+    effect_id: i64,
+    locale: &str,
+) -> Result<Option<StatusEffectDisplayPresentation>, String> {
+    if !bundled_localization_supports(deployment_id, client_build) {
+        return Ok(None);
+    }
+    status_effect_display_presentation(effect_id, locale)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -713,6 +760,152 @@ mod tests {
         assert_eq!(
             localized_status_effect_name_for_build("global", "24687927", 31_602, "en-US").unwrap(),
             None
+        );
+    }
+
+    #[test]
+    fn observed_status_display_prefers_reviewed_english_and_preserves_locale_labels() {
+        let reviewed = status_effect_display_presentation(2_110_034, "en-US")
+            .unwrap()
+            .unwrap();
+        assert_eq!(reviewed.name, "Arcane! Time Decree — Lower CD");
+        assert_eq!(reviewed.resolution, "reviewed-source-name");
+
+        let localized = status_effect_display_presentation(2_110_034, "de-DE")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            localized.name,
+            localized_status_effect_name(2_110_034, "de-DE")
+                .unwrap()
+                .unwrap()
+        );
+        assert_eq!(localized.resolution, "localized-status-effect");
+
+        let fallback = status_effect_display_presentation(55_228, "ja-JP")
+            .unwrap()
+            .unwrap();
+        assert_eq!(fallback.name, "Luminary Bolt Vulnerability");
+        assert_eq!(fallback.resolution, "reviewed-source-name");
+        assert_eq!(
+            status_effect_display_presentation(9_999_999_999, "en-US").unwrap(),
+            None
+        );
+        assert_eq!(
+            status_effect_display_presentation_for_build("global", "24687927", 55_228, "en-US")
+                .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn current_build_observed_status_effect_coverage_gate_is_exhaustive() {
+        use std::collections::BTreeSet;
+
+        use sha2::{Digest, Sha256};
+
+        const BUILD: &str = "24687926";
+        const LOCALES: &[&str] = &[
+            "de-DE", "en-US", "es-ES", "fr-FR", "id-ID", "ja-JP", "ko-KR", "pt-BR", "th-TH",
+            "zh-CN", "zh-TW",
+        ];
+        const SOURCE: &str =
+            include_str!("../game-data/runtime/rdps-attribution-effect-presentation.v1.json");
+        let gate: serde_json::Value = serde_json::from_str(include_str!(
+            "../game-data/catalog/coverage/observed-status-effects.v1.json"
+        ))
+        .unwrap();
+        let source: serde_json::Value = serde_json::from_str(SOURCE).unwrap();
+
+        assert_eq!(gate["schema_version"], 1);
+        assert_eq!(gate["deployment_id"], "global");
+        assert_eq!(gate["channel"], "steam");
+        assert_eq!(gate["game_build"], BUILD);
+        assert_eq!(source["game_build"], BUILD);
+        assert_eq!(gate["policy"]["exact_build_required"], true);
+        assert_eq!(gate["policy"]["all_shipped_locales_audited"], true);
+        assert_eq!(gate["policy"]["raw_id_fallback_is_preserved"], true);
+        assert_eq!(gate["policy"]["invented_labels_are_forbidden"], true);
+        assert_eq!(
+            gate["source"]["sha256"].as_str(),
+            Some(
+                format!(
+                    "{:x}",
+                    Sha256::digest(SOURCE.replace("\r\n", "\n").as_bytes())
+                )
+                .as_str()
+            ),
+            "reviewed rDPS effect evidence changed; refresh the observed-effect gate"
+        );
+
+        let observed_ids = source["effects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|effect| effect["effect_id"].as_i64().unwrap())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            gate["source"]["effect_count"].as_u64(),
+            Some(observed_ids.len() as u64)
+        );
+        assert_eq!(
+            gate["summary"]["observed_effect_count"].as_u64(),
+            Some(observed_ids.len() as u64)
+        );
+
+        let expected_reviewed_fallbacks = gate["reviewed_english_fallback_ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|id| id.as_i64().unwrap())
+            .collect::<BTreeSet<_>>();
+        let actual_reviewed_fallbacks = observed_ids
+            .iter()
+            .copied()
+            .filter(|effect_id| {
+                localized_status_effect_name(*effect_id, "en-US")
+                    .unwrap()
+                    .is_none()
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(actual_reviewed_fallbacks, expected_reviewed_fallbacks);
+        assert_eq!(
+            gate["summary"]["reviewed_english_fallback_count"].as_u64(),
+            Some(actual_reviewed_fallbacks.len() as u64)
+        );
+
+        let mut uncovered = BTreeSet::new();
+        let mut localized_in_every_locale = 0_u64;
+        for effect_id in &observed_ids {
+            let native_in_every_locale = LOCALES.iter().all(|locale| {
+                localized_status_effect_name(*effect_id, locale)
+                    .unwrap()
+                    .is_some()
+            });
+            localized_in_every_locale += u64::from(native_in_every_locale);
+            for locale in LOCALES {
+                if status_effect_display_presentation_for_build("global", BUILD, *effect_id, locale)
+                    .unwrap()
+                    .is_none()
+                {
+                    uncovered.insert(*effect_id);
+                }
+            }
+        }
+        let expected_uncovered = gate["summary"]["uncovered_effect_ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|id| id.as_i64().unwrap())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(uncovered, expected_uncovered);
+        assert_eq!(
+            gate["summary"]["localized_in_every_shipped_locale_count"].as_u64(),
+            Some(localized_in_every_locale)
+        );
+        assert_eq!(
+            gate["summary"]["display_covered_effect_count"].as_u64(),
+            Some((observed_ids.len() - uncovered.len()) as u64)
         );
     }
 
