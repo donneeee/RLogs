@@ -152,13 +152,10 @@ fn scan_marker_varints(
                 }
                 bytes = &bytes[len..];
             }
+            1 if bytes.len() >= 8 => bytes = &bytes[8..],
             1 => {
-                if bytes.len() >= 8 {
-                    bytes = &bytes[8..]
-                } else {
-                    path.pop();
-                    return;
-                }
+                path.pop();
+                return;
             }
             2 => {
                 let Some((len, prefix)) = read_varint(bytes) else {
@@ -177,13 +174,10 @@ fn scan_marker_varints(
                 scan_marker_varints(&bytes[..len], depth + 1, path, output);
                 bytes = &bytes[len..];
             }
+            5 if bytes.len() >= 4 => bytes = &bytes[4..],
             5 => {
-                if bytes.len() >= 4 {
-                    bytes = &bytes[4..]
-                } else {
-                    path.pop();
-                    return;
-                }
+                path.pop();
+                return;
             }
             _ => {
                 path.pop();
