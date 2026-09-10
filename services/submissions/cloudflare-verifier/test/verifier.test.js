@@ -7,6 +7,8 @@ import {
   BACKFILL_TARGET_SCHEMA_VERSION, BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION,
   CURRENT_REPORT_PROJECTION_REVISION, CURRENT_REPORT_SCHEMA_VERSION,
   CURRENT_TIMELINE_SCHEMA_VERSION,
+  LEGACY_RECONCILIATION_SCHEMA_VERSION, LEGACY_REPORT_PROJECTION_REVISION,
+  LEGACY_REPORT_SCHEMA_VERSION, LEGACY_TIMELINE_SCHEMA_VERSION,
   RECONCILIATION_SCHEMA_VERSION,
   UPCOMING_RECONCILIATION_SCHEMA_VERSION, UPCOMING_REPORT_PROJECTION_REVISION,
   UPCOMING_REPORT_SCHEMA_VERSION, UPCOMING_TIMELINE_SCHEMA_VERSION,
@@ -48,7 +50,7 @@ test("container output must preserve report and artifact identities", () => {
   assert.equal(validateOutput(output, wakeup), false);
 });
 
-test("container output accepts only the exact current and upcoming report tuples", () => {
+test("container output accepts only the exact legacy current and upcoming report tuples", () => {
   const output = {
     schema_version: 1,
     report: {
@@ -69,10 +71,23 @@ test("container output accepts only the exact current and upcoming report tuples
       runs: [{ timeline: { schema_version: UPCOMING_TIMELINE_SCHEMA_VERSION } }],
     },
   };
+  const legacy = {
+    ...output,
+    report: {
+      ...output.report,
+      schema_version: LEGACY_REPORT_SCHEMA_VERSION,
+      projection_revision: LEGACY_REPORT_PROJECTION_REVISION,
+      runs: [{ timeline: { schema_version: LEGACY_TIMELINE_SCHEMA_VERSION } }],
+    },
+  };
+  assert.equal(validateOutput(legacy, wakeup), true);
   assert.equal(validateOutput(output, wakeup), true);
   assert.equal(validateOutput(upcoming, wakeup), true);
   assert.equal(validateOutput({ ...upcoming, report: {
     ...upcoming.report, schema_version: CURRENT_REPORT_SCHEMA_VERSION,
+  } }, wakeup), false);
+  assert.equal(validateOutput({ ...legacy, report: {
+    ...legacy.report, runs: [{ timeline: { schema_version: CURRENT_TIMELINE_SCHEMA_VERSION } }],
   } }, wakeup), false);
   assert.equal(validateOutput({ ...output, report: { ...output.report, schema_version: 14 } }, wakeup), false);
   assert.equal(validateOutput({ ...output, report: { ...output.report, projection_revision: 6 } }, wakeup), false);
@@ -80,7 +95,7 @@ test("container output accepts only the exact current and upcoming report tuples
     ...output.report, runs: [{ timeline: { schema_version: 2 } }],
   } }, wakeup), false);
   assert.equal(validateOutput({ ...output, report: {
-    ...output.report, runs: [{ timeline: { schema_version: 4 } }],
+    ...output.report, runs: [{ timeline: { schema_version: LEGACY_TIMELINE_SCHEMA_VERSION } }],
   } }, wakeup), false);
   assert.equal(validateOutput({ ...output, report: {
     ...output.report, runs: [{ timeline: undefined }],
@@ -246,6 +261,11 @@ test("reconciliation output must preserve the exact source set and canonical spi
     rdps_status: null,
     timeline: { schema_version: CURRENT_TIMELINE_SCHEMA_VERSION },
   };
+  assert.equal(validateReconciliationOutput({
+    ...output,
+    schema_version: LEGACY_RECONCILIATION_SCHEMA_VERSION,
+    timeline: { schema_version: LEGACY_TIMELINE_SCHEMA_VERSION },
+  }, "run_exact", sources), true);
   assert.equal(validateReconciliationOutput(output, "run_exact", sources), true);
   assert.equal(validateReconciliationOutput({
     ...output,
@@ -255,7 +275,7 @@ test("reconciliation output must preserve the exact source set and canonical spi
   assert.equal(validateReconciliationOutput({ ...output, rdps_status: "partial_packet_proven_rules" }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, schema_version: 16 }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, timeline: { schema_version: 2 } }, "run_exact", sources), false);
-  assert.equal(validateReconciliationOutput({ ...output, timeline: { schema_version: 4 } }, "run_exact", sources), false);
+  assert.equal(validateReconciliationOutput({ ...output, timeline: { schema_version: UPCOMING_TIMELINE_SCHEMA_VERSION } }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, timeline: undefined }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({
     ...output, schema_version: UPCOMING_RECONCILIATION_SCHEMA_VERSION,

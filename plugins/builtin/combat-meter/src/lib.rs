@@ -356,9 +356,13 @@ pub struct HistoryDeathHit {
     pub source_actor_id: String,
     pub source_entity_uuid: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_identity: Option<HistoryDeathActorIdentity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub direct_source_actor_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub direct_source_entity_uuid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direct_source_identity: Option<HistoryDeathActorIdentity>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ability_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -366,6 +370,17 @@ pub struct HistoryDeathHit {
     pub reported_damage: i64,
     pub effective_damage: i64,
     pub critical: bool,
+}
+
+/// Private, event-time presentation evidence for a death hit. The static
+/// monster identity and actor kind may be projected through an exact-build
+/// catalog, but this record never enters the public timeline directly.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryDeathActorIdentity {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monster_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor_kind: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -986,9 +1001,19 @@ impl From<&ActorAccumulator> for HistoryActorIdentitySnapshot {
     }
 }
 
+impl From<&HistoryActorIdentitySnapshot> for HistoryDeathActorIdentity {
+    fn from(identity: &HistoryActorIdentitySnapshot) -> Self {
+        Self {
+            monster_id: identity.monster_id.map(|monster_id| monster_id.to_string()),
+            actor_kind: identity.actor_kind.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct HistoryActorIdentityVersion {
     observed_micros: u64,
+    event_sequence: u64,
     identity: HistoryActorIdentitySnapshot,
 }
 
@@ -1143,7 +1168,9 @@ struct HistoryDeathHitFact {
     at_micros: u64,
     source_actor_id: u64,
     source_entity_uuid: i64,
+    source_identity: Option<HistoryDeathActorIdentity>,
     direct_source: Option<(u64, i64)>,
+    direct_source_identity: Option<HistoryDeathActorIdentity>,
     ability_id: Option<i64>,
     breakdown_ability_id: Option<i64>,
     target: (u64, i64),
@@ -1160,10 +1187,12 @@ impl HistoryDeathHitFact {
             at_micros: self.at_micros,
             source_actor_id: self.source_actor_id.to_string(),
             source_entity_uuid: self.source_entity_uuid.to_string(),
+            source_identity: self.source_identity,
             direct_source_actor_id: self.direct_source.map(|(actor_id, _)| actor_id.to_string()),
             direct_source_entity_uuid: self
                 .direct_source
                 .map(|(_, entity_uuid)| entity_uuid.to_string()),
+            direct_source_identity: self.direct_source_identity,
             ability_id: self.ability_id.map(|ability_id| ability_id.to_string()),
             breakdown_ability_id: self
                 .breakdown_ability_id
@@ -1494,7 +1523,7 @@ impl CombatTimelinePlugin {
         self.character_actors = character_actors;
         for actor_id in self.actors.keys().copied().collect::<Vec<_>>() {
             self.live_attribution.set_provider_eligible(actor_id, true);
-            self.record_history_identity(0, actor_id);
+            self.record_history_identity(0, 0, actor_id);
         }
     }
 
@@ -1892,6 +1921,7 @@ impl CombatTimelinePlugin {
                             actor.actor.actor_id.0,
                             character_id,
                             envelope.time.observed_micros,
+                            envelope.sequence,
                         )
                     } else {
                         self.canonical_actor_id(actor.actor.actor_id.0)
@@ -2018,7 +2048,11 @@ impl CombatTimelinePlugin {
                     }
                 }
                 if actor.state != ActorState::Despawned {
-                    self.record_history_identity(envelope.time.observed_micros, actor_id);
+                    self.record_history_identity(
+                        envelope.time.observed_micros,
+                        envelope.sequence,
+                        actor_id,
+                    );
                 }
             }
             TimelineEventKind::Cast(cast) => {
@@ -2708,6 +2742,7 @@ impl CombatTimelinePlugin {
         raw_actor_id: u64,
         character_id: &str,
         observed_micros: u64,
+        event_sequence: u64,
     ) -> u64 {
         if let Some(previous) = self
             .actors
@@ -2744,7 +2779,8 @@ impl CombatTimelinePlugin {
             if let Some(mut versions) = self.history_identities.remove(&raw_canonical) {
                 let canonical_versions = self.history_identities.entry(canonical).or_default();
                 canonical_versions.append(&mut versions);
-                canonical_versions.sort_by_key(|version| version.observed_micros);
+                canonical_versions
+                    .sort_by_key(|version| (version.observed_micros, version.event_sequence));
                 canonical_versions.dedup_by(|right, left| right.identity == left.identity);
             }
             self.live_attribution.remap_actor(raw_canonical, canonical);
@@ -2758,11 +2794,16 @@ impl CombatTimelinePlugin {
             observed_micros,
         );
         actor.identity_observed_micros = identity_observed_micros.max(observed_micros);
-        self.record_history_identity(observed_micros, canonical);
+        self.record_history_identity(observed_micros, event_sequence, canonical);
         canonical
     }
 
-    fn record_history_identity(&mut self, observed_micros: u64, actor_id: u64) {
+    fn record_history_identity(
+        &mut self,
+        observed_micros: u64,
+        event_sequence: u64,
+        actor_id: u64,
+    ) {
         let actor_id = self.canonical_actor_id(actor_id);
         let Some(actor) = self.actors.get(&actor_id) else {
             return;
@@ -2777,8 +2818,29 @@ impl CombatTimelinePlugin {
         }
         versions.push(HistoryActorIdentityVersion {
             observed_micros,
+            event_sequence,
             identity,
         });
+    }
+
+    fn history_identity_exact_at(
+        &self,
+        actor_id: u64,
+        entity_uuid: i64,
+        observed_micros: u64,
+        event_sequence: u64,
+    ) -> Option<&HistoryActorIdentitySnapshot> {
+        let actor_id = self.canonical_actor_id(actor_id);
+        self.history_identities
+            .get(&actor_id)?
+            .iter()
+            .filter(|version| {
+                (version.observed_micros, version.event_sequence)
+                    <= (observed_micros, event_sequence)
+                    && version.identity.entity_uuid == entity_uuid
+            })
+            .max_by_key(|version| (version.observed_micros, version.event_sequence))
+            .map(|version| &version.identity)
     }
 
     fn history_identity_at(
@@ -3879,6 +3941,24 @@ impl CombatTimelinePlugin {
                     let interval_index =
                         history_fact_interval_index(fact.observed_micros, &spec.intervals)
                             .expect("selected history fact belongs to an interval");
+                    let source_identity = self
+                        .history_identity_exact_at(
+                            fact.source_actor_id,
+                            fact.source_entity_uuid,
+                            fact.observed_micros,
+                            event_sequence,
+                        )
+                        .map(HistoryDeathActorIdentity::from);
+                    let direct_source_identity = direct_source
+                        .and_then(|(actor_id, entity_uuid)| {
+                            self.history_identity_exact_at(
+                                actor_id,
+                                entity_uuid,
+                                fact.observed_micros,
+                                event_sequence,
+                            )
+                        })
+                        .map(HistoryDeathActorIdentity::from);
                     let window = death_hit_windows
                         .entry((target_actor_id, target_entity_uuid))
                         .or_default();
@@ -3906,7 +3986,9 @@ impl CombatTimelinePlugin {
                         at_micros: offset_micros,
                         source_actor_id: fact.source_actor_id,
                         source_entity_uuid: fact.source_entity_uuid,
+                        source_identity,
                         direct_source,
+                        direct_source_identity,
                         ability_id: fact.ability_id,
                         breakdown_ability_id: fact.breakdown_ability_id,
                         target: (target_actor_id, target_entity_uuid),
@@ -6323,6 +6405,139 @@ mod tests {
     }
 
     #[test]
+    fn death_hit_keeps_exact_event_time_identity_across_later_actor_id_reuse() {
+        let mut plugin = CombatTimelinePlugin::new();
+        let victim = (9, 900);
+        {
+            let actor = plugin.actor_mut(4, 104);
+            actor.actor_kind = Some("monster".into());
+            actor.monster_id = Some(33_701);
+        }
+        plugin.record_history_identity(2_999_999, 1, 4);
+        push_death_test_hit(&mut plugin, 3_000_000, (4, 104), victim, true);
+        push_death_test_life(&mut plugin, 3_000_000, victim);
+        {
+            let actor = plugin.actor_mut(4, 999);
+            actor.actor_kind = Some("monster".into());
+            actor.monster_id = Some(80_017);
+        }
+        plugin.record_history_identity(3_000_001, 1, 4);
+
+        let hit = death_history_view(&plugin)
+            .actors
+            .into_iter()
+            .find(|actor| actor.actor_id == "9")
+            .unwrap()
+            .death_events[0]
+            .cause
+            .as_ref()
+            .unwrap()
+            .final_hit
+            .clone();
+        assert_eq!(hit.source_entity_uuid, "104");
+        assert_eq!(
+            hit.source_identity.as_ref().unwrap().monster_id.as_deref(),
+            Some("33701")
+        );
+    }
+
+    #[test]
+    fn death_hit_identity_ignores_same_timestamp_later_sequence() {
+        let mut plugin = CombatTimelinePlugin::new();
+        let victim = (9, 900);
+        let observed_micros: u64 = 3_000_000;
+        let hit_sequence = observed_micros.saturating_mul(2);
+        {
+            let actor = plugin.actor_mut(4, 104);
+            actor.actor_kind = Some("monster".into());
+            actor.monster_id = Some(33_701);
+        }
+        plugin.record_history_identity(observed_micros, hit_sequence - 1, 4);
+        push_death_test_hit(&mut plugin, observed_micros, (4, 104), victim, true);
+        push_death_test_life(&mut plugin, observed_micros, victim);
+        {
+            let actor = plugin.actor_mut(4, 999);
+            actor.actor_kind = Some("monster".into());
+            actor.monster_id = Some(80_017);
+        }
+        plugin.record_history_identity(observed_micros, hit_sequence + 1, 4);
+
+        let hit = death_history_view(&plugin)
+            .actors
+            .into_iter()
+            .find(|actor| actor.actor_id == "9")
+            .unwrap()
+            .death_events[0]
+            .cause
+            .as_ref()
+            .unwrap()
+            .final_hit
+            .clone();
+        assert_eq!(
+            hit.source_identity.as_ref().unwrap().monster_id.as_deref(),
+            Some("33701")
+        );
+    }
+
+    #[test]
+    fn death_hit_identity_fails_closed_when_aoi_identity_arrives_after_hit() {
+        let mut plugin = CombatTimelinePlugin::new();
+        let victim = (9, 900);
+        let observed_micros: u64 = 3_000_000;
+        let hit_sequence = observed_micros.saturating_mul(2);
+        push_death_test_hit(&mut plugin, observed_micros, (4, 104), victim, true);
+        push_death_test_life(&mut plugin, observed_micros, victim);
+        {
+            let actor = plugin.actor_mut(4, 104);
+            actor.actor_kind = Some("monster".into());
+            actor.monster_id = Some(33_701);
+        }
+        plugin.record_history_identity(observed_micros, hit_sequence + 1, 4);
+
+        let hit = death_history_view(&plugin)
+            .actors
+            .into_iter()
+            .find(|actor| actor.actor_id == "9")
+            .unwrap()
+            .death_events[0]
+            .cause
+            .as_ref()
+            .unwrap()
+            .final_hit
+            .clone();
+        assert!(hit.source_identity.is_none());
+    }
+
+    #[test]
+    fn legacy_death_hit_without_event_time_identity_deserializes_absent() {
+        let mut plugin = CombatTimelinePlugin::new();
+        let victim = (9, 900);
+        push_death_test_hit(&mut plugin, 3_000_000, (4, 104), victim, true);
+        push_death_test_life(&mut plugin, 3_000_000, victim);
+        let hit = death_history_view(&plugin)
+            .actors
+            .into_iter()
+            .find(|actor| actor.actor_id == "9")
+            .unwrap()
+            .death_events[0]
+            .cause
+            .as_ref()
+            .unwrap()
+            .final_hit
+            .clone();
+        let mut value = serde_json::to_value(hit).unwrap();
+        value.as_object_mut().unwrap().remove("source_identity");
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("direct_source_identity");
+
+        let restored: HistoryDeathHit = serde_json::from_value(value).unwrap();
+        assert!(restored.source_identity.is_none());
+        assert!(restored.direct_source_identity.is_none());
+    }
+
+    #[test]
     fn history_death_event_fails_closed_without_matching_terminal_packet() {
         let mut plugin = CombatTimelinePlugin::new();
         let victim = (9, 900);
@@ -8042,14 +8257,14 @@ mod tests {
             actor.actor_kind = Some("player".into());
             actor.class_id = Some(11);
         }
-        plugin.record_history_identity(500, owner.actor_id.0);
+        plugin.record_history_identity(500, 0, owner.actor_id.0);
         {
             let actor = plugin.actor_mut(target.actor_id.0, target.entity_uuid.0);
             actor.display_name = Some("Original target".into());
             actor.actor_kind = Some("monster".into());
             actor.monster_id = Some(80_017);
         }
-        plugin.record_history_identity(500, target.actor_id.0);
+        plugin.record_history_identity(500, 0, target.actor_id.0);
         plugin
             .actor_ancestry
             .observe_attributed_source(1_000, owner, Some(child));
@@ -8081,7 +8296,7 @@ mod tests {
             actor.actor_kind = Some("monster".into());
             actor.class_id = None;
         }
-        plugin.record_history_identity(2_000, owner.actor_id.0);
+        plugin.record_history_identity(2_000, 0, owner.actor_id.0);
 
         let stored = plugin.history_facts.first().unwrap();
         assert_eq!(stored.source_actor_id, owner.actor_id.0);
@@ -8820,11 +9035,11 @@ mod tests {
         let target_identity = plugin.actors.get_mut(&2).unwrap();
         target_identity.monster_id = Some(33_701);
         target_identity.actor_kind = Some("monster".into());
-        plugin.record_history_identity(0, 2);
+        plugin.record_history_identity(0, 0, 2);
         let pet_identity = plugin.actor_mut(3, 3001);
         pet_identity.monster_id = Some(2);
         pet_identity.actor_kind = Some("pet".into());
-        plugin.record_history_identity(0, 3);
+        plugin.record_history_identity(0, 0, 3);
         let run = RunAnalysis {
             schema_version: 1,
             source_session_id: reader.header().session_id.clone(),

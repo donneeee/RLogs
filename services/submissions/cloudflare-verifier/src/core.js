@@ -3,21 +3,28 @@ const DIGEST = /^[a-f0-9]{64}$/;
 const REPORT_ID = /^rpt_[a-f0-9]{32}$/;
 const RECONCILIATION_ID = /^rec_[a-f0-9]{32}$/;
 export const BACKFILL_SOURCE_SCHEMA_VERSION = 12;
-export const CURRENT_REPORT_SCHEMA_VERSION = 15;
-export const CURRENT_REPORT_PROJECTION_REVISION = 7;
-export const CURRENT_TIMELINE_SCHEMA_VERSION = 3;
-export const UPCOMING_REPORT_SCHEMA_VERSION = 16;
-export const UPCOMING_REPORT_PROJECTION_REVISION = 8;
-export const UPCOMING_TIMELINE_SCHEMA_VERSION = 4;
-// Backfill remains pinned to the deployed producer tuple. Advance all three
-// constants together only when the backfill container starts emitting v4.
-export const BACKFILL_TARGET_SCHEMA_VERSION = CURRENT_REPORT_SCHEMA_VERSION;
-export const BACKFILL_TARGET_PROJECTION_REVISION = CURRENT_REPORT_PROJECTION_REVISION;
-export const BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION = CURRENT_TIMELINE_SCHEMA_VERSION;
+export const LEGACY_REPORT_SCHEMA_VERSION = 15;
+export const LEGACY_REPORT_PROJECTION_REVISION = 7;
+export const LEGACY_TIMELINE_SCHEMA_VERSION = 3;
+export const CURRENT_REPORT_SCHEMA_VERSION = 16;
+export const CURRENT_REPORT_PROJECTION_REVISION = 8;
+export const CURRENT_TIMELINE_SCHEMA_VERSION = 4;
+export const UPCOMING_REPORT_SCHEMA_VERSION = 17;
+export const UPCOMING_REPORT_PROJECTION_REVISION = 9;
+export const UPCOMING_TIMELINE_SCHEMA_VERSION = 5;
+// Backfill remains pinned to the legacy producer tuple. Advance all three
+// constants together only when the backfill container is intentionally upgraded.
+export const BACKFILL_TARGET_SCHEMA_VERSION = LEGACY_REPORT_SCHEMA_VERSION;
+export const BACKFILL_TARGET_PROJECTION_REVISION = LEGACY_REPORT_PROJECTION_REVISION;
+export const BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION = LEGACY_TIMELINE_SCHEMA_VERSION;
 
 function validReportTuple(report) {
   const timelineSchemaVersion = report?.runs?.[0]?.timeline?.schema_version;
   const validTuple = (
+    report?.schema_version === LEGACY_REPORT_SCHEMA_VERSION &&
+    report?.projection_revision === LEGACY_REPORT_PROJECTION_REVISION &&
+    timelineSchemaVersion === LEGACY_TIMELINE_SCHEMA_VERSION
+  ) || (
     report?.schema_version === CURRENT_REPORT_SCHEMA_VERSION &&
     report?.projection_revision === CURRENT_REPORT_PROJECTION_REVISION &&
     timelineSchemaVersion === CURRENT_TIMELINE_SCHEMA_VERSION
@@ -146,8 +153,9 @@ export function reconciliationSourceIdentity(source) {
   return `${source.report_id}:${Number(source.run_index)}:${source.artifact_sha256}`;
 }
 
-export const RECONCILIATION_SCHEMA_VERSION = 18;
-export const UPCOMING_RECONCILIATION_SCHEMA_VERSION = 19;
+export const LEGACY_RECONCILIATION_SCHEMA_VERSION = 18;
+export const RECONCILIATION_SCHEMA_VERSION = 19;
+export const UPCOMING_RECONCILIATION_SCHEMA_VERSION = 20;
 const MAXIMUM_TIMELINE_RATE_CLOCK_POINTS = 262_144;
 
 function validConservedReplay(value) {
@@ -189,6 +197,9 @@ function validReplayRateClock(timeline) {
 
 export function validateReconciliationOutput(value, runGroupId, sources) {
   const validTuple = (
+    value?.schema_version === LEGACY_RECONCILIATION_SCHEMA_VERSION &&
+    value?.timeline?.schema_version === LEGACY_TIMELINE_SCHEMA_VERSION
+  ) || (
     value?.schema_version === RECONCILIATION_SCHEMA_VERSION &&
     value?.timeline?.schema_version === CURRENT_TIMELINE_SCHEMA_VERSION
   ) || (

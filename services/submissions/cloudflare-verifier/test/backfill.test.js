@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 import {
+  PROJECTION_BACKFILL_PAUSE_CODE, PROJECTION_BACKFILL_PAUSE_DETAIL,
   committedProjection, parseRetainedManifest, persistReplay, runProjectionBackfillBatch,
 } from "../src/backfill.js";
 
@@ -96,7 +97,7 @@ function publicationFixture() {
   return { database, env, row, original, result, objects };
 }
 
-test("a dry run only inventories bounded schema-12 candidates", async () => {
+test("the v5 migration pause rejects a claimed batch before replay or publication", async () => {
   const artifact = "a".repeat(64);
   const reportId = `rpt_${artifact.slice(0, 32)}`;
   const uploadId = `up_${artifact.slice(0, 32)}`;
@@ -122,10 +123,12 @@ test("a dry run only inventories bounded schema-12 candidates", async () => {
     inspected_count: 0, lease_token: "lease", state: "running",
   };
   const writes = [];
+  let artifactReads = 0;
   const env = {
     VERIFIER_RELEASE: "new",
     RLOGS_ARTIFACTS: {
       async get(key) {
+        artifactReads += 1;
         assert.equal(key, row.projection_object_key);
         return { async arrayBuffer() { return bytes.buffer; } };
       },
@@ -154,14 +157,17 @@ test("a dry run only inventories bounded schema-12 candidates", async () => {
     },
   };
   const result = await runProjectionBackfillBatch(env, {}, () => {
-    throw new Error("dry run must not reconcile");
+    throw new Error("paused migration must not reconcile");
   });
-  assert.deepEqual(result, { claimed: true, completed: true, inspected: 1 });
+  assert.deepEqual(result, {
+    claimed: true, rejected: true, permanent: true, code: PROJECTION_BACKFILL_PAUSE_CODE,
+  });
+  assert.equal(artifactReads, 0);
+  assert.equal(writes.some(({ sql }) => sql.includes("INSERT INTO projection_backfill_jobs")), false);
+  assert.equal(writes.some(({ sql }) => sql.includes("UPDATE reports SET")), false);
   assert.equal(writes.some(({ sql, values }) =>
-    sql.includes("INSERT INTO projection_backfill_jobs") && values.includes("planned")), true);
-  assert.equal(writes.some(({ sql }) => sql.includes("published_count=published_count+?4")), true);
-  assert.equal(writes.some(({ sql, values }) =>
-    sql.includes("completed_unix_millis=CASE") && values.includes("completed")), true);
+    sql.includes("state='rejected'") && values.includes(PROJECTION_BACKFILL_PAUSE_CODE) &&
+    values.includes(PROJECTION_BACKFILL_PAUSE_DETAIL)), true);
 });
 
 test("projection transport failures remain retryable while immutable evidence failures are permanent", async () => {
@@ -198,7 +204,7 @@ test("a malformed retained manifest is a permanent evidence failure", () => {
   assert.deepEqual(parseRetainedManifest('{"schema_version":1}'), { schema_version: 1 });
 });
 
-test("operator workflow and migration hard-bound the manual backfill", async () => {
+test("operator workflow removes enqueue controls while manual deploy and the paused history remain", async () => {
   const migration = await readFile(new URL("../../cloudflare-backend/migrations/0008_projection_backfills.sql", import.meta.url), "utf8");
   const workflow = await readFile(new URL("../../../../.github/workflows/deploy-cloudflare.yml", import.meta.url), "utf8");
   const worker = await readFile(new URL("../src/backfill.js", import.meta.url), "utf8");
@@ -208,10 +214,11 @@ test("operator workflow and migration hard-bound the manual backfill", async () 
   assert.match(migration, /consecutive_retry_count BETWEEN 0 AND 3/u);
   assert.match(workflow, /github\.event_name == 'workflow_dispatch'/u);
   assert.match(workflow, /VERIFIER_RELEASE:\$\{\{ github\.sha \}\}/u);
-  assert.match(workflow, /VALUES \('\$BACKFILL_BATCH_ID','\$BACKFILL_REQUESTED_BY','\$BACKFILL_WORKFLOW_URL','\$TARGET_RELEASE',12,15,\$BACKFILL_LIMIT/u);
+  assert.match(workflow, /npx wrangler deploy --var "VERIFIER_RELEASE:/u);
+  assert.doesNotMatch(workflow, /projection_backfill|BACKFILL_MODE|projection_backfill_batches/u);
   assert.ok(workflow.indexOf("npm run db:migrate:remote") < workflow.indexOf("VERIFIER_RELEASE:${{ github.sha }}"));
-  assert.ok(workflow.indexOf("Verify the public service and deployed revision") <
-    workflow.indexOf("Queue the bounded projection backfill request"));
+  assert.match(worker, /PROJECTION_BACKFILL_PAUSE_CODE = "migration_paused_v5"/u);
+  assert.match(worker, /state='rejected',[\s\S]+failure_code=\?2,[\s\S]+return \{[\s\S]+permanent: true/u);
   assert.match(worker, /INSERT INTO report_projection_versions/u);
   assert.match(worker, /UPDATE reports SET run_group_id=\?6,[\s\S]+DELETE FROM report_runs/u);
   assert.match(worker, /DELETE FROM report_runs WHERE report_id=\?1 AND \$\{candidateGuard\}/u);

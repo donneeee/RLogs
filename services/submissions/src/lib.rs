@@ -38,14 +38,14 @@ use rlogs_game_bpsr::{
     canonicalize_bpsr_region_identity, character_id_from_entity_uuid, combat_action_presentation,
     combat_breakdown_ability_id, combat_recount_group_id, confirmed_damage_contribution_rules,
     is_stat_resonance_status, localized_class_name, localized_combat_action_name_for_identity,
-    localized_recount_group_name_for_identity, localized_scene_name_for_identity,
-    localized_specialization_name,
+    localized_monster_name_for_identity, localized_recount_group_name_for_identity,
+    localized_scene_name_for_identity, localized_specialization_name,
 };
 use rlogs_log_format::{RlogLimits, RlogReader, RlogReplaySummary};
 use rlogs_plugin_combat_meter::{
     CombatHistorySnapshot, CombatHistoryView, CombatTimelinePlugin, HistoryActorSummary,
-    HistoryDeathCause, HistoryDeathCauseEvidence, HistoryDeathEvent, HistoryDeathHit,
-    HistoryRateClockPoint,
+    HistoryDeathActorIdentity, HistoryDeathCause, HistoryDeathCauseEvidence, HistoryDeathEvent,
+    HistoryDeathHit, HistoryRateClockPoint,
 };
 use rlogs_plugin_encounter_recorder::EncounterRecorderPlugin;
 use rlogs_submission::{
@@ -79,11 +79,11 @@ use rlogs_game_bpsr::{
 };
 use rlogs_profiles::LocalProfilePackage;
 
-pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 16;
-pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 8;
+pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 17;
+pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 9;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 7;
-pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 19;
-pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 4;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 20;
+pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 5;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
@@ -108,6 +108,7 @@ const MAXIMUM_TIMELINE_SERIES_POINTS: usize = 262_144;
 const MAXIMUM_TIMELINE_DEATH_MARKERS: usize = 4_096;
 const MAXIMUM_TIMELINE_DEATH_PRIOR_HITS: usize = 63;
 const TIMELINE_DEATH_REPLAY_WINDOW_MICROS: u64 = 2_000_000;
+const MAXIMUM_TIMELINE_DEATH_PRESENTATION_NAME_UTF16: usize = 96;
 const JAVASCRIPT_MAXIMUM_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 const MAXIMUM_TIMELINE_LOADOUT_MARKERS: usize = 4_096;
 const MAXIMUM_TIMELINE_RDPS_SPANS: usize = 65_536;
@@ -1531,7 +1532,7 @@ impl SubmissionService {
         let swift_vortex_candidate_audit = swift_vortex_audit.report();
         Ok(CrossVantageReplayResult {
             participants,
-            death_events: projected_timeline_death_events(Some(view)),
+            death_events: projected_timeline_death_events(Some(view), &history),
             conservation,
             rdps_status: run.rdps_status.clone(),
             rate_clock: view.rate_clock.clone(),
@@ -3217,14 +3218,42 @@ pub struct PublicTimelineDeathHit {
     pub at_micros: u64,
     pub source_actor_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_presentation: Option<PublicTimelineDeathActorPresentation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub direct_source_actor_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direct_source_presentation: Option<PublicTimelineDeathActorPresentation>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ability_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub breakdown_ability_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ability_presentation: Option<PublicTimelineDeathAbilityPresentation>,
     pub reported_damage: i64,
     pub effective_damage: i64,
     pub critical: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicTimelineDeathActorPresentation {
+    pub actor_id: String,
+    pub name: String,
+    pub provenance: PublicTimelineDeathPresentationProvenance,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicTimelineDeathAbilityPresentation {
+    pub ability_id: String,
+    pub name: String,
+    pub provenance: PublicTimelineDeathPresentationProvenance,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicTimelineDeathPresentationProvenance {
+    PublicParticipant,
+    ExactBuildMonsterCatalog,
+    ExactBuildActionCatalog,
 }
 
 #[derive(Debug, Clone)]
@@ -4995,7 +5024,8 @@ fn public_runs(
                 },
                 timeline: PublicCombatTimeline::default(),
             };
-            public_run.timeline = public_combat_timeline(report_id, &public_run, view, analysis);
+            public_run.timeline =
+                public_combat_timeline(report_id, &public_run, view, analysis, history);
             Some(public_run)
         })
         .collect()
@@ -7331,9 +7361,13 @@ fn public_rdps_influences(view: &CombatHistoryView) -> Vec<PublicRdpsInfluence> 
 
 fn projected_timeline_death_events(
     view: Option<&CombatHistoryView>,
+    history: &CombatHistorySnapshot,
 ) -> ProjectedTimelineDeathEvents {
-    view.into_iter()
-        .flat_map(|view| &view.actors)
+    let Some(view) = view else {
+        return BTreeMap::new();
+    };
+    view.actors
+        .iter()
         .filter(|actor| !actor.death_events.is_empty())
         .map(|actor| {
             let events = actor
@@ -7344,7 +7378,7 @@ fn projected_timeline_death_events(
                     cause: event
                         .cause
                         .as_ref()
-                        .and_then(|cause| public_timeline_death_cause(event, cause)),
+                        .and_then(|cause| public_timeline_death_cause(event, cause, view, history)),
                 })
                 .collect();
             (actor.actor_id.clone(), events)
@@ -7355,6 +7389,8 @@ fn projected_timeline_death_events(
 fn public_timeline_death_cause(
     event: &HistoryDeathEvent,
     cause: &HistoryDeathCause,
+    view: &CombatHistoryView,
+    history: &CombatHistorySnapshot,
 ) -> Option<PublicTimelineDeathCause> {
     let cutoff = event
         .at_micros
@@ -7380,11 +7416,11 @@ fn public_timeline_death_cause(
     };
     Some(PublicTimelineDeathCause {
         evidence,
-        final_hit: public_timeline_death_hit(&cause.final_hit),
+        final_hit: public_timeline_death_hit(&cause.final_hit, view, history),
         prior_hits: cause
             .prior_hits
             .iter()
-            .map(public_timeline_death_hit)
+            .map(|hit| public_timeline_death_hit(hit, view, history))
             .collect(),
         prior_hits_truncated: cause.prior_hits_truncated,
     })
@@ -7399,17 +7435,144 @@ fn valid_history_death_hit(hit: &HistoryDeathHit, cutoff: u64, death_micros: u64
         && hit.effective_damage <= JAVASCRIPT_MAXIMUM_SAFE_INTEGER
 }
 
-fn public_timeline_death_hit(hit: &HistoryDeathHit) -> PublicTimelineDeathHit {
+fn public_timeline_death_hit(
+    hit: &HistoryDeathHit,
+    view: &CombatHistoryView,
+    history: &CombatHistorySnapshot,
+) -> PublicTimelineDeathHit {
     PublicTimelineDeathHit {
         at_micros: hit.at_micros,
         source_actor_id: hit.source_actor_id.clone(),
+        source_presentation: public_timeline_death_actor_presentation(
+            &hit.source_actor_id,
+            &hit.source_entity_uuid,
+            hit.source_identity.as_ref(),
+            view,
+            history,
+        ),
         direct_source_actor_id: hit.direct_source_actor_id.clone(),
+        direct_source_presentation: hit
+            .direct_source_actor_id
+            .as_deref()
+            .zip(hit.direct_source_entity_uuid.as_deref())
+            .and_then(|(actor_id, entity_uuid)| {
+                public_timeline_death_actor_presentation(
+                    actor_id,
+                    entity_uuid,
+                    hit.direct_source_identity.as_ref(),
+                    view,
+                    history,
+                )
+            }),
         ability_id: hit.ability_id.clone(),
         breakdown_ability_id: hit.breakdown_ability_id.clone(),
+        ability_presentation: public_timeline_death_ability_presentation(hit, history),
         reported_damage: hit.reported_damage,
         effective_damage: hit.effective_damage,
         critical: hit.critical,
     }
+}
+
+fn public_timeline_death_actor_presentation(
+    actor_id: &str,
+    entity_uuid: &str,
+    identity: Option<&HistoryDeathActorIdentity>,
+    view: &CombatHistoryView,
+    history: &CombatHistorySnapshot,
+) -> Option<PublicTimelineDeathActorPresentation> {
+    let identity = identity?;
+    if identity.actor_kind.as_deref() == Some("player") {
+        let mut matches = view.actors.iter().filter(|actor| {
+            actor.actor_id == actor_id
+                && actor.entity_uuid == entity_uuid
+                && is_public_participant(actor)
+        });
+        let actor = matches.next()?;
+        if matches.next().is_some() {
+            return None;
+        }
+        let name = bounded_timeline_death_presentation_name(
+            public_participant(
+                actor,
+                bpsr_has_localization_authority(history).unwrap_or(false),
+            )
+            .display_name
+            .as_deref()?,
+        )?;
+        return Some(PublicTimelineDeathActorPresentation {
+            actor_id: actor_id.to_owned(),
+            name,
+            provenance: PublicTimelineDeathPresentationProvenance::PublicParticipant,
+        });
+    }
+    if identity.actor_kind.as_deref() != Some("monster") {
+        return None;
+    }
+    let monster_id = identity.monster_id.as_deref()?.parse::<i64>().ok()?;
+    let name = localized_monster_name_for_identity(
+        &history.deployment_id,
+        &history.client_build,
+        &history.protocol_pack_digest,
+        monster_id,
+        "en-US",
+    )
+    .ok()
+    .flatten()
+    .and_then(bounded_timeline_death_presentation_name)?;
+    Some(PublicTimelineDeathActorPresentation {
+        actor_id: actor_id.to_owned(),
+        name,
+        provenance: PublicTimelineDeathPresentationProvenance::ExactBuildMonsterCatalog,
+    })
+}
+
+fn public_timeline_death_ability_presentation(
+    hit: &HistoryDeathHit,
+    history: &CombatHistorySnapshot,
+) -> Option<PublicTimelineDeathAbilityPresentation> {
+    let mut prior_id = None;
+    for ability_id in [
+        hit.breakdown_ability_id.as_deref(),
+        hit.ability_id.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if prior_id == Some(ability_id) {
+            continue;
+        }
+        prior_id = Some(ability_id);
+        let Ok(parsed) = ability_id.parse::<i64>() else {
+            continue;
+        };
+        if combat_action_presentation(parsed).ok().flatten().is_none() {
+            continue;
+        }
+        let Some(name) = localized_combat_action_name_for_identity(
+            &history.deployment_id,
+            &history.client_build,
+            &history.protocol_pack_digest,
+            parsed,
+            "en-US",
+        )
+        .ok()
+        .flatten()
+        .and_then(bounded_timeline_death_presentation_name) else {
+            continue;
+        };
+        return Some(PublicTimelineDeathAbilityPresentation {
+            ability_id: ability_id.to_owned(),
+            name,
+            provenance: PublicTimelineDeathPresentationProvenance::ExactBuildActionCatalog,
+        });
+    }
+    None
+}
+
+fn bounded_timeline_death_presentation_name(name: &str) -> Option<String> {
+    (!name.trim().is_empty()
+        && name.encode_utf16().count() <= MAXIMUM_TIMELINE_DEATH_PRESENTATION_NAME_UTF16)
+        .then(|| name.to_owned())
 }
 
 fn public_combat_timeline(
@@ -7417,8 +7580,9 @@ fn public_combat_timeline(
     run: &PublicRun,
     view: Option<&CombatHistoryView>,
     analysis: &RunAnalysis,
+    history: &CombatHistorySnapshot,
 ) -> PublicCombatTimeline {
-    let death_events = projected_timeline_death_events(view);
+    let death_events = projected_timeline_death_events(view, history);
     let mut timeline = PublicCombatTimeline {
         schema_version: PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION,
         source: PublicTimelineSource::SingleReport,
@@ -8858,13 +9022,30 @@ mod tests {
             at_micros,
             source_actor_id: source_actor_id.into(),
             source_entity_uuid: "private-source-uuid".into(),
+            source_identity: None,
             direct_source_actor_id: Some("77".into()),
             direct_source_entity_uuid: Some("private-direct-source-uuid".into()),
+            direct_source_identity: None,
             ability_id: Some("5".into()),
             breakdown_ability_id: Some("55".into()),
             reported_damage: 100,
             effective_damage: 90,
             critical: true,
+        }
+    }
+
+    fn death_test_history() -> CombatHistorySnapshot {
+        CombatHistorySnapshot {
+            schema_version: 1,
+            session_id: "death-test".into(),
+            deployment_id: "global".into(),
+            region_id: "global".into(),
+            world_id: None,
+            client_build: "24687926".into(),
+            protocol_pack_digest:
+                "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae".into(),
+            rdps_formula_identity: None,
+            runs: Vec::new(),
         }
     }
 
@@ -8901,7 +9082,7 @@ mod tests {
                 prior_hits_truncated: false,
             }),
         });
-        let exact = projected_timeline_death_events(Some(&view));
+        let exact = projected_timeline_death_events(Some(&view), &death_test_history());
         let mut participant = timeline_participant("1");
         participant.death_seconds = vec![5];
         let mut timeline = PublicCombatTimeline {
@@ -8949,7 +9130,7 @@ mod tests {
                 prior_hits_truncated: false,
             }),
         });
-        let exact = projected_timeline_death_events(Some(&view));
+        let exact = projected_timeline_death_events(Some(&view), &death_test_history());
         let timeline_event = &exact["1"][0];
 
         assert_eq!(timeline_event.at_micros, at_micros);
@@ -8970,37 +9151,188 @@ mod tests {
             prior_hits_truncated: false,
         };
 
-        assert!(public_timeline_death_cause(&event, &valid()).is_some());
+        let view = exact_death_view(event.clone());
+        let history = death_test_history();
+        assert!(public_timeline_death_cause(&event, &valid(), &view, &history).is_some());
 
         let mut too_many = valid();
         too_many.prior_hits = (0..=MAXIMUM_TIMELINE_DEATH_PRIOR_HITS)
             .map(|_| history_death_hit(at_micros, "8"))
             .collect();
-        assert!(public_timeline_death_cause(&event, &too_many).is_none());
+        assert!(public_timeline_death_cause(&event, &too_many, &view, &history).is_none());
 
         let mut outside_window = valid();
         outside_window.prior_hits[0].at_micros = at_micros - 2_000_001;
-        assert!(public_timeline_death_cause(&event, &outside_window).is_none());
+        assert!(public_timeline_death_cause(&event, &outside_window, &view, &history).is_none());
 
         let mut unsorted = valid();
         unsorted.prior_hits = vec![
             history_death_hit(at_micros - 1, "8"),
             history_death_hit(at_micros - 2, "7"),
         ];
-        assert!(public_timeline_death_cause(&event, &unsorted).is_none());
+        assert!(public_timeline_death_cause(&event, &unsorted, &view, &history).is_none());
 
         let mut negative = valid();
         negative.final_hit.reported_damage = -1;
-        assert!(public_timeline_death_cause(&event, &negative).is_none());
+        assert!(public_timeline_death_cause(&event, &negative, &view, &history).is_none());
 
         let mut safe_boundary = valid();
         safe_boundary.final_hit.reported_damage = JAVASCRIPT_MAXIMUM_SAFE_INTEGER;
         safe_boundary.final_hit.effective_damage = JAVASCRIPT_MAXIMUM_SAFE_INTEGER;
-        assert!(public_timeline_death_cause(&event, &safe_boundary).is_some());
+        assert!(public_timeline_death_cause(&event, &safe_boundary, &view, &history).is_some());
 
         let mut unsafe_integer = safe_boundary;
         unsafe_integer.final_hit.effective_damage = JAVASCRIPT_MAXIMUM_SAFE_INTEGER + 1;
-        assert!(public_timeline_death_cause(&event, &unsafe_integer).is_none());
+        assert!(public_timeline_death_cause(&event, &unsafe_integer, &view, &history).is_none());
+    }
+
+    #[test]
+    fn public_death_presentations_bind_exact_event_identity_build_and_selected_ability() {
+        let at_micros = 5_500_123;
+        let mut hit = history_death_hit(at_micros, "9");
+        hit.source_entity_uuid = "909".into();
+        hit.source_identity = Some(HistoryDeathActorIdentity {
+            monster_id: Some("33701".into()),
+            actor_kind: Some("monster".into()),
+        });
+        hit.direct_source_entity_uuid = Some("777".into());
+        hit.direct_source_identity = Some(HistoryDeathActorIdentity {
+            monster_id: None,
+            actor_kind: Some("player".into()),
+        });
+        hit.ability_id = Some("5".into());
+        hit.breakdown_ability_id = Some("2233".into());
+        let event = HistoryDeathEvent {
+            at_micros,
+            cause: Some(HistoryDeathCause {
+                evidence: HistoryDeathCauseEvidence::PacketTerminalDamage,
+                final_hit: hit,
+                prior_hits: Vec::new(),
+                prior_hits_truncated: false,
+            }),
+        };
+        let mut view = exact_death_view(event);
+        view.actors.push(redacted_history_player(77, 777));
+        let history = death_test_history();
+
+        let projected = projected_timeline_death_events(Some(&view), &history);
+        let hit = &projected["1"][0].cause.as_ref().unwrap().final_hit;
+        assert_eq!(
+            hit.source_presentation,
+            Some(PublicTimelineDeathActorPresentation {
+                actor_id: "9".into(),
+                name: "Tina - Void Reverie".into(),
+                provenance: PublicTimelineDeathPresentationProvenance::ExactBuildMonsterCatalog,
+            })
+        );
+        assert_eq!(
+            hit.direct_source_presentation,
+            Some(PublicTimelineDeathActorPresentation {
+                actor_id: "77".into(),
+                name: "Player 77".into(),
+                provenance: PublicTimelineDeathPresentationProvenance::PublicParticipant,
+            })
+        );
+        assert_eq!(
+            hit.ability_presentation,
+            Some(PublicTimelineDeathAbilityPresentation {
+                ability_id: "2233".into(),
+                name: "Powerdraw".into(),
+                provenance: PublicTimelineDeathPresentationProvenance::ExactBuildActionCatalog,
+            })
+        );
+        let serialized = serde_json::to_string(hit).unwrap();
+        assert!(!serialized.contains("entity_uuid"));
+        assert!(!serialized.contains("909"));
+        assert!(!serialized.contains("777"));
+    }
+
+    #[test]
+    fn public_death_presentations_fail_closed_for_wrong_build_reuse_and_late_identity() {
+        let mut hit = history_death_hit(10, "9");
+        hit.source_entity_uuid = "909".into();
+        hit.source_identity = Some(HistoryDeathActorIdentity {
+            monster_id: Some("33701".into()),
+            actor_kind: Some("monster".into()),
+        });
+        hit.direct_source_entity_uuid = Some("777".into());
+        hit.direct_source_identity = Some(HistoryDeathActorIdentity {
+            monster_id: None,
+            actor_kind: Some("player".into()),
+        });
+        hit.ability_id = Some("2233".into());
+        hit.breakdown_ability_id = None;
+        let mut view = exact_death_view(HistoryDeathEvent {
+            at_micros: 10,
+            cause: None,
+        });
+        view.actors.push(redacted_history_player(77, 778));
+        let mut wrong_build = death_test_history();
+        wrong_build.client_build = "24687927".into();
+
+        let projected = public_timeline_death_hit(&hit, &view, &wrong_build);
+        assert!(projected.source_presentation.is_none());
+        assert!(projected.direct_source_presentation.is_none());
+        assert!(projected.ability_presentation.is_none());
+
+        hit.source_identity = None;
+        let exact = public_timeline_death_hit(&hit, &view, &death_test_history());
+        assert!(exact.source_presentation.is_none());
+    }
+
+    #[test]
+    fn public_death_ability_falls_back_from_invalid_breakdown_to_exact_raw_id() {
+        let mut hit = history_death_hit(10, "9");
+        hit.breakdown_ability_id = Some("not-an-id".into());
+        hit.ability_id = Some("2233".into());
+
+        let presentation =
+            public_timeline_death_ability_presentation(&hit, &death_test_history()).unwrap();
+        assert_eq!(presentation.ability_id, "2233");
+        assert_eq!(presentation.name, "Powerdraw");
+
+        hit.breakdown_ability_id = Some("999999999".into());
+        hit.ability_id = Some("999999998".into());
+        assert!(public_timeline_death_ability_presentation(&hit, &death_test_history()).is_none());
+    }
+
+    #[test]
+    fn public_death_participant_name_is_bounded_and_legacy_hit_defaults_presentations() {
+        let mut hit = history_death_hit(10, "77");
+        hit.source_entity_uuid = "777".into();
+        hit.source_identity = Some(HistoryDeathActorIdentity {
+            monster_id: None,
+            actor_kind: Some("player".into()),
+        });
+        let mut actor = redacted_history_player(77, 777);
+        actor.display_name = Some("x".repeat(MAXIMUM_TIMELINE_DEATH_PRESENTATION_NAME_UTF16 + 1));
+        let view = exact_death_view(HistoryDeathEvent {
+            at_micros: 10,
+            cause: None,
+        });
+        let mut actors = view.actors;
+        actors.push(actor);
+        let view = CombatHistoryView { actors, ..view };
+        assert!(
+            public_timeline_death_hit(&hit, &view, &death_test_history())
+                .source_presentation
+                .is_none()
+        );
+
+        let legacy: PublicTimelineDeathHit = serde_json::from_value(serde_json::json!({
+            "at_micros": 10,
+            "source_actor_id": "9",
+            "direct_source_actor_id": null,
+            "ability_id": "5",
+            "breakdown_ability_id": "55",
+            "reported_damage": 1,
+            "effective_damage": 1,
+            "critical": false
+        }))
+        .unwrap();
+        assert!(legacy.source_presentation.is_none());
+        assert!(legacy.direct_source_presentation.is_none());
+        assert!(legacy.ability_presentation.is_none());
     }
 
     #[test]
@@ -9013,9 +9345,12 @@ mod tests {
             final_hit: PublicTimelineDeathHit {
                 at_micros: duration_micros,
                 source_actor_id: "boss".into(),
+                source_presentation: None,
                 direct_source_actor_id: None,
+                direct_source_presentation: None,
                 ability_id: None,
                 breakdown_ability_id: None,
+                ability_presentation: None,
                 reported_damage: 1,
                 effective_damage: 1,
                 critical: false,
@@ -9148,9 +9483,22 @@ mod tests {
                 final_hit: PublicTimelineDeathHit {
                     at_micros: 5_500_123,
                     source_actor_id: "boss".into(),
+                    source_presentation: Some(PublicTimelineDeathActorPresentation {
+                        actor_id: "boss".into(),
+                        name: "Canonical Boss".into(),
+                        provenance:
+                            PublicTimelineDeathPresentationProvenance::ExactBuildMonsterCatalog,
+                    }),
                     direct_source_actor_id: None,
+                    direct_source_presentation: None,
                     ability_id: Some("5".into()),
                     breakdown_ability_id: Some("55".into()),
+                    ability_presentation: Some(PublicTimelineDeathAbilityPresentation {
+                        ability_id: "55".into(),
+                        name: "Canonical Ability".into(),
+                        provenance:
+                            PublicTimelineDeathPresentationProvenance::ExactBuildActionCatalog,
+                    }),
                     reported_damage: 100,
                     effective_damage: 90,
                     critical: true,
@@ -9196,6 +9544,16 @@ mod tests {
             "canonical-actor"
         );
         assert!(reconciliation.timeline.death_markers[0].cause.is_some());
+        let hit = &reconciliation.timeline.death_markers[0]
+            .cause
+            .as_ref()
+            .unwrap()
+            .final_hit;
+        assert_eq!(
+            hit.source_presentation.as_ref().unwrap().name,
+            "Canonical Boss"
+        );
+        assert_eq!(hit.ability_presentation.as_ref().unwrap().ability_id, "55");
     }
 
     #[test]
@@ -12880,9 +13238,22 @@ mod tests {
                     final_hit: PublicTimelineDeathHit {
                         at_micros: 40_000,
                         source_actor_id: "canonical-boss".into(),
+                        source_presentation: Some(PublicTimelineDeathActorPresentation {
+                            actor_id: "canonical-boss".into(),
+                            name: "Canonical Replay Boss".into(),
+                            provenance:
+                                PublicTimelineDeathPresentationProvenance::ExactBuildMonsterCatalog,
+                        }),
                         direct_source_actor_id: None,
+                        direct_source_presentation: None,
                         ability_id: Some("5".into()),
                         breakdown_ability_id: Some("55".into()),
+                        ability_presentation: Some(PublicTimelineDeathAbilityPresentation {
+                            ability_id: "55".into(),
+                            name: "Canonical Replay Ability".into(),
+                            provenance:
+                                PublicTimelineDeathPresentationProvenance::ExactBuildActionCatalog,
+                        }),
                         reported_damage: 100,
                         effective_damage: 100,
                         critical: false,
@@ -12932,9 +13303,17 @@ mod tests {
                 final_hit: PublicTimelineDeathHit {
                     at_micros: 50_000,
                     source_actor_id: "conflicting-secondary-source".into(),
+                    source_presentation: Some(PublicTimelineDeathActorPresentation {
+                        actor_id: "conflicting-secondary-source".into(),
+                        name: "Conflicting Secondary Boss".into(),
+                        provenance:
+                            PublicTimelineDeathPresentationProvenance::ExactBuildMonsterCatalog,
+                    }),
                     direct_source_actor_id: None,
+                    direct_source_presentation: None,
                     ability_id: None,
                     breakdown_ability_id: None,
+                    ability_presentation: None,
                     reported_damage: 1,
                     effective_damage: 1,
                     critical: false,
@@ -12978,6 +13357,19 @@ mod tests {
                 .final_hit
                 .source_actor_id,
             "canonical-boss"
+        );
+        let replayed_hit = &replayed_death.cause.as_ref().unwrap().final_hit;
+        assert_eq!(
+            replayed_hit.source_presentation.as_ref().unwrap().name,
+            "Canonical Replay Boss"
+        );
+        assert_eq!(
+            replayed_hit
+                .ability_presentation
+                .as_ref()
+                .unwrap()
+                .ability_id,
+            "55"
         );
     }
 
@@ -13437,8 +13829,13 @@ mod tests {
         analysis.timing.ended_micros = Some(11);
         analysis.timing.observed_until_micros = 11;
         analysis.timing.wall_time_micros = Some(10);
-        report.runs[0].timeline =
-            public_combat_timeline(report_id, &report.runs[0], None, &analysis);
+        report.runs[0].timeline = public_combat_timeline(
+            report_id,
+            &report.runs[0],
+            None,
+            &analysis,
+            &death_test_history(),
+        );
         report
     }
 

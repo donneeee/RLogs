@@ -467,8 +467,8 @@ test("promoting a current hosted replay publishes a public projection and wakes 
   const { auth, d1, backgroundTasks } = authFixture();
   const reportId = `rpt_${"e".repeat(32)}`;
   const report = {
-    schema_version: 16,
-    projection_revision: 8,
+    schema_version: 17,
+    projection_revision: 9,
     report_id: reportId,
     visibility: "unlisted",
   };
