@@ -2,6 +2,8 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
+use crate::scene_localization::bundled_localization_supports;
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct MonsterLocalizationCatalog {
@@ -105,7 +107,7 @@ fn bundled_locale(locale: &str) -> &'static BundledLocale {
 /// Resolves a packet-derived static monster ID through the reviewed current-
 /// build game catalog. Each locale is parsed independently on first use; the
 /// full game localization corpus and unused languages never enter the heap.
-pub fn localized_monster_name(
+pub(crate) fn localized_monster_name(
     monster_id: i64,
     locale: &str,
 ) -> Result<Option<&'static str>, String> {
@@ -115,6 +117,22 @@ pub fn localized_monster_name(
         .binary_search_by_key(&monster_id, |(id, _)| *id)
         .ok()
         .map(|index| catalog.monsters[index].1.as_str()))
+}
+
+/// Resolves a packet-derived monster label only for the exact deployment and
+/// client build that supplied the bundled MonsterTable localization joins.
+/// Unknown builds retain their numeric monster identity without borrowing a
+/// possibly stale display name.
+pub fn localized_monster_name_for_build(
+    deployment_id: &str,
+    client_build: &str,
+    monster_id: i64,
+    locale: &str,
+) -> Result<Option<&'static str>, String> {
+    if !bundled_localization_supports(deployment_id, client_build) {
+        return Ok(None);
+    }
+    localized_monster_name(monster_id, locale)
 }
 
 #[cfg(test)]
@@ -138,6 +156,22 @@ mod tests {
         assert_eq!(
             localized_monster_name(33_701, "unsupported").unwrap(),
             Some("Tina - Void Reverie")
+        );
+    }
+
+    #[test]
+    fn build_scoped_monster_localization_fails_closed() {
+        assert_eq!(
+            localized_monster_name_for_build("global", "24687926", 33_701, "en-US").unwrap(),
+            Some("Tina - Void Reverie")
+        );
+        assert_eq!(
+            localized_monster_name_for_build("global", "24687927", 33_701, "en-US").unwrap(),
+            None
+        );
+        assert_eq!(
+            localized_monster_name_for_build("cn", "24687926", 33_701, "en-US").unwrap(),
+            None
         );
     }
 

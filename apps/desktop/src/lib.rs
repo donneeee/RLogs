@@ -98,7 +98,7 @@ use rlogs_game_bpsr::{
     confirmed_damage_contribution_rules, fight_attribute_presentation_catalog,
     installed_container_for_executable, is_boss_monster, is_localized_class_name,
     localized_auxiliary_action_name, localized_battle_imagine_name, localized_class_identities,
-    localized_combat_action_name_for_build, localized_monster_name,
+    localized_combat_action_name_for_build, localized_monster_name_for_build,
     localized_recount_group_name_for_build, localized_scene_name_for_build,
     localized_specialization_identities, project_local_profile_packages,
     proven_state_damage_contribution_effect_ids, rdps_attribution_effect_presentation,
@@ -1146,16 +1146,13 @@ fn live_overlay_primary_imagine_badges(
 fn live_overlay_boss_name(
     monster_id: i64,
     observed_name: Option<&str>,
-    localization_supported: bool,
+    deployment_id: &str,
+    client_build: &str,
 ) -> String {
-    localization_supported
-        .then(|| {
-            localized_monster_name(monster_id, "en-US")
-                .ok()
-                .flatten()
-                .map(str::to_owned)
-        })
+    localized_monster_name_for_build(deployment_id, client_build, monster_id, "en-US")
+        .ok()
         .flatten()
+        .map(str::to_owned)
         .or_else(|| observed_name.map(str::to_owned))
         .unwrap_or_else(|| format!("Monster {monster_id}"))
 }
@@ -1549,8 +1546,6 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
         .snapshot
         .as_ref()
         .map(|snapshot| {
-            let localization_supported =
-                bundled_localization_supports(&snapshot.deployment_id, &snapshot.client_build);
             let stimen_boss_floor = snapshot
                 .scene_id
                 .and_then(stimen_floor_encounter_kind)
@@ -1580,7 +1575,8 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
                             name: live_overlay_boss_name(
                                 monster_id,
                                 actor.display_name.as_deref(),
-                                localization_supported,
+                                &snapshot.deployment_id,
+                                &snapshot.client_build,
                             ),
                             current_hp,
                             max_hp,
@@ -12918,7 +12914,14 @@ fn enrich_bpsr_history_presentation(
                         actor
                             .monster_id
                             .as_deref()
-                            .map(|monster_id| localized_bpsr_monster_name(monster_id, locale))
+                            .map(|monster_id| {
+                                localized_bpsr_monster_name(
+                                    monster_id,
+                                    &localization_deployment_id,
+                                    &localization_client_build,
+                                    locale,
+                                )
+                            })
                             .transpose()?
                             .flatten()
                     } else {
@@ -12975,7 +12978,14 @@ fn enrich_bpsr_history_presentation(
                     target
                         .monster_id
                         .as_deref()
-                        .map(|monster_id| localized_bpsr_monster_name(monster_id, locale))
+                        .map(|monster_id| {
+                            localized_bpsr_monster_name(
+                                monster_id,
+                                &localization_deployment_id,
+                                &localization_client_build,
+                                locale,
+                            )
+                        })
                         .transpose()?
                         .flatten()
                 } else {
@@ -13595,11 +13605,17 @@ fn enrich_bpsr_actor_combat_presentation(
     Ok(())
 }
 
-fn localized_bpsr_monster_name(monster_id: &str, locale: &str) -> Result<Option<String>, String> {
+fn localized_bpsr_monster_name(
+    monster_id: &str,
+    deployment_id: &str,
+    client_build: &str,
+    locale: &str,
+) -> Result<Option<String>, String> {
     let parsed = monster_id
         .parse::<i64>()
         .map_err(|error| format!("history monster ID {monster_id} is invalid: {error}"))?;
-    localized_monster_name(parsed, locale).map(|name| name.map(str::to_owned))
+    localized_monster_name_for_build(deployment_id, client_build, parsed, locale)
+        .map(|name| name.map(str::to_owned))
 }
 
 fn enrich_bpsr_loadout_presentation(
@@ -15510,14 +15526,17 @@ mod tests {
         );
 
         assert_eq!(
-            live_overlay_boss_name(33_701, Some("Observed Tina"), true),
+            live_overlay_boss_name(33_701, Some("Observed Tina"), "global", "24687926"),
             "Tina - Void Reverie"
         );
         assert_eq!(
-            live_overlay_boss_name(33_701, Some("Observed Tina"), false),
+            live_overlay_boss_name(33_701, Some("Observed Tina"), "global", "24687927"),
             "Observed Tina"
         );
-        assert_eq!(live_overlay_boss_name(33_701, None, false), "Monster 33701");
+        assert_eq!(
+            live_overlay_boss_name(33_701, None, "global", "24687927"),
+            "Monster 33701"
+        );
     }
 
     fn boss_candidate(actor_id: &str, max_hp: i64, was_damaged: bool) -> LiveOverlayBossCandidate {
@@ -16870,6 +16889,18 @@ mod tests {
         assert_eq!(ability.presentation_name, None);
         assert_eq!(ability.presentation_recount_group_id, None);
         assert_eq!(ability.icon_asset_path, None);
+    }
+
+    #[test]
+    fn history_monster_localization_requires_the_exact_source_build() {
+        assert_eq!(
+            localized_bpsr_monster_name("33701", "global", "24687926", "en-US").unwrap(),
+            Some("Tina - Void Reverie".into())
+        );
+        assert_eq!(
+            localized_bpsr_monster_name("33701", "global", "24687927", "en-US").unwrap(),
+            None
+        );
     }
 
     #[test]

@@ -190,7 +190,7 @@ pub use module_effect_resolution::{
     ActiveModuleEffect, ActiveModuleEffectSnapshot, ModuleEffectCatalog, ModuleEffectCatalogError,
     ModuleEffectLevel, ModuleEffectResolutionIssue, ModuleEffectSource,
 };
-pub use monster_localization::localized_monster_name;
+pub use monster_localization::localized_monster_name_for_build;
 pub use offline_recording::{
     CaptureCoverageSummary, DecodeCoverageSummary, EventTopicCoverage, FeatureRecordingCoverage,
     GapRecordingCoverage, JournalTailPolicy, OFFLINE_RECORDING_REPORT_SCHEMA_VERSION,

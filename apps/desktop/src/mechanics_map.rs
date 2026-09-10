@@ -432,10 +432,28 @@ struct DungeonHudState {
     objectives: BTreeMap<i64, DungeonObjectiveSnapshot>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MechanicsRuntimeIdentity {
+    deployment_id: String,
+    client_build: String,
+    protocol_pack_digest: String,
+}
+
+impl From<&rlogs_events::RegionContext> for MechanicsRuntimeIdentity {
+    fn from(region: &rlogs_events::RegionContext) -> Self {
+        Self {
+            deployment_id: region.identity.deployment_id.clone(),
+            client_build: region.client_build.clone(),
+            protocol_pack_digest: region.protocol_pack_digest.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct MechanicsMapProjector {
     revision: u64,
     session_id: Option<String>,
+    runtime_identity: Option<MechanicsRuntimeIdentity>,
     client_build: Option<String>,
     scene_id: Option<i32>,
     map_id: Option<u32>,
@@ -473,13 +491,26 @@ impl MechanicsMapProjector {
         self.last_event_sequence = Some(envelope.sequence);
         self.last_observed_micros = Some(envelope.time.observed_micros);
         let mut changed = false;
-        if self.client_build.as_deref() != Some(envelope.region.client_build.as_str()) {
-            self.client_build = Some(envelope.region.client_build.clone());
-            // A build transition changes every build-scoped presentation gate.
-            // Preserve packet positions, but discard old mechanic identities so
-            // an unreviewed update can never inherit guidance from its baseline.
+        let next_runtime_identity = MechanicsRuntimeIdentity::from(&envelope.region);
+        if self.runtime_identity.as_ref() != Some(&next_runtime_identity) {
+            self.client_build = Some(next_runtime_identity.client_build.clone());
+            self.runtime_identity = Some(next_runtime_identity);
+            // Any deployment/build/protocol transition changes every reviewed
+            // interpretation gate. Preserve raw packet positions, but discard
+            // state whose IDs or presentation depend on the prior identity.
             self.signals.clear();
             self.local_markers.clear();
+            self.attack_targets.clear();
+            self.target_statuses.clear();
+            self.cooldowns.clear();
+            self.resource_values.clear();
+            for entity in self.entities.values_mut() {
+                entity.current_hp = None;
+                entity.max_hp = None;
+                entity.current_shield = None;
+                entity.max_shield = None;
+                entity.breaking_stage = None;
+            }
             changed = true;
         }
         match &envelope.event {
@@ -594,15 +625,19 @@ impl MechanicsMapProjector {
                             state.objectives.remove(&objective_id);
                         } else if event.kind == DungeonEventKind::ObjectiveUpdated {
                             let catalog = event.objective_catalog.as_ref();
-                            let presentation = self.client_build.as_deref().and_then(|build| {
-                                rlogs_game_bpsr::bundled_dungeon_objective_presentation(
-                                    build,
-                                    objective_id,
-                                    "en-US",
-                                )
-                                .ok()
-                                .flatten()
-                            });
+                            let presentation =
+                                reviewed_mechanics_identity(self.runtime_identity.as_ref())
+                                    .then_some(self.client_build.as_deref())
+                                    .flatten()
+                                    .and_then(|build| {
+                                        rlogs_game_bpsr::bundled_dungeon_objective_presentation(
+                                            build,
+                                            objective_id,
+                                            "en-US",
+                                        )
+                                        .ok()
+                                        .flatten()
+                                    });
                             state.objectives.insert(
                                 objective_id,
                                 DungeonObjectiveSnapshot {
@@ -906,7 +941,7 @@ impl MechanicsMapProjector {
                     {
                         changed |= self.target_statuses.remove(&key).is_some();
                         if is_reviewed_mechanic_effect(
-                            self.client_build.as_deref(),
+                            self.runtime_identity.as_ref(),
                             self.scene_id,
                             status.effect.0,
                         ) {
@@ -926,7 +961,7 @@ impl MechanicsMapProjector {
                             },
                         );
                         if is_reviewed_mechanic_effect(
-                            self.client_build.as_deref(),
+                            self.runtime_identity.as_ref(),
                             self.scene_id,
                             status.effect.0,
                         ) {
@@ -952,7 +987,7 @@ impl MechanicsMapProjector {
                 TimelineEventKind::Cast(cast)
                     if cast.state == CastState::Started
                         && is_reviewed_mechanic_cast(
-                            self.client_build.as_deref(),
+                            self.runtime_identity.as_ref(),
                             self.scene_id,
                             cast.ability.0,
                         ) =>
@@ -1094,7 +1129,7 @@ impl MechanicsMapProjector {
                     display_name: entity.display_name.clone(),
                     monster_id: entity.monster_id,
                     mechanic_role: reviewed_mechanic_entity_role(
-                        self.client_build.as_deref(),
+                        self.runtime_identity.as_ref(),
                         self.scene_id,
                         entity.monster_id,
                     ),
@@ -1133,7 +1168,7 @@ impl MechanicsMapProjector {
             .map(|signal| MechanicsMapSignal {
                 effect_id: signal.effect_id,
                 mechanic_kind: reviewed_mechanic_signal_kind(
-                    self.client_build.as_deref(),
+                    self.runtime_identity.as_ref(),
                     self.scene_id,
                     signal.effect_id,
                 ),
@@ -1161,8 +1196,8 @@ impl MechanicsMapProjector {
             .collect::<Vec<_>>();
         mechanics.sort_by_key(|signal| (signal.target_actor_id, signal.effect_id));
         mechanics.truncate(MAX_MECHANICS);
-        let pack = encounter_pack(self.client_build.as_deref(), self.scene_id);
-        let scene_map = scene_map_spec(self.client_build.as_deref(), self.scene_id);
+        let pack = encounter_pack(self.runtime_identity.as_ref(), self.scene_id);
+        let scene_map = scene_map_spec(self.runtime_identity.as_ref(), self.scene_id);
         let target = local_actor_id
             .and_then(|actor_id| self.attack_targets.get(&actor_id).copied())
             .and_then(|entity_uuid| {
@@ -1215,12 +1250,7 @@ impl MechanicsMapProjector {
                                 self.entities.get(&source.actor_id.0).and_then(|entity| {
                                     entity.display_name.clone().or_else(|| {
                                         entity.monster_id.and_then(|monster_id| {
-                                            rlogs_game_bpsr::localized_monster_name(
-                                                monster_id, "en-US",
-                                            )
-                                            .ok()
-                                            .flatten()
-                                            .map(str::to_owned)
+                                            self.localized_monster_display_name(monster_id)
                                         })
                                     })
                                 })
@@ -1259,12 +1289,9 @@ impl MechanicsMapProjector {
                     actor_id: entity.actor.actor_id.0,
                     entity_uuid: entity.actor.entity_uuid.0,
                     display_name: entity.display_name.clone().or_else(|| {
-                        entity.monster_id.and_then(|monster_id| {
-                            rlogs_game_bpsr::localized_monster_name(monster_id, "en-US")
-                                .ok()
-                                .flatten()
-                                .map(str::to_owned)
-                        })
+                        entity
+                            .monster_id
+                            .and_then(|monster_id| self.localized_monster_display_name(monster_id))
                     }),
                     monster_id: entity.monster_id,
                     current_hp: entity.current_hp,
@@ -1286,7 +1313,7 @@ impl MechanicsMapProjector {
                 .find(|entity| entity.actor_id == actor_id)
                 .map(|entity| entity.y)
         });
-        let raid_arena = raid_arena_spec(self.client_build.as_deref(), self.scene_id, local_y);
+        let raid_arena = raid_arena_spec(self.runtime_identity.as_ref(), self.scene_id, local_y);
         let absolute_map = scene_map.or(raid_arena);
         MechanicsMapSnapshot {
             schema_version: MECHANICS_MAP_SCHEMA_VERSION,
@@ -1296,17 +1323,20 @@ impl MechanicsMapProjector {
             scene_id: self.scene_id,
             map_id: self.map_id,
             scene_name: self.scene_id.and_then(|scene_id| {
-                self.client_build.as_deref().and_then(|client_build| {
-                    rlogs_game_bpsr::localized_scene_name_for_build(
-                        "global",
-                        client_build,
-                        i64::from(scene_id),
-                        "en-US",
-                    )
-                    .ok()
-                    .flatten()
-                    .map(str::to_owned)
-                })
+                self.runtime_identity
+                    .as_ref()
+                    .filter(|identity| reviewed_mechanics_identity(Some(identity)))
+                    .and_then(|identity| {
+                        rlogs_game_bpsr::localized_scene_name_for_build(
+                            &identity.deployment_id,
+                            &identity.client_build,
+                            i64::from(scene_id),
+                            "en-US",
+                        )
+                        .ok()
+                        .flatten()
+                        .map(str::to_owned)
+                    })
             }),
             map_model: if absolute_map.is_some() {
                 "absolute_scene_map"
@@ -1493,10 +1523,7 @@ impl MechanicsMapProjector {
                         self.entities.get(&source.actor_id.0).and_then(|entity| {
                             entity.display_name.clone().or_else(|| {
                                 entity.monster_id.and_then(|monster_id| {
-                                    rlogs_game_bpsr::localized_monster_name(monster_id, "en-US")
-                                        .ok()
-                                        .flatten()
-                                        .map(str::to_owned)
+                                    self.localized_monster_display_name(monster_id)
                                 })
                             })
                         })
@@ -1546,6 +1573,23 @@ impl MechanicsMapProjector {
             ActorKind::Npc => "npc",
             _ => "object",
         }
+    }
+
+    fn localized_monster_display_name(&self, monster_id: i64) -> Option<String> {
+        self.runtime_identity
+            .as_ref()
+            .filter(|identity| reviewed_mechanics_identity(Some(identity)))
+            .and_then(|identity| {
+                rlogs_game_bpsr::localized_monster_name_for_build(
+                    &identity.deployment_id,
+                    &identity.client_build,
+                    monster_id,
+                    "en-US",
+                )
+                .ok()
+                .flatten()
+                .map(str::to_owned)
+            })
     }
 
     fn enforce_bounds(&mut self) {
@@ -1951,12 +1995,29 @@ fn packaged_scene_maps() -> &'static PackagedSceneMapManifest<'static> {
     })
 }
 
+fn reviewed_mechanics_identity(identity: Option<&MechanicsRuntimeIdentity>) -> bool {
+    identity.is_some_and(|identity| {
+        // Mechanics were reviewed against the same exact active packet pack as
+        // the live state runtime. Formula-compatible historical packs do not
+        // automatically gain mechanic or coordinate authority.
+        rlogs_game_bpsr::state_damage_contribution_deployment_id()
+            .ok()
+            .is_some_and(|expected| identity.deployment_id == expected)
+            && rlogs_game_bpsr::state_damage_contribution_game_build()
+                .ok()
+                .is_some_and(|expected| identity.client_build == expected)
+            && rlogs_game_bpsr::state_damage_contribution_protocol_pack_digest()
+                .ok()
+                .is_some_and(|expected| identity.protocol_pack_digest == expected)
+    })
+}
+
 fn raid_arena_spec(
-    build: Option<&str>,
+    identity: Option<&MechanicsRuntimeIdentity>,
     scene_id: Option<i32>,
     local_y: Option<f32>,
 ) -> Option<SceneMapSpec> {
-    if build != Some("24687926") || !matches!(scene_id, Some(13021..=13023)) {
+    if !reviewed_mechanics_identity(identity) || !matches!(scene_id, Some(13021..=13023)) {
         return None;
     }
     Some(if local_y.is_some_and(|y| y >= 275.0) {
@@ -1980,19 +2041,17 @@ fn raid_arena_spec(
     })
 }
 
-fn scene_map_spec(build: Option<&str>, scene_id: Option<i32>) -> Option<SceneMapSpec> {
+fn scene_map_spec(
+    identity: Option<&MechanicsRuntimeIdentity>,
+    scene_id: Option<i32>,
+) -> Option<SceneMapSpec> {
     let scene_id = scene_id?;
-    let build = build?;
+    let identity = identity.filter(|identity| reviewed_mechanics_identity(Some(identity)))?;
     let maps = packaged_scene_maps();
-    let entries = maps.builds.get(build).or_else(|| {
-        let requested = build.parse::<u64>().ok()?;
-        maps.builds
-            .iter()
-            .filter_map(|(candidate, entries)| Some((candidate.parse::<u64>().ok()?, entries)))
-            .filter(|(candidate, _)| *candidate <= requested)
-            .max_by_key(|(candidate, _)| *candidate)
-            .map(|(_, entries)| entries)
-    });
+    // Coordinates are authoritative mechanic projection data. A future build
+    // must have an explicit reviewed manifest entry; numeric proximity is not
+    // evidence that its world transform is unchanged.
+    let entries = maps.builds.get(identity.client_build.as_str());
     let entry = entries?
         .iter()
         .find(|entry| entry.scene_ids.contains(&scene_id))?;
@@ -2006,8 +2065,11 @@ fn scene_map_spec(build: Option<&str>, scene_id: Option<i32>) -> Option<SceneMap
     })
 }
 
-fn encounter_pack(client_build: Option<&str>, scene_id: Option<i32>) -> Option<&'static str> {
-    if client_build != Some("24687926") {
+fn encounter_pack(
+    identity: Option<&MechanicsRuntimeIdentity>,
+    scene_id: Option<i32>,
+) -> Option<&'static str> {
+    if !reviewed_mechanics_identity(identity) {
         return None;
     }
     match scene_id? {
@@ -2022,11 +2084,11 @@ fn encounter_pack(client_build: Option<&str>, scene_id: Option<i32>) -> Option<&
 }
 
 fn is_reviewed_mechanic_effect(
-    client_build: Option<&str>,
+    identity: Option<&MechanicsRuntimeIdentity>,
     scene_id: Option<i32>,
     effect_id: i64,
 ) -> bool {
-    if client_build != Some("24687926") {
+    if !reviewed_mechanics_identity(identity) {
         return false;
     }
     let ids: &[i64] = match scene_id {
@@ -2054,11 +2116,11 @@ fn is_reviewed_mechanic_effect(
 }
 
 fn reviewed_mechanic_entity_role(
-    client_build: Option<&str>,
+    identity: Option<&MechanicsRuntimeIdentity>,
     scene_id: Option<i32>,
     monster_id: Option<i64>,
 ) -> Option<&'static str> {
-    if client_build != Some("24687926") {
+    if !reviewed_mechanics_identity(identity) {
         return None;
     }
     match (scene_id?, monster_id?) {
@@ -2084,11 +2146,11 @@ fn reviewed_mechanic_entity_role(
 }
 
 fn reviewed_mechanic_signal_kind(
-    client_build: Option<&str>,
+    identity: Option<&MechanicsRuntimeIdentity>,
     scene_id: Option<i32>,
     effect_id: i64,
 ) -> Option<&'static str> {
-    if client_build != Some("24687926") {
+    if !reviewed_mechanics_identity(identity) {
         return None;
     }
     match (scene_id?, effect_id) {
@@ -2179,11 +2241,11 @@ fn reviewed_mechanic_signal_kind(
 }
 
 fn is_reviewed_mechanic_cast(
-    client_build: Option<&str>,
+    identity: Option<&MechanicsRuntimeIdentity>,
     scene_id: Option<i32>,
     ability_id: i64,
 ) -> bool {
-    if client_build != Some("24687926") {
+    if !reviewed_mechanics_identity(identity) {
         return false;
     }
     let ids: &[i64] = match scene_id {
@@ -2231,17 +2293,7 @@ mod tests {
             schema_version: rlogs_events::EVENT_SCHEMA_VERSION,
             session_id: "session".into(),
             sequence,
-            region: RegionContext {
-                identity: RegionIdentity {
-                    deployment_id: "global".into(),
-                    region_id: "north-america".into(),
-                    realm_id: None,
-                    world_id: None,
-                },
-                client_build: "24687926".into(),
-                protocol_pack_digest: "digest".into(),
-                evidence: vec![],
-            },
+            region: reviewed_region(),
             time: EventTime {
                 observed_micros: sequence * 1_000,
                 game_time_millis: None,
@@ -2257,6 +2309,26 @@ mod tests {
             sensitivity: EventSensitivity::PublicGameplay,
             event,
         }
+    }
+
+    fn reviewed_region() -> RegionContext {
+        RegionContext {
+            identity: RegionIdentity {
+                deployment_id: "global".into(),
+                region_id: "north-america".into(),
+                realm_id: None,
+                world_id: None,
+            },
+            client_build: "24687926".into(),
+            protocol_pack_digest: rlogs_game_bpsr::state_damage_contribution_protocol_pack_digest()
+                .expect("bundled exact runtime identity")
+                .into(),
+            evidence: vec![],
+        }
+    }
+
+    fn reviewed_identity() -> MechanicsRuntimeIdentity {
+        MechanicsRuntimeIdentity::from(&reviewed_region())
     }
 
     fn entity(actor_id: u64, uuid: i64) -> EntityRef {
@@ -2347,6 +2419,115 @@ mod tests {
             Some("24687927")
         );
         assert_eq!(projector.snapshot().scene_name, None);
+    }
+
+    #[test]
+    fn any_exact_identity_change_clears_reviewed_state_but_preserves_raw_positions() {
+        for changed_component in ["deployment", "build", "protocol"] {
+            let actor = entity(7, 70);
+            let mut projector = MechanicsMapProjector::default();
+            projector.observe(&envelope(
+                1,
+                CanonicalEvent::Timeline(TimelineEvent {
+                    sequence: 1,
+                    time: EventTime {
+                        observed_micros: 1_000,
+                        game_time_millis: None,
+                    },
+                    provenance: EventProvenance::wire(1, 1, 1),
+                    kind: TimelineEventKind::Position(rlogs_events::PositionEvent {
+                        actor,
+                        x: 10.0,
+                        y: 0.0,
+                        z: 20.0,
+                        facing_radians: Some(0.5),
+                    }),
+                }),
+            ));
+            projector.scene_id = Some(6615);
+            projector.signals.insert(
+                (actor.actor_id.0, 884609),
+                SignalState {
+                    effect_id: 884609,
+                    instance_id: None,
+                    target: actor,
+                    source: None,
+                    stacks: None,
+                    duration_millis: Some(10_000),
+                    origin_x: None,
+                    origin_z: None,
+                    facing_radians: None,
+                    applied_at_micros: 1_000,
+                },
+            );
+            projector.replace_local_markers([rlogs_game_bpsr::LocalMapMarker {
+                passive_instance_id: 77,
+                related_entity_uuid: None,
+                marker_number: 1,
+                x: Some(10.0),
+                y: Some(0.0),
+                z: Some(20.0),
+            }]);
+            assert_eq!(projector.snapshot().map_model, "absolute_scene_map");
+            assert_eq!(
+                projector.snapshot().mechanics[0].mechanic_kind,
+                Some("near_chain")
+            );
+
+            let mut changed = envelope(
+                2,
+                CanonicalEvent::Timeline(TimelineEvent {
+                    sequence: 2,
+                    time: EventTime {
+                        observed_micros: 2_000,
+                        game_time_millis: None,
+                    },
+                    provenance: EventProvenance::wire(2, 1, 1),
+                    kind: TimelineEventKind::Position(rlogs_events::PositionEvent {
+                        actor,
+                        x: 11.0,
+                        y: 0.0,
+                        z: 21.0,
+                        facing_radians: Some(0.5),
+                    }),
+                }),
+            );
+            match changed_component {
+                "deployment" => changed.region.identity.deployment_id = "cn".into(),
+                "build" => changed.region.client_build = "24687927".into(),
+                "protocol" => {
+                    changed.region.protocol_pack_digest =
+                        "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                            .into();
+                }
+                _ => unreachable!(),
+            }
+            assert!(projector.observe(&changed));
+
+            let snapshot = projector.snapshot();
+            assert_eq!(snapshot.map_model, "player_relative_radar");
+            assert!(snapshot.mechanics.is_empty());
+            assert!(snapshot.markers.is_empty());
+            assert_eq!(snapshot.entities.len(), 1);
+            assert_eq!(
+                (snapshot.entities[0].x, snapshot.entities[0].z),
+                (11.0, 21.0)
+            );
+        }
+    }
+
+    #[test]
+    fn map_monster_localization_requires_the_exact_source_build() {
+        let mut projector = MechanicsMapProjector::default();
+        projector.reset("session", "24687926");
+        projector.runtime_identity = Some(reviewed_identity());
+        assert_eq!(
+            projector.localized_monster_display_name(33_701).as_deref(),
+            Some("Tina - Void Reverie")
+        );
+
+        projector.reset("session", "24687927");
+        assert_eq!(projector.localized_monster_display_name(33_701), None);
     }
 
     #[test]
@@ -3098,86 +3279,89 @@ mod tests {
 
     #[test]
     fn mechanic_effects_are_scene_scoped_and_fail_closed() {
-        let build = Some("24687926");
+        let identity = reviewed_identity();
+        let build = Some(&identity);
         assert!(is_reviewed_mechanic_effect(build, Some(6615), 884609));
         assert!(!is_reviewed_mechanic_effect(build, Some(6615), 821076));
         assert!(!is_reviewed_mechanic_effect(build, Some(999_999), 884609));
         assert!(!is_reviewed_mechanic_effect(build, None, 884609));
-        assert!(!is_reviewed_mechanic_effect(
-            Some("global/steam-newer"),
-            Some(6615),
-            884609,
-        ));
+        assert!(!is_reviewed_mechanic_effect(None, Some(6615), 884609,));
     }
 
     #[test]
     fn full_scene_map_is_exact_build_and_scene_scoped() {
-        let tower =
-            scene_map_spec(Some("24687926"), Some(1151)).expect("reviewed Towering Ruin map");
+        let identity = reviewed_identity();
+        let build = Some(&identity);
+        let tower = scene_map_spec(build, Some(1151)).expect("reviewed Towering Ruin map");
         assert_eq!(tower.asset_file, Some("scene-1150-towering-ruin.png"));
         assert!((tower.origin_x - -275.674).abs() < 0.001);
         assert!((tower.origin_z - -472.974).abs() < 0.001);
         assert!((tower.span_x - 297.348).abs() < 0.001);
         assert!((tower.span_z - 297.348).abs() < 0.001);
 
-        let tina =
-            scene_map_spec(Some("24687926"), Some(1632)).expect("reviewed Tina Mindrealm map");
+        let tina = scene_map_spec(build, Some(1632)).expect("reviewed Tina Mindrealm map");
         assert_eq!(tina.asset_file, Some("scene-1631-tina-mindrealm.png"));
         assert_eq!((tina.origin_x, tina.origin_z), (-640.0, -523.0));
         assert_eq!((tina.span_x, tina.span_z), (800.0, 800.0));
 
-        let coral = scene_map_spec(Some("24687926"), Some(6565)).expect("reviewed Coral Sea map");
+        let coral = scene_map_spec(build, Some(6565)).expect("reviewed Coral Sea map");
         assert_eq!(coral.asset_file, Some("scene-6563-coral-sea.png"));
         assert_eq!((coral.origin_x, coral.origin_z), (-600.0, -500.0));
         assert_eq!((coral.span_x, coral.span_z), (1000.0, 1000.0));
 
-        let map = scene_map_spec(Some("24687926"), Some(6513)).expect("reviewed Cursed Tomb map");
+        let map = scene_map_spec(build, Some(6513)).expect("reviewed Cursed Tomb map");
         assert_eq!(map.asset_file, Some("scene-6513-cursed-tomb.png"));
         assert_eq!((map.origin_x, map.origin_z), (-149.0, -377.0));
         assert_eq!((map.span_x, map.span_z), (450.0, 450.0));
-        assert!(scene_map_spec(Some("global/steam-newer"), Some(6513)).is_none());
-        let raid =
-            scene_map_spec(Some("24687926"), Some(13023)).expect("reviewed Season 3 raid map");
+        assert!(scene_map_spec(None, Some(6513)).is_none());
+        let raid = scene_map_spec(build, Some(13023)).expect("reviewed Season 3 raid map");
         assert_eq!(raid.asset_file, Some("scene-13021-s3-raid.png"));
         assert_eq!((raid.origin_x, raid.origin_z), (-500.0, -400.0));
         assert_eq!((raid.span_x, raid.span_z), (1000.0, 1000.0));
 
-        let wasteland =
-            scene_map_spec(Some("24687926"), Some(6615)).expect("reviewed Wasteland Court map");
+        let wasteland = scene_map_spec(build, Some(6615)).expect("reviewed Wasteland Court map");
         assert_eq!(wasteland.asset_file, Some("scene-6615-wasteland-court.png"));
         assert_eq!((wasteland.origin_x, wasteland.origin_z), (-180.0, -250.0));
         assert_eq!((wasteland.span_x, wasteland.span_z), (500.0, 500.0));
     }
 
     #[test]
-    fn full_scene_map_reuses_latest_reviewed_numeric_build_after_a_client_update() {
-        let map = scene_map_spec(Some("24687927"), Some(6513))
-            .expect("new numeric builds reuse the latest reviewed map identity");
-        assert_eq!(map.asset_file, Some("scene-6513-cursed-tomb.png"));
-        assert!(scene_map_spec(Some("global/steam-24687927"), Some(6513)).is_none());
-        assert!(scene_map_spec(Some("24600000"), Some(6513)).is_none());
+    fn full_scene_map_does_not_guess_coordinates_for_an_unreviewed_identity() {
+        let mut future = reviewed_identity();
+        future.client_build = "24687927".into();
+        assert!(scene_map_spec(Some(&future), Some(6513)).is_none());
+
+        let mut wrong_pack = reviewed_identity();
+        wrong_pack.protocol_pack_digest =
+            "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".into();
+        assert!(scene_map_spec(Some(&wrong_pack), Some(6513)).is_none());
+
+        let mut wrong_deployment = reviewed_identity();
+        wrong_deployment.deployment_id = "cn".into();
+        assert!(scene_map_spec(Some(&wrong_deployment), Some(6513)).is_none());
     }
 
     #[test]
     fn season_three_raid_uses_packet_height_to_select_its_verified_arena() {
-        let ring =
-            raid_arena_spec(Some("24687926"), Some(13021), Some(150.0)).expect("raid ring arena");
+        let identity = reviewed_identity();
+        let build = Some(&identity);
+        let ring = raid_arena_spec(build, Some(13021), Some(150.0)).expect("raid ring arena");
         assert_eq!(ring.layout, Some("raid_ring"));
         assert_eq!((ring.origin_x, ring.origin_z), (-55.0, -55.0));
         assert_eq!((ring.span_x, ring.span_z), (110.0, 110.0));
 
-        let grid =
-            raid_arena_spec(Some("24687926"), Some(13023), Some(400.0)).expect("raid grid arena");
+        let grid = raid_arena_spec(build, Some(13023), Some(400.0)).expect("raid grid arena");
         assert_eq!(grid.layout, Some("raid_grid"));
         assert_eq!((grid.origin_x, grid.origin_z), (-30.0, -27.0));
         assert_eq!((grid.span_x, grid.span_z), (60.0, 54.0));
 
-        assert!(raid_arena_spec(Some("global/steam-newer"), Some(13021), Some(150.0)).is_none());
-        assert!(raid_arena_spec(Some("24687926"), Some(6615), Some(150.0)).is_none());
+        assert!(raid_arena_spec(None, Some(13021), Some(150.0)).is_none());
+        assert!(raid_arena_spec(build, Some(6615), Some(150.0)).is_none());
     }
 
     #[test]
     fn scene_map_specs_match_the_packaged_review_manifest() {
+        let identity = reviewed_identity();
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../desktop-tauri/resources/map-compiler/reviewed-map-assets.v1.json");
         let value: serde_json::Value =
@@ -3197,7 +3381,7 @@ mod tests {
                     "a scene ID may resolve to only one reviewed map"
                 );
                 let spec = scene_map_spec(
-                    Some("24687926"),
+                    Some(&identity),
                     Some(scene_id.as_i64().expect("numeric scene ID") as i32),
                 )
                 .expect("manifest scene has a runtime map spec");
@@ -3217,26 +3401,24 @@ mod tests {
 
     #[test]
     fn mechanic_casts_are_exact_build_and_scene_scoped() {
+        let identity = reviewed_identity();
         assert!(is_reviewed_mechanic_cast(
-            Some("24687926"),
+            Some(&identity),
             Some(6513),
             3390117,
         ));
         assert!(!is_reviewed_mechanic_cast(
-            Some("24687926"),
+            Some(&identity),
             Some(6513),
             1701,
         ));
-        assert!(!is_reviewed_mechanic_cast(
-            Some("global/steam-newer"),
-            Some(6513),
-            3390117,
-        ));
+        assert!(!is_reviewed_mechanic_cast(None, Some(6513), 3390117,));
     }
 
     #[test]
     fn cursed_tomb_semantics_are_exact_build_and_scene_scoped() {
-        let build = Some("24687926");
+        let identity = reviewed_identity();
+        let build = Some(&identity);
         assert_eq!(
             reviewed_mechanic_entity_role(build, Some(6513), Some(33904)),
             Some("tower")
@@ -3254,7 +3436,7 @@ mod tests {
             Some("clone_charge_left")
         );
         assert_eq!(
-            reviewed_mechanic_signal_kind(Some("global/steam-newer"), Some(6513), 884102),
+            reviewed_mechanic_signal_kind(None, Some(6513), 884102),
             None
         );
         assert_eq!(
@@ -3265,7 +3447,8 @@ mod tests {
 
     #[test]
     fn reviewed_scene_families_expose_named_roles_effects_and_casts() {
-        let build = Some("24687926");
+        let identity = reviewed_identity();
+        let build = Some(&identity);
         for (scene, monster, role) in [
             (1151, 2106, "correct_portal"),
             (1632, 300089, "pizza_fast"),
@@ -3351,7 +3534,8 @@ mod tests {
 
     #[test]
     fn void_towering_ruin_exposes_only_packet_position_annotations() {
-        let build = Some("24687926");
+        let identity = reviewed_identity();
+        let build = Some(&identity);
         let scene = Some(1151);
         let map = scene_map_spec(build, scene).expect("reviewed Void Towering Ruin map");
         assert_eq!(map.asset_file, Some("scene-1150-towering-ruin.png"));
