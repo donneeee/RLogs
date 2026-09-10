@@ -8121,11 +8121,10 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
   opacity: 0.94;
 }
 
-.combat-history-death-marker-halo {
-  fill: rgb(4 7 11 / 90%);
-  stroke: var(--death-marker-color, #d8cfb4);
-  stroke-width: 1.25;
-  vector-effect: non-scaling-stroke;
+.combat-history-death-marker-hitbox {
+  fill: transparent;
+  stroke: none;
+  pointer-events: all;
 }
 
 .combat-history-death-marker-skull {
@@ -8135,8 +8134,10 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
   font-weight: 700;
 }
 
-.combat-history-death-marker:focus-visible .combat-history-death-marker-halo {
-  stroke-width: 2.5;
+.combat-history-death-marker:focus-visible .combat-history-death-marker-skull {
+  stroke: var(--death-marker-color, #d8cfb4);
+  stroke-width: 0.8;
+  paint-order: stroke fill;
 }
 
 .combat-history-death-summary {

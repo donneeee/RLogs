@@ -61,8 +61,9 @@ describe("Combat History death presentation", () => {
     const styles = readFileSync("src/styles/shell.css", "utf8");
 
     expect(marker.style.getPropertyValue("--death-marker-color")).toBe("");
-    expect(marker.querySelector(".combat-history-death-marker-halo")).not.toBeNull();
-    expect(styles).toMatch(/\.combat-history-death-marker-halo\s*\{[^}]*stroke:\s*var\(--death-marker-color,\s*#d8cfb4\)/su);
+    expect(marker.querySelector(".combat-history-death-marker-halo")).toBeNull();
+    expect(marker.querySelector(".combat-history-death-marker-hitbox")).not.toBeNull();
+    expect(styles).toMatch(/\.combat-history-death-marker-hitbox\s*\{[^}]*fill:\s*transparent;[^}]*stroke:\s*none/su);
     expect(styles).toMatch(/\.combat-history-death-marker-skull\s*\{[^}]*fill:\s*var\(--death-marker-color,\s*#d8cfb4\)/su);
   });
 
