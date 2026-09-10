@@ -25,6 +25,8 @@ export interface CombatHistoryCatalogEntry {
   active_combat_micros: number;
   player_count: number;
   deployment_id: string;
+  client_build: string;
+  protocol_pack_digest: string;
   region_id: string;
   world_id: string | null;
   team_damage: number;
@@ -343,6 +345,17 @@ export function parseCombatHistoryCatalog(value: unknown): CombatHistoryCatalog 
     counter(entry.active_combat_micros, "active combat time");
     counter(entry.player_count, "player count");
     text(entry.deployment_id, "deployment ID");
+    // Legacy compact indexes predate exact presentation provenance. Empty
+    // defaults keep their raw rows readable without authorizing any label.
+    if (entry.client_build === undefined) entry.client_build = "";
+    if (entry.protocol_pack_digest === undefined) entry.protocol_pack_digest = "";
+    text(entry.client_build, "client build");
+    text(entry.protocol_pack_digest, "protocol pack digest");
+    const hasPresentationAuthority = typeof entry.client_build === "string" &&
+      entry.client_build.trim() !== "" &&
+      typeof entry.protocol_pack_digest === "string" &&
+      entry.protocol_pack_digest.trim() !== "";
+    if (!hasPresentationAuthority) entry.presentation_scene_name = null;
     text(entry.region_id, "region ID");
     optionalText(entry.world_id, "world ID");
     integer(entry.team_damage, "team damage");
@@ -410,9 +423,37 @@ export function parseCombatHistoryCatalog(value: unknown): CombatHistoryCatalog 
       if (participant.presentation_accent === undefined) participant.presentation_accent = null;
       optionalText(participant.presentation_role, "participant presentation role");
       optionalText(participant.presentation_accent, "participant presentation accent");
+      if (!hasPresentationAuthority) clearLegacyParticipantPresentation(participant);
     });
   }
   return catalog as unknown as CombatHistoryCatalog;
+}
+
+function clearLegacyParticipantPresentation(participant: Record<string, unknown>): void {
+  for (const field of [
+    "presentation_name",
+    "presentation_kind",
+    "presentation_class_name",
+    "presentation_specialization_name",
+    "icon_asset_path",
+    "presentation_role",
+    "presentation_accent",
+    "weapon_icon_asset_path",
+    "weapon_presentation_name",
+    "weapon_level",
+    "weapon_level_min",
+    "weapon_level_max",
+    "weapon_badge_kind",
+  ]) participant[field] = null;
+  for (const field of ["primary_loadout", "auxiliary_loadout"] as const) {
+    for (const value of participant[field] as unknown[]) {
+      const slot = value as Record<string, unknown>;
+      slot.presentation_name = null;
+      slot.icon_asset_path = null;
+      slot.item_tier = null;
+      slot.maximum_tier = null;
+    }
+  }
 }
 
 export function parseCombatHistoryDeleteResult(

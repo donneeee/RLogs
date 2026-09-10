@@ -13838,20 +13838,73 @@ fn enrich_bpsr_weapon_presentation(actor: &mut rlogs_plugin_combat_meter::Histor
 
 fn enrich_bpsr_catalog_presentation(
     catalog: &mut CombatHistoryCatalog,
-    _locale: &str,
+    locale: &str,
 ) -> Result<(), String> {
     for entry in &mut catalog.entries {
-        // Compact history does not yet retain protocol-pack identity. Until
-        // its separate schema migration reopens the sealed detail, it cannot
-        // prove that decoded IDs belong to the bundled localization tables.
-        // Preserve raw identity and combat fields but fail closed on every
-        // derived label or asset.
         entry.presentation_scene_name = None;
         for actor in &mut entry.participants {
             clear_bpsr_catalog_participant_presentation(actor);
         }
+        if !bundled_localization_supports_identity(
+            &entry.deployment_id,
+            &entry.client_build,
+            &entry.protocol_pack_digest,
+        )? {
+            continue;
+        }
+        entry.presentation_scene_name = entry
+            .scene_id
+            .map(|scene_id| {
+                localized_scene_name_for_identity(
+                    &entry.deployment_id,
+                    &entry.client_build,
+                    &entry.protocol_pack_digest,
+                    i64::from(scene_id),
+                    locale,
+                )
+            })
+            .transpose()?
+            .flatten()
+            .map(str::to_owned);
+        for actor in &mut entry.participants {
+            let presentation = resolve_actor_combat_presentation(
+                actor.class_id,
+                actor.specialization_id,
+                std::iter::empty(),
+                locale,
+            )?;
+            actor.presentation_name = actor.display_name.clone();
+            actor.presentation_kind = Some("player".into());
+            actor.presentation_class_name = presentation.class_name;
+            actor.presentation_specialization_name = presentation.specialization_name;
+            actor.icon_asset_path = bpsr_game_asset_path(presentation.icon);
+            actor.presentation_role = presentation.role;
+            actor.presentation_accent = presentation.accent;
+            enrich_bpsr_loadout_presentation(&mut actor.primary_loadout, locale)?;
+            enrich_bpsr_loadout_presentation(&mut actor.auxiliary_loadout, locale)?;
+            enrich_bpsr_catalog_weapon_presentation(actor);
+        }
     }
     Ok(())
+}
+
+fn enrich_bpsr_catalog_weapon_presentation(actor: &mut combat_history::CombatHistoryParticipant) {
+    let Some(item_id) = actor.weapon_item_id else {
+        return;
+    };
+    let Some(metadata) = weapon_presentation(item_id) else {
+        return;
+    };
+    let level = weapon_level_presentation(item_id, actor.weapon_breakthrough_count);
+    actor.weapon_icon_asset_path = Some(format!(
+        "/game-assets/blue-protocol-star-resonance/shared/{}",
+        metadata.icon
+    ));
+    actor.weapon_presentation_name = Some(metadata.english_name.to_owned());
+    actor.weapon_level = level.and_then(|value| value.exact);
+    actor.weapon_level_min = level.map(|value| value.minimum);
+    actor.weapon_level_max = level.map(|value| value.maximum);
+    actor.weapon_badge_kind = Some(metadata.badge_kind.to_owned());
 }
 
 fn clear_bpsr_catalog_participant_presentation(
@@ -17020,6 +17073,64 @@ mod tests {
         assert_eq!(wrong_actor.abilities[0].presentation_name, None);
         assert_eq!(wrong_actor.abilities[0].presentation_recount_group_id, None);
         assert_eq!(wrong_actor.abilities[0].icon_asset_path, None);
+    }
+
+    #[test]
+    fn compact_history_presentation_requires_exact_protocol_authority() {
+        let root = temporary_root();
+        std::fs::create_dir_all(&root).unwrap();
+        let mut snapshot = captured_marksman_history();
+        snapshot.client_build = BUNDLED_RUN_RULE_CLIENT_BUILD.into();
+        snapshot.protocol_pack_digest = BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into();
+        snapshot.runs[0].views[0].id = "all".into();
+        snapshot.runs[0].views[0].kind = "all".into();
+        snapshot.runs[0].views[0].actors[0].class_id = Some(11);
+        snapshot.runs[0].views[0].actors[0].specialization_id = Some(117);
+        let mut store = CombatHistoryStore::open(root.clone()).unwrap();
+        let mut exact = store.record(&snapshot, 1).unwrap();
+
+        enrich_bpsr_catalog_presentation(&mut exact, "en-US").unwrap();
+        let exact_entry = &exact.entries[0];
+        assert_eq!(
+            exact_entry.presentation_scene_name.as_deref(),
+            Some("Chaotic - Tina's Mindrealm")
+        );
+        assert_eq!(
+            exact_entry.participants[0]
+                .presentation_class_name
+                .as_deref(),
+            Some("Marksman")
+        );
+
+        for (client_build, digest) in [
+            (BUNDLED_RUN_RULE_CLIENT_BUILD, "sha256:wrong-pack"),
+            (BUNDLED_RUN_RULE_CLIENT_BUILD, ""),
+            ("24687927", BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST),
+        ] {
+            let mut unsupported = exact.clone();
+            let entry = &mut unsupported.entries[0];
+            entry.client_build = client_build.into();
+            entry.protocol_pack_digest = digest.into();
+            entry.presentation_scene_name = Some("stale scene".into());
+            entry.participants[0].presentation_class_name = Some("stale class".into());
+            let raw_scene_id = entry.scene_id;
+            let raw_class_id = entry.participants[0].class_id;
+            let raw_damage = entry.participants[0].damage;
+
+            enrich_bpsr_catalog_presentation(&mut unsupported, "en-US").unwrap();
+            let entry = &unsupported.entries[0];
+            assert_eq!(entry.presentation_scene_name, None);
+            assert_eq!(entry.participants[0].presentation_class_name, None);
+            assert_eq!(entry.scene_id, raw_scene_id);
+            assert_eq!(entry.participants[0].class_id, raw_class_id);
+            assert_eq!(entry.participants[0].damage, raw_damage);
+            assert_eq!(
+                entry.participants[0].display_name.as_deref(),
+                Some("MarieRose")
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

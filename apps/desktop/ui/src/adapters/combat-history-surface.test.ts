@@ -964,6 +964,8 @@ describe("Combat History archive index", () => {
     active_combat_micros: 100,
     player_count: 1,
     deployment_id: "global",
+    client_build: "24687926",
+    protocol_pack_digest: `sha256:${"a".repeat(64)}`,
     region_id: "north-america",
     world_id: "asteria",
     team_damage: 1_000,

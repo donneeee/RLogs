@@ -28,6 +28,8 @@ describe("combat history contracts", () => {
           active_combat_micros: 10_000_000,
           player_count: 5,
           deployment_id: "global",
+          client_build: "24687926",
+          protocol_pack_digest: `sha256:${"a".repeat(64)}`,
           region_id: "north-america",
           world_id: "asteria",
           team_damage: 100_000,
@@ -40,13 +42,15 @@ describe("combat history contracts", () => {
             {
               actor_id: "8",
               entity_uuid: "216009015936",
-              display_name: null,
+              display_name: "Captured MarieRose",
               actor_kind: "player",
               class_id: 11,
               specialization_id: 116,
               presentation_class_name: "Marksman",
               presentation_specialization_name: "Wildpack Spec",
               level: 2,
+              weapon_item_id: 2_000_631,
+              weapon_breakthrough_count: 3,
               seasonal_score: 3505,
               primary_loadout: [
                 {
@@ -79,6 +83,39 @@ describe("combat history contracts", () => {
     expect(catalog.entries[0]?.is_favorite).toBe(false);
     expect(catalog.entries[0]?.presentation_scene_name).toBe("Tina Mindrealm");
     expect(catalog.entries[0]?.participants[0]?.primary_loadout[0]?.item_id).toBe(3000101);
+
+    const legacyCatalog = structuredClone(catalog) as unknown as Record<string, any>;
+    delete legacyCatalog.entries[0].client_build;
+    delete legacyCatalog.entries[0].protocol_pack_digest;
+    const legacy = parseCombatHistoryCatalog(legacyCatalog);
+    expect(legacy.entries[0]?.client_build).toBe("");
+    expect(legacy.entries[0]?.protocol_pack_digest).toBe("");
+    expect(legacy.entries[0]?.presentation_scene_name).toBeNull();
+    const legacyParticipant = legacy.entries[0]!.participants[0]!;
+    expect(legacyParticipant.presentation_name).toBeNull();
+    expect(legacyParticipant.presentation_kind).toBeNull();
+    expect(legacyParticipant.presentation_class_name).toBeNull();
+    expect(legacyParticipant.presentation_specialization_name).toBeNull();
+    expect(legacyParticipant.icon_asset_path).toBeNull();
+    expect(legacyParticipant.presentation_role).toBeNull();
+    expect(legacyParticipant.presentation_accent).toBeNull();
+    expect(legacyParticipant.weapon_icon_asset_path).toBeNull();
+    expect(legacyParticipant.weapon_presentation_name).toBeNull();
+    expect(legacyParticipant.weapon_level).toBeNull();
+    expect(legacyParticipant.weapon_level_min).toBeNull();
+    expect(legacyParticipant.weapon_level_max).toBeNull();
+    expect(legacyParticipant.weapon_badge_kind).toBeNull();
+    const legacySlot = legacyParticipant.primary_loadout[0]!;
+    expect(legacySlot.presentation_name).toBeNull();
+    expect(legacySlot.icon_asset_path).toBeNull();
+    expect(legacySlot.item_tier).toBeNull();
+    expect(legacySlot.maximum_tier).toBeNull();
+    expect(legacy.entries[0]?.scene_id).toBe(1632);
+    expect(legacyParticipant.class_id).toBe(11);
+    expect(legacyParticipant.specialization_id).toBe(116);
+    expect(legacyParticipant.weapon_item_id).toBe(2_000_631);
+    expect(legacyParticipant.display_name).toBe("Captured MarieRose");
+    expect(legacyParticipant.damage).toBe(100_000);
 
     const snapshot = parseCombatHistorySnapshot({
       schema_version: 1,

@@ -11,7 +11,7 @@ use rlogs_plugin_combat_meter::{
 use serde::{Deserialize, Serialize};
 
 const CATALOG_SCHEMA_VERSION: u16 = 1;
-const CATALOG_SUMMARY_VERSION: u16 = 3;
+const CATALOG_SUMMARY_VERSION: u16 = 4;
 const MAXIMUM_HISTORY_ENTRIES: usize = 2_048;
 const MAXIMUM_HISTORY_DETAIL_BYTES: u64 = 128 * 1024 * 1024;
 const MAXIMUM_HISTORY_INDEX_BYTES: u64 = 16 * 1024 * 1024;
@@ -60,6 +60,10 @@ pub struct CombatHistoryCatalogEntry {
     /// applied.
     #[serde(default)]
     pub client_build: String,
+    /// Exact decoder/protocol identity that authored this compact summary.
+    /// Missing legacy values cannot authorize bundled presentation labels.
+    #[serde(default)]
+    pub protocol_pack_digest: String,
     #[serde(default)]
     pub region_id: String,
     #[serde(default)]
@@ -368,6 +372,7 @@ impl CombatHistoryStore {
                 }),
                 deployment_id: snapshot.deployment_id.clone(),
                 client_build: snapshot.client_build.clone(),
+                protocol_pack_digest: snapshot.protocol_pack_digest.clone(),
                 region_id: snapshot.region_id.clone(),
                 world_id: snapshot.world_id.clone(),
                 team_damage: 0,
@@ -419,6 +424,9 @@ impl CombatHistoryStore {
             };
             entry.deployment_id.clone_from(&snapshot.deployment_id);
             entry.client_build.clone_from(&snapshot.client_build);
+            entry
+                .protocol_pack_digest
+                .clone_from(&snapshot.protocol_pack_digest);
             entry.region_id.clone_from(&snapshot.region_id);
             entry.world_id.clone_from(&snapshot.world_id);
             entry.game_time_micros = run.game_time_micros;
@@ -1622,6 +1630,7 @@ mod tests {
         assert_eq!(catalog.entries.len(), 1);
         assert_eq!(catalog.entries[0].terminal_state, "exited");
         assert_eq!(catalog.entries[0].client_build, "fixture");
+        assert_eq!(catalog.entries[0].protocol_pack_digest, "fixture");
         assert_eq!(
             catalog.entries[0].activity_family_id.as_deref(),
             Some("mech-facility")
@@ -1630,6 +1639,43 @@ mod tests {
         assert!(
             root.join("monitor.run-exited.combat-history.v1.json")
                 .is_file()
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn legacy_compact_summary_recovers_exact_digest_from_its_detail() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "rlogs-combat-history-provenance-backfill-{}-{unique}",
+            std::process::id()
+        ));
+        let snapshot = fixture_snapshot("monitor.provenance-backfill", &[0]);
+        let mut store = CombatHistoryStore::open(root.clone()).unwrap();
+        store.record(&snapshot, 123).unwrap();
+        drop(store);
+
+        let index_path = root.join("index.v1.json");
+        let mut legacy: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&index_path).unwrap()).unwrap();
+        let entry = legacy["entries"][0].as_object_mut().unwrap();
+        entry.remove("protocol_pack_digest");
+        entry.insert("summary_version".into(), serde_json::json!(3));
+        std::fs::write(&index_path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+
+        let reopened = CombatHistoryStore::open(root.clone()).unwrap();
+        let entry = &reopened.catalog().entries[0];
+        assert_eq!(entry.protocol_pack_digest, snapshot.protocol_pack_digest);
+        assert_eq!(entry.summary_version, CATALOG_SUMMARY_VERSION);
+        let persisted: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(index_path).unwrap()).unwrap();
+        assert_eq!(
+            persisted["entries"][0]["protocol_pack_digest"],
+            snapshot.protocol_pack_digest
         );
 
         std::fs::remove_dir_all(root).unwrap();
