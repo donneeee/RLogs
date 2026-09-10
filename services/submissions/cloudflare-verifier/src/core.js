@@ -116,13 +116,21 @@ export function validateTrainingOutput(value, wakeup) {
 }
 
 export function reconciliationSourceIdentity(source) {
-  return `${source.report_id}:${Number(source.run_index)}`;
+  return `${source.report_id}:${Number(source.run_index)}:${source.artifact_sha256}`;
 }
 
+export const RECONCILIATION_SCHEMA_VERSION = 17;
+
 export function validateReconciliationOutput(value, runGroupId, sources) {
-  if (value?.schema_version !== 16 || value?.run_group_id !== runGroupId ||
+  if (value?.schema_version !== RECONCILIATION_SCHEMA_VERSION || value?.run_group_id !== runGroupId ||
       !RECONCILIATION_ID.test(value?.reconciliation_id ?? "") ||
       !Array.isArray(value?.reports) || !value?.canonical_spine) return false;
+  if (value.reports.some((report) =>
+    typeof report?.deployment_id !== "string" || report.deployment_id.length === 0 ||
+    typeof report?.client_build !== "string" || report.client_build.length === 0 ||
+    typeof report?.protocol_pack_digest !== "string" || report.protocol_pack_digest.length === 0)) {
+    return false;
+  }
   const expected = sources.map(reconciliationSourceIdentity).sort();
   const actual = value.reports.map(reconciliationSourceIdentity).sort();
   if (actual.length !== expected.length || actual.some((identity, index) => identity !== expected[index])) {

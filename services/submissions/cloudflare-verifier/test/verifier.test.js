@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   BACKFILL_SOURCE_SCHEMA_VERSION, BACKFILL_TARGET_PROJECTION_REVISION,
   BACKFILL_TARGET_SCHEMA_VERSION,
+  RECONCILIATION_SCHEMA_VERSION,
   catalogEntry, compatibleProfileName, expectedReportId, reconcileCatalogEntry,
   isSchema12BackfillCandidate,
   sameChunkCommitments, runOneShotVerifier, validateOutput, validateReconciliationOutput,
@@ -152,23 +153,38 @@ test("verified runs materialize the public catalog contract", () => {
 
 test("reconciliation output must preserve the exact source set and canonical spine", () => {
   const sources = [
-    { report_id: `rpt_${"a".repeat(32)}`, run_index: 0 },
-    { report_id: `rpt_${"b".repeat(32)}`, run_index: 1 },
+    { report_id: `rpt_${"a".repeat(32)}`, run_index: 0, artifact_sha256: "a".repeat(64) },
+    { report_id: `rpt_${"b".repeat(32)}`, run_index: 1, artifact_sha256: "b".repeat(64) },
   ];
   const output = {
-    schema_version: 16,
+    schema_version: RECONCILIATION_SCHEMA_VERSION,
     reconciliation_id: `rec_${"c".repeat(32)}`,
     run_group_id: "run_exact",
     status: "cross_vantage_evidence_available",
     canonical_spine: sources[0],
-    reports: [...sources].reverse(),
+    reports: [...sources].reverse().map((source) => ({
+      ...source,
+      deployment_id: "global",
+      client_build: "24687926",
+      protocol_pack_digest: "sha256:pack",
+    })),
   };
   assert.equal(validateReconciliationOutput(output, "run_exact", sources), true);
-  assert.equal(validateReconciliationOutput({ ...output, schema_version: 15 }, "run_exact", sources), false);
+  assert.equal(validateReconciliationOutput({ ...output, schema_version: 16 }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, reports: [sources[0]] }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, canonical_spine: {
-    report_id: `rpt_${"d".repeat(32)}`, run_index: 0,
+    report_id: `rpt_${"d".repeat(32)}`, run_index: 0, artifact_sha256: "d".repeat(64),
   } }, "run_exact", sources), false);
+  assert.equal(validateReconciliationOutput({ ...output, reports: output.reports.map((report, index) =>
+    index === 0 ? { ...report, artifact_sha256: "d".repeat(64) } : report) }, "run_exact", sources), false);
+  for (const field of ["deployment_id", "client_build", "protocol_pack_digest"]) {
+    const missing = structuredClone(output);
+    delete missing.reports[0][field];
+    assert.equal(validateReconciliationOutput(missing, "run_exact", sources), false);
+    const empty = structuredClone(output);
+    empty.reports[0][field] = "";
+    assert.equal(validateReconciliationOutput(empty, "run_exact", sources), false);
+  }
 });
 
 test("reconciled catalog entries expose one group source set and authority status", () => {
