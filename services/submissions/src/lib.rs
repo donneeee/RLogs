@@ -4713,6 +4713,7 @@ where
         &run_projection.runs,
         &local_profile_observations,
         &local_state_observations,
+        &character_id_by_entity_uuid,
     );
     if runs.is_empty() {
         return Err(ServiceError::NoCompletedRun);
@@ -4804,6 +4805,7 @@ fn public_runs(
     analyses: &[RunAnalysis],
     local_profile_observations: &[LocalProfileObservation],
     local_state_observations: &[LocalStateObservation],
+    character_id_by_entity_uuid: &BTreeMap<i64, Option<String>>,
 ) -> Vec<PublicRun> {
     let localization_supported = bpsr_has_localization_authority(history).unwrap_or(false);
     history
@@ -4822,7 +4824,23 @@ fn public_runs(
             let participant_character_ids = view
                 .into_iter()
                 .flat_map(|view| &view.actors)
-                .filter_map(|actor| actor.character_id.clone())
+                .filter_map(|actor| {
+                    // History deliberately keeps stable character UIDs out of
+                    // its public actor rows. Recover membership only inside
+                    // this sealed-replay projection boundary, using an entity
+                    // UUID join that was made ambiguous on every conflict.
+                    match actor
+                        .entity_uuid
+                        .parse::<i64>()
+                        .ok()
+                        .and_then(|entity_uuid| character_id_by_entity_uuid.get(&entity_uuid))
+                    {
+                        // A present `None` is authoritative conflict evidence;
+                        // never revive a stale history-row identity over it.
+                        Some(character_id) => character_id.clone(),
+                        None => actor.character_id.clone(),
+                    }
+                })
                 .collect::<BTreeSet<_>>();
             let local_profile_witnesses = run_scoped_profile_witnesses(
                 analysis,
@@ -9503,6 +9521,243 @@ mod tests {
             "submission_disposition": "rank_candidate"
         }))
         .unwrap()
+    }
+
+    fn redacted_history_player(actor_id: u64, entity_uuid: i64) -> HistoryActorSummary {
+        serde_json::from_value(serde_json::json!({
+            "actor_id": actor_id.to_string(),
+            "entity_uuid": entity_uuid.to_string(),
+            "character_id": null,
+            "display_name": format!("Player {actor_id}"),
+            "actor_kind": "player",
+            "class_id": 4,
+            "specialization_id": 2,
+            "level": 80,
+            "damage": 100,
+            "effective_damage": 100,
+            "damage_taken": 0,
+            "healing": 0,
+            "effective_healing": 0,
+            "shielding": 0,
+            "hits": 1,
+            "critical_hits": 0,
+            "deaths": 0,
+            "death_seconds": [],
+            "dps": 10.0,
+            "encounter_dps": 10.0,
+            "hps": 0.0,
+            "tps": 0.0,
+            "rdps": 10.0,
+            "rdps_damage": 100,
+            "rdps_contribution_given": 0,
+            "rdps_contribution_received": 0,
+            "rdps_incomplete": false,
+            "apm": null,
+            "observed_cast_events": 0,
+            "abilities": [],
+            "targets": [],
+            "effects": [],
+            "series": []
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn public_runs_privately_joins_redacted_eight_player_history_to_local_witnesses() {
+        let actors = (1_u64..=8)
+            .map(|actor_id| redacted_history_player(actor_id, 10_000 + actor_id as i64))
+            .collect::<Vec<_>>();
+        let history = CombatHistorySnapshot {
+            schema_version: 1,
+            session_id: "redacted-eight-player".into(),
+            deployment_id: "global".into(),
+            region_id: "north-america".into(),
+            world_id: Some("world-1".into()),
+            client_build: "24687926".into(),
+            protocol_pack_digest: TEST_PROTOCOL_PACK_DIGEST.into(),
+            rdps_formula_identity: Some("sha256:test-formula".into()),
+            runs: vec![
+                serde_json::from_value(serde_json::json!({
+                    "run_index": 0,
+                    "activity_id": null,
+                    "activity_family_id": null,
+                    "scene_id": 6565,
+                    "presentation_scene_name": null,
+                    "instance_id": "instance-42",
+                    "difficulty_family": "master",
+                    "difficulty_tier": 20,
+                    "terminal_state": "completed",
+                    "entered_micros": 10,
+                    "started_micros": 10,
+                    "first_combat_micros": 20,
+                    "ended_micros": 40,
+                    "load_time_micros": 0,
+                    "precombat_time_micros": 10,
+                    "total_run_time_micros": 30,
+                    "game_time_micros": 30,
+                    "true_time_micros": null,
+                    "retry_count": 0,
+                    "boss_retry_count": 0,
+                    "wipe_count": 0,
+                    "cleared_encounter_count": 1,
+                    "last_encounter_terminal_state": "cleared",
+                    "rdps_status": "partial_packet_proven_rules",
+                    "apm_status": "unavailable",
+                    "views": [{
+                        "id": "all",
+                        "label": "Entire run",
+                        "kind": "all",
+                        "segment_indices": [],
+                        "elapsed_micros": 30,
+                        "active_combat_micros": 20,
+                        "rate_clock": [],
+                        "rate_clock_complete": false,
+                        "actors": actors,
+                        "targets": [],
+                        "damage_influences": [],
+                        "rdps_effect_presentations": []
+                    }]
+                }))
+                .unwrap(),
+            ],
+        };
+        let mut analysis = fixture_analysis("redacted-eight-player", Some("instance-42"));
+        analysis.timing.started_micros = 10;
+        analysis.timing.ended_micros = Some(40);
+        analysis.timing.observed_until_micros = 40;
+        analysis.timing.wall_time_micros = Some(30);
+        analysis.encounters.push(
+            serde_json::from_value(serde_json::json!({
+                "index": 0,
+                "encounter_id": "boss-1",
+                "kind": "boss",
+                "segment_index": 0,
+                "attempt_number": 1,
+                "is_retry": false,
+                "is_successful_attempt": true,
+                "terminal_state": "cleared",
+                "started_micros": 20,
+                "ended_micros": 40,
+                "wall_time_micros": 20,
+                "active_combat_micros": 20,
+                "combat_windows": [{
+                    "started_micros": 20,
+                    "ended_micros": 40,
+                    "duration_micros": 20,
+                    "closed_at_boundary": true
+                }],
+                "closed_at_run_end": true
+            }))
+            .unwrap(),
+        );
+        let local_character_id = "character-5";
+        let local_profile_observations = vec![LocalProfileObservation {
+            character_id: local_character_id.into(),
+            event_sequence: 5,
+            observed_micros: 5,
+            game_time_millis: None,
+            payload_sha256: "sha256:local-profile-five".into(),
+            loadout: ProfileLoadoutObservation {
+                class_id: Some(4),
+                specialization_id: Some(2),
+                equipped_module_count: Some(1),
+                module_snapshot_disposition: PublicCombatModuleSnapshotDisposition::Complete,
+                equipped_modules: vec![PublicCombatEquippedModule {
+                    equipped_slot: 1,
+                    config_id: 5_500_104,
+                    level: Some(6),
+                    effects: vec![PublicCombatModuleEffect {
+                        effect_id: 1110,
+                        initial_link_points: Some(20),
+                    }],
+                }],
+                ..Default::default()
+            },
+        }];
+        let local_state_observations = vec![LocalStateObservation {
+            character_id: local_character_id.into(),
+            related_character_id: None,
+            raw: RawLocalStateObservation {
+                actor_id: 5,
+                entity_uuid: 10_005,
+                kind: LocalStateWitnessKind::EntityAttributes,
+                update_kind: EntityAttributeUpdateKind::Snapshot,
+                event_sequence: 6,
+                observed_micros: 6,
+                game_time_millis: Some(6),
+                payload_sha256: "sha256:local-state-five".into(),
+                wire: Some((6, 1, 1)),
+                related_entity_uuid: None,
+            },
+        }];
+        let character_id_by_entity_uuid = (1_i64..=8)
+            .map(|actor_id| (10_000 + actor_id, Some(format!("character-{actor_id}"))))
+            .collect::<BTreeMap<_, _>>();
+
+        let runs = public_runs(
+            "rpt_redacted_eight_player",
+            &history,
+            &[analysis.clone()],
+            &local_profile_observations,
+            &local_state_observations,
+            &character_id_by_entity_uuid,
+        );
+
+        assert_eq!(runs.len(), 1);
+        let run = &runs[0];
+        assert_eq!(run.participants.len(), 8);
+        assert!(
+            run.participants
+                .iter()
+                .all(|participant| participant.character_id.is_none()),
+            "the private join must not publish stable character UIDs"
+        );
+        assert_eq!(run.local_profile_character_ids, [local_character_id]);
+        assert_eq!(run.local_profile_witnesses.len(), 1);
+        assert_eq!(
+            run.local_profile_witnesses[0].character_id,
+            local_character_id
+        );
+        assert_eq!(run.local_state_witnesses.len(), 1);
+        assert_eq!(
+            run.local_state_witnesses[0].character_id,
+            local_character_id
+        );
+        assert_eq!(run.combat_loadout_phases.len(), 1);
+        assert_eq!(
+            run.combat_loadout_phases[0].equipped_modules[0].effects[0].effect_id,
+            1110
+        );
+        assert_eq!(
+            run.combat_loadout_phases[0].equipped_modules[0].effects[0].initial_link_points,
+            Some(20),
+            "the exact rune effect payload must survive the private participant join"
+        );
+
+        let mut conflicting_history = history.clone();
+        conflicting_history.runs[0].views[0].actors[7].character_id = Some("character-8".into());
+        let mut conflicting_map = character_id_by_entity_uuid.clone();
+        conflicting_map.insert(10_008, None);
+        let mut conflicting_profile = local_profile_observations[0].clone();
+        conflicting_profile.character_id = "character-8".into();
+        let mut conflicting_state = local_state_observations[0].clone();
+        conflicting_state.character_id = "character-8".into();
+        conflicting_state.raw.actor_id = 8;
+        conflicting_state.raw.entity_uuid = 10_008;
+
+        let conflicting_runs = public_runs(
+            "rpt_conflicting_private_identity",
+            &conflicting_history,
+            &[analysis],
+            &[conflicting_profile],
+            &[conflicting_state],
+            &conflicting_map,
+        );
+        let conflicting_run = &conflicting_runs[0];
+        assert!(conflicting_run.local_profile_character_ids.is_empty());
+        assert!(conflicting_run.local_profile_witnesses.is_empty());
+        assert!(conflicting_run.local_state_witnesses.is_empty());
+        assert!(conflicting_run.combat_loadout_phases.is_empty());
     }
 
     #[test]
