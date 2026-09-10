@@ -27,6 +27,7 @@ pub struct RunProjectionSnapshot {
 
 pub struct EncounterRecorderPlugin {
     config: RunReducerConfig,
+    enabled: bool,
     header: Option<RlogHeader>,
     reducer: Option<RunSessionReducer>,
 }
@@ -36,19 +37,41 @@ impl EncounterRecorderPlugin {
         config.sequence_policy = RunEventSequencePolicy::MonotonicFiltered;
         Self {
             config,
+            enabled: true,
             header: None,
             reducer: None,
         }
     }
 
+    /// Constructs a recorder that preserves the projection envelope but never
+    /// interprets events as run boundaries or completion. Use when the game
+    /// runtime identity has no authoritative reducer configuration.
+    pub fn disabled() -> Self {
+        Self {
+            config: RunReducerConfig::default(),
+            enabled: false,
+            header: None,
+            reducer: None,
+        }
+    }
+
+    pub fn authoritative_projection_enabled(&self) -> bool {
+        self.enabled
+    }
+
     /// Starts an incremental projection for the live capture path.
     pub fn begin_live(&mut self, header: &RlogHeader) {
         self.header = Some(header.clone());
-        self.reducer = Some(RunSessionReducer::new(self.config.clone()));
+        self.reducer = self
+            .enabled
+            .then(|| RunSessionReducer::new(self.config.clone()));
     }
 
     /// Applies one canonical event without replaying a sealed archive.
     pub fn observe_live(&mut self, envelope: &EventEnvelope) -> Result<(), PluginFailure> {
+        if !self.enabled {
+            return Ok(());
+        }
         self.reducer
             .as_mut()
             .ok_or_else(|| PluginFailure::Message("encounter recorder was not started".into()))?
@@ -62,12 +85,15 @@ impl EncounterRecorderPlugin {
             .header
             .as_ref()
             .ok_or_else(|| PluginFailure::Message("encounter recorder has no log header".into()))?;
-        let runs = self
-            .reducer
-            .as_ref()
-            .ok_or_else(|| PluginFailure::Message("encounter recorder was not started".into()))?
-            .clone()
-            .finish();
+        let runs = if self.enabled {
+            self.reducer
+                .as_ref()
+                .ok_or_else(|| PluginFailure::Message("encounter recorder was not started".into()))?
+                .clone()
+                .finish()
+        } else {
+            Vec::new()
+        };
         Ok(RunProjectionSnapshot {
             schema_version: RUN_PROJECTION_SCHEMA_VERSION,
             session_id: header.session_id.clone(),
@@ -114,7 +140,9 @@ impl ReplayPlugin for EncounterRecorderPlugin {
         _: &mut PluginOutputSink<'_>,
     ) -> Result<(), PluginFailure> {
         self.header = Some(header.clone());
-        self.reducer = Some(RunSessionReducer::new(self.config.clone()));
+        self.reducer = self
+            .enabled
+            .then(|| RunSessionReducer::new(self.config.clone()));
         Ok(())
     }
 
@@ -123,6 +151,9 @@ impl ReplayPlugin for EncounterRecorderPlugin {
         envelope: &EventEnvelope,
         _: &mut PluginOutputSink<'_>,
     ) -> Result<(), PluginFailure> {
+        if !self.enabled {
+            return Ok(());
+        }
         self.reducer
             .as_mut()
             .ok_or_else(|| PluginFailure::Message("encounter recorder was not started".into()))?
@@ -135,11 +166,14 @@ impl ReplayPlugin for EncounterRecorderPlugin {
             .header
             .take()
             .ok_or_else(|| PluginFailure::Message("encounter recorder has no log header".into()))?;
-        let runs = self
-            .reducer
-            .take()
-            .ok_or_else(|| PluginFailure::Message("encounter recorder was not started".into()))?
-            .finish();
+        let runs = if self.enabled {
+            self.reducer
+                .take()
+                .ok_or_else(|| PluginFailure::Message("encounter recorder was not started".into()))?
+                .finish()
+        } else {
+            Vec::new()
+        };
         output.snapshot(
             RUN_PROJECTION_SCHEMA_ID,
             RUN_PROJECTION_SCHEMA_VERSION,
@@ -185,6 +219,56 @@ mod tests {
             protocol_pack_digest: "sha256:fixture".into(),
             evidence: Vec::new(),
         }
+    }
+
+    #[test]
+    fn disabled_recorder_projects_no_runs_from_started_and_completed_artifact() {
+        let region = region();
+        let header = RlogHeader::new("disabled-run-fixture", region.clone(), "unit-test");
+        let mut writer = RlogWriter::new(Vec::new(), header).unwrap();
+        let mut events = EventEnvelopeFactory::new("disabled-run-fixture", region);
+        for (sequence, kind) in [DungeonEventKind::Started, DungeonEventKind::Completed]
+            .into_iter()
+            .enumerate()
+        {
+            let envelope = events
+                .emit(CanonicalEventDraft {
+                    time: EventTime {
+                        observed_micros: (sequence as u64 + 1) * 1_000_000,
+                        game_time_millis: None,
+                    },
+                    provenance: EventProvenance::wire(sequence as u64 + 1, 1, 1),
+                    sensitivity: EventSensitivity::PublicGameplay,
+                    kind: CanonicalEventDraftKind::Dungeon(DungeonEvent {
+                        kind,
+                        dungeon_id: Some(DungeonId(7001)),
+                        instance_id: Some("instance-1".into()),
+                        difficulty_id: Some(3),
+                        objective_map_key: None,
+                        objective_id: None,
+                        objective_value: None,
+                        objective_complete: None,
+                        objective_catalog: None,
+                        flow: None,
+                    }),
+                })
+                .unwrap();
+            writer.push(&envelope).unwrap();
+        }
+        let report = replay_rlog(
+            BufReader::new(Cursor::new(writer.finish().unwrap())),
+            EncounterRecorderPlugin::disabled(),
+            RlogLimits::default(),
+            PluginRunLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(report.metrics.events_seen, 2);
+        assert_eq!(report.metrics.events_delivered, 2);
+        let PluginOutput::Snapshot { payload, .. } = &report.outputs[0] else {
+            panic!("expected run projection snapshot");
+        };
+        let snapshot: RunProjectionSnapshot = serde_json::from_value(payload.clone()).unwrap();
+        assert!(snapshot.runs.is_empty());
     }
 
     #[test]

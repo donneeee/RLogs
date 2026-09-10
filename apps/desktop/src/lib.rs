@@ -92,21 +92,29 @@ use rlogs_game_bpsr::{
     RdpsValidationAnalyzer, RdpsValidationProgress, RdpsValidationReport, RegionResolverError,
     ResolvedRegion, RouteKey, SealedDungeonRunLog, ServerRealmCatalog, TrainingDummyLogWriter,
     auxiliary_action_presentation, battle_imagine_presentation, bundled_gauntlet_scene_ids,
-    bundled_localization_supports, bundled_run_reducer_config, bundled_scene_run_identities,
+    bundled_localization_supports, bundled_run_reducer_config_for_identity,
+    bundled_run_rules_support_identity, bundled_scene_run_identities,
     bundled_terminal_boss_scene_ids, character_id_from_entity_uuid, classify_bpsr_tcp_payload,
     combat_action_presentation, combat_breakdown_ability_id, combat_recount_group_id,
     confirmed_damage_contribution_rules, fight_attribute_presentation_catalog,
-    installed_container_for_executable, is_boss_monster, is_localized_class_name,
-    localized_auxiliary_action_name, localized_battle_imagine_name, localized_class_identities,
-    localized_combat_action_name_for_build, localized_monster_name_for_build,
-    localized_recount_group_name_for_build, localized_scene_name_for_build,
-    localized_specialization_identities, project_local_profile_packages,
-    proven_state_damage_contribution_effect_ids, rdps_attribution_effect_presentation,
-    record_offline_capture, resolve_actor_combat_identity, resolve_actor_combat_presentation,
-    resolve_live_protocol_pack, resolve_packet_detected_protocol_pack, scene_boss_monster_ids,
-    state_damage_contribution_formula_identity, state_damage_contribution_target_matches,
-    status_effect_display_presentation_for_build, status_effect_presentation,
-    stimen_floor_encounter_kind, weapon_level_presentation, weapon_presentation,
+    installed_container_for_executable, is_boss_monster, is_boss_monster_for_identity,
+    is_localized_class_name, localized_auxiliary_action_name, localized_battle_imagine_name,
+    localized_class_identities, localized_combat_action_name_for_build,
+    localized_monster_name_for_build, localized_recount_group_name_for_build,
+    localized_scene_name_for_build, localized_specialization_identities,
+    project_local_profile_packages, proven_state_damage_contribution_effect_ids,
+    rdps_attribution_effect_presentation, record_offline_capture, resolve_actor_combat_identity,
+    resolve_actor_combat_presentation, resolve_live_protocol_pack,
+    resolve_packet_detected_protocol_pack, scene_boss_monster_ids,
+    scene_boss_monster_ids_for_identity, state_damage_contribution_formula_identity,
+    state_damage_contribution_target_matches, status_effect_display_presentation_for_build,
+    status_effect_presentation, stimen_floor_encounter_kind, weapon_level_presentation,
+    weapon_presentation,
+};
+#[cfg(test)]
+use rlogs_game_bpsr::{
+    BUNDLED_RUN_RULE_CLIENT_BUILD, BUNDLED_RUN_RULE_DEPLOYMENT_ID,
+    BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST, bundled_run_reducer_config,
 };
 use rlogs_log_format::{RlogHeader, RlogLimits, RlogReader, RlogReplaySummary};
 use rlogs_plugin_api::{PluginCapability, PluginDependency, PluginRuntime, PluginWorkspaceTabKind};
@@ -1546,13 +1554,27 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
         .snapshot
         .as_ref()
         .map(|snapshot| {
-            let stimen_boss_floor = snapshot
-                .scene_id
-                .and_then(stimen_floor_encounter_kind)
-                .is_some();
-            let exact_scene_boss_ids = snapshot
-                .scene_id
-                .and_then(|scene_id| scene_boss_monster_ids(scene_id).ok().flatten());
+            let has_run_authority = bundled_run_rules_support_identity(
+                &snapshot.deployment_id,
+                &snapshot.client_build,
+                &snapshot.protocol_pack_digest,
+            )
+            .unwrap_or(false);
+            let stimen_boss_floor = has_run_authority
+                && snapshot
+                    .scene_id
+                    .and_then(stimen_floor_encounter_kind)
+                    .is_some();
+            let exact_scene_boss_ids = snapshot.scene_id.and_then(|scene_id| {
+                scene_boss_monster_ids_for_identity(
+                    &snapshot.deployment_id,
+                    &snapshot.client_build,
+                    &snapshot.protocol_pack_digest,
+                    scene_id,
+                )
+                .ok()
+                .flatten()
+            });
             let boss_candidates = snapshot
                 .actors
                 .iter()
@@ -1562,7 +1584,15 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
                     let is_boss = stimen_boss_floor
                         || exact_scene_boss_ids
                             .map(|ids| ids.contains(&monster_id))
-                            .unwrap_or_else(|| is_boss_monster(monster_id).unwrap_or(false));
+                            .unwrap_or_else(|| {
+                                is_boss_monster_for_identity(
+                                    &snapshot.deployment_id,
+                                    &snapshot.client_build,
+                                    &snapshot.protocol_pack_digest,
+                                    monster_id,
+                                )
+                                .unwrap_or(false)
+                            });
                     if !is_boss {
                         return None;
                     }
@@ -8795,7 +8825,7 @@ impl RuntimeController {
                         },
                         producer.clone(),
                     );
-                    let mut live_meter = bpsr_combat_timeline_plugin()?;
+                    let mut live_meter = bpsr_combat_timeline_plugin_for_region(&live_header.region)?;
                     live_meter.begin_live(&live_header);
                     let mut rdps_validation = RdpsValidationAnalyzer::bundled().map_err(|error| {
                         format!("could not load the BPSR rDPS validation watch: {error}")
@@ -8811,9 +8841,7 @@ impl RuntimeController {
                     let checkpoint_writer = RdpsValidationCheckpointWriter::spawn(
                         rdps_validation_checkpoint_path.clone(),
                     )?;
-                    let encounter_config = bundled_run_reducer_config()
-                        .map_err(|error| format!("could not load BPSR run rules: {error}"))?;
-                    let mut live_encounter = EncounterRecorderPlugin::new(encounter_config);
+                    let mut live_encounter = bpsr_encounter_recorder(&live_header.region)?;
                     live_encounter.begin_live(&live_header);
                     let mut captured_run_projections: VecDeque<Option<CapturedRunProjection>> =
                         VecDeque::new();
@@ -11870,16 +11898,19 @@ fn format_rdps_validation_remaining_domains(progress: &RdpsValidationProgress) -
 fn replay_builtins_and_build_artifact(
     path: &Path,
 ) -> Result<(PluginRunReport, PluginRunReport, LocalLogArtifact), String> {
+    let header_file =
+        File::open(path).map_err(|error| format!("could not open {}: {error}", path.display()))?;
+    let header_reader = RlogReader::new(BufReader::new(header_file), RlogLimits::default())
+        .map_err(|error| format!("could not validate combat log header: {error}"))?;
+    let region = header_reader.header().region.clone();
     let file =
         File::open(path).map_err(|error| format!("could not open {}: {error}", path.display()))?;
     let mut tracked = LogArtifactTrackingReader::new(file, ArtifactBuildLimits::default())
         .map_err(|error| format!("could not prepare sealed upload artifact: {error}"))?;
-    let encounter_config = bundled_run_reducer_config()
-        .map_err(|error| format!("could not load BPSR run rules: {error}"))?;
     let (header, combat_plugin, encounter_recorder) = replay_rlog_pair(
         BufReader::new(&mut tracked),
-        bpsr_combat_timeline_plugin()?,
-        EncounterRecorderPlugin::new(encounter_config),
+        bpsr_combat_timeline_plugin_for_region(&region)?,
+        bpsr_encounter_recorder(&region)?,
         RlogLimits::default(),
         PluginRunLimits::default(),
         PluginRunLimits::default(),
@@ -11892,11 +11923,14 @@ fn replay_builtins_and_build_artifact(
     Ok((combat_plugin, encounter_recorder, upload_artifact))
 }
 
+#[cfg(test)]
 fn bpsr_combat_timeline_plugin() -> Result<CombatTimelinePlugin, String> {
-    bpsr_combat_timeline_plugin_with_remote_factors(None)
+    let region = reviewed_bpsr_region_context()?;
+    bpsr_combat_timeline_plugin_for_region(&region)
 }
 
 fn bpsr_combat_timeline_plugin_with_remote_factors(
+    region: &RegionContext,
     remote_factors: Option<BpsrRemoteFactorTimeline>,
 ) -> Result<CombatTimelinePlugin, String> {
     let projector = match remote_factors {
@@ -11905,22 +11939,72 @@ fn bpsr_combat_timeline_plugin_with_remote_factors(
         }
         None => BpsrStateDamageContributionProjector::new_live()?,
     };
-    Ok(CombatTimelinePlugin::with_damage_contribution_projection(
+    let plugin = CombatTimelinePlugin::with_damage_contribution_projection(
         confirmed_damage_contribution_rules()?,
         Some(Box::new(projector)),
     )?
     .with_ability_breakdown_resolver(combat_breakdown_ability_id)
-    .with_boss_monster_resolver(bpsr_live_boss_monster)
-    .with_terminal_boss_scenes(
-        bundled_terminal_boss_scene_ids().map_err(|error| error.to_string())?,
-    )
     .with_live_health_attributes(LiveHealthAttributeMapping {
         current_hp: 11_310,
         max_hp: 11_320,
+    });
+    if !bpsr_has_run_authority(region)? {
+        return Ok(plugin);
+    }
+    Ok(plugin
+        .with_boss_monster_resolver(bpsr_live_boss_monster)
+        .with_terminal_boss_scenes(
+            bundled_terminal_boss_scene_ids().map_err(|error| error.to_string())?,
+        )
+        .with_continuous_encounter_scenes(
+            bundled_gauntlet_scene_ids().map_err(|error| error.to_string())?,
+        ))
+}
+
+fn bpsr_combat_timeline_plugin_for_region(
+    region: &RegionContext,
+) -> Result<CombatTimelinePlugin, String> {
+    bpsr_combat_timeline_plugin_with_remote_factors(region, None)
+}
+
+fn bpsr_encounter_recorder(region: &RegionContext) -> Result<EncounterRecorderPlugin, String> {
+    if !bpsr_has_run_authority(region)? {
+        return Ok(EncounterRecorderPlugin::disabled());
+    }
+    let config = bundled_run_reducer_config_for_identity(
+        &region.identity.deployment_id,
+        &region.client_build,
+        &region.protocol_pack_digest,
+    )
+    .map_err(|error| format!("could not load BPSR run rules: {error}"))?
+    .ok_or_else(|| {
+        "explicitly authorized BPSR run-rule identity changed during construction".to_owned()
+    })?;
+    Ok(EncounterRecorderPlugin::new(config))
+}
+
+fn bpsr_has_run_authority(region: &RegionContext) -> Result<bool, String> {
+    bundled_run_rules_support_identity(
+        &region.identity.deployment_id,
+        &region.client_build,
+        &region.protocol_pack_digest,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+fn reviewed_bpsr_region_context() -> Result<RegionContext, String> {
+    Ok(RegionContext {
+        identity: RegionIdentity {
+            deployment_id: BUNDLED_RUN_RULE_DEPLOYMENT_ID.into(),
+            region_id: "test".into(),
+            realm_id: None,
+            world_id: None,
+        },
+        client_build: BUNDLED_RUN_RULE_CLIENT_BUILD.into(),
+        protocol_pack_digest: BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into(),
+        evidence: Vec::new(),
     })
-    .with_continuous_encounter_scenes(
-        bundled_gauntlet_scene_ids().map_err(|error| error.to_string())?,
-    ))
 }
 
 fn bpsr_live_boss_monster(scene_id: Option<i32>, monster_id: i64) -> bool {
@@ -11955,12 +12039,9 @@ fn replay_bpsr_combat_history_live_one_pass(path: &Path) -> Result<CombatHistory
     let mut reader = RlogReader::new(BufReader::new(file), RlogLimits::default())
         .map_err(|error| format!("could not validate combat log header: {error}"))?;
     let header = reader.header().clone();
-    let mut meter = bpsr_combat_timeline_plugin()?;
+    let mut meter = bpsr_combat_timeline_plugin_for_region(&header.region)?;
     meter.begin_live(&header);
-    let mut encounter = EncounterRecorderPlugin::new(
-        bundled_run_reducer_config()
-            .map_err(|error| format!("could not load BPSR run rules: {error}"))?,
-    );
+    let mut encounter = bpsr_encounter_recorder(&header.region)?;
     encounter.begin_live(&header);
     while let Some(event) = reader
         .next_event()
@@ -12074,12 +12155,10 @@ fn replay_bpsr_combat_history_interruptible(
     let mut reader = RlogReader::new(tracked, RlogLimits::default())
         .map_err(|error| format!("could not validate combat log header: {error}"))?;
     let header = reader.header().clone();
-    let mut meter = bpsr_combat_timeline_plugin_with_remote_factors(Some(remote_factors))?;
+    let mut meter =
+        bpsr_combat_timeline_plugin_with_remote_factors(&header.region, Some(remote_factors))?;
     meter.begin_live(&header);
-    let mut encounter = EncounterRecorderPlugin::new(
-        bundled_run_reducer_config()
-            .map_err(|error| format!("could not load BPSR run rules: {error}"))?,
-    );
+    let mut encounter = bpsr_encounter_recorder(&header.region)?;
     encounter.begin_live(&header);
     let mut event_count = 0_u64;
     while let Some(event) = reader
@@ -12845,6 +12924,12 @@ fn enrich_bpsr_history_presentation(
     let localization_client_build = snapshot.client_build.clone();
     let localization_supported =
         bundled_localization_supports(&localization_deployment_id, &localization_client_build);
+    let run_authority_supported = bundled_run_rules_support_identity(
+        &snapshot.deployment_id,
+        &snapshot.client_build,
+        &snapshot.protocol_pack_digest,
+    )
+    .map_err(|error| format!("could not inspect BPSR run-rule authority: {error}"))?;
     let run_identities = bundled_scene_run_identities()
         .map_err(|error| format!("could not load BPSR run identity rules: {error}"))?;
     for run in &mut snapshot.runs {
@@ -12853,13 +12938,15 @@ fn enrich_bpsr_history_presentation(
             continue;
         }
         let observed_specializations = observed_run_specializations(run)?;
-        enrich_bpsr_scene_run_identity(
-            run.scene_id,
-            &mut run.activity_id,
-            &mut run.activity_family_id,
-            &mut run.difficulty_family,
-            &run_identities,
-        );
+        if run_authority_supported {
+            enrich_bpsr_scene_run_identity(
+                run.scene_id,
+                &mut run.activity_id,
+                &mut run.activity_family_id,
+                &mut run.difficulty_family,
+                &run_identities,
+            );
+        }
         run.presentation_scene_name = run
             .scene_id
             .map(|scene_id| {
@@ -13718,8 +13805,6 @@ fn enrich_bpsr_catalog_presentation(
     catalog: &mut CombatHistoryCatalog,
     locale: &str,
 ) -> Result<(), String> {
-    let run_identities = bundled_scene_run_identities()
-        .map_err(|error| format!("could not load BPSR run identity rules: {error}"))?;
     for entry in &mut catalog.entries {
         if !bundled_localization_supports(&entry.deployment_id, &entry.client_build) {
             entry.presentation_scene_name = None;
@@ -13728,13 +13813,9 @@ fn enrich_bpsr_catalog_presentation(
             }
             continue;
         }
-        enrich_bpsr_scene_run_identity(
-            entry.scene_id,
-            &mut entry.activity_id,
-            &mut entry.activity_family_id,
-            &mut entry.difficulty_family,
-            &run_identities,
-        );
+        // The compact catalog does not retain protocol-pack identity. Preserve
+        // captured run fields, but never backfill authoritative scene/run
+        // semantics without reopening the sealed detail snapshot.
         entry.presentation_scene_name = entry
             .scene_id
             .map(|scene_id| {
@@ -14837,6 +14918,44 @@ mod tests {
     };
     use rlogs_log_format::{RlogSeal, RlogWriter};
     use rlogs_network::IpEndpoint;
+
+    #[test]
+    fn desktop_run_authority_requires_the_sealed_exact_runtime_identity() {
+        let exact = reviewed_bpsr_region_context().unwrap();
+        assert!(bpsr_has_run_authority(&exact).unwrap());
+        assert!(
+            bpsr_encounter_recorder(&exact)
+                .unwrap()
+                .authoritative_projection_enabled()
+        );
+
+        let mut wrong_deployment = exact.clone();
+        wrong_deployment.identity.deployment_id = "cn".into();
+        assert!(!bpsr_has_run_authority(&wrong_deployment).unwrap());
+        assert!(
+            !bpsr_encounter_recorder(&wrong_deployment)
+                .unwrap()
+                .authoritative_projection_enabled()
+        );
+
+        let mut wrong_build = exact.clone();
+        wrong_build.client_build = "wrong-build".into();
+        assert!(!bpsr_has_run_authority(&wrong_build).unwrap());
+        assert!(
+            !bpsr_encounter_recorder(&wrong_build)
+                .unwrap()
+                .authoritative_projection_enabled()
+        );
+
+        let mut wrong_digest = exact;
+        wrong_digest.protocol_pack_digest = "sha256:wrong-pack".into();
+        assert!(!bpsr_has_run_authority(&wrong_digest).unwrap());
+        assert!(
+            !bpsr_encounter_recorder(&wrong_digest)
+                .unwrap()
+                .authoritative_projection_enabled()
+        );
+    }
 
     fn test_photo_wall_reference() -> LocalPhotoAssetReference {
         LocalPhotoAssetReference {

@@ -91,7 +91,10 @@ pub use behavior::{
     BundledObjectiveCatalog, DungeonObjectivePresentation, GameDataObjectiveCatalog,
     ObjectiveCatalogError, ObjectiveCatalogResolver, bundled_dungeon_objective_presentation,
 };
-pub use boss_presentation::{is_boss_monster, scene_boss_monster_ids};
+pub use boss_presentation::{
+    is_boss_monster, is_boss_monster_for_identity, scene_boss_monster_ids,
+    scene_boss_monster_ids_for_identity,
+};
 pub use catalog::{
     MappingConfidence, MappingProvenance, RouteCatalog, RouteCatalogError, RouteDefinition,
 };
@@ -264,8 +267,11 @@ pub use region::{
 };
 pub use route::{FragmentKind, PacketDirection, RouteKey, RoutedMessage};
 pub use run_rules::{
-    BpsrRunRuleError, BpsrSceneRunIdentity, StimenFloorEncounterKind, bundled_gauntlet_scene_ids,
-    bundled_run_reducer_config, bundled_run_rule_catalogs, bundled_scene_run_identities,
+    BUNDLED_RUN_RULE_CLIENT_BUILD, BUNDLED_RUN_RULE_DEPLOYMENT_ID,
+    BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST, BpsrRunRuleError, BpsrSceneRunIdentity,
+    StimenFloorEncounterKind, bundled_gauntlet_scene_ids, bundled_run_reducer_config,
+    bundled_run_reducer_config_for_identity, bundled_run_rule_catalogs,
+    bundled_run_rules_support_identity, bundled_scene_run_identities,
     bundled_terminal_boss_scene_ids, stimen_floor_encounter_kind,
 };
 pub use run_segmentation::{

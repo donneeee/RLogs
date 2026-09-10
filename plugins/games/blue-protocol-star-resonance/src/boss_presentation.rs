@@ -4,6 +4,7 @@ use std::sync::OnceLock;
 use serde::Deserialize;
 
 use crate::run_rules::bundled_run_reducer_config;
+use crate::run_rules::bundled_run_rules_support_identity;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -77,6 +78,20 @@ pub fn is_boss_monster(monster_id: i64) -> Result<bool, String> {
         .is_ok())
 }
 
+pub fn is_boss_monster_for_identity(
+    deployment_id: &str,
+    client_build: &str,
+    protocol_pack_digest: &str,
+    monster_id: i64,
+) -> Result<bool, String> {
+    if !bundled_run_rules_support_identity(deployment_id, client_build, protocol_pack_digest)
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(false);
+    }
+    is_boss_monster(monster_id)
+}
+
 /// Returns the exact reviewed boss identities for a scene when its run rule
 /// provides them. An absent set means callers must use the boss-type catalog;
 /// it never means that every monster with an HP bar is a boss.
@@ -84,9 +99,31 @@ pub fn scene_boss_monster_ids(scene_id: i32) -> Result<Option<&'static BTreeSet<
     Ok(scene_boss_monster_catalog()?.get(&scene_id))
 }
 
+pub fn scene_boss_monster_ids_for_identity(
+    deployment_id: &str,
+    client_build: &str,
+    protocol_pack_digest: &str,
+    scene_id: i32,
+) -> Result<Option<&'static BTreeSet<i64>>, String> {
+    if !bundled_run_rules_support_identity(deployment_id, client_build, protocol_pack_digest)
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(None);
+    }
+    scene_boss_monster_ids(scene_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn authorized_identity() -> (&'static str, &'static str, &'static str) {
+        (
+            crate::BUNDLED_RUN_RULE_DEPLOYMENT_ID,
+            crate::BUNDLED_RUN_RULE_CLIENT_BUILD,
+            crate::BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+        )
+    }
 
     #[test]
     fn current_build_boss_type_catalog_is_sorted_and_queryable() {
@@ -106,5 +143,41 @@ mod tests {
         assert_eq!(scene_boss_monster_ids(12_022).unwrap().unwrap(), guild_hunt);
         assert!(scene_boss_monster_ids(12_021).unwrap().is_none());
         assert!(scene_boss_monster_ids(12_024).unwrap().is_none());
+    }
+
+    #[test]
+    fn boss_presentation_requires_the_exact_authorized_runtime_identity() {
+        let (deployment, build, digest) = authorized_identity();
+        assert!(is_boss_monster_for_identity(deployment, build, digest, 33_500).unwrap());
+        assert!(
+            scene_boss_monster_ids_for_identity(deployment, build, digest, 6_525)
+                .unwrap()
+                .is_some()
+        );
+        for (candidate_deployment, candidate_build, candidate_digest) in [
+            ("cn", build, digest),
+            (deployment, "wrong-build", digest),
+            (deployment, build, "sha256:wrong-pack"),
+        ] {
+            assert!(
+                !is_boss_monster_for_identity(
+                    candidate_deployment,
+                    candidate_build,
+                    candidate_digest,
+                    33_500,
+                )
+                .unwrap()
+            );
+            assert!(
+                scene_boss_monster_ids_for_identity(
+                    candidate_deployment,
+                    candidate_build,
+                    candidate_digest,
+                    6_525,
+                )
+                .unwrap()
+                .is_none()
+            );
+        }
     }
 }

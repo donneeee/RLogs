@@ -26,18 +26,18 @@ use rlogs_combat::{
 };
 use rlogs_events::{
     ActorKind, CanonicalEvent, EntityAttributeUpdateKind, EntityRef, EventEnvelope,
-    EventProvenance, EventSensitivity, EvidenceSource, GameProfileEvent, RegionIdentity, RunState,
-    StatusState, TimelineEventKind,
+    EventProvenance, EventSensitivity, EvidenceSource, GameProfileEvent, RegionContext,
+    RegionIdentity, RunState, StatusState, TimelineEventKind,
 };
 use rlogs_game_bpsr::{
     BPSR_GAME_PLUGIN_ID, BpsrLifeWaveTriggerLearner, BpsrRemoteFactorLearner,
     BpsrStatResonanceTransitionLearner, BpsrStateDamageContributionProjector,
     CharacterProfilePatch, SwiftVortexCandidateAuditAnalyzer, SwiftVortexCandidateAuditReport,
     TRAINING_DURATION_MICROS, TrainingDummyController, TrainingDummyPhase,
-    bundled_localization_supports, bundled_run_reducer_config, canonicalize_bpsr_region_identity,
-    character_id_from_entity_uuid, combat_action_presentation, combat_breakdown_ability_id,
-    combat_recount_group_id, confirmed_damage_contribution_rules, is_stat_resonance_status,
-    localized_class_name, localized_combat_action_name_for_build,
+    bundled_localization_supports, bundled_run_reducer_config_for_identity,
+    canonicalize_bpsr_region_identity, character_id_from_entity_uuid, combat_action_presentation,
+    combat_breakdown_ability_id, combat_recount_group_id, confirmed_damage_contribution_rules,
+    is_stat_resonance_status, localized_class_name, localized_combat_action_name_for_build,
     localized_recount_group_name_for_build, localized_scene_name_for_build,
     localized_specialization_name,
 };
@@ -70,6 +70,11 @@ use profiles::{
     PhotoAssetContent, PhotoAssetReceipt, PhotoCatalogQuery, PhotoLikeReceipt,
     ProfilePublishReceipt, ProfileRegistry, ProfileRegistryError, PublicPhotoCatalog,
     PublicProfile, PublicProfileCatalog, PublicProfileCatalogEntry, PublicProfileLoadout,
+};
+#[cfg(test)]
+use rlogs_game_bpsr::{
+    BUNDLED_RUN_RULE_CLIENT_BUILD, BUNDLED_RUN_RULE_DEPLOYMENT_ID,
+    BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
 };
 use rlogs_profiles::LocalProfilePackage;
 
@@ -1358,13 +1363,10 @@ impl SubmissionService {
         )
         .map_err(ServiceError::Replay)?
         .with_ability_breakdown_resolver(combat_breakdown_ability_id);
-        let mut encounter = EncounterRecorderPlugin::new(
-            bundled_run_reducer_config()
-                .map_err(|error| ServiceError::Replay(error.to_string()))?,
-        );
         let header_file = File::open(canonical_path)?;
         let header_reader = RlogReader::new(BufReader::new(header_file), RlogLimits::default())?;
         let header = header_reader.header().clone();
+        let mut encounter = bpsr_encounter_recorder_for_region(&header.region)?;
         meter.begin_live(&header);
         encounter.begin_live(&header);
         let mut swift_vortex_audit = SwiftVortexCandidateAuditAnalyzer::new();
@@ -4267,11 +4269,9 @@ where
     )
     .map_err(ServiceError::Replay)?
     .with_ability_breakdown_resolver(combat_breakdown_ability_id);
-    let mut encounter = EncounterRecorderPlugin::new(
-        bundled_run_reducer_config().map_err(|error| ServiceError::Replay(error.to_string()))?,
-    );
     let reader = RlogReader::new(replay_pass, RlogLimits::default())?;
     let header = reader.header().clone();
+    let mut encounter = bpsr_encounter_recorder_for_region(&header.region)?;
     meter.begin_live(&header);
     encounter.begin_live(&header);
     let mut local_profile_observations = Vec::new();
@@ -4567,6 +4567,36 @@ where
     };
     canonicalize_public_report_region(&mut report);
     Ok(report)
+}
+
+fn bpsr_encounter_recorder_for_region(
+    region: &RegionContext,
+) -> Result<EncounterRecorderPlugin, ServiceError> {
+    if !bpsr_has_run_authority_for_region(region)? {
+        return Ok(EncounterRecorderPlugin::disabled());
+    }
+    let config = bundled_run_reducer_config_for_identity(
+        &region.identity.deployment_id,
+        &region.client_build,
+        &region.protocol_pack_digest,
+    )
+    .map_err(|error| ServiceError::Replay(error.to_string()))?
+    .ok_or_else(|| {
+        ServiceError::Replay(
+            "explicitly authorized BPSR run-rule identity changed during construction".into(),
+        )
+    })?;
+    Ok(EncounterRecorderPlugin::new(config))
+}
+
+fn bpsr_has_run_authority_for_region(region: &RegionContext) -> Result<bool, ServiceError> {
+    Ok(bundled_run_reducer_config_for_identity(
+        &region.identity.deployment_id,
+        &region.client_build,
+        &region.protocol_pack_digest,
+    )
+    .map_err(|error| ServiceError::Replay(error.to_string()))?
+    .is_some())
 }
 
 fn canonicalize_public_report_region(report: &mut PublicParseReport) {
@@ -7805,6 +7835,54 @@ impl IntoResponse for ApiError {
 mod tests {
     use super::*;
 
+    #[test]
+    fn backend_run_authority_requires_the_artifact_exact_runtime_identity() {
+        let exact = RegionContext {
+            identity: RegionIdentity {
+                deployment_id: BUNDLED_RUN_RULE_DEPLOYMENT_ID.into(),
+                region_id: "test".into(),
+                realm_id: None,
+                world_id: None,
+            },
+            client_build: BUNDLED_RUN_RULE_CLIENT_BUILD.into(),
+            protocol_pack_digest: BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into(),
+            evidence: Vec::new(),
+        };
+        assert!(bpsr_has_run_authority_for_region(&exact).unwrap());
+        assert!(
+            bpsr_encounter_recorder_for_region(&exact)
+                .unwrap()
+                .authoritative_projection_enabled()
+        );
+
+        let mut wrong_deployment = exact.clone();
+        wrong_deployment.identity.deployment_id = "cn".into();
+        assert!(!bpsr_has_run_authority_for_region(&wrong_deployment).unwrap());
+        assert!(
+            !bpsr_encounter_recorder_for_region(&wrong_deployment)
+                .unwrap()
+                .authoritative_projection_enabled()
+        );
+
+        let mut wrong_build = exact.clone();
+        wrong_build.client_build = "wrong-build".into();
+        assert!(!bpsr_has_run_authority_for_region(&wrong_build).unwrap());
+        assert!(
+            !bpsr_encounter_recorder_for_region(&wrong_build)
+                .unwrap()
+                .authoritative_projection_enabled()
+        );
+
+        let mut wrong_digest = exact;
+        wrong_digest.protocol_pack_digest = "sha256:wrong-pack".into();
+        assert!(!bpsr_has_run_authority_for_region(&wrong_digest).unwrap());
+        assert!(
+            !bpsr_encounter_recorder_for_region(&wrong_digest)
+                .unwrap()
+                .authoritative_projection_enabled()
+        );
+    }
+
     fn timeline_participant(actor_id: &str) -> PublicParticipant {
         PublicParticipant {
             actor_id: actor_id.into(),
@@ -10879,8 +10957,7 @@ mod tests {
             SubmissionService::open(root.path().into(), "https://example.test".into(), None)
                 .unwrap();
         let mut region = cross_vantage_test_region();
-        region.protocol_pack_digest =
-            "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395".into();
+        region.protocol_pack_digest = BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into();
         let header =
             rlogs_log_format::RlogHeader::new("canonical-session", region.clone(), "unit-test");
         let mut writer = rlogs_log_format::RlogWriter::new(Vec::new(), header).unwrap();

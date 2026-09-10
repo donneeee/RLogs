@@ -10,6 +10,19 @@ use thiserror::Error;
 
 include!(concat!(env!("OUT_DIR"), "/bundled_dungeon_seasons.rs"));
 
+/// Explicitly authorized runtime target for the bundled run and boss rules.
+/// Keep this separate from the rDPS runtime registry: promoting damage-formula
+/// evidence must never silently promote encounter semantics.
+///
+/// The activity tables are carried forward from build 24252055. An exact
+/// current-build semantic carry-forward receipt for every scene, boss, and
+/// objective mapping remains follow-up evidence; this target does not imply
+/// that receipt already exists.
+pub const BUNDLED_RUN_RULE_DEPLOYMENT_ID: &str = "global";
+pub const BUNDLED_RUN_RULE_CLIENT_BUILD: &str = "24687926";
+pub const BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST: &str =
+    "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
+
 const TINA_MINDREALM_RULES: &[u8] =
     include_bytes!("../run-rules/global/steam-24252055/activities/tina-mindrealm.json");
 const UNSTABLE_TINA_MINDREALM_RULES: &[u8] =
@@ -303,6 +316,31 @@ pub fn bundled_run_reducer_config() -> Result<RunReducerConfig, BpsrRunRuleError
     Ok(config)
 }
 
+/// Loads authoritative run semantics only for the exact explicitly selected runtime.
+/// A build label alone is insufficient because protocol packs can reinterpret
+/// the same wire IDs. Unsupported identities intentionally receive no reducer
+/// configuration; callers may still retain and replay the raw event stream.
+pub fn bundled_run_reducer_config_for_identity(
+    deployment_id: &str,
+    client_build: &str,
+    protocol_pack_digest: &str,
+) -> Result<Option<RunReducerConfig>, BpsrRunRuleError> {
+    if !bundled_run_rules_support_identity(deployment_id, client_build, protocol_pack_digest)? {
+        return Ok(None);
+    }
+    bundled_run_reducer_config().map(Some)
+}
+
+pub fn bundled_run_rules_support_identity(
+    deployment_id: &str,
+    client_build: &str,
+    protocol_pack_digest: &str,
+) -> Result<bool, BpsrRunRuleError> {
+    Ok(deployment_id == BUNDLED_RUN_RULE_DEPLOYMENT_ID
+        && client_build == BUNDLED_RUN_RULE_CLIENT_BUILD
+        && protocol_pack_digest == BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST)
+}
+
 pub fn bundled_gauntlet_scene_ids() -> Result<BTreeSet<i32>, BpsrRunRuleError> {
     Ok(bundled_run_reducer_config()?
         .scene_rules
@@ -368,6 +406,55 @@ pub enum BpsrRunRuleError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn authorized_identity() -> (&'static str, &'static str, &'static str) {
+        (
+            BUNDLED_RUN_RULE_DEPLOYMENT_ID,
+            BUNDLED_RUN_RULE_CLIENT_BUILD,
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+        )
+    }
+
+    #[test]
+    fn authoritative_run_rules_require_the_exact_authorized_runtime_identity() {
+        let authorized_pack = crate::ProtocolPack::from_json(include_bytes!(
+            "../protocol-packs/global/steam-24687926/pack.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            authorized_pack.definition().target.deployment_id,
+            BUNDLED_RUN_RULE_DEPLOYMENT_ID
+        );
+        assert_eq!(
+            authorized_pack.definition().target.build_id,
+            BUNDLED_RUN_RULE_CLIENT_BUILD
+        );
+        assert_eq!(
+            authorized_pack.digest(),
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST
+        );
+        let (deployment, build, digest) = authorized_identity();
+        assert!(
+            bundled_run_reducer_config_for_identity(deployment, build, digest)
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            bundled_run_reducer_config_for_identity("cn", build, digest)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            bundled_run_reducer_config_for_identity(deployment, "wrong-build", digest)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            bundled_run_reducer_config_for_identity(deployment, build, "sha256:wrong-pack")
+                .unwrap()
+                .is_none()
+        );
+    }
 
     #[test]
     fn tina_rules_keep_master_family_and_twenty_tiers_separate() {
