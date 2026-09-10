@@ -34,11 +34,11 @@ use rlogs_game_bpsr::{
     BpsrStatResonanceTransitionLearner, BpsrStateDamageContributionProjector,
     CharacterProfilePatch, SwiftVortexCandidateAuditAnalyzer, SwiftVortexCandidateAuditReport,
     TRAINING_DURATION_MICROS, TrainingDummyController, TrainingDummyPhase,
-    bundled_localization_supports, bundled_run_reducer_config_for_identity,
+    bundled_localization_supports_identity, bundled_run_reducer_config_for_identity,
     canonicalize_bpsr_region_identity, character_id_from_entity_uuid, combat_action_presentation,
     combat_breakdown_ability_id, combat_recount_group_id, confirmed_damage_contribution_rules,
-    is_stat_resonance_status, localized_class_name, localized_combat_action_name_for_build,
-    localized_recount_group_name_for_build, localized_scene_name_for_build,
+    is_stat_resonance_status, localized_class_name, localized_combat_action_name_for_identity,
+    localized_recount_group_name_for_identity, localized_scene_name_for_identity,
     localized_specialization_name,
 };
 use rlogs_log_format::{RlogLimits, RlogReader, RlogReplaySummary};
@@ -79,7 +79,7 @@ use rlogs_game_bpsr::{
 use rlogs_profiles::LocalProfilePackage;
 
 pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 15;
-pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 6;
+pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 7;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 6;
 pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 17;
 pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 3;
@@ -1455,8 +1455,7 @@ impl SubmissionService {
             .iter()
             .map(|participant| (public_participant_key(participant), participant.damage))
             .collect::<BTreeMap<_, _>>();
-        let localization_supported =
-            bundled_localization_supports(&history.deployment_id, &history.client_build);
+        let localization_supported = bpsr_has_localization_authority(&history)?;
         let replay_damage = view
             .actors
             .iter()
@@ -4599,6 +4598,15 @@ fn bpsr_has_run_authority_for_region(region: &RegionContext) -> Result<bool, Ser
     .is_some())
 }
 
+fn bpsr_has_localization_authority(history: &CombatHistorySnapshot) -> Result<bool, ServiceError> {
+    bundled_localization_supports_identity(
+        &history.deployment_id,
+        &history.client_build,
+        &history.protocol_pack_digest,
+    )
+    .map_err(ServiceError::Replay)
+}
+
 fn canonicalize_public_report_region(report: &mut PublicParseReport) {
     if report.game_plugin_id != BPSR_GAME_PLUGIN_ID {
         return;
@@ -4622,8 +4630,7 @@ fn public_runs(
     local_profile_observations: &[LocalProfileObservation],
     local_state_observations: &[LocalStateObservation],
 ) -> Vec<PublicRun> {
-    let localization_supported =
-        bundled_localization_supports(&history.deployment_id, &history.client_build);
+    let localization_supported = bpsr_has_localization_authority(history).unwrap_or(false);
     history
         .runs
         .iter()
@@ -4677,9 +4684,10 @@ fn public_runs(
                 scene_name: run
                     .scene_id
                     .and_then(|scene_id| {
-                        localized_scene_name_for_build(
+                        localized_scene_name_for_identity(
                             &history.deployment_id,
                             &history.client_build,
+                            &history.protocol_pack_digest,
                             i64::from(scene_id),
                             "en-US",
                         )
@@ -4750,11 +4758,17 @@ fn enrich_bpsr_history_ability_presentation(
 ) -> Result<(), ServiceError> {
     let deployment_id = history.deployment_id.clone();
     let client_build = history.client_build.clone();
+    let protocol_pack_digest = history.protocol_pack_digest.clone();
     for run in &mut history.runs {
         for view in &mut run.views {
             for actor in &mut view.actors {
                 for ability in &mut actor.abilities {
-                    enrich_bpsr_ability_presentation(ability, &deployment_id, &client_build)?;
+                    enrich_bpsr_ability_presentation(
+                        ability,
+                        &deployment_id,
+                        &client_build,
+                        &protocol_pack_digest,
+                    )?;
                 }
             }
         }
@@ -4766,8 +4780,11 @@ fn enrich_bpsr_ability_presentation(
     ability: &mut rlogs_plugin_combat_meter::HistoryAbilitySummary,
     deployment_id: &str,
     client_build: &str,
+    protocol_pack_digest: &str,
 ) -> Result<(), ServiceError> {
-    if !bundled_localization_supports(deployment_id, client_build) {
+    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)
+        .map_err(ServiceError::Replay)?
+    {
         ability.presentation_name = None;
         ability.presentation_kind = None;
         ability.presentation_resolution = None;
@@ -4782,9 +4799,10 @@ fn enrich_bpsr_ability_presentation(
     if let Some(presentation) =
         combat_action_presentation(ability_id).map_err(ServiceError::Replay)?
     {
-        ability.presentation_name = localized_combat_action_name_for_build(
+        ability.presentation_name = localized_combat_action_name_for_identity(
             deployment_id,
             client_build,
+            protocol_pack_digest,
             ability_id,
             "en-US",
         )
@@ -4796,9 +4814,10 @@ fn enrich_bpsr_ability_presentation(
             .icon
             .as_ref()
             .map(|path| format!("/game-assets/blue-protocol-star-resonance/shared/{path}"));
-        ability.presentation_recount_group_name = localized_recount_group_name_for_build(
+        ability.presentation_recount_group_name = localized_recount_group_name_for_identity(
             deployment_id,
             client_build,
+            protocol_pack_digest,
             ability_id,
             "en-US",
         )
@@ -7883,6 +7902,35 @@ mod tests {
         );
     }
 
+    #[test]
+    fn backend_localization_authority_requires_the_artifact_exact_runtime_identity() {
+        let exact = CombatHistorySnapshot {
+            schema_version: 1,
+            session_id: "history".into(),
+            deployment_id: "global".into(),
+            region_id: "global".into(),
+            world_id: None,
+            client_build: "24687926".into(),
+            protocol_pack_digest:
+                "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae".into(),
+            rdps_formula_identity: None,
+            runs: Vec::new(),
+        };
+        assert!(bpsr_has_localization_authority(&exact).unwrap());
+
+        let mut wrong_deployment = exact.clone();
+        wrong_deployment.deployment_id = "cn".into();
+        assert!(!bpsr_has_localization_authority(&wrong_deployment).unwrap());
+
+        let mut wrong_build = exact.clone();
+        wrong_build.client_build = "24687927".into();
+        assert!(!bpsr_has_localization_authority(&wrong_build).unwrap());
+
+        let mut wrong_digest = exact;
+        wrong_digest.protocol_pack_digest = "sha256:wrong-pack".into();
+        assert!(!bpsr_has_localization_authority(&wrong_digest).unwrap());
+    }
+
     fn timeline_participant(actor_id: &str) -> PublicParticipant {
         PublicParticipant {
             actor_id: actor_id.into(),
@@ -8813,16 +8861,41 @@ mod tests {
         };
 
         let mut exact = fixture();
-        enrich_bpsr_ability_presentation(&mut exact, "global", "24687926").unwrap();
+        enrich_bpsr_ability_presentation(
+            &mut exact,
+            "global",
+            "24687926",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+        )
+        .unwrap();
         assert_eq!(exact.presentation_name.as_deref(), Some("Powerdraw"));
         assert_eq!(exact.presentation_recount_group_id.as_deref(), Some("84"));
 
         let mut other = fixture();
-        enrich_bpsr_ability_presentation(&mut other, "global", "24687927").unwrap();
+        enrich_bpsr_ability_presentation(
+            &mut other,
+            "global",
+            "24687927",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+        )
+        .unwrap();
         assert_eq!(other.presentation_name, None);
         assert_eq!(other.presentation_kind, None);
         assert_eq!(other.icon_asset_path, None);
         assert_eq!(other.presentation_recount_group_id, None);
+
+        let mut other_digest = fixture();
+        enrich_bpsr_ability_presentation(
+            &mut other_digest,
+            "global",
+            "24687926",
+            "sha256:wrong-pack",
+        )
+        .unwrap();
+        assert_eq!(other_digest.presentation_name, None);
+        assert_eq!(other_digest.presentation_kind, None);
+        assert_eq!(other_digest.icon_asset_path, None);
+        assert_eq!(other_digest.presentation_recount_group_id, None);
     }
 
     #[test]

@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
-use crate::scene_localization::bundled_localization_supports;
+use crate::scene_localization::bundled_localization_supports_identity;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -123,13 +123,14 @@ pub(crate) fn localized_monster_name(
 /// client build that supplied the bundled MonsterTable localization joins.
 /// Unknown builds retain their numeric monster identity without borrowing a
 /// possibly stale display name.
-pub fn localized_monster_name_for_build(
+pub fn localized_monster_name_for_identity(
     deployment_id: &str,
     client_build: &str,
+    protocol_pack_digest: &str,
     monster_id: i64,
     locale: &str,
 ) -> Result<Option<&'static str>, String> {
-    if !bundled_localization_supports(deployment_id, client_build) {
+    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)? {
         return Ok(None);
     }
     localized_monster_name(monster_id, locale)
@@ -138,6 +139,8 @@ pub fn localized_monster_name_for_build(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const DIGEST: &str = "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
 
     #[test]
     fn resolves_current_build_monsters_without_cross_locale_loading() {
@@ -162,15 +165,28 @@ mod tests {
     #[test]
     fn build_scoped_monster_localization_fails_closed() {
         assert_eq!(
-            localized_monster_name_for_build("global", "24687926", 33_701, "en-US").unwrap(),
+            localized_monster_name_for_identity("global", "24687926", DIGEST, 33_701, "en-US")
+                .unwrap(),
             Some("Tina - Void Reverie")
         );
         assert_eq!(
-            localized_monster_name_for_build("global", "24687927", 33_701, "en-US").unwrap(),
+            localized_monster_name_for_identity("global", "24687927", DIGEST, 33_701, "en-US")
+                .unwrap(),
             None
         );
         assert_eq!(
-            localized_monster_name_for_build("cn", "24687926", 33_701, "en-US").unwrap(),
+            localized_monster_name_for_identity("cn", "24687926", DIGEST, 33_701, "en-US").unwrap(),
+            None
+        );
+        assert_eq!(
+            localized_monster_name_for_identity(
+                "global",
+                "24687926",
+                "sha256:wrong-pack",
+                33_701,
+                "en-US",
+            )
+            .unwrap(),
             None
         );
     }

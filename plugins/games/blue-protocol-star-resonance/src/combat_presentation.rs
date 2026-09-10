@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, sync::OnceLock};
 
 use serde::Deserialize;
 
-use crate::scene_localization::bundled_localization_supports;
+use crate::scene_localization::bundled_localization_supports_identity;
 
 const MAXIMUM_COMBAT_ACTIONS: usize = 50_000;
 const MAXIMUM_CAST_RECOUNT_RELATIONS: usize = 10_000;
@@ -691,49 +691,53 @@ pub fn status_effect_display_presentation(
     }))
 }
 
-pub fn localized_combat_action_name_for_build(
+pub fn localized_combat_action_name_for_identity(
     deployment_id: &str,
     client_build: &str,
+    protocol_pack_digest: &str,
     ability_id: i64,
     locale: &str,
 ) -> Result<Option<&'static str>, String> {
-    if !bundled_localization_supports(deployment_id, client_build) {
+    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)? {
         return Ok(None);
     }
     localized_combat_action_name(ability_id, locale)
 }
 
-pub fn localized_recount_group_name_for_build(
+pub fn localized_recount_group_name_for_identity(
     deployment_id: &str,
     client_build: &str,
+    protocol_pack_digest: &str,
     ability_id: i64,
     locale: &str,
 ) -> Result<Option<&'static str>, String> {
-    if !bundled_localization_supports(deployment_id, client_build) {
+    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)? {
         return Ok(None);
     }
     localized_recount_group_name(ability_id, locale)
 }
 
-pub fn localized_status_effect_name_for_build(
+pub fn localized_status_effect_name_for_identity(
     deployment_id: &str,
     client_build: &str,
+    protocol_pack_digest: &str,
     effect_id: i64,
     locale: &str,
 ) -> Result<Option<&'static str>, String> {
-    if !bundled_localization_supports(deployment_id, client_build) {
+    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)? {
         return Ok(None);
     }
     localized_status_effect_name(effect_id, locale)
 }
 
-pub fn status_effect_display_presentation_for_build(
+pub fn status_effect_display_presentation_for_identity(
     deployment_id: &str,
     client_build: &str,
+    protocol_pack_digest: &str,
     effect_id: i64,
     locale: &str,
 ) -> Result<Option<StatusEffectDisplayPresentation>, String> {
-    if !bundled_localization_supports(deployment_id, client_build) {
+    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)? {
         return Ok(None);
     }
     status_effect_display_presentation(effect_id, locale)
@@ -743,22 +747,41 @@ pub fn status_effect_display_presentation_for_build(
 mod tests {
     use super::*;
 
+    const DIGEST: &str = "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
+
     #[test]
     fn build_scoped_combat_localization_fails_closed() {
         assert_eq!(
-            localized_combat_action_name_for_build("global", "24687926", 2_233, "en-US").unwrap(),
+            localized_combat_action_name_for_identity("global", "24687926", DIGEST, 2_233, "en-US")
+                .unwrap(),
             Some("Powerdraw")
         );
         assert_eq!(
-            localized_combat_action_name_for_build("global", "24687927", 2_233, "en-US").unwrap(),
+            localized_combat_action_name_for_identity("global", "24687927", DIGEST, 2_233, "en-US")
+                .unwrap(),
             None
         );
         assert_eq!(
-            localized_recount_group_name_for_build("cn", "24687926", 220_106, "en-US").unwrap(),
+            localized_recount_group_name_for_identity("cn", "24687926", DIGEST, 220_106, "en-US")
+                .unwrap(),
             None
         );
         assert_eq!(
-            localized_status_effect_name_for_build("global", "24687927", 31_602, "en-US").unwrap(),
+            localized_status_effect_name_for_identity(
+                "global", "24687927", DIGEST, 31_602, "en-US"
+            )
+            .unwrap(),
+            None
+        );
+        assert_eq!(
+            localized_combat_action_name_for_identity(
+                "global",
+                "24687926",
+                "sha256:wrong-pack",
+                2_233,
+                "en-US",
+            )
+            .unwrap(),
             None
         );
     }
@@ -792,8 +815,10 @@ mod tests {
             None
         );
         assert_eq!(
-            status_effect_display_presentation_for_build("global", "24687927", 55_228, "en-US")
-                .unwrap(),
+            status_effect_display_presentation_for_identity(
+                "global", "24687927", DIGEST, 55_228, "en-US"
+            )
+            .unwrap(),
             None
         );
     }
@@ -884,9 +909,11 @@ mod tests {
             });
             localized_in_every_locale += u64::from(native_in_every_locale);
             for locale in LOCALES {
-                if status_effect_display_presentation_for_build("global", BUILD, *effect_id, locale)
-                    .unwrap()
-                    .is_none()
+                if status_effect_display_presentation_for_identity(
+                    "global", BUILD, DIGEST, *effect_id, locale,
+                )
+                .unwrap()
+                .is_none()
                 {
                     uncovered.insert(*effect_id);
                 }

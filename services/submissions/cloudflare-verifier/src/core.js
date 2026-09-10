@@ -4,7 +4,7 @@ const REPORT_ID = /^rpt_[a-f0-9]{32}$/;
 const RECONCILIATION_ID = /^rec_[a-f0-9]{32}$/;
 export const BACKFILL_SOURCE_SCHEMA_VERSION = 12;
 export const BACKFILL_TARGET_SCHEMA_VERSION = 15;
-export const BACKFILL_TARGET_PROJECTION_REVISION = 6;
+export const BACKFILL_TARGET_PROJECTION_REVISION = 7;
 
 export function expectedReportId(digest) {
   return `rpt_${digest.slice(0, 32)}`;

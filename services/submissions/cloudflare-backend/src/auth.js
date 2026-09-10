@@ -9,7 +9,7 @@ const MAXIMUM_QUERY_LIMIT = 250;
 const REPORT_ID_PATTERN = /^rpt_[a-f0-9]{32}$/;
 const VISIBILITIES = new Set(["public", "unlisted", "private"]);
 const CURRENT_PUBLIC_PARSE_SCHEMA_VERSION = 15;
-const CURRENT_PUBLIC_PARSE_PROJECTION_REVISION = 6;
+const CURRENT_PUBLIC_PARSE_PROJECTION_REVISION = 7;
 
 function json(value, status = 200) {
   return Response.json(value, {

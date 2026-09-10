@@ -92,22 +92,22 @@ use rlogs_game_bpsr::{
     RdpsValidationAnalyzer, RdpsValidationProgress, RdpsValidationReport, RegionResolverError,
     ResolvedRegion, RouteKey, SealedDungeonRunLog, ServerRealmCatalog, TrainingDummyLogWriter,
     auxiliary_action_presentation, battle_imagine_presentation, bundled_gauntlet_scene_ids,
-    bundled_localization_supports, bundled_run_reducer_config_for_identity,
+    bundled_localization_supports_identity, bundled_run_reducer_config_for_identity,
     bundled_run_rules_support_identity, bundled_scene_run_identities,
     bundled_terminal_boss_scene_ids, character_id_from_entity_uuid, classify_bpsr_tcp_payload,
     combat_action_presentation, combat_breakdown_ability_id, combat_recount_group_id,
     confirmed_damage_contribution_rules, fight_attribute_presentation_catalog,
     installed_container_for_executable, is_boss_monster, is_boss_monster_for_identity,
     is_localized_class_name, localized_auxiliary_action_name, localized_battle_imagine_name,
-    localized_class_identities, localized_combat_action_name_for_build,
-    localized_monster_name_for_build, localized_recount_group_name_for_build,
-    localized_scene_name_for_build, localized_specialization_identities,
+    localized_class_identities, localized_combat_action_name_for_identity,
+    localized_monster_name_for_identity, localized_recount_group_name_for_identity,
+    localized_scene_name_for_identity, localized_specialization_identities,
     project_local_profile_packages, proven_state_damage_contribution_effect_ids,
     rdps_attribution_effect_presentation, record_offline_capture, resolve_actor_combat_identity,
     resolve_actor_combat_presentation, resolve_live_protocol_pack,
     resolve_packet_detected_protocol_pack, scene_boss_monster_ids,
     scene_boss_monster_ids_for_identity, state_damage_contribution_formula_identity,
-    state_damage_contribution_target_matches, status_effect_display_presentation_for_build,
+    state_damage_contribution_target_matches, status_effect_display_presentation_for_identity,
     status_effect_presentation, stimen_floor_encounter_kind, weapon_level_presentation,
     weapon_presentation,
 };
@@ -1156,13 +1156,20 @@ fn live_overlay_boss_name(
     observed_name: Option<&str>,
     deployment_id: &str,
     client_build: &str,
+    protocol_pack_digest: &str,
 ) -> String {
-    localized_monster_name_for_build(deployment_id, client_build, monster_id, "en-US")
-        .ok()
-        .flatten()
-        .map(str::to_owned)
-        .or_else(|| observed_name.map(str::to_owned))
-        .unwrap_or_else(|| format!("Monster {monster_id}"))
+    localized_monster_name_for_identity(
+        deployment_id,
+        client_build,
+        protocol_pack_digest,
+        monster_id,
+        "en-US",
+    )
+    .ok()
+    .flatten()
+    .map(str::to_owned)
+    .or_else(|| observed_name.map(str::to_owned))
+    .unwrap_or_else(|| format!("Monster {monster_id}"))
 }
 
 fn retain_json_object_keys(value: &mut serde_json::Value, keys: &[&str]) {
@@ -1238,6 +1245,7 @@ fn compact_live_overlay_run_projection(
     run: &CombatRunHistory,
     deployment_id: &str,
     client_build: &str,
+    protocol_pack_digest: &str,
 ) -> serde_json::Value {
     let mut value = serde_json::to_value(run).unwrap_or(serde_json::Value::Null);
     retain_json_object_keys(
@@ -1326,7 +1334,12 @@ fn compact_live_overlay_run_projection(
                     .and_then(serde_json::Value::as_array_mut)
                 {
                     for ability in abilities {
-                        enrich_bpsr_live_ability_presentation(ability, deployment_id, client_build);
+                        enrich_bpsr_live_ability_presentation(
+                            ability,
+                            deployment_id,
+                            client_build,
+                            protocol_pack_digest,
+                        );
                         retain_json_object_keys(
                             ability,
                             &[
@@ -1449,6 +1462,7 @@ fn compact_live_overlay_snapshot(snapshot: &CombatTimelineSnapshot) -> serde_jso
                         ability,
                         &snapshot.deployment_id,
                         &snapshot.client_build,
+                        &snapshot.protocol_pack_digest,
                     );
                     retain_json_object_keys(
                         ability,
@@ -1494,6 +1508,7 @@ fn enrich_bpsr_live_ability_presentation(
     ability: &mut serde_json::Value,
     deployment_id: &str,
     client_build: &str,
+    protocol_pack_digest: &str,
 ) {
     let Some(object) = ability.as_object_mut() else {
         return;
@@ -1505,7 +1520,9 @@ fn enrich_bpsr_live_ability_presentation(
     else {
         return;
     };
-    if !bundled_localization_supports(deployment_id, client_build) {
+    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)
+        .unwrap_or(false)
+    {
         for key in [
             "presentation_name",
             "presentation_kind",
@@ -1519,9 +1536,13 @@ fn enrich_bpsr_live_ability_presentation(
         return;
     }
     if let Ok(Some(presentation)) = combat_action_presentation(ability_id) {
-        if let Ok(Some(name)) =
-            localized_combat_action_name_for_build(deployment_id, client_build, ability_id, "en-US")
-        {
+        if let Ok(Some(name)) = localized_combat_action_name_for_identity(
+            deployment_id,
+            client_build,
+            protocol_pack_digest,
+            ability_id,
+            "en-US",
+        ) {
             object.insert("presentation_name".into(), name.into());
         }
         if let Some(icon) = presentation.icon.as_deref() {
@@ -1537,9 +1558,13 @@ fn enrich_bpsr_live_ability_presentation(
             group_id.to_string().into(),
         );
     }
-    if let Ok(Some(group_name)) =
-        localized_recount_group_name_for_build(deployment_id, client_build, ability_id, "en-US")
-    {
+    if let Ok(Some(group_name)) = localized_recount_group_name_for_identity(
+        deployment_id,
+        client_build,
+        protocol_pack_digest,
+        ability_id,
+        "en-US",
+    ) {
         object.insert("presentation_recount_group_name".into(), group_name.into());
     }
 }
@@ -1607,6 +1632,7 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
                                 actor.display_name.as_deref(),
                                 &snapshot.deployment_id,
                                 &snapshot.client_build,
+                                &snapshot.protocol_pack_digest,
                             ),
                             current_hp,
                             max_hp,
@@ -1624,9 +1650,10 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
             LiveOverlayEncounterPresentation {
                 scene_id: snapshot.scene_id,
                 scene_name: snapshot.scene_id.and_then(|scene_id| {
-                    localized_scene_name_for_build(
+                    localized_scene_name_for_identity(
                         &snapshot.deployment_id,
                         &snapshot.client_build,
+                        &snapshot.protocol_pack_digest,
                         i64::from(scene_id),
                         "en-US",
                     )
@@ -1641,6 +1668,7 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
                         run,
                         &snapshot.deployment_id,
                         &snapshot.client_build,
+                        &snapshot.protocol_pack_digest,
                     )
                 }),
             }
@@ -1650,15 +1678,19 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
             run_projection: update
                 .run_projection
                 .as_ref()
-                .map(|run| compact_live_overlay_run_projection(run, "", "")),
+                .map(|run| compact_live_overlay_run_projection(run, "", "", "")),
             ..LiveOverlayEncounterPresentation::default()
         });
     let actor_presentations = update
         .snapshot
         .as_ref()
         .map(|snapshot| {
-            let localization_supported =
-                bundled_localization_supports(&snapshot.deployment_id, &snapshot.client_build);
+            let localization_supported = bundled_localization_supports_identity(
+                &snapshot.deployment_id,
+                &snapshot.client_build,
+                &snapshot.protocol_pack_digest,
+            )
+            .unwrap_or(false);
             snapshot
                 .actors
                 .iter()
@@ -9295,6 +9327,8 @@ impl RuntimeController {
                                                 projection.history.deployment_id.clone();
                                             let projection_client_build =
                                                 projection.history.client_build.clone();
+                                            let projection_protocol_pack_digest =
+                                                projection.history.protocol_pack_digest.clone();
                                             let mut terminal_live_projection =
                                                 projection.history.runs.last().cloned();
                                             if let Some(run) = terminal_live_projection.as_mut()
@@ -9303,6 +9337,7 @@ impl RuntimeController {
                                                         run,
                                                         &projection_deployment_id,
                                                         &projection_client_build,
+                                                        &projection_protocol_pack_digest,
                                                         "en-US",
                                                     )
                                             {
@@ -9584,6 +9619,8 @@ impl RuntimeController {
                                                         history.deployment_id.clone();
                                                     let projection_client_build =
                                                         history.client_build.clone();
+                                                    let projection_protocol_pack_digest =
+                                                        history.protocol_pack_digest.clone();
                                                     let identities = frozen_capture_time_identities
                                                         .as_ref()
                                                         .unwrap_or(&capture_time_identities);
@@ -9602,6 +9639,7 @@ impl RuntimeController {
                                                                 run,
                                                                 &projection_deployment_id,
                                                                 &projection_client_build,
+                                                                &projection_protocol_pack_digest,
                                                                 "en-US",
                                                             )
                                                         })
@@ -12922,8 +12960,12 @@ fn enrich_bpsr_history_presentation(
 ) -> Result<(), String> {
     let localization_deployment_id = snapshot.deployment_id.clone();
     let localization_client_build = snapshot.client_build.clone();
-    let localization_supported =
-        bundled_localization_supports(&localization_deployment_id, &localization_client_build);
+    let localization_protocol_pack_digest = snapshot.protocol_pack_digest.clone();
+    let localization_supported = bundled_localization_supports_identity(
+        &localization_deployment_id,
+        &localization_client_build,
+        &localization_protocol_pack_digest,
+    )?;
     let run_authority_supported = bundled_run_rules_support_identity(
         &snapshot.deployment_id,
         &snapshot.client_build,
@@ -12950,9 +12992,10 @@ fn enrich_bpsr_history_presentation(
         run.presentation_scene_name = run
             .scene_id
             .map(|scene_id| {
-                localized_scene_name_for_build(
+                localized_scene_name_for_identity(
                     &localization_deployment_id,
                     &localization_client_build,
+                    &localization_protocol_pack_digest,
                     i64::from(scene_id),
                     locale,
                 )
@@ -12964,6 +13007,7 @@ fn enrich_bpsr_history_presentation(
             run,
             &localization_deployment_id,
             &localization_client_build,
+            &localization_protocol_pack_digest,
             locale,
         )?;
         for view in &mut run.views {
@@ -12994,6 +13038,7 @@ fn enrich_bpsr_history_presentation(
                     actor,
                     &localization_deployment_id,
                     &localization_client_build,
+                    &localization_protocol_pack_digest,
                     locale,
                 )?;
                 if actor.actor_kind.as_deref() != Some("player") {
@@ -13006,6 +13051,7 @@ fn enrich_bpsr_history_presentation(
                                     monster_id,
                                     &localization_deployment_id,
                                     &localization_client_build,
+                                    &localization_protocol_pack_digest,
                                     locale,
                                 )
                             })
@@ -13070,6 +13116,7 @@ fn enrich_bpsr_history_presentation(
                                 monster_id,
                                 &localization_deployment_id,
                                 &localization_client_build,
+                                &localization_protocol_pack_digest,
                                 locale,
                             )
                         })
@@ -13142,6 +13189,7 @@ fn enrich_bpsr_run_rdps_effect_presentations(
     run: &mut CombatRunHistory,
     deployment_id: &str,
     client_build: &str,
+    protocol_pack_digest: &str,
     locale: &str,
 ) -> Result<(), String> {
     for view in &mut run.views {
@@ -13154,6 +13202,7 @@ fn enrich_bpsr_run_rdps_effect_presentations(
             referenced_rdps_effect_ids,
             deployment_id,
             client_build,
+            protocol_pack_digest,
             locale,
         )?;
     }
@@ -13173,6 +13222,7 @@ fn enrich_bpsr_live_rdps_effect_presentations(
         effect_ids,
         &snapshot.deployment_id,
         &snapshot.client_build,
+        &snapshot.protocol_pack_digest,
         locale,
     )?;
     Ok(())
@@ -13182,9 +13232,10 @@ fn bpsr_rdps_effect_presentations(
     effect_ids: BTreeSet<i64>,
     deployment_id: &str,
     client_build: &str,
+    protocol_pack_digest: &str,
     locale: &str,
 ) -> Result<Vec<HistoryRdpsEffectPresentation>, String> {
-    if !bundled_localization_supports(deployment_id, client_build) {
+    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)? {
         return Ok(Vec::new());
     }
     let mut presentations = Vec::new();
@@ -13613,9 +13664,10 @@ fn enrich_bpsr_actor_combat_presentation(
     actor: &mut rlogs_plugin_combat_meter::HistoryActorSummary,
     deployment_id: &str,
     client_build: &str,
+    protocol_pack_digest: &str,
     locale: &str,
 ) -> Result<(), String> {
-    if !bundled_localization_supports(deployment_id, client_build) {
+    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)? {
         for ability in &mut actor.abilities {
             ability.presentation_name = None;
             ability.presentation_kind = None;
@@ -13637,9 +13689,10 @@ fn enrich_bpsr_actor_combat_presentation(
             continue;
         };
         if let Some(presentation) = combat_action_presentation(ability_id)? {
-            ability.presentation_name = localized_combat_action_name_for_build(
+            ability.presentation_name = localized_combat_action_name_for_identity(
                 deployment_id,
                 client_build,
+                protocol_pack_digest,
                 ability_id,
                 locale,
             )?
@@ -13650,9 +13703,10 @@ fn enrich_bpsr_actor_combat_presentation(
                 .icon
                 .as_ref()
                 .map(|path| format!("/game-assets/blue-protocol-star-resonance/shared/{path}"));
-            ability.presentation_recount_group_name = localized_recount_group_name_for_build(
+            ability.presentation_recount_group_name = localized_recount_group_name_for_identity(
                 deployment_id,
                 client_build,
+                protocol_pack_digest,
                 ability_id,
                 locale,
             )?
@@ -13668,9 +13722,10 @@ fn enrich_bpsr_actor_combat_presentation(
         let Some(presentation) = status_effect_presentation(effect_id)? else {
             continue;
         };
-        let display = status_effect_display_presentation_for_build(
+        let display = status_effect_display_presentation_for_identity(
             deployment_id,
             client_build,
+            protocol_pack_digest,
             effect_id,
             locale,
         )?;
@@ -13696,13 +13751,20 @@ fn localized_bpsr_monster_name(
     monster_id: &str,
     deployment_id: &str,
     client_build: &str,
+    protocol_pack_digest: &str,
     locale: &str,
 ) -> Result<Option<String>, String> {
     let parsed = monster_id
         .parse::<i64>()
         .map_err(|error| format!("history monster ID {monster_id} is invalid: {error}"))?;
-    localized_monster_name_for_build(deployment_id, client_build, parsed, locale)
-        .map(|name| name.map(str::to_owned))
+    localized_monster_name_for_identity(
+        deployment_id,
+        client_build,
+        protocol_pack_digest,
+        parsed,
+        locale,
+    )
+    .map(|name| name.map(str::to_owned))
 }
 
 fn enrich_bpsr_loadout_presentation(
@@ -13774,116 +13836,19 @@ fn enrich_bpsr_weapon_presentation(actor: &mut rlogs_plugin_combat_meter::Histor
     actor.weapon_badge_kind = Some(metadata.badge_kind.to_owned());
 }
 
-fn enrich_bpsr_participant_weapon_presentation(
-    actor: &mut combat_history::CombatHistoryParticipant,
-) {
-    actor.weapon_icon_asset_path = None;
-    actor.weapon_presentation_name = None;
-    actor.weapon_level = None;
-    actor.weapon_level_min = None;
-    actor.weapon_level_max = None;
-    actor.weapon_badge_kind = None;
-    let Some(item_id) = actor.weapon_item_id else {
-        return;
-    };
-    let Some(metadata) = weapon_presentation(item_id) else {
-        return;
-    };
-    let level = weapon_level_presentation(item_id, actor.weapon_breakthrough_count);
-    actor.weapon_icon_asset_path = Some(format!(
-        "/game-assets/blue-protocol-star-resonance/shared/{}",
-        metadata.icon
-    ));
-    actor.weapon_presentation_name = Some(metadata.english_name.to_owned());
-    actor.weapon_level = level.and_then(|value| value.exact);
-    actor.weapon_level_min = level.map(|value| value.minimum);
-    actor.weapon_level_max = level.map(|value| value.maximum);
-    actor.weapon_badge_kind = Some(metadata.badge_kind.to_owned());
-}
-
 fn enrich_bpsr_catalog_presentation(
     catalog: &mut CombatHistoryCatalog,
-    locale: &str,
+    _locale: &str,
 ) -> Result<(), String> {
     for entry in &mut catalog.entries {
-        if !bundled_localization_supports(&entry.deployment_id, &entry.client_build) {
-            entry.presentation_scene_name = None;
-            for actor in &mut entry.participants {
-                clear_bpsr_catalog_participant_presentation(actor);
-            }
-            continue;
-        }
-        // The compact catalog does not retain protocol-pack identity. Preserve
-        // captured run fields, but never backfill authoritative scene/run
-        // semantics without reopening the sealed detail snapshot.
-        entry.presentation_scene_name = entry
-            .scene_id
-            .map(|scene_id| {
-                localized_scene_name_for_build(
-                    &entry.deployment_id,
-                    &entry.client_build,
-                    i64::from(scene_id),
-                    locale,
-                )
-            })
-            .transpose()?
-            .flatten()
-            .map(str::to_owned);
+        // Compact history does not yet retain protocol-pack identity. Until
+        // its separate schema migration reopens the sealed detail, it cannot
+        // prove that decoded IDs belong to the bundled localization tables.
+        // Preserve raw identity and combat fields but fail closed on every
+        // derived label or asset.
+        entry.presentation_scene_name = None;
         for actor in &mut entry.participants {
-            if actor.actor_kind.as_deref() != Some("player") {
-                continue;
-            }
-            let entity_uuid = actor.entity_uuid.parse::<i64>().map_err(|error| {
-                format!(
-                    "history actor {} has an invalid entity UUID: {error}",
-                    actor.actor_id
-                )
-            })?;
-            actor.character_id = character_id_from_entity_uuid(entity_uuid);
-            enrich_bpsr_loadout_presentation(&mut actor.primary_loadout, locale)?;
-            enrich_bpsr_loadout_presentation(&mut actor.auxiliary_loadout, locale)?;
-            enrich_bpsr_participant_weapon_presentation(actor);
-
-            let combat_presentation = resolve_actor_combat_presentation(
-                actor.class_id,
-                actor.specialization_id,
-                std::iter::empty(),
-                locale,
-            )?;
-            actor.class_id = combat_presentation.class_id;
-            actor.specialization_id = combat_presentation.specialization_id;
-
-            let class_named_companion = match (actor.class_id, actor.display_name.as_deref()) {
-                (Some(class_id), Some(display_name)) => {
-                    is_localized_class_name(class_id, display_name)?
-                }
-                _ => false,
-            };
-            if class_named_companion {
-                let companion_presentation = resolve_actor_combat_presentation(
-                    actor.class_id,
-                    None,
-                    std::iter::empty(),
-                    locale,
-                )?;
-                actor.presentation_kind = Some("party_npc".into());
-                actor.presentation_class_name = companion_presentation.class_name.clone();
-                actor.presentation_specialization_name = None;
-                actor.icon_asset_path = bpsr_game_asset_path(companion_presentation.icon);
-                actor.presentation_role = companion_presentation.role;
-                actor.presentation_accent = companion_presentation.accent;
-                actor.presentation_name = companion_presentation
-                    .class_name
-                    .or_else(|| actor.display_name.clone());
-                continue;
-            }
-            actor.presentation_class_name = combat_presentation.class_name;
-            actor.presentation_specialization_name = combat_presentation.specialization_name;
-            actor.icon_asset_path = bpsr_game_asset_path(combat_presentation.icon);
-            actor.presentation_role = combat_presentation.role;
-            actor.presentation_accent = combat_presentation.accent;
-            actor.presentation_kind = Some("player".into());
-            actor.presentation_name = actor.display_name.clone();
+            clear_bpsr_catalog_participant_presentation(actor);
         }
     }
     Ok(())
@@ -15645,15 +15610,33 @@ mod tests {
         );
 
         assert_eq!(
-            live_overlay_boss_name(33_701, Some("Observed Tina"), "global", "24687926"),
+            live_overlay_boss_name(
+                33_701,
+                Some("Observed Tina"),
+                "global",
+                "24687926",
+                BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+            ),
             "Tina - Void Reverie"
         );
         assert_eq!(
-            live_overlay_boss_name(33_701, Some("Observed Tina"), "global", "24687927"),
+            live_overlay_boss_name(
+                33_701,
+                Some("Observed Tina"),
+                "global",
+                "24687927",
+                BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+            ),
             "Observed Tina"
         );
         assert_eq!(
-            live_overlay_boss_name(33_701, None, "global", "24687927"),
+            live_overlay_boss_name(
+                33_701,
+                None,
+                "global",
+                "24687927",
+                BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+            ),
             "Monster 33701"
         );
     }
@@ -16306,7 +16289,7 @@ mod tests {
             "region_id": "global",
             "world_id": "asteria",
             "client_build": "test-build",
-            "protocol_pack_digest": "test-pack",
+            "protocol_pack_digest": "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
             "runs": [{
                 "run_index": 0,
                 "activity_id": "scene.1632",
@@ -17008,16 +16991,59 @@ mod tests {
         assert_eq!(ability.presentation_name, None);
         assert_eq!(ability.presentation_recount_group_id, None);
         assert_eq!(ability.icon_asset_path, None);
+
+        let mut wrong_digest = captured_marksman_history();
+        wrong_digest.client_build = "24687926".into();
+        wrong_digest.protocol_pack_digest = "sha256:wrong-pack".into();
+        wrong_digest.runs[0].presentation_scene_name = Some("stale scene label".into());
+        let wrong_actor = &mut wrong_digest.runs[0].views[0].actors[0];
+        wrong_actor.presentation_name = Some("stale actor label".into());
+        wrong_actor.presentation_kind = Some("stale-kind".into());
+        wrong_actor.presentation_class_name = Some("stale class".into());
+        wrong_actor.presentation_specialization_name = Some("stale specialization".into());
+        wrong_actor.icon_asset_path = Some("stale-icon".into());
+        wrong_actor.abilities[0].presentation_name = Some("stale ability".into());
+        wrong_actor.abilities[0].presentation_recount_group_id = Some("stale-group".into());
+        wrong_actor.abilities[0].icon_asset_path = Some("stale-ability-icon".into());
+        enrich_bpsr_history_presentation(&mut wrong_digest, "en-US").unwrap();
+        assert_eq!(wrong_digest.runs[0].presentation_scene_name, None);
+        let wrong_actor = &wrong_digest.runs[0].views[0].actors[0];
+        assert_eq!(wrong_actor.display_name.as_deref(), Some("MarieRose"));
+        assert_eq!(wrong_actor.actor_id, "player:marierose");
+        assert_eq!(wrong_actor.damage, 1);
+        assert_eq!(wrong_actor.presentation_name, None);
+        assert_eq!(wrong_actor.presentation_kind, None);
+        assert_eq!(wrong_actor.presentation_class_name, None);
+        assert_eq!(wrong_actor.presentation_specialization_name, None);
+        assert_eq!(wrong_actor.icon_asset_path, None);
+        assert_eq!(wrong_actor.abilities[0].ability_id, "2233");
+        assert_eq!(wrong_actor.abilities[0].presentation_name, None);
+        assert_eq!(wrong_actor.abilities[0].presentation_recount_group_id, None);
+        assert_eq!(wrong_actor.abilities[0].icon_asset_path, None);
     }
 
     #[test]
     fn history_monster_localization_requires_the_exact_source_build() {
         assert_eq!(
-            localized_bpsr_monster_name("33701", "global", "24687926", "en-US").unwrap(),
+            localized_bpsr_monster_name(
+                "33701",
+                "global",
+                "24687926",
+                BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+                "en-US",
+            )
+            .unwrap(),
             Some("Tina - Void Reverie".into())
         );
         assert_eq!(
-            localized_bpsr_monster_name("33701", "global", "24687927", "en-US").unwrap(),
+            localized_bpsr_monster_name(
+                "33701",
+                "global",
+                "24687927",
+                BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+                "en-US",
+            )
+            .unwrap(),
             None
         );
     }
@@ -17055,6 +17081,7 @@ mod tests {
             &mut snapshot.runs[0],
             "global",
             "24687926",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
             "en-US",
         )
         .unwrap();
@@ -17097,7 +17124,12 @@ mod tests {
                 "reported_damage": 100
             });
 
-            enrich_bpsr_live_ability_presentation(&mut ability, "global", "24687926");
+            enrich_bpsr_live_ability_presentation(
+                &mut ability,
+                "global",
+                "24687926",
+                BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+            );
 
             assert!(
                 ability["presentation_name"]
@@ -17121,8 +17153,18 @@ mod tests {
 
         let mut powerdraw_request = serde_json::json!({ "ability_id": "2233" });
         let mut powerdraw_damage = serde_json::json!({ "ability_id": "122330103" });
-        enrich_bpsr_live_ability_presentation(&mut powerdraw_request, "global", "24687926");
-        enrich_bpsr_live_ability_presentation(&mut powerdraw_damage, "global", "24687926");
+        enrich_bpsr_live_ability_presentation(
+            &mut powerdraw_request,
+            "global",
+            "24687926",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+        );
+        enrich_bpsr_live_ability_presentation(
+            &mut powerdraw_damage,
+            "global",
+            "24687926",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+        );
         assert_eq!(powerdraw_request["presentation_recount_group_id"], "84");
         assert_eq!(powerdraw_damage["presentation_recount_group_id"], "84");
 
@@ -17131,13 +17173,44 @@ mod tests {
             "presentation_name": "stale label",
             "icon_asset_path": "stale icon"
         });
-        enrich_bpsr_live_ability_presentation(&mut other_build, "global", "24687927");
+        enrich_bpsr_live_ability_presentation(
+            &mut other_build,
+            "global",
+            "24687927",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+        );
         assert!(other_build.get("presentation_name").is_none());
         assert!(other_build.get("icon_asset_path").is_none());
         assert!(other_build.get("presentation_recount_group_id").is_none());
 
+        let mut wrong_digest = serde_json::json!({
+            "ability_id": "2233",
+            "hits": 1,
+            "reported_damage": 100,
+            "presentation_name": "stale label",
+            "presentation_recount_group_id": "stale group",
+            "icon_asset_path": "stale icon"
+        });
+        enrich_bpsr_live_ability_presentation(
+            &mut wrong_digest,
+            "global",
+            "24687926",
+            "sha256:wrong-pack",
+        );
+        assert_eq!(wrong_digest["ability_id"], "2233");
+        assert_eq!(wrong_digest["hits"], 1);
+        assert_eq!(wrong_digest["reported_damage"], 100);
+        assert!(wrong_digest.get("presentation_name").is_none());
+        assert!(wrong_digest.get("presentation_recount_group_id").is_none());
+        assert!(wrong_digest.get("icon_asset_path").is_none());
+
         let mut unknown = serde_json::json!({ "ability_id": "999999999" });
-        enrich_bpsr_live_ability_presentation(&mut unknown, "global", "24687926");
+        enrich_bpsr_live_ability_presentation(
+            &mut unknown,
+            "global",
+            "24687926",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+        );
         assert!(unknown.get("presentation_name").is_none());
         assert!(unknown.get("icon_asset_path").is_none());
     }

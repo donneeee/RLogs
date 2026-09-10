@@ -1126,7 +1126,15 @@ impl MechanicsMapProjector {
                 .flat_map(|actor_id| {
                     self.cooldowns
                         .range((actor_id, i64::MIN)..=(actor_id, i64::MAX))
-                        .map(|(_, cooldown)| action_control_snapshot(cooldown, now))
+                        .map(|(_, cooldown)| {
+                            action_control_snapshot(
+                                cooldown,
+                                now,
+                                self.runtime_identity
+                                    .as_ref()
+                                    .expect("reviewed runtime identity"),
+                            )
+                        })
                 })
                 .collect::<Vec<_>>()
         } else {
@@ -1203,15 +1211,9 @@ impl MechanicsMapProjector {
                     signal.effect_id,
                 ),
                 presentation_name: if signal.effect_id < 0 {
-                    rlogs_game_bpsr::localized_combat_action_name(-signal.effect_id, "en-US")
-                        .ok()
-                        .flatten()
-                        .map(str::to_owned)
+                    self.localized_action_display_name(-signal.effect_id)
                 } else {
-                    rlogs_game_bpsr::localized_status_effect_name(signal.effect_id, "en-US")
-                        .ok()
-                        .flatten()
-                        .map(str::to_owned)
+                    self.localized_status_display_name(signal.effect_id)
                 },
                 instance_id: signal.instance_id,
                 target_actor_id: signal.target.actor_id.0,
@@ -1266,14 +1268,9 @@ impl MechanicsMapProjector {
                         Some(TargetFrameDebuff {
                             effect_id: status.effect_id,
                             instance_id: status.instance_id,
-                            presentation_name: rlogs_game_bpsr::localized_status_effect_name(
-                                status.effect_id,
-                                "en-US",
-                            )
-                            .ok()
-                            .flatten()
-                            .map(str::to_owned)
-                            .or_else(|| presentation.technical_name.clone()),
+                            presentation_name: self
+                                .localized_status_display_name(status.effect_id)
+                                .or_else(|| presentation.technical_name.clone()),
                             icon_asset_path: Some(format!(
                                 "/game-assets/blue-protocol-star-resonance/shared/{icon}"
                             )),
@@ -1359,9 +1356,10 @@ impl MechanicsMapProjector {
                     .as_ref()
                     .filter(|identity| reviewed_mechanics_identity(Some(identity)))
                     .and_then(|identity| {
-                        rlogs_game_bpsr::localized_scene_name_for_build(
+                        rlogs_game_bpsr::localized_scene_name_for_identity(
                             &identity.deployment_id,
                             &identity.client_build,
+                            &identity.protocol_pack_digest,
                             i64::from(scene_id),
                             "en-US",
                         )
@@ -1539,14 +1537,9 @@ impl MechanicsMapProjector {
                 Some(TargetFrameDebuff {
                     effect_id: status.effect_id,
                     instance_id: status.instance_id,
-                    presentation_name: rlogs_game_bpsr::localized_status_effect_name(
-                        status.effect_id,
-                        "en-US",
-                    )
-                    .ok()
-                    .flatten()
-                    .map(str::to_owned)
-                    .or_else(|| presentation.technical_name.clone()),
+                    presentation_name: self
+                        .localized_status_display_name(status.effect_id)
+                        .or_else(|| presentation.technical_name.clone()),
                     icon_asset_path: Some(format!(
                         "/game-assets/blue-protocol-star-resonance/shared/{icon}"
                     )),
@@ -1623,9 +1616,10 @@ impl MechanicsMapProjector {
             .as_ref()
             .filter(|identity| reviewed_mechanics_identity(Some(identity)))
             .and_then(|identity| {
-                rlogs_game_bpsr::localized_monster_name_for_build(
+                rlogs_game_bpsr::localized_monster_name_for_identity(
                     &identity.deployment_id,
                     &identity.client_build,
+                    &identity.protocol_pack_digest,
                     monster_id,
                     "en-US",
                 )
@@ -1633,6 +1627,36 @@ impl MechanicsMapProjector {
                 .flatten()
                 .map(str::to_owned)
             })
+    }
+
+    fn localized_action_display_name(&self, ability_id: i64) -> Option<String> {
+        self.runtime_identity.as_ref().and_then(|identity| {
+            rlogs_game_bpsr::localized_combat_action_name_for_identity(
+                &identity.deployment_id,
+                &identity.client_build,
+                &identity.protocol_pack_digest,
+                ability_id,
+                "en-US",
+            )
+            .ok()
+            .flatten()
+            .map(str::to_owned)
+        })
+    }
+
+    fn localized_status_display_name(&self, effect_id: i64) -> Option<String> {
+        self.runtime_identity.as_ref().and_then(|identity| {
+            rlogs_game_bpsr::localized_status_effect_name_for_identity(
+                &identity.deployment_id,
+                &identity.client_build,
+                &identity.protocol_pack_digest,
+                effect_id,
+                "en-US",
+            )
+            .ok()
+            .flatten()
+            .map(str::to_owned)
+        })
     }
 
     fn enforce_bounds(&mut self) {
@@ -1832,7 +1856,11 @@ fn observed_percent(current: Option<i64>, maximum: Option<i64>) -> Option<f64> {
     })
 }
 
-fn action_control_snapshot(cooldown: &CooldownState, now_micros: u64) -> ActionControlSnapshot {
+fn action_control_snapshot(
+    cooldown: &CooldownState,
+    now_micros: u64,
+    identity: &MechanicsRuntimeIdentity,
+) -> ActionControlSnapshot {
     let presentation_ability_id = [
         cooldown.skill_level_id,
         cooldown.skill_level_id.checked_div(100).unwrap_or_default(),
@@ -1859,10 +1887,16 @@ fn action_control_snapshot(cooldown: &CooldownState, now_micros: u64) -> ActionC
         skill_level_id: cooldown.skill_level_id,
         presentation_ability_id,
         presentation_name: presentation_ability_id.and_then(|ability_id| {
-            rlogs_game_bpsr::localized_combat_action_name(ability_id, "en-US")
-                .ok()
-                .flatten()
-                .map(str::to_owned)
+            rlogs_game_bpsr::localized_combat_action_name_for_identity(
+                &identity.deployment_id,
+                &identity.client_build,
+                &identity.protocol_pack_digest,
+                ability_id,
+                "en-US",
+            )
+            .ok()
+            .flatten()
+            .map(str::to_owned)
         }),
         icon_asset_path: presentation.and_then(|presentation| {
             presentation
@@ -3643,6 +3677,7 @@ mod tests {
                 observed_at_micros: 2_000_000,
             },
             4_500_000,
+            &reviewed_identity(),
         );
 
         assert_eq!(control.skill_level_id, 12_301);

@@ -2,12 +2,52 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
-pub const BUNDLED_SCENE_LOCALIZATION_DEPLOYMENT_ID: &str = "global";
-pub const BUNDLED_SCENE_LOCALIZATION_CLIENT_BUILD: &str = "24687926";
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LocalizationRuntimeIdentity {
+    schema_version: u16,
+    deployment_id: String,
+    client_build: String,
+    protocol_pack_digest: String,
+}
 
-pub fn bundled_localization_supports(deployment_id: &str, client_build: &str) -> bool {
-    deployment_id == BUNDLED_SCENE_LOCALIZATION_DEPLOYMENT_ID
-        && client_build == BUNDLED_SCENE_LOCALIZATION_CLIENT_BUILD
+static LOCALIZATION_RUNTIME_IDENTITY: OnceLock<Result<LocalizationRuntimeIdentity, String>> =
+    OnceLock::new();
+
+fn localization_runtime_identity() -> Result<&'static LocalizationRuntimeIdentity, String> {
+    LOCALIZATION_RUNTIME_IDENTITY
+        .get_or_init(|| {
+            let identity: LocalizationRuntimeIdentity = serde_json::from_str(include_str!(
+                "../game-data/runtime/localization-runtime.v1.json"
+            ))
+            .map_err(|error| format!("bundled BPSR localization identity is invalid: {error}"))?;
+            if identity.schema_version != 1
+                || identity.deployment_id.trim().is_empty()
+                || identity.client_build.trim().is_empty()
+                || !identity.protocol_pack_digest.starts_with("sha256:")
+                || identity.protocol_pack_digest.len() != 71
+                || !identity
+                    .protocol_pack_digest
+                    .strip_prefix("sha256:")
+                    .is_some_and(|digest| digest.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            {
+                return Err("bundled BPSR localization identity has an unsupported shape".into());
+            }
+            Ok(identity)
+        })
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+pub fn bundled_localization_supports_identity(
+    deployment_id: &str,
+    client_build: &str,
+    protocol_pack_digest: &str,
+) -> Result<bool, String> {
+    let identity = localization_runtime_identity()?;
+    Ok(deployment_id == identity.deployment_id
+        && client_build == identity.client_build
+        && protocol_pack_digest == identity.protocol_pack_digest)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -183,13 +223,14 @@ pub fn localized_scene_name(scene_id: i64, locale: &str) -> Result<Option<&'stat
 /// Presentation is deliberately fail-closed here: numeric scene identity
 /// remains available for every build, but a label from a different deployment
 /// or client build must never be presented as if it were observed there.
-pub fn localized_scene_name_for_build(
+pub fn localized_scene_name_for_identity(
     deployment_id: &str,
     client_build: &str,
+    protocol_pack_digest: &str,
     scene_id: i64,
     locale: &str,
 ) -> Result<Option<&'static str>, String> {
-    if !bundled_localization_supports(deployment_id, client_build) {
+    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)? {
         return Ok(None);
     }
     localized_scene_name(scene_id, locale)
@@ -270,15 +311,47 @@ mod tests {
     #[test]
     fn exact_build_lookup_fails_closed_across_builds_and_deployments() {
         assert_eq!(
-            localized_scene_name_for_build("global", "24687926", 12_023, "en-US").unwrap(),
+            localized_scene_name_for_identity(
+                "global",
+                "24687926",
+                "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
+                12_023,
+                "en-US",
+            )
+            .unwrap(),
             Some("Guild Hunt - Hard")
         );
         assert_eq!(
-            localized_scene_name_for_build("global", "24687927", 12_023, "en-US").unwrap(),
+            localized_scene_name_for_identity(
+                "global",
+                "24687927",
+                "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
+                12_023,
+                "en-US",
+            )
+            .unwrap(),
             None
         );
         assert_eq!(
-            localized_scene_name_for_build("cn", "24687926", 12_023, "en-US").unwrap(),
+            localized_scene_name_for_identity(
+                "cn",
+                "24687926",
+                "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
+                12_023,
+                "en-US",
+            )
+            .unwrap(),
+            None
+        );
+        assert_eq!(
+            localized_scene_name_for_identity(
+                "global",
+                "24687926",
+                "sha256:wrong-pack",
+                12_023,
+                "en-US",
+            )
+            .unwrap(),
             None
         );
     }
@@ -376,7 +449,16 @@ mod tests {
         for scene_id in &reviewed_scene_ids {
             let mut localized_locale_count = 0;
             for locale in SHIPPED_LOCALES {
-                match localized_scene_name_for_build("global", BUILD, *scene_id, locale) {
+                match localized_scene_name_for_identity(
+                    "global",
+                    BUILD,
+                    localization_runtime_identity()
+                        .unwrap()
+                        .protocol_pack_digest
+                        .as_str(),
+                    *scene_id,
+                    locale,
+                ) {
                     Ok(Some(name)) if !name.trim().is_empty() && !name.contains('\u{fffd}') => {
                         if *locale == "en-US"
                             && (name.contains("Unresolved")

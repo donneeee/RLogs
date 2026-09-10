@@ -107,11 +107,11 @@ pub use class_localization::{
 pub use combat_presentation::{
     CombatActionPresentation, RdpsAttributionEffectPresentation, StatusEffectDisplayPresentation,
     StatusEffectPresentation, combat_action_presentation, combat_recount_group_id,
-    localized_combat_action_name, localized_combat_action_name_for_build,
-    localized_recount_group_name, localized_recount_group_name_for_build,
-    localized_status_effect_name, localized_status_effect_name_for_build,
+    localized_combat_action_name, localized_combat_action_name_for_identity,
+    localized_recount_group_name, localized_recount_group_name_for_identity,
+    localized_status_effect_name, localized_status_effect_name_for_identity,
     rdps_attribution_effect_presentation, status_effect_display_presentation,
-    status_effect_display_presentation_for_build, status_effect_presentation,
+    status_effect_display_presentation_for_identity, status_effect_presentation,
 };
 pub use continuous_recording::{
     ContinuousBpsrRecorder, ContinuousForcedReset, ContinuousRecordingConfig,
@@ -193,7 +193,7 @@ pub use module_effect_resolution::{
     ActiveModuleEffect, ActiveModuleEffectSnapshot, ModuleEffectCatalog, ModuleEffectCatalogError,
     ModuleEffectLevel, ModuleEffectResolutionIssue, ModuleEffectSource,
 };
-pub use monster_localization::localized_monster_name_for_build;
+pub use monster_localization::localized_monster_name_for_identity;
 pub use offline_recording::{
     CaptureCoverageSummary, DecodeCoverageSummary, EventTopicCoverage, FeatureRecordingCoverage,
     GapRecordingCoverage, JournalTailPolicy, OFFLINE_RECORDING_REPORT_SCHEMA_VERSION,
@@ -279,9 +279,8 @@ pub use run_segmentation::{
     DungeonSegmentStartReason,
 };
 pub use scene_localization::{
-    BUNDLED_SCENE_LOCALIZATION_CLIENT_BUILD, BUNDLED_SCENE_LOCALIZATION_DEPLOYMENT_ID,
-    ScenePresentation, bundled_localization_supports, localized_scene_name,
-    localized_scene_name_for_build, scene_presentation,
+    ScenePresentation, bundled_localization_supports_identity, localized_scene_name,
+    localized_scene_name_for_identity, scene_presentation,
 };
 pub use segmented_recording::{
     SealedDungeonRunLog, SegmentedDungeonLogWriter, SegmentedRecordingError,

@@ -932,6 +932,11 @@ mod tests {
             current.digest(),
             "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae"
         );
+        assert!(
+            crate::bundled_localization_supports_identity("global", "24687926", current.digest(),)
+                .unwrap(),
+            "the localization-owned runtime manifest must identify the actual current protocol pack"
+        );
         let current_formula = crate::rdps_runtime::rdps_runtime_config_for_identity(
             "global",
             "24687926",
