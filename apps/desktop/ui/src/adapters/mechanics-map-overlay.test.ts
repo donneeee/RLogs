@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { UiLocalizer } from "../localization/ui-locale";
 
 import { formatDungeonAttemptTime, formatDungeonObjectiveValue, mechanicsMapMarkerLabel, mechanicsMapReadabilityProfile, nextMapDim, parseMechanicsMapCanvasPreferences, shouldDrawRadarFallbackArena, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
 
@@ -180,6 +181,17 @@ describe("Mechanics Map overlay canvas preferences", () => {
     expect(formatDungeonObjectiveValue(275, false, 400)).toBe("275 / 400");
     expect(formatDungeonObjectiveValue(400, true, 400)).toBe("400 / 400 ✓");
     expect(formatDungeonObjectiveValue(null, false)).toBe("Observed");
+  });
+
+  it("uses the selected UI locale formatter for objective counts", () => {
+    const localizer: UiLocalizer = {
+      locale: "en-US",
+      loadedLocales: ["en-US"],
+      t: (key) => key,
+      formatNumber: (value) => `[${value}]`,
+    };
+    expect(formatDungeonObjectiveValue(1_000, false, 2_000, localizer))
+      .toBe("[1000] / [2000]");
   });
 
   it("formats the packet-bounded attempt clock with stable tenths", () => {

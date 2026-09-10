@@ -173,12 +173,16 @@ export function formatDungeonObjectiveValue(
   value: number | null,
   complete: boolean | null,
   requiredCount: number | null = null,
+  localizer?: UiLocalizer,
 ): string {
+  const format = (number: number): string => localizer?.formatNumber(number) ?? number.toLocaleString();
   if (value !== null && requiredCount !== null) {
-    return `${value.toLocaleString()} / ${requiredCount.toLocaleString()}${complete === true ? " ✓" : ""}`;
+    return `${format(value)} / ${format(requiredCount)}${complete === true ? " ✓" : ""}`;
   }
-  if (value !== null) return `${value.toLocaleString()}${complete === true ? " ✓" : ""}`;
-  return complete === true ? "Complete" : "Observed";
+  if (value !== null) return `${format(value)}${complete === true ? " ✓" : ""}`;
+  return complete === true
+    ? localizer?.t("ui.mechanics_map.objectives.complete_title") ?? "Complete"
+    : localizer?.t("ui.mechanics_map.objectives.observed_title") ?? "Observed";
 }
 
 export function formatDungeonAttemptTime(micros: number): string {
@@ -194,6 +198,16 @@ export function formatDungeonAttemptTime(micros: number): string {
 
 function humanizeDungeonState(value: string): string {
   return value.replaceAll("_", " ").toUpperCase();
+}
+
+function localizedDungeonState(value: string, localizer: UiLocalizer): string {
+  const key = ({
+    started: "ui.mechanics_map.objectives.state_started",
+    cleared: "ui.mechanics_map.objectives.state_cleared",
+    wiped: "ui.mechanics_map.objectives.state_wiped",
+    ended: "ui.mechanics_map.objectives.state_ended",
+  } as const)[value as "started" | "cleared" | "wiped" | "ended"];
+  return key === undefined ? humanizeDungeonState(value) : localizer.t(key);
 }
 
 export function mountMechanicsMapOverlay(
@@ -390,14 +404,14 @@ export function mountMechanicsMapOverlay(
   targetPanel.append(targetToolbar, targetBody, targetResizeHandle);
   const objectivesPanel = element("section", "dungeon-objectives-overlay-runtime");
   const objectivesToolbar = element("header", "dungeon-objectives-overlay-toolbar");
-  const objectivesTitle = text("strong", "Dungeon objectives");
-  const objectivesStatus = text("span", "WAITING");
+  const objectivesTitle = text("strong", localizer.t("ui.mechanics_map.objectives.title"));
+  const objectivesStatus = text("span", localizer.t("ui.mechanics_map.status.waiting"));
   objectivesToolbar.append(objectivesTitle, objectivesStatus);
   const objectivesBody = element("section", "dungeon-objectives-overlay-body");
   const objectivesResizeHandle = element("button", "dungeon-objectives-overlay-resize");
   objectivesResizeHandle.type = "button";
-  objectivesResizeHandle.title = "Resize dungeon objectives";
-  objectivesResizeHandle.setAttribute("aria-label", "Resize dungeon objectives");
+  objectivesResizeHandle.title = localizer.t("ui.mechanics_map.objectives.resize");
+  objectivesResizeHandle.setAttribute("aria-label", localizer.t("ui.mechanics_map.objectives.resize"));
   objectivesPanel.append(objectivesToolbar, objectivesBody, objectivesResizeHandle);
   const alertsPanel = element("section", "mechanic-alerts-overlay-runtime");
   const alertsToolbar = element("header", "mechanic-alerts-overlay-toolbar");
@@ -415,7 +429,7 @@ export function mountMechanicsMapOverlay(
     moduleVisibilityButton("Actions", "showActions", actionsPanel),
     moduleVisibilityButton("Party", "showParty", partyPanel),
     moduleVisibilityButton("Target", "showTarget", targetPanel),
-    moduleVisibilityButton("Objectives", "showObjectives", objectivesPanel),
+    moduleVisibilityButton(localizer.t("ui.mechanics_map.objectives.toggle"), "showObjectives", objectivesPanel),
     moduleVisibilityButton("Alerts", "showAlerts", alertsPanel),
   ];
   actions.prepend(...moduleToggles);
@@ -584,11 +598,15 @@ export function mountMechanicsMapOverlay(
       preferences[preference] = !preferences[preference];
       control.dataset.active = String(preferences[preference]);
       control.setAttribute("aria-pressed", String(preferences[preference]));
-      control.title = `${preferences[preference] ? "Hide" : "Show"} ${label.toLowerCase()} module`;
+      control.title = localizer.t(preferences[preference]
+        ? "ui.mechanics_map.module.hide"
+        : "ui.mechanics_map.module.show", { module: label });
       module.hidden = !preferences[preference];
       savePreferences();
     });
-    control.title = `${preferences[preference] ? "Hide" : "Show"} ${label.toLowerCase()} module`;
+    control.title = localizer.t(preferences[preference]
+      ? "ui.mechanics_map.module.hide"
+      : "ui.mechanics_map.module.show", { module: label });
     control.setAttribute("aria-pressed", String(preferences[preference]));
     module.hidden = !preferences[preference];
     return control;
@@ -726,28 +744,37 @@ export function mountMechanicsMapOverlay(
     const dungeon = snapshot.dungeon;
     objectivesBody.replaceChildren();
     if (dungeon === null) {
-      objectivesTitle.textContent = "Dungeon objectives";
-      objectivesStatus.textContent = "WAITING";
+      objectivesTitle.textContent = localizer.t("ui.mechanics_map.objectives.title");
+      objectivesStatus.textContent = localizer.t("ui.mechanics_map.status.waiting");
       objectivesStatus.dataset.state = "waiting";
-      objectivesBody.append(text("p", "Waiting for packet-observed dungeon objectives…", "dungeon-objectives-overlay-empty"));
+      objectivesBody.append(text("p", localizer.t("ui.mechanics_map.objectives.waiting"), "dungeon-objectives-overlay-empty"));
       return;
     }
     objectivesTitle.textContent = snapshot.scene_name ??
-      (dungeon.dungeon_id === null ? "Dungeon objectives" : `Dungeon ${dungeon.dungeon_id}`);
-    objectivesStatus.textContent = humanizeDungeonState(dungeon.encounter_state ?? dungeon.flow_phase ?? dungeon.state);
+      (dungeon.dungeon_id === null
+        ? localizer.t("ui.mechanics_map.objectives.title")
+        : localizer.t("ui.mechanics_map.objectives.dungeon", { id: dungeon.dungeon_id }));
+    objectivesStatus.textContent = localizedDungeonState(
+      dungeon.encounter_state ?? dungeon.flow_phase ?? dungeon.state,
+      localizer,
+    );
     objectivesStatus.dataset.state = dungeon.encounter_state === "wiped" || dungeon.state === "failed"
       ? "failed"
       : dungeon.encounter_state === "cleared" || dungeon.state === "completed" ? "complete" : "live";
     const metadata = [
-      dungeon.dungeon_id === null ? null : `Dungeon ${dungeon.dungeon_id}`,
-      dungeon.difficulty_id === null ? null : `Difficulty ${dungeon.difficulty_id}`,
+      dungeon.dungeon_id === null ? null : localizer.t("ui.mechanics_map.objectives.dungeon", { id: dungeon.dungeon_id }),
+      dungeon.difficulty_id === null ? null : localizer.t("ui.mechanics_map.objectives.difficulty", { id: dungeon.difficulty_id }),
     ].filter((value): value is string => value !== null).join(" · ");
     if (metadata) objectivesBody.append(text("small", metadata, "dungeon-objectives-overlay-meta"));
     if (dungeon.attempt_number > 0) {
       const attempt = element("div", "dungeon-objectives-overlay-attempt");
-      const label = text("span", `Attempt ${dungeon.attempt_number}`);
+      const label = text("span", localizer.t("ui.mechanics_map.objectives.attempt", {
+        number: localizer.formatNumber(dungeon.attempt_number),
+      }));
       const timer = text("b", formatDungeonAttemptTime(dungeon.attempt_elapsed_micros));
-      const retries = text("small", `${dungeon.retry_count} ${dungeon.retry_count === 1 ? "retry" : "retries"}`);
+      const retries = text("small", localizer.t(dungeon.retry_count === 1
+        ? "ui.mechanics_map.objectives.retry"
+        : "ui.mechanics_map.objectives.retries", { count: localizer.formatNumber(dungeon.retry_count) }));
       attempt.append(label, timer, retries);
       objectivesBody.append(attempt);
       objectivesRenderedAtMillis = performance.now();
@@ -762,7 +789,7 @@ export function mountMechanicsMapOverlay(
       if (dungeon.attempt_running) objectivesTimer = window.setInterval(updateAttemptTimer, 100);
     }
     if (dungeon.objectives.length === 0) {
-      objectivesBody.append(text("p", "No packet-observed objectives yet.", "dungeon-objectives-overlay-empty"));
+      objectivesBody.append(text("p", localizer.t("ui.mechanics_map.objectives.empty"), "dungeon-objectives-overlay-empty"));
       return;
     }
     for (const objective of dungeon.objectives) {
@@ -770,19 +797,22 @@ export function mountMechanicsMapOverlay(
       row.dataset.complete = String(objective.complete === true);
       row.dataset.catalogResolution = objective.catalog_resolution;
       row.title = [
-        `Packet objective ID: ${objective.objective_id}`,
-        objective.objective_map_key === null ? null : `Map key: ${objective.objective_map_key}`,
-        `Catalog: ${humanizeDungeonState(objective.catalog_resolution)}`,
+        localizer.t("ui.mechanics_map.objectives.packet_id", { id: objective.objective_id }),
+        objective.objective_map_key === null ? null : localizer.t("ui.mechanics_map.objectives.map_key", { key: objective.objective_map_key }),
+        localizer.t("ui.mechanics_map.objectives.catalog", { resolution: humanizeDungeonState(objective.catalog_resolution) }),
       ].filter((value): value is string => value !== null).join("\n");
       const identity = element("span", "dungeon-objectives-overlay-identity");
       identity.append(
-        text("strong", objective.presentation_name ?? objective.activity_target_key ?? `Objective ${objective.objective_id}`),
-        text("small", objective.complete === true ? "COMPLETE" : "PACKET OBSERVED"),
+        text("strong", objective.presentation_name ?? objective.activity_target_key ?? localizer.t("ui.mechanics_map.objectives.objective", { id: objective.objective_id })),
+        text("small", objective.complete === true
+          ? localizer.t("ui.mechanics_map.objectives.complete")
+          : localizer.t("ui.mechanics_map.objectives.packet_observed")),
       );
       row.append(identity, text("b", formatDungeonObjectiveValue(
         objective.value,
         objective.complete,
         objective.required_count,
+        localizer,
       )));
       if (objective.value !== null && objective.required_count !== null && objective.required_count > 0) {
         const progress = document.createElement("progress");

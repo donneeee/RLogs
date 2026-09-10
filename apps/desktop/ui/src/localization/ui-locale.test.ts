@@ -36,6 +36,14 @@ describe("desktop UI locale packages", () => {
     }
   });
 
+  it("keeps every migrated Mechanics Map key present in the shipped English package", async () => {
+    const source = readFileSync(new URL("../adapters/mechanics-map-overlay.ts", import.meta.url), "utf8");
+    const keys = new Set(source.match(/ui\.mechanics_map\.[a-z0-9_.]+/g) ?? []);
+    const localizer = await loadUiLocalizer("en-US");
+    expect(keys.size).toBeGreaterThan(0);
+    for (const key of keys) expect(localizer.t(key), key).not.toBe(key);
+  });
+
   it("loads the shipped combat history browser and graph inspection shard", async () => {
     const localizer = await loadUiLocalizer("en-US");
     for (const key of [
