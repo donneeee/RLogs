@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UiLocalizer } from "../localization/ui-locale";
-import type { AutomarkerPresetView } from "./automarker-presets";
+import { AUTOMARKER_PREVIEW_STORAGE_KEY, AUTOMARKER_PREVIEW_TTL_MILLIS, parseAutomarkerPreview, type AutomarkerPresetView } from "./automarker-presets";
 import type { MechanicsMapSnapshot, MechanicsMapUpdate } from "./mechanics-map";
 import { mountMechanicsMapOverlay } from "./mechanics-map-overlay";
 
@@ -112,6 +112,79 @@ afterEach(() => {
 });
 
 describe("mounted Mechanics Map automarker request ordering", () => {
+  it("previews the selected saved preset locally and clears it across scene transition and disposal", async () => {
+    const transition = deferred<MechanicsMapUpdate>();
+    const catalogs = [
+      catalog(1_633, "dungeon.1633", "Master opener"),
+      catalog(1_631, "tina-mindrealm", "Normal opener"),
+    ];
+    let waitCount = 0;
+    const nativeLoad = vi.fn(async () => ({
+      supported: false as const,
+      reason: "native_waymark_request_unverified" as const,
+    }));
+    const container = document.createElement("div");
+    document.body.append(container);
+    const mounted = mountMechanicsMapOverlay(container, {
+      loadSnapshot: async () => snapshot(1_633, 1),
+      waitForSnapshot: () => waitCount++ === 0 ? transition.promise : new Promise(() => undefined),
+      prepareLocalMaps: async () => undefined,
+      hide: async () => undefined,
+      setInteractive: async () => undefined,
+      onInteractivity: async () => () => undefined,
+      onFocusHeld: async () => () => undefined,
+      loadAutomarkerPresets: async () => catalogs.shift()!,
+      loadAutomarkerPreset: nativeLoad,
+    }, localizer);
+    await flushPromises();
+
+    const preview = [...container.querySelectorAll("button")]
+      .find((button) => button.textContent === "Preview locally") as HTMLButtonElement;
+    expect(preview.disabled).toBe(false);
+    preview.click();
+
+    const masterRaw = window.localStorage.getItem(AUTOMARKER_PREVIEW_STORAGE_KEY);
+    expect(masterRaw).not.toBeNull();
+    const masterPreview = parseAutomarkerPreview(JSON.parse(masterRaw!));
+    expect(masterPreview).toEqual({
+      schemaVersion: 1,
+      context: catalog(1_633, "dungeon.1633", "Master opener").context,
+      name: "Master opener",
+      points: [{ markerNumber: 1, x: 1, y: 2, z: 3 }],
+      previewSessionId: "preview-test-session",
+      issuedAtUnixMillis: masterPreview.issuedAtUnixMillis,
+      expiresAtUnixMillis: masterPreview.issuedAtUnixMillis + AUTOMARKER_PREVIEW_TTL_MILLIS,
+    });
+    expect(container.querySelector(".automarker-overlay-picker small")?.textContent)
+      .toContain("No game transmission");
+    expect(nativeLoad).not.toHaveBeenCalled();
+
+    transition.resolve(snapshot(1_631, 2));
+    await flushPromises();
+    expect(window.localStorage.getItem(AUTOMARKER_PREVIEW_STORAGE_KEY)).toBeNull();
+
+    preview.click();
+    const normalRaw = window.localStorage.getItem(AUTOMARKER_PREVIEW_STORAGE_KEY);
+    expect(normalRaw).not.toBeNull();
+    const normalPreview = parseAutomarkerPreview(JSON.parse(normalRaw!));
+    expect(normalPreview).toEqual({
+      schemaVersion: 1,
+      context: catalog(1_631, "tina-mindrealm", "Normal opener").context,
+      name: "Normal opener",
+      points: [{ markerNumber: 1, x: 1, y: 2, z: 3 }],
+      previewSessionId: "preview-test-session",
+      issuedAtUnixMillis: normalPreview.issuedAtUnixMillis,
+      expiresAtUnixMillis: normalPreview.issuedAtUnixMillis + AUTOMARKER_PREVIEW_TTL_MILLIS,
+    });
+    expect(nativeLoad).not.toHaveBeenCalled();
+
+    mounted.dispose();
+    expect(window.localStorage.getItem(AUTOMARKER_PREVIEW_STORAGE_KEY)).toBeNull();
+    preview.click();
+    expect(window.localStorage.getItem(AUTOMARKER_PREVIEW_STORAGE_KEY)).toBeNull();
+    expect(nativeLoad).not.toHaveBeenCalled();
+  });
+
   it("cannot resurrect an old-scene catalog after transition or disposal", async () => {
     const transition = deferred<MechanicsMapUpdate>();
     const oldSceneCatalog = deferred<AutomarkerPresetView>();

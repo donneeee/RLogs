@@ -1,7 +1,7 @@
 import type { MountedSurface } from "../shell/types";
 import type { UiLocalizer } from "../localization/ui-locale";
 import type { AutomarkerLoadResult, AutomarkerPoint, AutomarkerPresetView, AutomarkerPreview } from "./automarker-presets";
-import { AUTOMARKER_PREVIEW_STORAGE_KEY, automarkerResponseIsCurrent, readActiveAutomarkerPreview } from "./automarker-presets";
+import { AUTOMARKER_PREVIEW_STORAGE_KEY, automarkerResponseIsCurrent, publishAutomarkerPreview, readActiveAutomarkerPreview } from "./automarker-presets";
 import {
   actionControlRemainingMillis,
   fitMechanicsMapCanvasRect,
@@ -419,9 +419,9 @@ export function mountMechanicsMapOverlay(
   automarkerPanel.hidden = true;
   const automarkerTitle = text("strong", "Marker presets");
   const automarkerSelect = document.createElement("select");
-  const automarkerLoad = button("Load", false, () => { void loadSelectedAutomarkerPreset(); });
+  const automarkerPreviewButton = button("Preview locally", false, previewSelectedAutomarkerPreset);
   const automarkerNote = text("small", "Current dungeon-family presets only");
-  automarkerPanel.append(automarkerTitle, automarkerSelect, automarkerLoad, automarkerNote);
+  automarkerPanel.append(automarkerTitle, automarkerSelect, automarkerPreviewButton, automarkerNote);
   const moduleToggles = [
     moduleVisibilityButton("Player", "showPlayer", playerPanel),
     moduleVisibilityButton("Actions", "showActions", actionsPanel),
@@ -660,7 +660,7 @@ export function mountMechanicsMapOverlay(
       automarkerView = null;
       automarkerSelect.replaceChildren(new Option("Preset catalog unavailable", ""));
       automarkerSelect.disabled = true;
-      automarkerLoad.disabled = true;
+      automarkerPreviewButton.disabled = true;
       automarkerNote.textContent = error instanceof Error ? error.message : String(error);
     }
   }
@@ -692,19 +692,24 @@ export function mountMechanicsMapOverlay(
       for (const preset of presets) automarkerSelect.append(new Option(`${preset.name} · ${preset.points.length} marks`, preset.presetId));
     }
     automarkerSelect.disabled = presets.length === 0;
-    automarkerLoad.disabled = presets.length === 0 || automarkerView?.nativeLoadSupported !== true;
-    automarkerLoad.title = automarkerView?.nativeLoadSupported === true
-      ? "Place the selected setup at its saved coordinates"
-      : "Unavailable until native party-visible placement is protocol-verified";
-    automarkerNote.textContent = automarkerView?.nativeLoadSupported === true
-      ? "Only setups for this dungeon family are listed."
-      : "Load is locked until the outbound marker protocol is verified.";
+    automarkerPreviewButton.disabled = presets.length === 0 || automarkerView?.context === null;
+    automarkerPreviewButton.title = "Draw the selected setup on this local Mechanics Map only";
+    automarkerNote.textContent = "Local preview only. Nothing is sent to the game; native placement remains locked.";
   }
 
-  async function loadSelectedAutomarkerPreset(): Promise<void> {
-    if (automarkerView?.nativeLoadSupported !== true || automarkerSelect.value === "") return;
+  function previewSelectedAutomarkerPreset(): void {
+    const context = automarkerView?.context;
+    const preset = automarkerView?.presets.find((candidate) => candidate.presetId === automarkerSelect.value);
+    if (!alive || context === null || context === undefined || preset === undefined) return;
     try {
-      await dependencies.loadAutomarkerPreset(automarkerSelect.value);
+      publishAutomarkerPreview(
+        window.localStorage,
+        context,
+        preset.name,
+        preset.points,
+        automarkerView!.previewSessionId,
+      );
+      refreshAutomarkerPreview();
     } catch (error) {
       automarkerNote.textContent = error instanceof Error ? error.message : String(error);
     }
@@ -715,6 +720,7 @@ export function mountMechanicsMapOverlay(
     if (!snapshot) return;
     const nextAutomarkerSceneKey = mechanicsMapAutomarkerSnapshotKey(snapshot);
     if (nextAutomarkerSceneKey !== automarkerSceneKey) {
+      if (automarkerSceneKey !== "") window.localStorage.removeItem(AUTOMARKER_PREVIEW_STORAGE_KEY);
       automarkerSceneKey = nextAutomarkerSceneKey;
       automarkerView = null;
       automarkerPreview = null;
@@ -1661,6 +1667,7 @@ export function mountMechanicsMapOverlay(
       window.removeEventListener("resize", handleScreenResize);
       window.removeEventListener("storage", handlePreviewStorage);
       if (automarkerPreviewTimer !== null) window.clearInterval(automarkerPreviewTimer);
+      window.localStorage.removeItem(AUTOMARKER_PREVIEW_STORAGE_KEY);
       removeInteractivityListener?.();
       removeFocusHeldListener?.();
       image = null;
