@@ -13046,7 +13046,10 @@ mod tests {
         assert!(character.reports[0].difficulty_family.is_none());
         assert_eq!(character.reports[0].difficulty_tier, Some(5));
         assert_eq!(character.reports[1].scene_name.as_deref(), Some("Scene 1"));
-        assert_eq!(character.reports[1].difficulty_family.as_deref(), Some("master"));
+        assert_eq!(
+            character.reports[1].difficulty_family.as_deref(),
+            Some("master")
+        );
         assert_eq!(character.reports[1].difficulty_tier, Some(5));
         assert_eq!(
             character.reports[1].protocol_pack_digest.as_deref(),
