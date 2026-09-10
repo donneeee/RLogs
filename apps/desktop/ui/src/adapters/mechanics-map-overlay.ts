@@ -1,6 +1,7 @@
 import type { MountedSurface } from "../shell/types";
 import type { UiLocalizer } from "../localization/ui-locale";
 import { planAutomarkerPreview } from "./automarker-plan";
+import { captureWaymarkPreset, storeWaymarkPreset } from "./waymark-presets";
 import {
   actionControlRemainingMillis,
   fitMechanicsMapCanvasRect,
@@ -287,6 +288,27 @@ export function mountMechanicsMapOverlay(
     scheduleDraw();
   });
   const center = button(localizer.t("ui.mechanics_map.toolbar.center"), false, centerOnPlayer);
+  const saveMarks = button(localizer.t("ui.mechanics_map.waymarks.save"), false, () => {
+    const snapshot = update?.snapshot;
+    if (!snapshot) {
+      saveMarks.title = localizer.t("ui.mechanics_map.waymarks.waiting");
+      return;
+    }
+    try {
+      const preset = captureWaymarkPreset(snapshot, snapshot.scene_name ?? localizer.t("ui.mechanics_map.waymarks.scene_name", {
+        scene: snapshot.scene_id ?? "?",
+      }));
+      storeWaymarkPreset(window.localStorage, preset);
+      saveMarks.textContent = localizer.t("ui.mechanics_map.waymarks.saved", { count: preset.points.length });
+      saveMarks.title = localizer.t("ui.mechanics_map.waymarks.saved_help");
+    } catch {
+      saveMarks.title = localizer.t("ui.mechanics_map.waymarks.save_failed");
+    }
+  });
+  saveMarks.title = localizer.t("ui.mechanics_map.waymarks.save_help");
+  const loadMarks = button(localizer.t("ui.mechanics_map.waymarks.load"), false, () => undefined);
+  loadMarks.disabled = true;
+  loadMarks.title = localizer.t("ui.mechanics_map.waymarks.load_unverified");
   const expand = button(preferences.expanded ? "Window" : "Full map", preferences.expanded, () => {
     setExpanded(!preferences.expanded);
   });
@@ -294,7 +316,7 @@ export function mountMechanicsMapOverlay(
     void setLocked(!preferences.locked);
   });
   const hide = button("Hide", false, () => { void dependencies.hide(); });
-  actions.append(rotate, monsters, dim, contrast, fit, center, expand, lock, hide);
+  actions.append(rotate, monsters, dim, contrast, fit, center, saveMarks, loadMarks, expand, lock, hide);
   toolbar.append(identity, actions);
 
   const viewport = element("section", "mechanics-map-overlay-viewport");
