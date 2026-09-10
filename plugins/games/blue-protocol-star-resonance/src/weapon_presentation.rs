@@ -112,28 +112,16 @@ fn weapon_names() -> Result<&'static WeaponLocalizationCatalog, String> {
 /// Resolves the official current-build English weapon name for an equipped
 /// item. The exact Global English `ItemTable` label is the fallback for every
 /// requested desktop locale until independently extracted locale bundles are
-/// shipped. Unknown runtime identities and item IDs remain unresolved.
+/// shipped. Runtime identity does not gate this display-only lookup; unknown
+/// item IDs remain unresolved.
 pub fn localized_weapon_name_for_identity(
-    deployment_id: &str,
-    client_build: &str,
-    protocol_pack_digest: &str,
+    _deployment_id: &str,
+    _client_build: &str,
+    _protocol_pack_digest: &str,
     item_id: i64,
     _locale: &str,
 ) -> Result<Option<&'static str>, String> {
-    if !crate::bundled_localization_supports_identity(
-        deployment_id,
-        client_build,
-        protocol_pack_digest,
-    )? {
-        return Ok(None);
-    }
     let catalog = weapon_names()?;
-    if deployment_id != catalog.deployment_id
-        || client_build != catalog.client_build
-        || protocol_pack_digest != catalog.protocol_pack_digest
-    {
-        return Ok(None);
-    }
     Ok(catalog
         .weapons
         .binary_search_by_key(&item_id, |(id, _)| *id)
@@ -270,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn weapon_names_require_the_exact_runtime_identity() {
+    fn weapon_names_are_display_only_across_runtime_identities() {
         const DIGEST: &str =
             "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
         assert_eq!(
@@ -302,7 +290,7 @@ mod tests {
             assert_eq!(
                 localized_weapon_name_for_identity(deployment, build, digest, 2_000_631, "fr-FR")
                     .unwrap(),
-                None
+                Some("Ember - Gaze of the Far Sea")
             );
         }
         assert_eq!(

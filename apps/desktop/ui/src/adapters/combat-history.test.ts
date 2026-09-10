@@ -78,6 +78,19 @@ describe("combat history contracts", () => {
       .toEqual([]);
   });
 
+  it("accepts trusted ID-catalog death labels without treating them as exact-build provenance", () => {
+    const trusted = deathHistory();
+    const hit = trusted.runs[0]!.views[0]!.actors[0]!.death_events[0]!.cause!.final_hit;
+    hit.source_presentation.provenance = "trusted_monster_catalog_id";
+    hit.ability_presentation.provenance = "trusted_action_catalog_id";
+
+    expect(parseCombatHistorySnapshot(trusted).runs[0]?.views[0]?.actors[0]
+      ?.death_events[0]?.cause?.final_hit).toMatchObject({
+      source_presentation: { provenance: "trusted_monster_catalog_id" },
+      ability_presentation: { provenance: "trusted_action_catalog_id" },
+    });
+  });
+
   it("keeps a death marker but nulls malformed replay or presentation evidence", () => {
     const mutations = [
       (cause: any) => { cause.final_hit.at_micros -= 1; },

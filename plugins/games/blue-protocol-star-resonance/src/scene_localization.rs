@@ -217,22 +217,17 @@ pub fn localized_scene_name(scene_id: i64, locale: &str) -> Result<Option<&'stat
         .map(|index| catalog.scenes[index].1.as_str()))
 }
 
-/// Resolves a scene label only when the captured artifact exactly matches the
-/// build that supplied the bundled locale tables.
-///
-/// Presentation is deliberately fail-closed here: numeric scene identity
-/// remains available for every build, but a label from a different deployment
-/// or client build must never be presented as if it were observed there.
+/// Resolves a display-only scene label from the trusted bundled ID catalog.
+/// Runtime identity remains an input for API compatibility but does not gate
+/// human-readable presentation; semantic scene/run rules use separate exact
+/// authority checks.
 pub fn localized_scene_name_for_identity(
-    deployment_id: &str,
-    client_build: &str,
-    protocol_pack_digest: &str,
+    _deployment_id: &str,
+    _client_build: &str,
+    _protocol_pack_digest: &str,
     scene_id: i64,
     locale: &str,
 ) -> Result<Option<&'static str>, String> {
-    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)? {
-        return Ok(None);
-    }
     localized_scene_name(scene_id, locale)
 }
 
@@ -309,49 +304,21 @@ mod tests {
     }
 
     #[test]
-    fn exact_build_lookup_fails_closed_across_builds_and_deployments() {
+    fn trusted_scene_labels_ignore_runtime_identity_but_unknown_ids_do_not_resolve() {
+        for (deployment, build, digest) in [
+            ("global", "24600000", "sha256:old"),
+            ("global", "24687926", "sha256:wrong"),
+            ("global", "24699999", "sha256:new"),
+            ("cn", "24687926", "sha256:cross-deployment"),
+        ] {
+            assert_eq!(
+                localized_scene_name_for_identity(deployment, build, digest, 12_023, "en-US")
+                    .unwrap(),
+                Some("Guild Hunt - Hard")
+            );
+        }
         assert_eq!(
-            localized_scene_name_for_identity(
-                "global",
-                "24687926",
-                "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
-                12_023,
-                "en-US",
-            )
-            .unwrap(),
-            Some("Guild Hunt - Hard")
-        );
-        assert_eq!(
-            localized_scene_name_for_identity(
-                "global",
-                "24687927",
-                "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
-                12_023,
-                "en-US",
-            )
-            .unwrap(),
-            None
-        );
-        assert_eq!(
-            localized_scene_name_for_identity(
-                "cn",
-                "24687926",
-                "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
-                12_023,
-                "en-US",
-            )
-            .unwrap(),
-            None
-        );
-        assert_eq!(
-            localized_scene_name_for_identity(
-                "global",
-                "24687926",
-                "sha256:wrong-pack",
-                12_023,
-                "en-US",
-            )
-            .unwrap(),
+            localized_scene_name_for_identity("global", "", "", 99_999_999, "en-US").unwrap(),
             None
         );
     }

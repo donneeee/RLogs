@@ -400,6 +400,8 @@ pub enum HistoryDeathPresentationProvenance {
     ExactHistoryParticipant,
     ExactBuildMonsterCatalog,
     ExactBuildActionCatalog,
+    TrustedMonsterCatalogId,
+    TrustedActionCatalogId,
 }
 
 /// Private, event-time presentation evidence for a death hit. The static

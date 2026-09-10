@@ -2,8 +2,6 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
-use crate::scene_localization::bundled_localization_supports_identity;
-
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct MonsterLocalizationCatalog {
@@ -119,20 +117,14 @@ pub(crate) fn localized_monster_name(
         .map(|index| catalog.monsters[index].1.as_str()))
 }
 
-/// Resolves a packet-derived monster label only for the exact deployment and
-/// client build that supplied the bundled MonsterTable localization joins.
-/// Unknown builds retain their numeric monster identity without borrowing a
-/// possibly stale display name.
+/// Resolves a display-only monster label from the trusted bundled ID catalog.
 pub fn localized_monster_name_for_identity(
-    deployment_id: &str,
-    client_build: &str,
-    protocol_pack_digest: &str,
+    _deployment_id: &str,
+    _client_build: &str,
+    _protocol_pack_digest: &str,
     monster_id: i64,
     locale: &str,
 ) -> Result<Option<&'static str>, String> {
-    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)? {
-        return Ok(None);
-    }
     localized_monster_name(monster_id, locale)
 }
 
@@ -163,30 +155,21 @@ mod tests {
     }
 
     #[test]
-    fn build_scoped_monster_localization_fails_closed() {
+    fn trusted_monster_labels_ignore_runtime_identity_but_unknown_ids_do_not_resolve() {
+        for (deployment, build, digest) in [
+            ("global", "24600000", DIGEST),
+            ("global", "24687926", "wrong"),
+            ("global", "24699999", DIGEST),
+            ("cn", "24687926", DIGEST),
+        ] {
+            assert_eq!(
+                localized_monster_name_for_identity(deployment, build, digest, 33_701, "en-US")
+                    .unwrap(),
+                Some("Tina - Void Reverie")
+            );
+        }
         assert_eq!(
-            localized_monster_name_for_identity("global", "24687926", DIGEST, 33_701, "en-US")
-                .unwrap(),
-            Some("Tina - Void Reverie")
-        );
-        assert_eq!(
-            localized_monster_name_for_identity("global", "24687927", DIGEST, 33_701, "en-US")
-                .unwrap(),
-            None
-        );
-        assert_eq!(
-            localized_monster_name_for_identity("cn", "24687926", DIGEST, 33_701, "en-US").unwrap(),
-            None
-        );
-        assert_eq!(
-            localized_monster_name_for_identity(
-                "global",
-                "24687926",
-                "sha256:wrong-pack",
-                33_701,
-                "en-US",
-            )
-            .unwrap(),
+            localized_monster_name_for_identity("global", "", "", 9_999_999_999, "en-US").unwrap(),
             None
         );
     }

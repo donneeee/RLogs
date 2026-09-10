@@ -1100,12 +1100,35 @@ fn live_overlay_actor_identity_presentation(
             accent: None,
         });
     }
+    display_only_actor_identity_presentation(class_id, specialization_id, "en-US")
+}
+
+fn display_only_actor_identity_presentation(
+    class_id: Option<i32>,
+    specialization_id: Option<i32>,
+    locale: &str,
+) -> rlogs_game_bpsr::ActorCombatPresentation {
+    let resolved =
+        resolve_actor_combat_presentation(class_id, specialization_id, std::iter::empty(), locale)
+            .ok();
+    let specialization_is_valid = specialization_id.is_some()
+        && resolved
+            .as_ref()
+            .is_some_and(|value| value.specialization_id == specialization_id);
     rlogs_game_bpsr::ActorCombatPresentation {
         class_id,
         specialization_id,
-        class_name: None,
-        specialization_name: None,
-        icon: None,
+        class_name: class_id.and(resolved.as_ref().and_then(|value| value.class_name.clone())),
+        specialization_name: specialization_is_valid
+            .then(|| {
+                resolved
+                    .as_ref()
+                    .and_then(|value| value.specialization_name.clone())
+            })
+            .flatten(),
+        icon: (specialization_is_valid || class_id.is_some())
+            .then(|| resolved.as_ref().and_then(|value| value.icon.clone()))
+            .flatten(),
         role: None,
         accent: None,
     }
@@ -1120,7 +1143,15 @@ fn live_overlay_weapon_badge(
 ) -> Option<LiveOverlayBadgePresentation> {
     item_id.map(|item_id| {
         let metadata = weapon_presentation(item_id);
-        let level = weapon_level_presentation(item_id, breakthrough_count);
+        let semantic_authorized = bundled_localization_supports_identity(
+            deployment_id,
+            client_build,
+            protocol_pack_digest,
+        )
+        .unwrap_or(false);
+        let level = semantic_authorized
+            .then(|| weapon_level_presentation(item_id, breakthrough_count))
+            .flatten();
         let localized_name = localized_weapon_name_for_identity(
             deployment_id,
             client_build,
@@ -1138,7 +1169,9 @@ fn live_overlay_weapon_badge(
             level: level.and_then(|value| value.exact),
             level_min: level.map(|value| value.minimum),
             level_max: level.map(|value| value.maximum),
-            badge_kind: metadata.map(|value| value.badge_kind.to_owned()),
+            badge_kind: semantic_authorized
+                .then(|| metadata.map(|value| value.badge_kind.to_owned()))
+                .flatten(),
             label: localized_name
                 .map(str::to_owned)
                 .unwrap_or_else(|| format!("Unlocalized weapon item #{item_id}")),
@@ -1156,13 +1189,16 @@ fn live_overlay_primary_imagine_badges(
     slots: &[ActorLoadoutSlot],
     localization_supported: bool,
 ) -> Vec<LiveOverlayBadgePresentation> {
-    if !localization_supported {
-        return Vec::new();
-    }
     slots
         .iter()
         .take(2)
-        .map(live_overlay_primary_imagine_badge)
+        .map(|slot| {
+            let mut badge = live_overlay_primary_imagine_badge(slot);
+            if !localization_supported {
+                badge.tier = None;
+            }
+            badge
+        })
         .collect()
 }
 
@@ -1535,21 +1571,21 @@ fn enrich_bpsr_live_ability_presentation(
     else {
         return;
     };
-    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)
-        .unwrap_or(false)
-    {
+    let semantic_authorized =
+        bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)
+            .unwrap_or(false);
+    if !semantic_authorized {
         for key in [
-            "presentation_name",
             "presentation_kind",
             "presentation_resolution",
-            "icon_asset_path",
             "presentation_recount_group_id",
             "presentation_recount_group_name",
         ] {
             object.remove(key);
         }
-        return;
     }
+    object.remove("presentation_name");
+    object.remove("icon_asset_path");
     if let Ok(Some(presentation)) = combat_action_presentation(ability_id) {
         if let Ok(Some(name)) = localized_combat_action_name_for_identity(
             deployment_id,
@@ -1567,19 +1603,21 @@ fn enrich_bpsr_live_ability_presentation(
             );
         }
     }
-    if let Ok(Some(group_id)) = combat_recount_group_id(ability_id) {
+    if semantic_authorized && let Ok(Some(group_id)) = combat_recount_group_id(ability_id) {
         object.insert(
             "presentation_recount_group_id".into(),
             group_id.to_string().into(),
         );
     }
-    if let Ok(Some(group_name)) = localized_recount_group_name_for_identity(
-        deployment_id,
-        client_build,
-        protocol_pack_digest,
-        ability_id,
-        "en-US",
-    ) {
+    if semantic_authorized
+        && let Ok(Some(group_name)) = localized_recount_group_name_for_identity(
+            deployment_id,
+            client_build,
+            protocol_pack_digest,
+            ability_id,
+            "en-US",
+        )
+    {
         object.insert("presentation_recount_group_name".into(), group_name.into());
     }
 }
@@ -13070,10 +13108,13 @@ fn enrich_bpsr_history_presentation(
         .map_err(|error| format!("could not load BPSR run identity rules: {error}"))?;
     for run in &mut snapshot.runs {
         if !localization_supported {
-            clear_bpsr_run_presentation(run);
-            continue;
+            clear_bpsr_run_semantic_presentation(run);
         }
-        let observed_specializations = observed_run_specializations(run)?;
+        let observed_specializations = if localization_supported {
+            observed_run_specializations(run)?
+        } else {
+            BTreeMap::new()
+        };
         if run_authority_supported {
             enrich_bpsr_scene_run_identity(
                 run.scene_id,
@@ -13120,14 +13161,27 @@ fn enrich_bpsr_history_presentation(
                     actor.class_id = Some(*class_id);
                     actor.specialization_id = Some(*specialization_id);
                 }
-                let combat_presentation = resolve_actor_combat_presentation(
-                    actor.class_id,
-                    actor.specialization_id,
-                    ability_ids.iter().copied(),
-                    locale,
-                )?;
-                actor.class_id = combat_presentation.class_id;
-                actor.specialization_id = combat_presentation.specialization_id;
+                let combat_presentation = localization_supported
+                    .then(|| {
+                        resolve_actor_combat_presentation(
+                            actor.class_id,
+                            actor.specialization_id,
+                            ability_ids.iter().copied(),
+                            locale,
+                        )
+                    })
+                    .transpose()?
+                    .or_else(|| {
+                        Some(display_only_actor_identity_presentation(
+                            actor.class_id,
+                            actor.specialization_id,
+                            locale,
+                        ))
+                    });
+                if let Some(combat_presentation) = &combat_presentation {
+                    actor.class_id = combat_presentation.class_id;
+                    actor.specialization_id = combat_presentation.specialization_id;
+                }
                 enrich_bpsr_actor_combat_presentation(
                     actor,
                     &localization_deployment_id,
@@ -13164,8 +13218,13 @@ fn enrich_bpsr_history_presentation(
                     )
                 })?;
                 actor.character_id = character_id_from_entity_uuid(entity_uuid);
-                enrich_bpsr_loadout_presentation(&mut actor.primary_loadout, locale)?;
-                enrich_bpsr_loadout_presentation(&mut actor.auxiliary_loadout, locale)?;
+                if localization_supported {
+                    enrich_bpsr_loadout_presentation(&mut actor.primary_loadout, locale)?;
+                    enrich_bpsr_loadout_presentation(&mut actor.auxiliary_loadout, locale)?;
+                } else {
+                    enrich_bpsr_loadout_labels(&mut actor.primary_loadout, locale)?;
+                    enrich_bpsr_loadout_labels(&mut actor.auxiliary_loadout, locale)?;
+                }
                 enrich_bpsr_weapon_presentation(
                     actor,
                     &localization_deployment_id,
@@ -13180,7 +13239,7 @@ fn enrich_bpsr_history_presentation(
                     }
                     _ => false,
                 };
-                if class_named_companion {
+                if class_named_companion && localization_supported {
                     let companion_presentation = resolve_actor_combat_presentation(
                         actor.class_id,
                         None,
@@ -13198,12 +13257,20 @@ fn enrich_bpsr_history_presentation(
                         .or_else(|| actor.display_name.clone());
                     continue;
                 }
-                actor.presentation_class_name = combat_presentation.class_name;
-                actor.presentation_specialization_name = combat_presentation.specialization_name;
-                actor.icon_asset_path = bpsr_game_asset_path(combat_presentation.icon);
-                actor.presentation_role = combat_presentation.role;
-                actor.presentation_accent = combat_presentation.accent;
-                actor.presentation_kind = Some("player".into());
+                actor.presentation_class_name = combat_presentation
+                    .as_ref()
+                    .and_then(|value| value.class_name.clone());
+                actor.presentation_specialization_name = combat_presentation
+                    .as_ref()
+                    .and_then(|value| value.specialization_name.clone());
+                actor.icon_asset_path = combat_presentation
+                    .as_ref()
+                    .and_then(|value| bpsr_game_asset_path(value.icon.clone()));
+                actor.presentation_role = combat_presentation
+                    .as_ref()
+                    .and_then(|value| value.role.clone());
+                actor.presentation_accent = combat_presentation.and_then(|value| value.accent);
+                actor.presentation_kind = localization_supported.then(|| "player".into());
                 actor.presentation_name = actor.display_name.clone();
             }
             for target in &mut view.targets {
@@ -13349,6 +13416,8 @@ fn history_death_actor_presentation(
     locale: &str,
     maximum_name_utf16: usize,
 ) -> Result<Option<HistoryDeathActorPresentation>, String> {
+    let semantic_authorized =
+        bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)?;
     let Some(identity) = identity else {
         return Ok(None);
     };
@@ -13385,7 +13454,11 @@ fn history_death_actor_presentation(
             };
             (
                 name,
-                HistoryDeathPresentationProvenance::ExactBuildMonsterCatalog,
+                if semantic_authorized {
+                    HistoryDeathPresentationProvenance::ExactBuildMonsterCatalog
+                } else {
+                    HistoryDeathPresentationProvenance::TrustedMonsterCatalogId
+                },
             )
         }
         _ => return Ok(None),
@@ -13405,6 +13478,8 @@ fn history_death_ability_presentation(
     locale: &str,
     maximum_name_utf16: usize,
 ) -> Result<Option<HistoryDeathAbilityPresentation>, String> {
+    let semantic_authorized =
+        bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)?;
     let mut prior_id = None;
     for ability_id in [
         hit.breakdown_ability_id.as_deref(),
@@ -13436,7 +13511,11 @@ fn history_death_ability_presentation(
         return Ok(Some(HistoryDeathAbilityPresentation {
             ability_id: ability_id.to_owned(),
             name,
-            provenance: HistoryDeathPresentationProvenance::ExactBuildActionCatalog,
+            provenance: if semantic_authorized {
+                HistoryDeathPresentationProvenance::ExactBuildActionCatalog
+            } else {
+                HistoryDeathPresentationProvenance::TrustedActionCatalogId
+            },
         }));
     }
     Ok(None)
@@ -13447,29 +13526,23 @@ fn bounded_history_death_presentation_name(name: &str, maximum_utf16: usize) -> 
         .then(|| name.to_owned())
 }
 
-fn clear_bpsr_run_presentation(run: &mut CombatRunHistory) {
-    run.presentation_scene_name = None;
+fn clear_bpsr_run_semantic_presentation(run: &mut CombatRunHistory) {
     for view in &mut run.views {
         view.rdps_effect_presentations.clear();
-        for target in &mut view.targets {
-            target.presentation_name = None;
-        }
         for actor in &mut view.actors {
-            clear_bpsr_actor_presentation(actor);
+            clear_bpsr_actor_semantic_presentation(actor);
         }
     }
 }
 
-fn clear_bpsr_actor_presentation(actor: &mut rlogs_plugin_combat_meter::HistoryActorSummary) {
-    actor.presentation_name = None;
+fn clear_bpsr_actor_semantic_presentation(
+    actor: &mut rlogs_plugin_combat_meter::HistoryActorSummary,
+) {
     actor.presentation_kind = None;
     actor.presentation_class_name = None;
     actor.presentation_specialization_name = None;
-    actor.icon_asset_path = None;
     actor.presentation_role = None;
     actor.presentation_accent = None;
-    actor.weapon_icon_asset_path = None;
-    actor.weapon_presentation_name = None;
     actor.weapon_level = None;
     actor.weapon_level_min = None;
     actor.weapon_level_max = None;
@@ -13479,34 +13552,18 @@ fn clear_bpsr_actor_presentation(actor: &mut rlogs_plugin_combat_meter::HistoryA
         .iter_mut()
         .chain(actor.auxiliary_loadout.iter_mut())
     {
-        slot.presentation_name = None;
-        slot.icon_asset_path = None;
         slot.item_tier = None;
         slot.maximum_tier = None;
     }
     for ability in &mut actor.abilities {
-        ability.presentation_name = None;
         ability.presentation_kind = None;
         ability.presentation_resolution = None;
-        ability.icon_asset_path = None;
         ability.presentation_recount_group_id = None;
         ability.presentation_recount_group_name = None;
     }
     for effect in &mut actor.effects {
-        effect.presentation_name = None;
         effect.presentation_kind = None;
         effect.presentation_resolution = None;
-        effect.icon_asset_path = None;
-    }
-    for event in &mut actor.death_events {
-        let Some(cause) = event.cause.as_mut() else {
-            continue;
-        };
-        for hit in std::iter::once(&mut cause.final_hit).chain(cause.prior_hits.iter_mut()) {
-            hit.source_presentation = None;
-            hit.direct_source_presentation = None;
-            hit.ability_presentation = None;
-        }
     }
 }
 
@@ -13992,24 +14049,15 @@ fn enrich_bpsr_actor_combat_presentation(
     protocol_pack_digest: &str,
     locale: &str,
 ) -> Result<(), String> {
-    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)? {
-        for ability in &mut actor.abilities {
-            ability.presentation_name = None;
-            ability.presentation_kind = None;
-            ability.presentation_resolution = None;
-            ability.icon_asset_path = None;
-            ability.presentation_recount_group_id = None;
-            ability.presentation_recount_group_name = None;
-        }
-        for effect in &mut actor.effects {
-            effect.presentation_name = None;
-            effect.presentation_kind = None;
-            effect.presentation_resolution = None;
-            effect.icon_asset_path = None;
-        }
-        return Ok(());
-    }
+    let semantic_authorized =
+        bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)?;
     for ability in &mut actor.abilities {
+        ability.presentation_name = None;
+        ability.icon_asset_path = None;
+        ability.presentation_kind = None;
+        ability.presentation_resolution = None;
+        ability.presentation_recount_group_id = None;
+        ability.presentation_recount_group_name = None;
         let Ok(ability_id) = ability.ability_id.parse::<i64>() else {
             continue;
         };
@@ -14022,25 +14070,38 @@ fn enrich_bpsr_actor_combat_presentation(
                 locale,
             )?
             .map(str::to_owned);
-            ability.presentation_kind = Some(presentation.kind.clone());
-            ability.presentation_resolution = Some(presentation.resolution.clone());
+            if semantic_authorized {
+                ability.presentation_kind = Some(presentation.kind.clone());
+                ability.presentation_resolution = Some(presentation.resolution.clone());
+            }
             ability.icon_asset_path = presentation
                 .icon
                 .as_ref()
                 .map(|path| format!("/game-assets/blue-protocol-star-resonance/shared/{path}"));
-            ability.presentation_recount_group_name = localized_recount_group_name_for_identity(
-                deployment_id,
-                client_build,
-                protocol_pack_digest,
-                ability_id,
-                locale,
-            )?
-            .map(str::to_owned);
+            ability.presentation_recount_group_name = semantic_authorized
+                .then(|| {
+                    localized_recount_group_name_for_identity(
+                        deployment_id,
+                        client_build,
+                        protocol_pack_digest,
+                        ability_id,
+                        locale,
+                    )
+                })
+                .transpose()?
+                .flatten()
+                .map(str::to_owned);
         }
-        ability.presentation_recount_group_id =
-            combat_recount_group_id(ability_id)?.map(|group_id| group_id.to_string());
+        if semantic_authorized {
+            ability.presentation_recount_group_id =
+                combat_recount_group_id(ability_id)?.map(|group_id| group_id.to_string());
+        }
     }
     for effect in &mut actor.effects {
+        effect.presentation_name = None;
+        effect.presentation_kind = None;
+        effect.presentation_resolution = None;
+        effect.icon_asset_path = None;
         let Ok(effect_id) = effect.effect_id.parse::<i64>() else {
             continue;
         };
@@ -14058,12 +14119,14 @@ fn enrich_bpsr_actor_combat_presentation(
             .as_ref()
             .map(|value| value.name.to_owned())
             .or_else(|| presentation.technical_name.clone());
-        effect.presentation_kind = Some(presentation.kind.clone());
-        effect.presentation_resolution = Some(
-            display
-                .map(|value| value.resolution.to_owned())
-                .unwrap_or_else(|| presentation.resolution.clone()),
-        );
+        if semantic_authorized {
+            effect.presentation_kind = Some(presentation.kind.clone());
+            effect.presentation_resolution = Some(
+                display
+                    .map(|value| value.resolution.to_owned())
+                    .unwrap_or_else(|| presentation.resolution.clone()),
+            );
+        }
         effect.icon_asset_path = presentation
             .icon
             .as_ref()
@@ -14132,6 +14195,35 @@ fn enrich_bpsr_loadout_presentation(
     Ok(())
 }
 
+fn enrich_bpsr_loadout_labels(
+    slots: &mut [HistoryLoadoutSlot],
+    locale: &str,
+) -> Result<(), String> {
+    for slot in slots {
+        slot.presentation_name = None;
+        slot.icon_asset_path = None;
+        let Some(skill_id) = slot.ability_id else {
+            continue;
+        };
+        if let Some(presentation) = battle_imagine_presentation(skill_id)? {
+            slot.presentation_name =
+                localized_battle_imagine_name(presentation.item_id, locale)?.map(str::to_owned);
+            slot.icon_asset_path = Some(format!(
+                "/game-assets/blue-protocol-star-resonance/shared/{}",
+                presentation.icon
+            ));
+        } else if let Some(presentation) = auxiliary_action_presentation(skill_id)? {
+            slot.presentation_name =
+                localized_auxiliary_action_name(skill_id, locale)?.map(str::to_owned);
+            slot.icon_asset_path = Some(format!(
+                "/game-assets/blue-protocol-star-resonance/shared/{}",
+                presentation.icon
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn bpsr_game_asset_path(relative_path: Option<String>) -> Option<String> {
     relative_path.map(|path| format!("/game-assets/blue-protocol-star-resonance/shared/{path}"))
 }
@@ -14155,7 +14247,8 @@ fn enrich_bpsr_weapon_presentation(
     let Some(metadata) = weapon_presentation(item_id) else {
         return Ok(());
     };
-    let level = weapon_level_presentation(item_id, actor.weapon_breakthrough_count);
+    let semantic_authorized =
+        bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)?;
     actor.weapon_icon_asset_path = Some(format!(
         "/game-assets/blue-protocol-star-resonance/shared/{}",
         metadata.icon
@@ -14168,10 +14261,13 @@ fn enrich_bpsr_weapon_presentation(
         locale,
     )?
     .map(str::to_owned);
-    actor.weapon_level = level.and_then(|value| value.exact);
-    actor.weapon_level_min = level.map(|value| value.minimum);
-    actor.weapon_level_max = level.map(|value| value.maximum);
-    actor.weapon_badge_kind = Some(metadata.badge_kind.to_owned());
+    if semantic_authorized {
+        let level = weapon_level_presentation(item_id, actor.weapon_breakthrough_count);
+        actor.weapon_level = level.and_then(|value| value.exact);
+        actor.weapon_level_min = level.map(|value| value.minimum);
+        actor.weapon_level_max = level.map(|value| value.maximum);
+        actor.weapon_badge_kind = Some(metadata.badge_kind.to_owned());
+    }
     Ok(())
 }
 
@@ -14184,13 +14280,11 @@ fn enrich_bpsr_catalog_presentation(
         for actor in &mut entry.participants {
             clear_bpsr_catalog_participant_presentation(actor);
         }
-        if !bundled_localization_supports_identity(
+        let semantic_authorized = bundled_localization_supports_identity(
             &entry.deployment_id,
             &entry.client_build,
             &entry.protocol_pack_digest,
-        )? {
-            continue;
-        }
+        )?;
         entry.presentation_scene_name = entry
             .scene_id
             .map(|scene_id| {
@@ -14213,14 +14307,20 @@ fn enrich_bpsr_catalog_presentation(
                 locale,
             )?;
             actor.presentation_name = actor.display_name.clone();
-            actor.presentation_kind = Some("player".into());
+            actor.presentation_kind = semantic_authorized.then(|| "player".into());
             actor.presentation_class_name = presentation.class_name;
             actor.presentation_specialization_name = presentation.specialization_name;
             actor.icon_asset_path = bpsr_game_asset_path(presentation.icon);
-            actor.presentation_role = presentation.role;
-            actor.presentation_accent = presentation.accent;
-            enrich_bpsr_loadout_presentation(&mut actor.primary_loadout, locale)?;
-            enrich_bpsr_loadout_presentation(&mut actor.auxiliary_loadout, locale)?;
+            actor.presentation_role = semantic_authorized.then_some(presentation.role).flatten();
+            actor.presentation_accent =
+                semantic_authorized.then_some(presentation.accent).flatten();
+            if semantic_authorized {
+                enrich_bpsr_loadout_presentation(&mut actor.primary_loadout, locale)?;
+                enrich_bpsr_loadout_presentation(&mut actor.auxiliary_loadout, locale)?;
+            } else {
+                enrich_bpsr_loadout_labels(&mut actor.primary_loadout, locale)?;
+                enrich_bpsr_loadout_labels(&mut actor.auxiliary_loadout, locale)?;
+            }
             enrich_bpsr_catalog_weapon_presentation(
                 actor,
                 &entry.deployment_id,
@@ -14246,7 +14346,8 @@ fn enrich_bpsr_catalog_weapon_presentation(
     let Some(metadata) = weapon_presentation(item_id) else {
         return Ok(());
     };
-    let level = weapon_level_presentation(item_id, actor.weapon_breakthrough_count);
+    let semantic_authorized =
+        bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)?;
     actor.weapon_icon_asset_path = Some(format!(
         "/game-assets/blue-protocol-star-resonance/shared/{}",
         metadata.icon
@@ -14259,10 +14360,13 @@ fn enrich_bpsr_catalog_weapon_presentation(
         locale,
     )?
     .map(str::to_owned);
-    actor.weapon_level = level.and_then(|value| value.exact);
-    actor.weapon_level_min = level.map(|value| value.minimum);
-    actor.weapon_level_max = level.map(|value| value.maximum);
-    actor.weapon_badge_kind = Some(metadata.badge_kind.to_owned());
+    if semantic_authorized {
+        let level = weapon_level_presentation(item_id, actor.weapon_breakthrough_count);
+        actor.weapon_level = level.and_then(|value| value.exact);
+        actor.weapon_level_min = level.map(|value| value.minimum);
+        actor.weapon_level_max = level.map(|value| value.maximum);
+        actor.weapon_badge_kind = Some(metadata.badge_kind.to_owned());
+    }
     Ok(())
 }
 
@@ -16064,7 +16168,7 @@ mod tests {
     }
 
     #[test]
-    fn live_overlay_presentation_requires_the_exact_snapshot_build() {
+    fn live_overlay_labels_cross_builds_while_mechanical_metadata_stays_exact() {
         let exact_identity =
             live_overlay_actor_identity_presentation(Some(11), Some(117), &[2_233], true);
         assert_eq!(exact_identity.class_name.as_deref(), Some("Marksman"));
@@ -16079,11 +16183,21 @@ mod tests {
             live_overlay_actor_identity_presentation(Some(11), Some(117), &[2_233], false);
         assert_eq!(other_identity.class_id, Some(11));
         assert_eq!(other_identity.specialization_id, Some(117));
-        assert_eq!(other_identity.class_name, None);
-        assert_eq!(other_identity.specialization_name, None);
-        assert_eq!(other_identity.icon, None);
+        assert_eq!(other_identity.class_name.as_deref(), Some("Marksman"));
+        assert_eq!(
+            other_identity.specialization_name.as_deref(),
+            Some("Falconry")
+        );
+        assert!(other_identity.icon.is_some());
         assert_eq!(other_identity.role, None);
         assert_eq!(other_identity.accent, None);
+
+        let no_inference = live_overlay_actor_identity_presentation(None, None, &[2_233], false);
+        assert_eq!(no_inference.class_id, None);
+        assert_eq!(no_inference.specialization_id, None);
+        assert_eq!(no_inference.class_name, None);
+        assert_eq!(no_inference.specialization_name, None);
+        assert_eq!(no_inference.icon, None);
 
         let exact_weapon = live_overlay_weapon_badge(
             Some(2_000_631),
@@ -16112,9 +16226,10 @@ mod tests {
             "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
         )
         .expect("observed weapon identity survives unavailable localization");
-        assert_eq!(mismatched_weapon.label, "Unlocalized weapon item #2000631");
+        assert_eq!(mismatched_weapon.label, "Ember - Gaze of the Far Sea");
         assert_eq!(mismatched_weapon.item_id, Some(2_000_631));
-        assert_eq!(mismatched_weapon.level, Some(280));
+        assert_eq!(mismatched_weapon.level, None);
+        assert_eq!(mismatched_weapon.badge_kind, None);
         assert!(mismatched_weapon.icon_asset_path.is_some());
 
         let imagine = ActorLoadoutSlot {
@@ -16127,9 +16242,11 @@ mod tests {
             live_overlay_primary_imagine_badges(std::slice::from_ref(&imagine), true).len(),
             1
         );
-        assert!(
-            live_overlay_primary_imagine_badges(std::slice::from_ref(&imagine), false).is_empty()
-        );
+        let cross_build_imagine =
+            live_overlay_primary_imagine_badges(std::slice::from_ref(&imagine), false);
+        assert_eq!(cross_build_imagine.len(), 1);
+        assert_eq!(cross_build_imagine[0].tier, None);
+        assert!(cross_build_imagine[0].icon_asset_path.is_some());
 
         assert_eq!(
             live_overlay_boss_name(
@@ -16149,7 +16266,7 @@ mod tests {
                 "24687927",
                 BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
             ),
-            "Observed Tina"
+            "Tina - Void Reverie"
         );
         assert_eq!(
             live_overlay_boss_name(
@@ -16159,7 +16276,7 @@ mod tests {
                 "24687927",
                 BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
             ),
-            "Monster 33701"
+            "Tina - Void Reverie"
         );
     }
 
@@ -17021,8 +17138,10 @@ mod tests {
                 })
                 .unwrap();
             assert_eq!(
-                returned.runs[0].views[0].actors[0].abilities[0].presentation_name,
-                None
+                returned.runs[0].views[0].actors[0].abilities[0]
+                    .presentation_name
+                    .as_deref(),
+                Some("Tension maximale")
             );
         }
 
@@ -17587,7 +17706,7 @@ mod tests {
     }
 
     #[test]
-    fn history_scene_localization_requires_the_exact_source_build() {
+    fn history_labels_cross_builds_while_action_semantics_stay_exact() {
         let mut current = captured_marksman_history();
         current.client_build = "24687926".into();
         enrich_bpsr_history_presentation(&mut current, "en-US").unwrap();
@@ -17614,12 +17733,15 @@ mod tests {
         other_actor.presentation_role = Some("stale-role".into());
         other_actor.presentation_accent = Some("stale-accent".into());
         enrich_bpsr_history_presentation(&mut other_build, "en-US").unwrap();
-        assert_eq!(other_build.runs[0].presentation_scene_name, None);
+        assert_eq!(
+            other_build.runs[0].presentation_scene_name.as_deref(),
+            Some("Chaotic - Tina's Mindrealm")
+        );
         let other_actor = &other_build.runs[0].views[0].actors[0];
         assert_eq!(other_actor.display_name.as_deref(), Some("MarieRose"));
         assert_eq!(other_actor.class_id, None);
         assert_eq!(other_actor.specialization_id, None);
-        assert_eq!(other_actor.presentation_name, None);
+        assert_eq!(other_actor.presentation_name.as_deref(), Some("MarieRose"));
         assert_eq!(other_actor.presentation_kind, None);
         assert_eq!(other_actor.presentation_class_name, None);
         assert_eq!(other_actor.presentation_specialization_name, None);
@@ -17627,9 +17749,11 @@ mod tests {
         assert_eq!(other_actor.presentation_role, None);
         assert_eq!(other_actor.presentation_accent, None);
         let ability = &other_actor.abilities[0];
-        assert_eq!(ability.presentation_name, None);
+        assert_eq!(ability.presentation_name.as_deref(), Some("Powerdraw"));
+        assert_eq!(ability.presentation_kind, None);
+        assert_eq!(ability.presentation_resolution, None);
         assert_eq!(ability.presentation_recount_group_id, None);
-        assert_eq!(ability.icon_asset_path, None);
+        assert!(ability.icon_asset_path.is_some());
 
         let mut wrong_digest = captured_marksman_history();
         wrong_digest.client_build = "24687926".into();
@@ -17641,28 +17765,45 @@ mod tests {
         wrong_actor.presentation_class_name = Some("stale class".into());
         wrong_actor.presentation_specialization_name = Some("stale specialization".into());
         wrong_actor.icon_asset_path = Some("stale-icon".into());
+        wrong_actor.class_id = Some(11);
+        wrong_actor.specialization_id = Some(117);
         wrong_actor.abilities[0].presentation_name = Some("stale ability".into());
         wrong_actor.abilities[0].presentation_recount_group_id = Some("stale-group".into());
         wrong_actor.abilities[0].icon_asset_path = Some("stale-ability-icon".into());
         enrich_bpsr_history_presentation(&mut wrong_digest, "en-US").unwrap();
-        assert_eq!(wrong_digest.runs[0].presentation_scene_name, None);
+        assert_eq!(
+            wrong_digest.runs[0].presentation_scene_name.as_deref(),
+            Some("Chaotic - Tina's Mindrealm")
+        );
         let wrong_actor = &wrong_digest.runs[0].views[0].actors[0];
         assert_eq!(wrong_actor.display_name.as_deref(), Some("MarieRose"));
         assert_eq!(wrong_actor.actor_id, "player:marierose");
         assert_eq!(wrong_actor.damage, 1);
-        assert_eq!(wrong_actor.presentation_name, None);
+        assert_eq!(wrong_actor.presentation_name.as_deref(), Some("MarieRose"));
         assert_eq!(wrong_actor.presentation_kind, None);
-        assert_eq!(wrong_actor.presentation_class_name, None);
-        assert_eq!(wrong_actor.presentation_specialization_name, None);
-        assert_eq!(wrong_actor.icon_asset_path, None);
+        assert_eq!(
+            wrong_actor.presentation_class_name.as_deref(),
+            Some("Marksman")
+        );
+        assert_eq!(
+            wrong_actor.presentation_specialization_name.as_deref(),
+            Some("Falconry")
+        );
+        assert!(wrong_actor.icon_asset_path.is_some());
+        assert_eq!(wrong_actor.presentation_role, None);
+        assert_eq!(wrong_actor.presentation_accent, None);
         assert_eq!(wrong_actor.abilities[0].ability_id, "2233");
-        assert_eq!(wrong_actor.abilities[0].presentation_name, None);
+        assert_eq!(
+            wrong_actor.abilities[0].presentation_name.as_deref(),
+            Some("Powerdraw")
+        );
+        assert_eq!(wrong_actor.abilities[0].presentation_kind, None);
         assert_eq!(wrong_actor.abilities[0].presentation_recount_group_id, None);
-        assert_eq!(wrong_actor.abilities[0].icon_asset_path, None);
+        assert!(wrong_actor.abilities[0].icon_asset_path.is_some());
     }
 
     #[test]
-    fn history_weapon_names_use_exact_build_english_fallback_for_every_locale() {
+    fn history_weapon_names_cross_builds_but_levels_and_badges_do_not() {
         const WEAPON_ITEM_ID: i64 = 2_000_631;
 
         let mut current = captured_marksman_history();
@@ -17684,7 +17825,14 @@ mod tests {
             Some(WEAPON_ITEM_ID)
         );
         assert_eq!(
-            other_build.runs[0].views[0].actors[0].weapon_presentation_name,
+            other_build.runs[0].views[0].actors[0]
+                .weapon_presentation_name
+                .as_deref(),
+            Some("Ember - Gaze of the Far Sea")
+        );
+        assert_eq!(other_build.runs[0].views[0].actors[0].weapon_level, None);
+        assert_eq!(
+            other_build.runs[0].views[0].actors[0].weapon_badge_kind,
             None
         );
 
@@ -17696,8 +17844,10 @@ mod tests {
             Some(WEAPON_ITEM_ID)
         );
         assert_eq!(
-            wrong_digest.runs[0].views[0].actors[0].weapon_presentation_name,
-            None
+            wrong_digest.runs[0].views[0].actors[0]
+                .weapon_presentation_name
+                .as_deref(),
+            Some("Ember - Gaze of the Far Sea")
         );
     }
 
@@ -17803,9 +17953,26 @@ mod tests {
             .as_ref()
             .unwrap()
             .final_hit;
-        assert!(wrong_hit.source_presentation.is_none());
-        assert!(wrong_hit.direct_source_presentation.is_none());
-        assert!(wrong_hit.ability_presentation.is_none());
+        assert_eq!(
+            wrong_hit.source_presentation.as_ref().unwrap().name,
+            "Tina - Void Reverie"
+        );
+        assert_eq!(
+            wrong_hit.source_presentation.as_ref().unwrap().provenance,
+            HistoryDeathPresentationProvenance::TrustedMonsterCatalogId
+        );
+        assert_eq!(
+            wrong_hit.direct_source_presentation.as_ref().unwrap().name,
+            "Exact source"
+        );
+        assert_eq!(
+            wrong_hit.ability_presentation.as_ref().unwrap().name,
+            "Powerdraw"
+        );
+        assert_eq!(
+            wrong_hit.ability_presentation.as_ref().unwrap().provenance,
+            HistoryDeathPresentationProvenance::TrustedActionCatalogId
+        );
 
         let mut wrong_digest = snapshot.clone();
         wrong_digest.protocol_pack_digest = "sha256:wrong-pack".into();
@@ -17815,8 +17982,30 @@ mod tests {
             .as_ref()
             .unwrap()
             .final_hit;
-        assert!(wrong_digest_hit.source_presentation.is_none());
-        assert!(wrong_digest_hit.ability_presentation.is_none());
+        assert_eq!(
+            wrong_digest_hit.source_presentation.as_ref().unwrap().name,
+            "Tina - Void Reverie"
+        );
+        assert_eq!(
+            wrong_digest_hit
+                .source_presentation
+                .as_ref()
+                .unwrap()
+                .provenance,
+            HistoryDeathPresentationProvenance::TrustedMonsterCatalogId
+        );
+        assert_eq!(
+            wrong_digest_hit.ability_presentation.as_ref().unwrap().name,
+            "Powerdraw"
+        );
+        assert_eq!(
+            wrong_digest_hit
+                .ability_presentation
+                .as_ref()
+                .unwrap()
+                .provenance,
+            HistoryDeathPresentationProvenance::TrustedActionCatalogId
+        );
 
         let mut missing_direct_identity = snapshot.clone();
         missing_direct_identity.runs[0].views[0].actors[0].death_events[0]
@@ -17897,8 +18086,16 @@ mod tests {
 
             enrich_bpsr_catalog_presentation(&mut unsupported, "en-US").unwrap();
             let entry = &unsupported.entries[0];
-            assert_eq!(entry.presentation_scene_name, None);
-            assert_eq!(entry.participants[0].presentation_class_name, None);
+            assert_eq!(
+                entry.presentation_scene_name.as_deref(),
+                Some("Chaotic - Tina's Mindrealm")
+            );
+            assert_eq!(
+                entry.participants[0].presentation_class_name.as_deref(),
+                Some("Marksman")
+            );
+            assert_eq!(entry.participants[0].presentation_kind, None);
+            assert_eq!(entry.participants[0].presentation_role, None);
             assert_eq!(entry.scene_id, raw_scene_id);
             assert_eq!(entry.participants[0].class_id, raw_class_id);
             assert_eq!(entry.participants[0].damage, raw_damage);
@@ -17912,7 +18109,7 @@ mod tests {
     }
 
     #[test]
-    fn history_monster_localization_requires_the_exact_source_build() {
+    fn history_monster_localization_is_display_only() {
         assert_eq!(
             localized_bpsr_monster_name(
                 "33701",
@@ -17933,7 +18130,7 @@ mod tests {
                 "en-US",
             )
             .unwrap(),
-            None
+            Some("Tina - Void Reverie".into())
         );
     }
 
@@ -18068,8 +18265,9 @@ mod tests {
             "24687927",
             BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
         );
-        assert!(other_build.get("presentation_name").is_none());
-        assert!(other_build.get("icon_asset_path").is_none());
+        assert_eq!(other_build["presentation_name"], "Powerdraw");
+        assert!(other_build.get("icon_asset_path").is_some());
+        assert!(other_build.get("presentation_kind").is_none());
         assert!(other_build.get("presentation_recount_group_id").is_none());
 
         let mut wrong_digest = serde_json::json!({
@@ -18089,9 +18287,9 @@ mod tests {
         assert_eq!(wrong_digest["ability_id"], "2233");
         assert_eq!(wrong_digest["hits"], 1);
         assert_eq!(wrong_digest["reported_damage"], 100);
-        assert!(wrong_digest.get("presentation_name").is_none());
+        assert_eq!(wrong_digest["presentation_name"], "Powerdraw");
         assert!(wrong_digest.get("presentation_recount_group_id").is_none());
-        assert!(wrong_digest.get("icon_asset_path").is_none());
+        assert!(wrong_digest.get("icon_asset_path").is_some());
 
         let mut unknown = serde_json::json!({ "ability_id": "999999999" });
         enrich_bpsr_live_ability_presentation(
@@ -18195,7 +18393,7 @@ mod tests {
     }
 
     #[test]
-    fn saved_history_uses_reviewed_observed_effect_identity_and_fails_closed_by_build() {
+    fn saved_history_effect_labels_cross_builds_but_semantics_fail_closed() {
         let mut snapshot = captured_marksman_history();
         snapshot.client_build = "24687926".into();
         snapshot.runs[0].views[0].actors[0].effects =
@@ -18228,7 +18426,11 @@ mod tests {
         snapshot.client_build = "24687927".into();
         enrich_bpsr_history_presentation(&mut snapshot, "en-US").unwrap();
         let effect = &snapshot.runs[0].views[0].actors[0].effects[0];
-        assert_eq!(effect.presentation_name, None);
+        assert_eq!(
+            effect.presentation_name.as_deref(),
+            Some("Luminary Bolt Vulnerability")
+        );
+        assert_eq!(effect.presentation_kind, None);
         assert_eq!(effect.presentation_resolution, None);
     }
 

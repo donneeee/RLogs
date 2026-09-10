@@ -232,7 +232,9 @@ export interface HistoryActorSummary {
 export type HistoryDeathPresentationProvenance =
   | "exact_history_participant"
   | "exact_build_monster_catalog"
-  | "exact_build_action_catalog";
+  | "exact_build_action_catalog"
+  | "trusted_monster_catalog_id"
+  | "trusted_action_catalog_id";
 
 export interface HistoryDeathActorPresentation {
   actor_id: string;
@@ -896,7 +898,8 @@ function isOptionalDeathActorPresentation(
   if (!isRecord(value) || !isRecord(identity) || value.actor_id !== actorId ||
       !isBoundedPresentationName(value.name)) return false;
   return (value.provenance === "exact_history_participant" && identity.actor_kind === "player") ||
-    (value.provenance === "exact_build_monster_catalog" && identity.actor_kind === "monster");
+    ((value.provenance === "exact_build_monster_catalog" ||
+      value.provenance === "trusted_monster_catalog_id") && identity.actor_kind === "monster");
 }
 
 function isOptionalDeathAbilityPresentation(
@@ -905,7 +908,8 @@ function isOptionalDeathAbilityPresentation(
   abilityId: unknown,
 ): boolean {
   if (value === undefined) return true;
-  return isRecord(value) && value.provenance === "exact_build_action_catalog" &&
+  return isRecord(value) &&
+    (value.provenance === "exact_build_action_catalog" || value.provenance === "trusted_action_catalog_id") &&
     isBoundedPresentationName(value.name) &&
     (value.ability_id === breakdownAbilityId || value.ability_id === abilityId);
 }

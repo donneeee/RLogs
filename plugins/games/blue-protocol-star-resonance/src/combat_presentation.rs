@@ -2,8 +2,6 @@ use std::{collections::BTreeMap, sync::OnceLock};
 
 use serde::Deserialize;
 
-use crate::scene_localization::bundled_localization_supports_identity;
-
 const MAXIMUM_COMBAT_ACTIONS: usize = 50_000;
 const MAXIMUM_CAST_RECOUNT_RELATIONS: usize = 10_000;
 const MAXIMUM_STATUS_EFFECTS: usize = 20_000;
@@ -692,54 +690,42 @@ pub fn status_effect_display_presentation(
 }
 
 pub fn localized_combat_action_name_for_identity(
-    deployment_id: &str,
-    client_build: &str,
-    protocol_pack_digest: &str,
+    _deployment_id: &str,
+    _client_build: &str,
+    _protocol_pack_digest: &str,
     ability_id: i64,
     locale: &str,
 ) -> Result<Option<&'static str>, String> {
-    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)? {
-        return Ok(None);
-    }
     localized_combat_action_name(ability_id, locale)
 }
 
 pub fn localized_recount_group_name_for_identity(
-    deployment_id: &str,
-    client_build: &str,
-    protocol_pack_digest: &str,
+    _deployment_id: &str,
+    _client_build: &str,
+    _protocol_pack_digest: &str,
     ability_id: i64,
     locale: &str,
 ) -> Result<Option<&'static str>, String> {
-    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)? {
-        return Ok(None);
-    }
     localized_recount_group_name(ability_id, locale)
 }
 
 pub fn localized_status_effect_name_for_identity(
-    deployment_id: &str,
-    client_build: &str,
-    protocol_pack_digest: &str,
+    _deployment_id: &str,
+    _client_build: &str,
+    _protocol_pack_digest: &str,
     effect_id: i64,
     locale: &str,
 ) -> Result<Option<&'static str>, String> {
-    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)? {
-        return Ok(None);
-    }
     localized_status_effect_name(effect_id, locale)
 }
 
 pub fn status_effect_display_presentation_for_identity(
-    deployment_id: &str,
-    client_build: &str,
-    protocol_pack_digest: &str,
+    _deployment_id: &str,
+    _client_build: &str,
+    _protocol_pack_digest: &str,
     effect_id: i64,
     locale: &str,
 ) -> Result<Option<StatusEffectDisplayPresentation>, String> {
-    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)? {
-        return Ok(None);
-    }
     status_effect_display_presentation(effect_id, locale)
 }
 
@@ -750,7 +736,7 @@ mod tests {
     const DIGEST: &str = "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
 
     #[test]
-    fn build_scoped_combat_localization_fails_closed() {
+    fn trusted_combat_labels_ignore_runtime_identity_but_unknown_ids_do_not_resolve() {
         assert_eq!(
             localized_combat_action_name_for_identity("global", "24687926", DIGEST, 2_233, "en-US")
                 .unwrap(),
@@ -759,19 +745,19 @@ mod tests {
         assert_eq!(
             localized_combat_action_name_for_identity("global", "24687927", DIGEST, 2_233, "en-US")
                 .unwrap(),
-            None
+            Some("Powerdraw")
         );
         assert_eq!(
             localized_recount_group_name_for_identity("cn", "24687926", DIGEST, 220_106, "en-US")
                 .unwrap(),
-            None
+            Some("Double Arrow")
         );
         assert_eq!(
             localized_status_effect_name_for_identity(
                 "global", "24687927", DIGEST, 31_602, "en-US"
             )
             .unwrap(),
-            None
+            Some("Inspire")
         );
         assert_eq!(
             localized_combat_action_name_for_identity(
@@ -782,6 +768,11 @@ mod tests {
                 "en-US",
             )
             .unwrap(),
+            Some("Powerdraw")
+        );
+        assert_eq!(
+            localized_combat_action_name_for_identity("global", "", "", 9_999_999_999, "en-US")
+                .unwrap(),
             None
         );
     }
@@ -819,7 +810,10 @@ mod tests {
                 "global", "24687927", DIGEST, 55_228, "en-US"
             )
             .unwrap(),
-            None
+            Some(StatusEffectDisplayPresentation {
+                name: "Luminary Bolt Vulnerability",
+                resolution: "reviewed-source-name",
+            })
         );
     }
 
