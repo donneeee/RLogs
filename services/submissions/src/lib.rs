@@ -40,6 +40,7 @@ use rlogs_game_bpsr::{
     is_stat_resonance_status, localized_class_name, localized_combat_action_name_for_identity,
     localized_monster_name_for_identity, localized_recount_group_name_for_identity,
     localized_scene_name_for_identity, localized_specialization_name,
+    status_effect_display_presentation, status_effect_presentation,
 };
 use rlogs_log_format::{RlogLimits, RlogReader, RlogReplaySummary};
 use rlogs_plugin_combat_meter::{
@@ -92,8 +93,8 @@ const UPLOAD_OWNER_SCHEMA_VERSION: u16 = 1;
 const AUTH_INTROSPECTION_SCHEMA_VERSION: u16 = 1;
 const PRIVATE_PARSE_MEMBERSHIP_SCHEMA_VERSION: u16 = 1;
 const MY_PARSE_CATALOG_SCHEMA_VERSION: u16 = 2;
-const OBSERVED_CHARACTER_CATALOG_SCHEMA_VERSION: u16 = 2;
-const COMMUNITY_MILESTONE_CATALOG_SCHEMA_VERSION: u16 = 2;
+const OBSERVED_CHARACTER_CATALOG_SCHEMA_VERSION: u16 = 3;
+const COMMUNITY_MILESTONE_CATALOG_SCHEMA_VERSION: u16 = 3;
 const LIFE_WAVE_SOURCE_TYPE_ID: i32 = 1;
 const LIFE_WAVE_SOURCE_CONFIG_ID: i64 = 2_302_420;
 const LIFE_WAVE_EFFECT_ID: i64 = 2_302_421;
@@ -1466,13 +1467,14 @@ impl SubmissionService {
             .iter()
             .map(|participant| (public_participant_key(participant), participant.damage))
             .collect::<BTreeMap<_, _>>();
-        let localization_supported = bpsr_has_localization_authority(&history)?;
+        let exact_presentation_semantics =
+            bpsr_has_exact_presentation_semantic_authority(&history)?;
         let replay_damage = view
             .actors
             .iter()
             .filter(|actor| is_public_participant(actor))
             .map(|actor| {
-                let participant = public_participant(actor, localization_supported);
+                let participant = public_participant(actor, exact_presentation_semantics);
                 (public_participant_key(&participant), participant.damage)
             })
             .collect::<BTreeMap<_, _>>();
@@ -1487,7 +1489,7 @@ impl SubmissionService {
             .iter()
             .filter(|actor| is_public_participant(actor))
             .map(|actor| PublicReconciledParticipant {
-                participant: public_participant(actor, localization_supported),
+                participant: public_participant(actor, exact_presentation_semantics),
                 rdps_damage: actor.rdps_damage,
                 contribution_given: actor.rdps_contribution_given,
                 contribution_received: actor.rdps_contribution_received,
@@ -1537,11 +1539,7 @@ impl SubmissionService {
             rdps_status: run.rdps_status.clone(),
             rate_clock: view.rate_clock.clone(),
             rate_clock_complete: view.rate_clock_complete,
-            rdps_effects: if localization_supported {
-                public_rdps_effects(view)
-            } else {
-                Vec::new()
-            },
+            rdps_effects: public_rdps_effects(view, exact_presentation_semantics),
             rdps_influences: public_rdps_influences(view),
             canonical_run_observed_bounds,
             aligned_profile_observed_micros,
@@ -1554,6 +1552,10 @@ impl SubmissionService {
 
     pub fn catalog(&self, query: &CatalogQuery) -> Result<PublicParseCatalog, ServiceError> {
         let mut catalog: PublicParseCatalog = read_json(&self.catalog_path())?;
+        for entry in &mut catalog.entries {
+            entry.scene_name = entry.scene_id.and_then(trusted_scene_name);
+            entry.require_exact_semantic_authority();
+        }
         catalog.entries.retain(|entry| query.matches(entry));
         catalog.facets = CatalogFacets::from_entries(&catalog.entries);
         catalog.total_entries = catalog.entries.len();
@@ -3449,7 +3451,10 @@ impl CatalogQuery {
                 .as_deref()
                 .is_none_or(|value| catalog_activity_category(entry) == Some(value))
             && self.scene.is_none_or(|value| entry.scene_id == Some(value))
-            && optional_matches_option(&self.difficulty, &entry.difficulty_family)
+            && self.difficulty.as_deref().is_none_or(|value| {
+                catalog_has_exact_semantic_authority(entry)
+                    && entry.difficulty_family.as_deref() == Some(value)
+            })
             && optional_matches(&self.terminal, &entry.terminal_state)
     }
 }
@@ -3471,6 +3476,9 @@ fn public_activity_category_id(analysis: &RunAnalysis) -> Option<&'static str> {
 }
 
 fn catalog_activity_category(entry: &PublicParseCatalogEntry) -> Option<&str> {
+    if !catalog_has_exact_semantic_authority(entry) {
+        return None;
+    }
     entry.activity_category_id.as_deref().or_else(|| {
         // Compatibility for reports written before activity categories were
         // persisted. The only old public BPSR families were dungeon rules;
@@ -3569,6 +3577,7 @@ fn build_observed_character_catalog(
                     ObservedCharacterIdentityKind::LegacyNameObservation
                 };
             let presentation_authority = catalog_presentation_authority(&source.entry);
+            let exact_semantic_authority = catalog_has_exact_semantic_authority(&source.entry);
             let reference = PublicObservedCharacterReportReference {
                 report_id: source.entry.report_id.clone(),
                 run_index: source.entry.run_index,
@@ -3583,13 +3592,13 @@ fn build_observed_character_catalog(
                     .as_ref()
                     .map(|authority| authority.protocol_pack_digest.clone()),
                 scene_id: source.entry.scene_id,
-                scene_name: presentation_authority
-                    .as_ref()
-                    .and(source.entry.scene_name.clone()),
-                difficulty_family: presentation_authority
-                    .as_ref()
-                    .and(source.entry.difficulty_family.clone()),
-                difficulty_tier: source.entry.difficulty_tier,
+                scene_name: source.entry.scene_id.and_then(trusted_scene_name),
+                difficulty_family: exact_semantic_authority
+                    .then(|| source.entry.difficulty_family.clone())
+                    .flatten(),
+                difficulty_tier: exact_semantic_authority
+                    .then_some(source.entry.difficulty_tier)
+                    .flatten(),
                 terminal_state: source.entry.terminal_state.clone(),
             };
             let character = characters
@@ -3604,15 +3613,11 @@ fn build_observed_character_catalog(
                     region: source.entry.region_id.clone(),
                     presentation_authority: presentation_authority.clone(),
                     class_id: participant.class_id,
-                    class_name: (presentation_authority.is_some()
-                        && participant.class_id.is_some())
-                    .then(|| participant.class_name.clone())
-                    .flatten(),
+                    class_name: participant.class_id.and_then(trusted_class_name),
                     specialization_id: participant.specialization_id,
-                    specialization_name: (presentation_authority.is_some()
-                        && participant.specialization_id.is_some())
-                    .then(|| participant.specialization_name.clone())
-                    .flatten(),
+                    specialization_name: participant
+                        .specialization_id
+                        .and_then(trusted_specialization_name),
                     first_seen_unix_millis: source.entry.created_unix_millis,
                     last_seen_unix_millis: source.entry.created_unix_millis,
                     report_count: 0,
@@ -3628,15 +3633,11 @@ fn build_observed_character_catalog(
             if latest {
                 character.display_name = display_name.to_owned();
                 character.class_id = participant.class_id;
-                character.class_name = (presentation_authority.is_some()
-                    && participant.class_id.is_some())
-                .then(|| participant.class_name.clone())
-                .flatten();
+                character.class_name = participant.class_id.and_then(trusted_class_name);
                 character.specialization_id = participant.specialization_id;
-                character.specialization_name = (presentation_authority.is_some()
-                    && participant.specialization_id.is_some())
-                .then(|| participant.specialization_name.clone())
-                .flatten();
+                character.specialization_name = participant
+                    .specialization_id
+                    .and_then(trusted_specialization_name);
                 character.presentation_authority = presentation_authority;
             }
             if !character.reports.iter().any(|existing| {
@@ -3692,6 +3693,44 @@ fn catalog_presentation_authority(
     })
 }
 
+fn catalog_has_exact_semantic_authority(entry: &PublicParseCatalogEntry) -> bool {
+    let Some(client_build) = entry.client_build.as_deref() else {
+        return false;
+    };
+    let Some(protocol_pack_digest) = entry.protocol_pack_digest.as_deref() else {
+        return false;
+    };
+    bundled_run_reducer_config_for_identity(
+        entry.deployment_id.trim(),
+        client_build.trim(),
+        protocol_pack_digest.trim(),
+    )
+    .ok()
+    .flatten()
+    .is_some()
+}
+
+fn trusted_scene_name(scene_id: i32) -> Option<String> {
+    localized_scene_name_for_identity("", "", "", i64::from(scene_id), "en-US")
+        .ok()
+        .flatten()
+        .map(str::to_owned)
+}
+
+fn trusted_class_name(class_id: i32) -> Option<String> {
+    localized_class_name(class_id, "en-US")
+        .ok()
+        .flatten()
+        .map(str::to_owned)
+}
+
+fn trusted_specialization_name(specialization_id: i32) -> Option<String> {
+    localized_specialization_name(specialization_id, "en-US")
+        .ok()
+        .flatten()
+        .map(str::to_owned)
+}
+
 fn valid_sha256_identity(value: &str) -> bool {
     value.strip_prefix("sha256:").is_some_and(|digest| {
         digest.len() == 64
@@ -3724,6 +3763,9 @@ fn build_community_milestone_catalog(
         BTreeMap::<(CommunityMilestoneKind, String, String), PublicCommunityMilestone>::new();
     for source in sources {
         if source.entry.terminal_state != "completed" || !source.authoritative_completion {
+            continue;
+        }
+        if !catalog_has_exact_semantic_authority(&source.entry) {
             continue;
         }
         let Some(presentation_authority) = catalog_presentation_authority(&source.entry) else {
@@ -4126,19 +4168,19 @@ impl PublicParseCatalogEntry {
             activity_family_id: run.activity_family_id.clone(),
             activity_category_id: run.activity_category_id.clone(),
             scene_id: run.scene_id,
-            scene_name: run.scene_name.clone(),
+            scene_name: run.scene_id.and_then(trusted_scene_name),
             difficulty_family: run.difficulty_family.clone(),
             difficulty_tier: run.difficulty_tier,
             terminal_state: run.terminal_state.clone(),
             total_run_time_micros: run.total_run_time_micros,
             participant_count: run.participants.len(),
         };
-        entry.require_localization_authority();
+        entry.require_exact_semantic_authority();
         entry
     }
 
-    fn require_localization_authority(&mut self) {
-        let has_authority = !self.deployment_id.trim().is_empty()
+    fn require_exact_semantic_authority(&mut self) {
+        let has_complete_source_identity = !self.deployment_id.trim().is_empty()
             && self
                 .client_build
                 .as_deref()
@@ -4147,16 +4189,17 @@ impl PublicParseCatalogEntry {
                 .protocol_pack_digest
                 .as_deref()
                 .is_some_and(|value| valid_sha256_identity(value.trim()));
-        if has_authority {
-            return;
+        if !has_complete_source_identity {
+            self.client_build = None;
+            self.protocol_pack_digest = None;
         }
-        self.client_build = None;
-        self.protocol_pack_digest = None;
-        self.activity_id = None;
-        self.activity_family_id = None;
-        self.activity_category_id = None;
-        self.scene_name = None;
-        self.difficulty_family = None;
+        if !catalog_has_exact_semantic_authority(self) {
+            self.activity_id = None;
+            self.activity_family_id = None;
+            self.activity_category_id = None;
+            self.difficulty_family = None;
+            self.difficulty_tier = None;
+        }
     }
 }
 
@@ -4187,12 +4230,15 @@ impl CatalogFacets {
             if let Some(value) = catalog_activity_category(entry) {
                 increment(&mut activities, value.to_owned());
             }
-            if let Some(value) = entry.difficulty_family.as_ref() {
+            if catalog_has_exact_semantic_authority(entry)
+                && let Some(value) = entry.difficulty_family.as_ref()
+            {
                 increment(&mut difficulties, value.clone());
             }
             increment(&mut terminal_states, entry.terminal_state.clone());
             if let Some(scene_id) = entry.scene_id {
-                let candidate_authority = entry.scene_name.as_ref().and_then(|_| {
+                let label = trusted_scene_name(scene_id);
+                let candidate_authority = label.as_ref().and_then(|_| {
                     Some((
                         entry.deployment_id.clone(),
                         entry.client_build.as_ref()?.clone(),
@@ -4206,22 +4252,18 @@ impl CatalogFacets {
                 });
                 let value = scenes.entry(scene_id).or_insert_with(|| {
                     (
-                        entry
-                            .scene_name
-                            .clone()
-                            .filter(|_| candidate_authority.is_some()),
+                        label.clone(),
                         0_usize,
                         candidate_authority.clone(),
                         candidate_authority.is_none(),
                     )
                 });
                 value.1 += 1;
-                if value.3
-                    || candidate_authority.is_none()
-                    || value.0 != entry.scene_name
-                    || value.2 != candidate_authority
+                if value.3 || label.is_none() || value.0 != label || value.2 != candidate_authority
                 {
-                    value.0 = None;
+                    if label.is_none() {
+                        value.0 = None;
+                    }
                     value.2 = None;
                     value.3 = true;
                 }
@@ -4860,7 +4902,9 @@ fn bpsr_has_run_authority_for_region(region: &RegionContext) -> Result<bool, Ser
     .is_some())
 }
 
-fn bpsr_has_localization_authority(history: &CombatHistorySnapshot) -> Result<bool, ServiceError> {
+fn bpsr_has_exact_presentation_semantic_authority(
+    history: &CombatHistorySnapshot,
+) -> Result<bool, ServiceError> {
     bundled_localization_supports_identity(
         &history.deployment_id,
         &history.client_build,
@@ -4893,7 +4937,8 @@ fn public_runs(
     local_state_observations: &[LocalStateObservation],
     character_id_by_entity_uuid: &BTreeMap<i64, Option<String>>,
 ) -> Vec<PublicRun> {
-    let localization_supported = bpsr_has_localization_authority(history).unwrap_or(false);
+    let exact_presentation_semantics =
+        bpsr_has_exact_presentation_semantic_authority(history).unwrap_or(false);
     history
         .runs
         .iter()
@@ -4937,7 +4982,6 @@ fn public_runs(
                 analysis,
                 &participant_character_ids,
                 local_profile_observations,
-                localization_supported,
             );
             let local_profile_character_ids = local_profile_witnesses
                 .iter()
@@ -4975,7 +5019,7 @@ fn public_runs(
                     })
                     .map(str::to_owned)
                     .or_else(|| {
-                        localization_supported
+                        exact_presentation_semantics
                             .then(|| run.presentation_scene_name.clone())
                             .flatten()
                     }),
@@ -5014,16 +5058,14 @@ fn public_runs(
                         view.actors
                             .iter()
                             .filter(|actor| is_public_participant(actor))
-                            .map(|actor| public_participant(actor, localization_supported))
+                            .map(|actor| public_participant(actor, exact_presentation_semantics))
                             .collect()
                     })
                     .unwrap_or_default(),
                 rdps_influences: view.map(public_rdps_influences).unwrap_or_default(),
-                rdps_effects: if localization_supported {
-                    view.map(public_rdps_effects).unwrap_or_default()
-                } else {
-                    Vec::new()
-                },
+                rdps_effects: view
+                    .map(|view| public_rdps_effects(view, exact_presentation_semantics))
+                    .unwrap_or_default(),
                 timeline: PublicCombatTimeline::default(),
             };
             public_run.timeline =
@@ -5062,17 +5104,15 @@ fn enrich_bpsr_ability_presentation(
     client_build: &str,
     protocol_pack_digest: &str,
 ) -> Result<(), ServiceError> {
-    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)
-        .map_err(ServiceError::Replay)?
-    {
-        ability.presentation_name = None;
-        ability.presentation_kind = None;
-        ability.presentation_resolution = None;
-        ability.icon_asset_path = None;
-        ability.presentation_recount_group_id = None;
-        ability.presentation_recount_group_name = None;
-        return Ok(());
-    }
+    let exact_semantic_authority =
+        bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)
+            .map_err(ServiceError::Replay)?;
+    ability.presentation_name = None;
+    ability.presentation_kind = None;
+    ability.presentation_resolution = None;
+    ability.icon_asset_path = None;
+    ability.presentation_recount_group_id = None;
+    ability.presentation_recount_group_name = None;
     let Ok(ability_id) = ability.ability_id.parse::<i64>() else {
         return Ok(());
     };
@@ -5088,25 +5128,29 @@ fn enrich_bpsr_ability_presentation(
         )
         .map_err(ServiceError::Replay)?
         .map(str::to_owned);
-        ability.presentation_kind = Some(presentation.kind.clone());
-        ability.presentation_resolution = Some(presentation.resolution.clone());
         ability.icon_asset_path = presentation
             .icon
             .as_ref()
             .map(|path| format!("/game-assets/blue-protocol-star-resonance/shared/{path}"));
-        ability.presentation_recount_group_name = localized_recount_group_name_for_identity(
-            deployment_id,
-            client_build,
-            protocol_pack_digest,
-            ability_id,
-            "en-US",
-        )
-        .map_err(ServiceError::Replay)?
-        .map(str::to_owned);
+        if exact_semantic_authority {
+            ability.presentation_kind = Some(presentation.kind.clone());
+            ability.presentation_resolution = Some(presentation.resolution.clone());
+            ability.presentation_recount_group_name = localized_recount_group_name_for_identity(
+                deployment_id,
+                client_build,
+                protocol_pack_digest,
+                ability_id,
+                "en-US",
+            )
+            .map_err(ServiceError::Replay)?
+            .map(str::to_owned);
+        }
     }
-    ability.presentation_recount_group_id = combat_recount_group_id(ability_id)
-        .map_err(ServiceError::Replay)?
-        .map(|group_id| group_id.to_string());
+    if exact_semantic_authority {
+        ability.presentation_recount_group_id = combat_recount_group_id(ability_id)
+            .map_err(ServiceError::Replay)?
+            .map(|group_id| group_id.to_string());
+    }
     Ok(())
 }
 
@@ -5330,7 +5374,6 @@ fn run_scoped_combat_loadout_phases(
     analysis: &RunAnalysis,
     participant_character_ids: &BTreeSet<String>,
     observations: &[LocalProfileObservation],
-    localization_supported: bool,
 ) -> Vec<PublicCombatLoadoutPhase> {
     let mut last_loadout_by_character = BTreeMap::<String, ProfileLoadoutObservation>::new();
     run_scoped_profile_observations(analysis, participant_character_ids, observations)
@@ -5374,27 +5417,12 @@ fn run_scoped_combat_loadout_phases(
                 attempt_number: encounter.map(|encounter| encounter.attempt_number),
                 in_active_combat,
                 class_id: observation.loadout.class_id,
-                class_name: localization_supported
-                    .then(|| {
-                        observation
-                            .loadout
-                            .class_id
-                            .and_then(|id| localized_class_name(id, "en-US").ok().flatten())
-                            .map(str::to_owned)
-                    })
-                    .flatten(),
+                class_name: observation.loadout.class_id.and_then(trusted_class_name),
                 specialization_id: observation.loadout.specialization_id,
-                specialization_name: localization_supported
-                    .then(|| {
-                        observation
-                            .loadout
-                            .specialization_id
-                            .and_then(|id| {
-                                localized_specialization_name(id, "en-US").ok().flatten()
-                            })
-                            .map(str::to_owned)
-                    })
-                    .flatten(),
+                specialization_name: observation
+                    .loadout
+                    .specialization_id
+                    .and_then(trusted_specialization_name),
                 equipped_skill_ids: observation.loadout.equipped_skill_ids.clone(),
                 equipped_imagines: observation.loadout.equipped_imagines.clone(),
                 equipment_count: observation.loadout.equipment_count,
@@ -7228,40 +7256,26 @@ fn private_parse_membership(
 
 fn public_participant(
     actor: &HistoryActorSummary,
-    localization_supported: bool,
+    exact_presentation_semantics: bool,
 ) -> PublicParticipant {
     PublicParticipant {
         actor_id: actor.actor_id.clone(),
         character_id: actor.character_id.clone(),
         observed_character_key: None,
-        display_name: localization_supported
+        display_name: exact_presentation_semantics
             .then(|| actor.presentation_name.clone())
             .flatten()
             .or_else(|| actor.display_name.clone()),
-        actor_kind: localization_supported
+        actor_kind: exact_presentation_semantics
             .then(|| actor.presentation_kind.clone())
             .flatten()
             .or_else(|| actor.actor_kind.clone()),
         class_id: actor.class_id,
-        class_name: localization_supported
-            .then(|| {
-                actor
-                    .class_id
-                    .and_then(|id| localized_class_name(id, "en-US").ok().flatten())
-                    .map(str::to_owned)
-                    .or_else(|| actor.presentation_class_name.clone())
-            })
-            .flatten(),
+        class_name: actor.class_id.and_then(trusted_class_name),
         specialization_id: actor.specialization_id,
-        specialization_name: localization_supported
-            .then(|| {
-                actor
-                    .specialization_id
-                    .and_then(|id| localized_specialization_name(id, "en-US").ok().flatten())
-                    .map(str::to_owned)
-                    .or_else(|| actor.presentation_specialization_name.clone())
-            })
-            .flatten(),
+        specialization_name: actor
+            .specialization_id
+            .and_then(trusted_specialization_name),
         damage: actor.damage,
         dps: actor.dps,
         encounter_dps: actor.encounter_dps,
@@ -7274,31 +7288,41 @@ fn public_participant(
         abilities: actor
             .abilities
             .iter()
-            .map(|ability| PublicAbilitySummary {
-                ability_id: ability.ability_id.clone(),
-                presentation_name: localization_supported
-                    .then(|| ability.presentation_name.clone())
-                    .flatten(),
-                presentation_kind: localization_supported
-                    .then(|| ability.presentation_kind.clone())
-                    .flatten(),
-                icon_asset_path: localization_supported
-                    .then(|| ability.icon_asset_path.clone())
-                    .flatten(),
-                presentation_recount_group_id: localization_supported
-                    .then(|| ability.presentation_recount_group_id.clone())
-                    .flatten(),
-                presentation_recount_group_name: localization_supported
-                    .then(|| ability.presentation_recount_group_name.clone())
-                    .flatten(),
-                casts: ability.casts,
-                hits: ability.hits,
-                critical_hits: ability.critical_hits,
-                damage: ability.damage,
-                effective_damage: ability.effective_damage,
-                healing: ability.healing,
-                effective_healing: ability.effective_healing,
-                shielding: ability.shielding,
+            .map(|ability| {
+                let ability_id = ability.ability_id.parse::<i64>().ok();
+                let trusted_presentation =
+                    ability_id.and_then(|id| combat_action_presentation(id).ok().flatten());
+                PublicAbilitySummary {
+                    ability_id: ability.ability_id.clone(),
+                    presentation_name: ability_id.and_then(|id| {
+                        localized_combat_action_name_for_identity("", "", "", id, "en-US")
+                            .ok()
+                            .flatten()
+                            .map(str::to_owned)
+                    }),
+                    presentation_kind: exact_presentation_semantics
+                        .then(|| ability.presentation_kind.clone())
+                        .flatten(),
+                    icon_asset_path: trusted_presentation.and_then(|presentation| {
+                        presentation.icon.as_ref().map(|path| {
+                            format!("/game-assets/blue-protocol-star-resonance/shared/{path}")
+                        })
+                    }),
+                    presentation_recount_group_id: exact_presentation_semantics
+                        .then(|| ability.presentation_recount_group_id.clone())
+                        .flatten(),
+                    presentation_recount_group_name: exact_presentation_semantics
+                        .then(|| ability.presentation_recount_group_name.clone())
+                        .flatten(),
+                    casts: ability.casts,
+                    hits: ability.hits,
+                    critical_hits: ability.critical_hits,
+                    damage: ability.damage,
+                    effective_damage: ability.effective_damage,
+                    healing: ability.healing,
+                    effective_healing: ability.effective_healing,
+                    shielding: ability.shielding,
+                }
             })
             .collect(),
         series: actor
@@ -7317,14 +7341,30 @@ fn public_participant(
     }
 }
 
-fn public_rdps_effects(view: &CombatHistoryView) -> Vec<PublicRdpsEffectPresentation> {
+fn public_rdps_effects(
+    view: &CombatHistoryView,
+    exact_presentation_semantics: bool,
+) -> Vec<PublicRdpsEffectPresentation> {
+    if !exact_presentation_semantics {
+        return Vec::new();
+    }
     view.rdps_effect_presentations
         .iter()
-        .map(|effect| PublicRdpsEffectPresentation {
-            effect_id: effect.effect_id.clone(),
-            presentation_name: effect.presentation_name.clone(),
-            presentation_kind: effect.presentation_kind.clone(),
-            icon_asset_path: effect.icon_asset_path.clone(),
+        .filter_map(|effect| {
+            let effect_id = effect.effect_id.parse::<i64>().ok()?;
+            let display = status_effect_display_presentation(effect_id, "en-US")
+                .ok()
+                .flatten()?;
+            let presentation = status_effect_presentation(effect_id).ok().flatten()?;
+            Some(PublicRdpsEffectPresentation {
+                effect_id: effect.effect_id.clone(),
+                presentation_name: display.name.to_owned(),
+                presentation_kind: presentation.kind.clone(),
+                icon_asset_path: presentation
+                    .icon
+                    .as_ref()
+                    .map(|path| format!("/game-assets/blue-protocol-star-resonance/shared/{path}")),
+            })
         })
         .collect()
 }
@@ -7496,7 +7536,7 @@ fn public_timeline_death_actor_presentation(
         let name = bounded_timeline_death_presentation_name(
             public_participant(
                 actor,
-                bpsr_has_localization_authority(history).unwrap_or(false),
+                bpsr_has_exact_presentation_semantic_authority(history).unwrap_or(false),
             )
             .display_name
             .as_deref()?,
@@ -8313,12 +8353,6 @@ fn optional_matches(filter: &Option<String>, actual: &str) -> bool {
     filter.as_ref().is_none_or(|filter| filter == actual)
 }
 
-fn optional_matches_option(filter: &Option<String>, actual: &Option<String>) -> bool {
-    filter
-        .as_ref()
-        .is_none_or(|filter| actual.as_ref() == Some(filter))
-}
-
 #[derive(Debug, Error)]
 pub enum ServiceError {
     #[error("invalid service configuration: {0}")]
@@ -8550,7 +8584,7 @@ mod tests {
     }
 
     #[test]
-    fn backend_localization_authority_requires_the_artifact_exact_runtime_identity() {
+    fn backend_presentation_semantics_require_the_artifact_exact_runtime_identity() {
         let exact = CombatHistorySnapshot {
             schema_version: 1,
             session_id: "history".into(),
@@ -8563,19 +8597,19 @@ mod tests {
             rdps_formula_identity: None,
             runs: Vec::new(),
         };
-        assert!(bpsr_has_localization_authority(&exact).unwrap());
+        assert!(bpsr_has_exact_presentation_semantic_authority(&exact).unwrap());
 
         let mut wrong_deployment = exact.clone();
         wrong_deployment.deployment_id = "cn".into();
-        assert!(!bpsr_has_localization_authority(&wrong_deployment).unwrap());
+        assert!(!bpsr_has_exact_presentation_semantic_authority(&wrong_deployment).unwrap());
 
         let mut wrong_build = exact.clone();
         wrong_build.client_build = "24687927".into();
-        assert!(!bpsr_has_localization_authority(&wrong_build).unwrap());
+        assert!(!bpsr_has_exact_presentation_semantic_authority(&wrong_build).unwrap());
 
         let mut wrong_digest = exact;
         wrong_digest.protocol_pack_digest = "sha256:wrong-pack".into();
-        assert!(!bpsr_has_localization_authority(&wrong_digest).unwrap());
+        assert!(!bpsr_has_exact_presentation_semantic_authority(&wrong_digest).unwrap());
     }
 
     fn timeline_participant(actor_id: &str) -> PublicParticipant {
@@ -9978,7 +10012,7 @@ mod tests {
             submitter_id: None,
             deployment_id: "global".into(),
             client_build: Some("24687926".into()),
-            protocol_pack_digest: Some(TEST_PROTOCOL_PACK_DIGEST.into()),
+            protocol_pack_digest: Some(BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into()),
             region_id: "north-america".into(),
             activity_id: Some("chaotic".into()),
             activity_family_id: Some("chaotic".into()),
@@ -10003,13 +10037,13 @@ mod tests {
         assert_eq!(facets.scenes[0].client_build.as_deref(), Some("24687926"));
         assert_eq!(
             facets.scenes[0].protocol_pack_digest.as_deref(),
-            Some(TEST_PROTOCOL_PACK_DIGEST)
+            Some(BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST)
         );
         assert_eq!(facets.difficulties[0].id, "master");
     }
 
     #[test]
-    fn catalog_scene_facets_fail_closed_for_mixed_localization_identity() {
+    fn catalog_scene_facets_keep_trusted_labels_across_mixed_source_identity() {
         let base = PublicParseCatalogEntry {
             report_id: "rpt_a".into(),
             report_ids: vec!["rpt_a".into()],
@@ -10023,7 +10057,7 @@ mod tests {
             submitter_id: None,
             deployment_id: "global".into(),
             client_build: Some("24687926".into()),
-            protocol_pack_digest: Some(TEST_PROTOCOL_PACK_DIGEST.into()),
+            protocol_pack_digest: Some(BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into()),
             region_id: "global".into(),
             activity_id: Some("chaotic".into()),
             activity_family_id: Some("chaotic".into()),
@@ -10040,13 +10074,23 @@ mod tests {
         wrong_digest.report_id = "rpt_b".into();
         wrong_digest.report_ids = vec!["rpt_b".into()];
         wrong_digest.protocol_pack_digest = Some(OTHER_PROTOCOL_PACK_DIGEST.into());
+        let mut absent = base.clone();
+        absent.scene_id = Some(999_999_999);
+        absent.scene_name = Some("report supplied impostor".into());
 
         let facets = CatalogFacets::from_entries(&[base, wrong_digest]);
         assert_eq!(facets.scenes[0].count, 2);
-        assert!(facets.scenes[0].label.is_none());
+        assert_eq!(
+            facets.scenes[0].label.as_deref(),
+            Some("Chaotic - Sea-Ringed Reef")
+        );
         assert!(facets.scenes[0].deployment_id.is_none());
         assert!(facets.scenes[0].client_build.is_none());
         assert!(facets.scenes[0].protocol_pack_digest.is_none());
+
+        let absent_facets = CatalogFacets::from_entries(&[absent]);
+        assert_eq!(absent_facets.scenes[0].id, 999_999_999);
+        assert!(absent_facets.scenes[0].label.is_none());
     }
 
     #[test]
@@ -10082,7 +10126,7 @@ mod tests {
     }
 
     #[test]
-    fn catalog_entry_creation_requires_nonblank_localization_authority() {
+    fn catalog_entry_separates_trusted_scene_display_from_exact_semantics() {
         for missing_axis in ["deployment", "build", "digest"] {
             let mut report =
                 fixture_public_report("rpt_dddddddddddddddddddddddddddddddd", "3296036", 0);
@@ -10098,10 +10142,14 @@ mod tests {
             assert!(entry.activity_id.is_none(), "axis: {missing_axis}");
             assert!(entry.activity_family_id.is_none(), "axis: {missing_axis}");
             assert!(entry.activity_category_id.is_none(), "axis: {missing_axis}");
-            assert!(entry.scene_name.is_none(), "axis: {missing_axis}");
+            assert_eq!(
+                entry.scene_name,
+                report.runs[0].scene_id.and_then(trusted_scene_name),
+                "axis: {missing_axis}"
+            );
             assert!(entry.difficulty_family.is_none(), "axis: {missing_axis}");
             assert_eq!(entry.scene_id, report.runs[0].scene_id);
-            assert_eq!(entry.difficulty_tier, report.runs[0].difficulty_tier);
+            assert!(entry.difficulty_tier.is_none(), "axis: {missing_axis}");
             assert_eq!(entry.terminal_state, report.runs[0].terminal_state);
         }
         for malformed_digest in [
@@ -10114,9 +10162,34 @@ mod tests {
             report.protocol_pack_digest = malformed_digest;
             let entry = PublicParseCatalogEntry::from_report(&report, &report.runs[0]);
             assert!(entry.protocol_pack_digest.is_none());
-            assert!(entry.scene_name.is_none());
+            assert_eq!(
+                entry.scene_name,
+                report.runs[0].scene_id.and_then(trusted_scene_name)
+            );
             assert!(entry.difficulty_family.is_none());
+            assert!(entry.difficulty_tier.is_none());
             assert_eq!(entry.scene_id, report.runs[0].scene_id);
+        }
+
+        for wrong_axis in ["deployment", "build", "digest"] {
+            let mut report =
+                fixture_public_report("rpt_dddddddddddddddddddddddddddddddd", "3296036", 0);
+            report.protocol_pack_digest = BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into();
+            match wrong_axis {
+                "deployment" => report.deployment_id = "cn".into(),
+                "build" => report.client_build = "24687927".into(),
+                "digest" => report.protocol_pack_digest = OTHER_PROTOCOL_PACK_DIGEST.into(),
+                _ => unreachable!(),
+            }
+            let entry = PublicParseCatalogEntry::from_report(&report, &report.runs[0]);
+            assert_eq!(
+                entry.scene_name,
+                report.runs[0].scene_id.and_then(trusted_scene_name),
+                "axis: {wrong_axis}"
+            );
+            assert!(entry.activity_category_id.is_none(), "axis: {wrong_axis}");
+            assert!(entry.difficulty_family.is_none(), "axis: {wrong_axis}");
+            assert!(entry.difficulty_tier.is_none(), "axis: {wrong_axis}");
         }
     }
 
@@ -10135,7 +10208,7 @@ mod tests {
             submitter_id: None,
             deployment_id: "global".into(),
             client_build: Some("24687926".into()),
-            protocol_pack_digest: Some(TEST_PROTOCOL_PACK_DIGEST.into()),
+            protocol_pack_digest: Some(BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into()),
             region_id: "global".into(),
             activity_id: Some("scene.32160".into()),
             activity_family_id: Some("stimen-vaults".into()),
@@ -10191,7 +10264,7 @@ mod tests {
                     submitter_id: None,
                     deployment_id: "global".into(),
                     client_build: Some("24687926".into()),
-                    protocol_pack_digest: Some(TEST_PROTOCOL_PACK_DIGEST.into()),
+                    protocol_pack_digest: Some(BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into()),
                     region_id: "global".into(),
                     activity_id: Some("scene.6500".into()),
                     activity_family_id: Some("test".into()),
@@ -10248,7 +10321,7 @@ mod tests {
         assert_eq!(catalog.entries[1].client_build.as_deref(), Some("24687926"));
         assert_eq!(
             catalog.entries[1].protocol_pack_digest.as_deref(),
-            Some(TEST_PROTOCOL_PACK_DIGEST)
+            Some(BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST)
         );
         assert_eq!(
             catalog.entries[1].difficulty_family.as_deref(),
@@ -10257,7 +10330,7 @@ mod tests {
     }
 
     #[test]
-    fn community_milestones_require_exact_presentation_authority() {
+    fn community_milestones_require_exact_semantic_authority() {
         let mut source = MilestoneSource {
             entry: PublicParseCatalogEntry {
                 report_id: "rpt_missing".into(),
@@ -10311,12 +10384,31 @@ mod tests {
             abilities: Vec::new(),
             series: Vec::new(),
         });
-        let catalog = build_community_milestone_catalog(vec![source]);
+        let catalog = build_community_milestone_catalog(vec![source.clone()]);
         assert_eq!(
             catalog.schema_version,
             COMMUNITY_MILESTONE_CATALOG_SCHEMA_VERSION
         );
         assert!(catalog.entries.is_empty());
+
+        for wrong_axis in ["deployment", "build", "digest"] {
+            let mut wrong = source.clone();
+            wrong.entry.protocol_pack_digest = Some(BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into());
+            match wrong_axis {
+                "deployment" => wrong.entry.deployment_id = "cn".into(),
+                "build" => wrong.entry.client_build = Some("24687927".into()),
+                "digest" => {
+                    wrong.entry.protocol_pack_digest = Some(OTHER_PROTOCOL_PACK_DIGEST.into())
+                }
+                _ => unreachable!(),
+            }
+            assert!(
+                build_community_milestone_catalog(vec![wrong])
+                    .entries
+                    .is_empty(),
+                "axis: {wrong_axis}"
+            );
+        }
     }
 
     #[test]
@@ -10356,7 +10448,7 @@ mod tests {
             submitter_id: None,
             deployment_id: "global".into(),
             client_build: Some("24687926".into()),
-            protocol_pack_digest: Some(TEST_PROTOCOL_PACK_DIGEST.into()),
+            protocol_pack_digest: Some(BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into()),
             region_id: "north-america".into(),
             activity_id: Some("chaotic".into()),
             activity_family_id: None,
@@ -10394,7 +10486,7 @@ mod tests {
     }
 
     #[test]
-    fn public_ability_localization_requires_exact_artifact_build() {
+    fn public_ability_display_carries_across_builds_but_semantics_stay_exact() {
         let fixture = || {
             serde_json::from_value::<rlogs_plugin_combat_meter::HistoryAbilitySummary>(
                 serde_json::json!({
@@ -10432,6 +10524,7 @@ mod tests {
         .unwrap();
         assert_eq!(exact.presentation_name.as_deref(), Some("Powerdraw"));
         assert_eq!(exact.presentation_recount_group_id.as_deref(), Some("84"));
+        assert_ne!(exact.icon_asset_path.as_deref(), Some("stale-icon"));
 
         let mut other = fixture();
         enrich_bpsr_ability_presentation(
@@ -10441,27 +10534,70 @@ mod tests {
             BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
         )
         .unwrap();
-        assert_eq!(other.presentation_name, None);
+        assert_eq!(other.presentation_name.as_deref(), Some("Powerdraw"));
         assert_eq!(other.presentation_kind, None);
-        assert_eq!(other.icon_asset_path, None);
+        assert!(other.icon_asset_path.is_some());
         assert_eq!(other.presentation_recount_group_id, None);
+
+        let mut older = fixture();
+        enrich_bpsr_ability_presentation(
+            &mut older,
+            "global",
+            "24609362",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+        )
+        .unwrap();
+        assert_eq!(older.presentation_name.as_deref(), Some("Powerdraw"));
+        assert!(older.icon_asset_path.is_some());
+        assert!(older.presentation_kind.is_none());
+        assert!(older.presentation_resolution.is_none());
+        assert!(older.presentation_recount_group_id.is_none());
+        assert!(older.presentation_recount_group_name.is_none());
 
         let mut other_digest = fixture();
         enrich_bpsr_ability_presentation(
             &mut other_digest,
             "global",
             "24687926",
-            "sha256:wrong-pack",
+            OTHER_PROTOCOL_PACK_DIGEST,
         )
         .unwrap();
-        assert_eq!(other_digest.presentation_name, None);
+        assert_eq!(other_digest.presentation_name.as_deref(), Some("Powerdraw"));
         assert_eq!(other_digest.presentation_kind, None);
-        assert_eq!(other_digest.icon_asset_path, None);
+        assert_eq!(other_digest.presentation_resolution, None);
+        assert!(other_digest.icon_asset_path.is_some());
         assert_eq!(other_digest.presentation_recount_group_id, None);
+        assert_eq!(other_digest.presentation_recount_group_name, None);
+
+        for (deployment, build, digest) in [
+            ("cn", "24687926", BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST),
+            ("", "", ""),
+        ] {
+            let mut cross_identity = fixture();
+            enrich_bpsr_ability_presentation(&mut cross_identity, deployment, build, digest)
+                .unwrap();
+            assert_eq!(
+                cross_identity.presentation_name.as_deref(),
+                Some("Powerdraw")
+            );
+            assert!(cross_identity.icon_asset_path.is_some());
+            assert!(cross_identity.presentation_kind.is_none());
+            assert!(cross_identity.presentation_resolution.is_none());
+            assert!(cross_identity.presentation_recount_group_id.is_none());
+            assert!(cross_identity.presentation_recount_group_name.is_none());
+        }
+
+        let mut absent = fixture();
+        absent.ability_id = "999999999".into();
+        enrich_bpsr_ability_presentation(&mut absent, "", "", "").unwrap();
+        assert!(absent.presentation_name.is_none());
+        assert!(absent.icon_asset_path.is_none());
+        assert!(absent.presentation_kind.is_none());
+        assert!(absent.presentation_recount_group_id.is_none());
     }
 
     #[test]
-    fn public_participant_presentation_requires_exact_artifact_build() {
+    fn public_participant_catalog_display_carries_but_mechanics_stay_exact() {
         let actor: HistoryActorSummary = serde_json::from_str(
             r#"{
             "actor_id": "1",
@@ -10524,7 +10660,7 @@ mod tests {
         assert_eq!(exact.specialization_name.as_deref(), Some("Falconry Spec"));
         assert_eq!(
             exact.abilities[0].presentation_name.as_deref(),
-            Some("Stale Ability")
+            Some("Powerdraw")
         );
 
         let other = public_participant(&actor, false);
@@ -10532,13 +10668,86 @@ mod tests {
         assert_eq!(other.actor_kind.as_deref(), Some("player"));
         assert_eq!(other.class_id, Some(11));
         assert_eq!(other.specialization_id, Some(117));
-        assert_eq!(other.class_name, None);
-        assert_eq!(other.specialization_name, None);
-        assert_eq!(other.abilities[0].presentation_name, None);
+        assert_eq!(other.class_name.as_deref(), Some("Marksman"));
+        assert_eq!(other.specialization_name.as_deref(), Some("Falconry Spec"));
+        assert_eq!(
+            other.abilities[0].presentation_name.as_deref(),
+            Some("Powerdraw")
+        );
         assert_eq!(other.abilities[0].presentation_kind, None);
-        assert_eq!(other.abilities[0].icon_asset_path, None);
+        assert!(other.abilities[0].icon_asset_path.is_some());
         assert_eq!(other.abilities[0].presentation_recount_group_id, None);
         assert_eq!(other.abilities[0].presentation_recount_group_name, None);
+
+        for (deployment, build, digest) in [
+            ("cn", "24687926", BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST),
+            ("", "", ""),
+        ] {
+            let mut history = death_test_history();
+            history.deployment_id = deployment.into();
+            history.client_build = build.into();
+            history.protocol_pack_digest = digest.into();
+            let exact = bpsr_has_exact_presentation_semantic_authority(&history).unwrap_or(false);
+            let projected = public_participant(&actor, exact);
+            assert_eq!(projected.class_name.as_deref(), Some("Marksman"));
+            assert_eq!(
+                projected.specialization_name.as_deref(),
+                Some("Falconry Spec")
+            );
+            assert_eq!(
+                projected.abilities[0].presentation_name.as_deref(),
+                Some("Powerdraw")
+            );
+            assert!(projected.abilities[0].icon_asset_path.is_some());
+            assert!(projected.abilities[0].presentation_kind.is_none());
+            assert!(
+                projected.abilities[0]
+                    .presentation_recount_group_id
+                    .is_none()
+            );
+        }
+
+        let mut unknown_actor = actor.clone();
+        unknown_actor.class_id = Some(999_999);
+        unknown_actor.specialization_id = Some(999_999);
+        unknown_actor.abilities[0].ability_id = "999999999".into();
+        let unknown = public_participant(&unknown_actor, false);
+        assert!(unknown.class_name.is_none());
+        assert!(unknown.specialization_name.is_none());
+        assert!(unknown.abilities[0].presentation_name.is_none());
+        assert!(unknown.abilities[0].icon_asset_path.is_none());
+    }
+
+    #[test]
+    fn public_rdps_effect_display_is_rebuilt_from_trusted_ids() {
+        let mut view = exact_death_view(HistoryDeathEvent {
+            at_micros: 10,
+            cause: None,
+        });
+        view.rdps_effect_presentations = vec![
+            rlogs_plugin_combat_meter::HistoryRdpsEffectPresentation {
+                effect_id: "2110034".into(),
+                presentation_name: "stale name".into(),
+                presentation_kind: "stale kind".into(),
+                presentation_resolution: "stale resolution".into(),
+                icon_asset_path: Some("stale-icon".into()),
+            },
+            rlogs_plugin_combat_meter::HistoryRdpsEffectPresentation {
+                effect_id: "999999999".into(),
+                presentation_name: "untrusted unknown".into(),
+                presentation_kind: "untrusted kind".into(),
+                presentation_resolution: "untrusted resolution".into(),
+                icon_asset_path: Some("untrusted-icon".into()),
+            },
+        ];
+
+        assert!(public_rdps_effects(&view, false).is_empty());
+        let effects = public_rdps_effects(&view, true);
+        assert_eq!(effects.len(), 1);
+        assert_eq!(effects[0].effect_id, "2110034");
+        assert_ne!(effects[0].presentation_name, "stale name");
+        assert_ne!(effects[0].presentation_kind, "stale kind");
+        assert_ne!(effects[0].icon_asset_path.as_deref(), Some("stale-icon"));
     }
 
     #[test]
@@ -11004,8 +11213,7 @@ mod tests {
         assert!(selected.iter().all(|witness| witness.event_sequence != 1));
         assert!(selected.iter().all(|witness| witness.event_sequence != 6));
 
-        let phases =
-            run_scoped_combat_loadout_phases(&analysis, &participants, &observations, true);
+        let phases = run_scoped_combat_loadout_phases(&analysis, &participants, &observations);
         assert_eq!(phases.len(), 3);
         assert_eq!(
             phases
@@ -11013,6 +11221,11 @@ mod tests {
                 .map(|phase| phase.class_id)
                 .collect::<Vec<_>>(),
             vec![Some(4), Some(5), Some(2)]
+        );
+        assert_eq!(phases[0].class_name, trusted_class_name(4));
+        assert_eq!(
+            phases[0].specialization_name,
+            trusted_specialization_name(1)
         );
         assert_eq!(
             phases
@@ -11044,7 +11257,7 @@ mod tests {
             LocalStateWitnessPlacement::PreRunBaseline
         );
         let baseline_phases =
-            run_scoped_combat_loadout_phases(&analysis, &participants, &observations[..2], true);
+            run_scoped_combat_loadout_phases(&analysis, &participants, &observations[..2]);
         assert_eq!(baseline_phases.len(), 1);
         assert_eq!(baseline_phases[0].run_elapsed_micros, 5);
         assert_eq!(baseline_phases[0].equipped_modules.len(), 1);
@@ -12064,14 +12277,14 @@ mod tests {
         assert_eq!(catalog.schema_version, PUBLIC_CATALOG_SCHEMA_VERSION);
         assert_eq!(catalog.entries.len(), 1);
         assert!(catalog.entries[0].protocol_pack_digest.is_none());
-        assert!(catalog.entries[0].scene_name.is_none());
+        assert_eq!(
+            catalog.entries[0].scene_name,
+            report.runs[0].scene_id.and_then(trusted_scene_name)
+        );
         assert!(catalog.entries[0].activity_id.is_none());
         assert!(catalog.entries[0].difficulty_family.is_none());
         assert_eq!(catalog.entries[0].scene_id, report.runs[0].scene_id);
-        assert_eq!(
-            catalog.entries[0].difficulty_tier,
-            report.runs[0].difficulty_tier
-        );
+        assert!(catalog.entries[0].difficulty_tier.is_none());
     }
 
     #[test]
@@ -12080,6 +12293,38 @@ mod tests {
         let service =
             SubmissionService::open(root.path().into(), "https://example.test".into(), None)
                 .unwrap();
+        let mut report =
+            fixture_public_report("rpt_cccccccccccccccccccccccccccccccc", "3296036", 0);
+        report.protocol_pack_digest = OTHER_PROTOCOL_PACK_DIGEST.into();
+        report.runs[0].activity_id = Some("chaotic".into());
+        report.runs[0].activity_family_id = Some("chaotic".into());
+        report.runs[0].activity_category_id = Some("dungeons".into());
+        report.runs[0].scene_id = Some(6565);
+        report.runs[0].scene_name = Some("report supplied impostor".into());
+        report.runs[0].difficulty_family = Some("master".into());
+        report.runs[0].difficulty_tier = Some(20);
+        report.runs[0].participants[0].display_name = Some("MarieRose".into());
+        report.runs[0].participants[0].class_id = Some(11);
+        report.runs[0].participants[0].class_name = Some("report supplied class".into());
+        report.runs[0].participants[0].specialization_id = Some(117);
+        report.runs[0].participants[0].specialization_name =
+            Some("report supplied specialization".into());
+        write_json_atomic(
+            &service.projection_path(&report.report_id).unwrap(),
+            &report,
+        )
+        .unwrap();
+        write_json_atomic(
+            &service.membership_path(&report.report_id).unwrap(),
+            &PrivateParseMembership {
+                schema_version: PRIVATE_PARSE_MEMBERSHIP_SCHEMA_VERSION,
+                report_id: report.report_id.clone(),
+                artifact_sha256: report.verification.artifact_sha256.clone(),
+                character_by_actor: None,
+                runs: Vec::new(),
+            },
+        )
+        .unwrap();
         write_json_atomic(
             &service.observed_character_catalog_path(),
             &PublicObservedCharacterCatalog {
@@ -12116,6 +12361,20 @@ mod tests {
             milestones.schema_version,
             COMMUNITY_MILESTONE_CATALOG_SCHEMA_VERSION
         );
+        assert_eq!(observed.total_characters, 1);
+        let character = &observed.characters[0];
+        assert_eq!(character.class_name.as_deref(), Some("Marksman"));
+        assert_eq!(
+            character.specialization_name.as_deref(),
+            Some("Falconry Spec")
+        );
+        assert_eq!(
+            character.reports[0].scene_name.as_deref(),
+            Some("Chaotic - Sea-Ringed Reef")
+        );
+        assert!(character.reports[0].difficulty_family.is_none());
+        assert!(character.reports[0].difficulty_tier.is_none());
+        assert!(milestones.entries.is_empty());
     }
 
     #[test]
@@ -13951,7 +14210,7 @@ mod tests {
                 submitter_id: None,
                 deployment_id: "global".into(),
                 client_build: Some("24687926".into()),
-                protocol_pack_digest: Some(TEST_PROTOCOL_PACK_DIGEST.into()),
+                protocol_pack_digest: Some(BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into()),
                 region_id: "north-america".into(),
                 activity_id: None,
                 activity_family_id: None,
@@ -14009,21 +14268,18 @@ mod tests {
             Some(&PublicPresentationAuthority {
                 deployment_id: "global".into(),
                 client_build: "24687926".into(),
-                protocol_pack_digest: TEST_PROTOCOL_PACK_DIGEST.into(),
+                protocol_pack_digest: BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into(),
             })
         );
         assert_eq!(
             character.reports[0].protocol_pack_digest.as_deref(),
-            Some(TEST_PROTOCOL_PACK_DIGEST)
+            Some(BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST)
         );
-        assert_eq!(
-            character.reports[0].scene_name.as_deref(),
-            Some("Test scene")
-        );
+        assert!(character.reports[0].scene_name.is_none());
     }
 
     #[test]
-    fn observed_character_presentation_does_not_mix_localization_provenance() {
+    fn observed_character_uses_trusted_id_display_without_semantic_provenance() {
         let observed_key = pseudonymous_identifier("chr", b"3296036");
         let source = |index: u32, created: u64, digest: Option<&str>, class_name: Option<&str>| {
             MilestoneSource {
@@ -14081,7 +14337,12 @@ mod tests {
         };
         let catalog = build_observed_character_catalog(
             &[
-                source(1, 10, Some(TEST_PROTOCOL_PACK_DIGEST), Some("Marksman")),
+                source(
+                    1,
+                    10,
+                    Some(BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST),
+                    Some("Marksman"),
+                ),
                 source(2, 20, None, Some("Wrong current label")),
             ],
             &[],
@@ -14090,16 +14351,19 @@ mod tests {
         assert!(character.presentation_authority.is_none());
         assert_eq!(character.class_id, Some(4));
         assert_eq!(character.specialization_id, Some(2));
-        assert!(character.class_name.is_none());
-        assert!(character.specialization_name.is_none());
+        assert_eq!(character.class_name, trusted_class_name(4));
+        assert_eq!(
+            character.specialization_name,
+            trusted_specialization_name(2)
+        );
         assert_eq!(character.reports[0].scene_id, Some(1));
         assert!(character.reports[0].scene_name.is_none());
         assert!(character.reports[0].deployment_id.is_none());
         assert!(character.reports[0].client_build.is_none());
         assert!(character.reports[0].protocol_pack_digest.is_none());
         assert!(character.reports[0].difficulty_family.is_none());
-        assert_eq!(character.reports[0].difficulty_tier, Some(5));
-        assert_eq!(character.reports[1].scene_name.as_deref(), Some("Scene 1"));
+        assert!(character.reports[0].difficulty_tier.is_none());
+        assert!(character.reports[1].scene_name.is_none());
         assert_eq!(
             character.reports[1].difficulty_family.as_deref(),
             Some("master")
@@ -14107,7 +14371,7 @@ mod tests {
         assert_eq!(character.reports[1].difficulty_tier, Some(5));
         assert_eq!(
             character.reports[1].protocol_pack_digest.as_deref(),
-            Some(TEST_PROTOCOL_PACK_DIGEST)
+            Some(BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST)
         );
 
         let mut sparse = source(
@@ -14120,7 +14384,12 @@ mod tests {
         sparse.participants[0].specialization_id = None;
         let sparse_catalog = build_observed_character_catalog(
             &[
-                source(1, 10, Some(TEST_PROTOCOL_PACK_DIGEST), Some("Marksman")),
+                source(
+                    1,
+                    10,
+                    Some(BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST),
+                    Some("Marksman"),
+                ),
                 sparse,
             ],
             &[],
@@ -14159,7 +14428,7 @@ mod tests {
             submitter_id: None,
             deployment_id: "global".into(),
             client_build: Some("24687926".into()),
-            protocol_pack_digest: Some(TEST_PROTOCOL_PACK_DIGEST.into()),
+            protocol_pack_digest: Some(BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into()),
             region_id: region.into(),
             activity_id: Some("chaotic".into()),
             activity_family_id: Some("chaotic".into()),
