@@ -6573,6 +6573,12 @@ fn cross_vantage_state_readiness(
             ));
             continue;
         }
+        if !state_witness_chains_identical(&character.witnesses) {
+            blockers.push(format!(
+                "character:{character_id}:state_snapshots_require_ordering"
+            ));
+            continue;
+        }
         let Some(selected_report_id) = character.selected_report_id.as_deref() else {
             blockers.push(format!(
                 "character:{character_id}:no_selected_profile_witness"
@@ -6649,6 +6655,29 @@ fn cross_vantage_state_readiness(
         },
         Vec::new(),
     )
+}
+
+fn state_witness_chains_identical(witnesses: &[PublicCharacterWitnessSource]) -> bool {
+    let semantic_chains = witnesses
+        .iter()
+        .map(|source| {
+            source
+                .state_snapshots
+                .iter()
+                .map(|snapshot| {
+                    (
+                        snapshot.placement,
+                        snapshot.game_time_millis,
+                        snapshot.kind,
+                        snapshot.update_kind.as_str(),
+                        snapshot.related_character_id.as_deref(),
+                        snapshot.payload_sha256.as_str(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    semantic_chains.windows(2).all(|pair| pair[0] == pair[1])
 }
 
 fn reconciliation_status(
@@ -10116,6 +10145,63 @@ mod tests {
                     == report.local_profile_witnesses[0].character_id
         }));
         assert!(!reconciliation.attribution_replay_completed);
+    }
+
+    #[test]
+    fn conflicting_multi_report_state_witnesses_block_joint_replay() {
+        let root = tempfile::tempdir().unwrap();
+        let service =
+            SubmissionService::open(root.path().into(), "https://example.test".into(), None)
+                .unwrap();
+        let report_a =
+            fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
+        let report_b =
+            fixture_public_report("rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "character-b", 1);
+        let mut report_c =
+            fixture_public_report("rpt_cccccccccccccccccccccccccccccccc", "character-b", 2);
+        for report in [&report_a, &report_b, &report_c] {
+            write_json_atomic(&service.projection_path(&report.report_id).unwrap(), report)
+                .unwrap();
+        }
+
+        service.rebuild_catalog_locked().unwrap();
+        let identical = service
+            .reconciliation("run_exact000000000000000000000000000")
+            .unwrap();
+        assert_eq!(
+            identical.state_replay_readiness,
+            CrossVantageStateReplayReadiness::FullCoverageReady
+        );
+        let character_b = identical
+            .characters
+            .iter()
+            .find(|character| character.character_id == "character-b")
+            .unwrap();
+        assert_eq!(
+            character_b.disposition,
+            ProfileWitnessDisposition::MultipleReportsIdentical
+        );
+
+        report_c.runs[0].local_state_witnesses[0].payload_sha256 =
+            "sha256:conflicting-character-b-state".into();
+        write_json_atomic(
+            &service.projection_path(&report_c.report_id).unwrap(),
+            &report_c,
+        )
+        .unwrap();
+        service.rebuild_catalog_locked().unwrap();
+        let conflicting = service
+            .reconciliation("run_exact000000000000000000000000000")
+            .unwrap();
+        assert_eq!(
+            conflicting.state_replay_readiness,
+            CrossVantageStateReplayReadiness::Blocked
+        );
+        assert_eq!(
+            conflicting.state_replay_blockers,
+            vec!["character:character-b:state_snapshots_require_ordering"]
+        );
+        assert!(!conflicting.attribution_replay_completed);
     }
 
     fn write_empty_hosted_artifact(path: &Path, session_id: &str) -> Sha256Digest {
