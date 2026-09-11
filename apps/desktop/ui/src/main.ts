@@ -3,6 +3,7 @@ import "./styles/shell.css";
 import { createDevelopmentAdapter } from "./adapters/development-adapter";
 import {
   createLocalHostAdapterIfAvailable,
+  hideOverlayCanvas,
   mountStandaloneEventInspector,
 } from "./adapters/local-host-adapter";
 import { loadAndApplyThemeSettings } from "./adapters/theme-settings";
@@ -155,7 +156,7 @@ if (isCombatOverlayRuntime) {
         },
       )),
       prepareLocalMaps: async () => { await runtimeJson("/api/runtime/local-game-assets/prepare", { method: "POST" }); },
-      hideOverlay: async () => { await invoke("hide_overlay_canvas"); },
+      hideOverlay: async () => { await hideOverlayCanvas(invoke); },
       setInteractive: async (interactive) => {
         await invoke("set_overlay_canvas_interactive", { interactive });
       },
