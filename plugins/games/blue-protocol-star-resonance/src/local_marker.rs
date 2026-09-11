@@ -27,6 +27,19 @@ pub struct LocalMapMarker {
     pub z: Option<f32>,
 }
 
+/// Why the current observed marker projection cannot yet be imported as a
+/// preset. Protocol verification remains a separate capability gate: this
+/// type only describes whether an already-observed snapshot is structurally
+/// safe to hand to the local preset store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocalMapMarkerSnapshotError {
+    Empty,
+    InvalidMarkerNumber,
+    DuplicateNumber,
+    MissingCoordinate,
+    InvalidCoordinate,
+}
+
 #[derive(Debug, Default)]
 pub struct LocalMapMarkerProjection {
     markers: BTreeMap<i64, LocalMapMarker>,
@@ -35,6 +48,35 @@ pub struct LocalMapMarkerProjection {
 impl LocalMapMarkerProjection {
     pub fn markers(&self) -> impl Iterator<Item = LocalMapMarker> + '_ {
         self.markers.values().copied()
+    }
+
+    /// Returns one deterministic, fully positioned marker per game marker
+    /// number. This deliberately does not claim that the provisional decoder
+    /// is verified; callers must keep their independent build/protocol gate.
+    pub fn preset_snapshot(&self) -> Result<Vec<LocalMapMarker>, LocalMapMarkerSnapshotError> {
+        if self.markers.is_empty() {
+            return Err(LocalMapMarkerSnapshotError::Empty);
+        }
+        let mut by_number = BTreeMap::new();
+        for marker in self.markers.values().copied() {
+            if !(1..=6).contains(&marker.marker_number) {
+                return Err(LocalMapMarkerSnapshotError::InvalidMarkerNumber);
+            }
+            let (Some(x), Some(y), Some(z)) = (marker.x, marker.y, marker.z) else {
+                return Err(LocalMapMarkerSnapshotError::MissingCoordinate);
+            };
+            if !x.is_finite()
+                || !y.is_finite()
+                || !z.is_finite()
+                || [x, y, z].iter().any(|value| value.abs() > 1_000_000.0)
+            {
+                return Err(LocalMapMarkerSnapshotError::InvalidCoordinate);
+            }
+            if by_number.insert(marker.marker_number, marker).is_some() {
+                return Err(LocalMapMarkerSnapshotError::DuplicateNumber);
+            }
+        }
+        Ok(by_number.into_values().collect())
     }
 
     pub fn observe(&mut self, pack: &ProtocolPack, record: &CaptureRecord) -> bool {
@@ -276,5 +318,67 @@ mod tests {
         let mut projection = LocalMapMarkerProjection::default();
         assert!(!projection.observe(&pack, &record(45, vec![])));
         assert_eq!(projection.markers().count(), 0);
+    }
+
+    #[test]
+    fn preset_snapshot_requires_unique_complete_finite_points_and_sorts_them() {
+        let marker = |instance, number, x, y, z| LocalMapMarker {
+            passive_instance_id: instance,
+            related_entity_uuid: None,
+            marker_number: number,
+            x,
+            y,
+            z,
+        };
+        let mut projection = LocalMapMarkerProjection::default();
+        assert_eq!(
+            projection.preset_snapshot(),
+            Err(LocalMapMarkerSnapshotError::Empty)
+        );
+
+        projection
+            .markers
+            .insert(20, marker(20, 2, Some(4.0), Some(5.0), Some(6.0)));
+        projection
+            .markers
+            .insert(10, marker(10, 1, Some(1.0), Some(2.0), Some(3.0)));
+        let snapshot = projection.preset_snapshot().unwrap();
+        assert_eq!(
+            snapshot
+                .iter()
+                .map(|marker| marker.marker_number)
+                .collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+
+        projection
+            .markers
+            .insert(30, marker(30, 2, Some(7.0), Some(8.0), Some(9.0)));
+        assert_eq!(
+            projection.preset_snapshot(),
+            Err(LocalMapMarkerSnapshotError::DuplicateNumber)
+        );
+        projection.markers.remove(&30);
+        projection
+            .markers
+            .insert(40, marker(40, 3, Some(1.0), None, Some(3.0)));
+        assert_eq!(
+            projection.preset_snapshot(),
+            Err(LocalMapMarkerSnapshotError::MissingCoordinate)
+        );
+        projection
+            .markers
+            .insert(40, marker(40, 3, Some(f32::NAN), Some(2.0), Some(3.0)));
+        assert_eq!(
+            projection.preset_snapshot(),
+            Err(LocalMapMarkerSnapshotError::InvalidCoordinate)
+        );
+        projection
+            .markers
+            .insert(40, marker(40, 7, Some(1.0), Some(2.0), Some(3.0)));
+        assert_eq!(
+            projection.preset_snapshot(),
+            Err(LocalMapMarkerSnapshotError::InvalidMarkerNumber)
+        );
     }
 }

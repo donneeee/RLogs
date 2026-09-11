@@ -195,7 +195,7 @@ pub use install::{
 };
 pub use journal::{CaptureSession, GameBuild, JournalError, ProtocolJournal};
 pub use loadout::{normalize_auxiliary_imagine_tier, project_actor_loadouts};
-pub use local_marker::{LocalMapMarker, LocalMapMarkerProjection};
+pub use local_marker::{LocalMapMarker, LocalMapMarkerProjection, LocalMapMarkerSnapshotError};
 pub use module_effect_resolution::{
     ActiveModuleEffect, ActiveModuleEffectSnapshot, ModuleEffectCatalog, ModuleEffectCatalogError,
     ModuleEffectLevel, ModuleEffectResolutionIssue, ModuleEffectSource,
