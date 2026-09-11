@@ -3,6 +3,13 @@
 mod buffered;
 #[cfg(windows)]
 mod dumpcap;
+// This private raw core is intentionally staged before its Windows wrapper;
+// keeping it unreachable outside the crate preserves the signature boundary.
+#[allow(
+    dead_code,
+    reason = "wired only through the subsequent Windows fan-in slice"
+)]
+mod fan_in;
 #[cfg(windows)]
 mod npcap;
 mod offline;
