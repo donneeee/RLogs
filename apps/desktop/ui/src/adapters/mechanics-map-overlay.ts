@@ -1377,8 +1377,6 @@ export function mountMechanicsMapOverlay(
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     context.clearRect(0, 0, width, height);
     if (mechanicsMapAssetAvailability(snapshot, imageReady) !== "ready" || image === null) return;
-    context.fillStyle = "rgba(3, 9, 16, 0.94)";
-    context.fillRect(0, 0, width, height);
     context.imageSmoothingEnabled = true;
     context.save();
     context.translate(width / 2 + preferences.panX, height / 2 + preferences.panY);

@@ -213,6 +213,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     expect(player.isConnected).toBe(true);
     expect(getComputedStyle(resize).display).toBe("none");
     expect(getComputedStyle(map.querySelector(".mechanics-map-overlay-toolbar")!).display).toBe("none");
+    expect(getComputedStyle(map.querySelector(".mechanics-map-overlay-notice")!).display).toBe("none");
     for (const surface of [document.documentElement, document.body, container, root]) {
       const computed = getComputedStyle(surface);
       expect(["transparent", "rgba(0, 0, 0, 0)"]).toContain(computed.backgroundColor);

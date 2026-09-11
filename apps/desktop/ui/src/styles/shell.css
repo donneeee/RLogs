@@ -5759,6 +5759,7 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
 }
 .overlay-canvas-runtime[data-mode="passive"] .mechanics-map-overlay-toolbar,
 .overlay-canvas-runtime[data-mode="passive"] .mechanics-map-overlay-footer,
+.overlay-canvas-runtime[data-mode="passive"] .mechanics-map-overlay-notice,
 .overlay-canvas-runtime[data-mode="passive"] .player-frame-overlay-toolbar,
 .overlay-canvas-runtime[data-mode="passive"] .action-controls-overlay-toolbar,
 .overlay-canvas-runtime[data-mode="passive"] .party-frame-overlay-toolbar,
