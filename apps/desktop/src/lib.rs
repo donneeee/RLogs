@@ -1097,12 +1097,15 @@ fn overlay_example_presentation_catalog() -> Result<OverlayExamplePresentationCa
     let primary_imagines = IMAGINE_ABILITY_IDS
         .into_iter()
         .map(|ability_id| {
-            live_overlay_primary_imagine_badge(&ActorLoadoutSlot {
-                slot_id: 0,
-                ability_id: Some(ability_id),
-                item_id: None,
-                tier: None,
-            })
+            live_overlay_primary_imagine_badge(
+                &ActorLoadoutSlot {
+                    slot_id: 0,
+                    ability_id: Some(ability_id),
+                    item_id: None,
+                    tier: None,
+                },
+                true,
+            )
         })
         .collect();
     Ok(OverlayExamplePresentationCatalog {
@@ -1124,10 +1127,16 @@ fn overlay_bar_color_identity_catalog() -> Result<OverlayBarColorIdentityCatalog
     })
 }
 
-fn live_overlay_primary_imagine_badge(slot: &ActorLoadoutSlot) -> LiveOverlayBadgePresentation {
-    let presentation = slot
-        .ability_id
-        .and_then(|ability_id| battle_imagine_presentation(ability_id).ok().flatten());
+fn live_overlay_primary_imagine_badge(
+    slot: &ActorLoadoutSlot,
+    exact_catalog_authorized: bool,
+) -> LiveOverlayBadgePresentation {
+    let presentation = exact_catalog_authorized
+        .then(|| {
+            slot.ability_id
+                .and_then(|ability_id| battle_imagine_presentation(ability_id).ok().flatten())
+        })
+        .flatten();
     let item_id = slot
         .item_id
         .or_else(|| presentation.map(|value| value.item_id));
@@ -1158,12 +1167,14 @@ fn live_overlay_primary_imagine_badge(slot: &ActorLoadoutSlot) -> LiveOverlayBad
         level_max: None,
         badge_kind: None,
         label,
-        icon_asset_path: presentation.map(|value| {
-            format!(
-                "/game-assets/blue-protocol-star-resonance/shared/{}",
-                value.icon
-            )
-        }),
+        icon_asset_path: presentation
+            .filter(|value| item_id == Some(value.item_id))
+            .map(|value| {
+                format!(
+                    "/game-assets/blue-protocol-star-resonance/shared/{}",
+                    value.icon
+                )
+            }),
     }
 }
 
@@ -1224,6 +1235,16 @@ fn display_only_actor_identity_presentation(
     }
 }
 
+fn exact_bpsr_catalog_authority(
+    deployment_id: &str,
+    client_build: &str,
+    protocol_pack_digest: &str,
+) -> bool {
+    deployment_id == rlogs_game_bpsr::BUNDLED_RUN_RULE_DEPLOYMENT_ID
+        && client_build == rlogs_game_bpsr::BUNDLED_RUN_RULE_CLIENT_BUILD
+        && protocol_pack_digest == rlogs_game_bpsr::BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST
+}
+
 fn live_overlay_weapon_badge(
     item_id: Option<i64>,
     breakthrough_count: Option<u32>,
@@ -1277,14 +1298,14 @@ fn live_overlay_weapon_badge(
 
 fn live_overlay_primary_imagine_badges(
     slots: &[ActorLoadoutSlot],
-    localization_supported: bool,
+    exact_catalog_authorized: bool,
 ) -> Vec<LiveOverlayBadgePresentation> {
     slots
         .iter()
         .take(2)
         .map(|slot| {
-            let mut badge = live_overlay_primary_imagine_badge(slot);
-            if !localization_supported {
+            let mut badge = live_overlay_primary_imagine_badge(slot, exact_catalog_authorized);
+            if !exact_catalog_authorized {
                 badge.tier = None;
             }
             badge
@@ -1859,7 +1880,11 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
                     );
                     let primary_imagines = live_overlay_primary_imagine_badges(
                         &actor.primary_loadout,
-                        localization_supported,
+                        exact_bpsr_catalog_authority(
+                            &snapshot.deployment_id,
+                            &snapshot.client_build,
+                            &snapshot.protocol_pack_digest,
+                        ),
                     );
                     (
                         actor.actor_id.clone(),
@@ -13237,6 +13262,11 @@ fn enrich_bpsr_history_presentation(
         &localization_client_build,
         &localization_protocol_pack_digest,
     )?;
+    let exact_catalog_authorized = exact_bpsr_catalog_authority(
+        &localization_deployment_id,
+        &localization_client_build,
+        &localization_protocol_pack_digest,
+    );
     let run_authority_supported = bundled_run_rules_support_identity(
         &snapshot.deployment_id,
         &snapshot.client_build,
@@ -13357,7 +13387,7 @@ fn enrich_bpsr_history_presentation(
                     )
                 })?;
                 actor.character_id = character_id_from_entity_uuid(entity_uuid);
-                if localization_supported {
+                if exact_catalog_authorized {
                     enrich_bpsr_loadout_presentation(&mut actor.primary_loadout, locale)?;
                     enrich_bpsr_loadout_presentation(&mut actor.auxiliary_loadout, locale)?;
                 } else {
@@ -14401,23 +14431,22 @@ fn enrich_bpsr_loadout_labels(
     for slot in slots {
         slot.presentation_name = None;
         slot.icon_asset_path = None;
+        slot.tier = None;
+        slot.item_tier = None;
+        slot.maximum_tier = None;
+        if let Some(item_id) = slot.item_id {
+            slot.presentation_name =
+                localized_battle_imagine_name(item_id, locale)?.map(str::to_owned);
+            if slot.presentation_name.is_some() {
+                continue;
+            }
+        }
         let Some(skill_id) = slot.ability_id else {
             continue;
         };
-        if let Some(presentation) = battle_imagine_presentation(skill_id)? {
-            slot.presentation_name =
-                localized_battle_imagine_name(presentation.item_id, locale)?.map(str::to_owned);
-            slot.icon_asset_path = Some(format!(
-                "/game-assets/blue-protocol-star-resonance/shared/{}",
-                presentation.icon
-            ));
-        } else if let Some(presentation) = auxiliary_action_presentation(skill_id)? {
+        if auxiliary_action_presentation(skill_id)?.is_some() {
             slot.presentation_name =
                 localized_auxiliary_action_name(skill_id, locale)?.map(str::to_owned);
-            slot.icon_asset_path = Some(format!(
-                "/game-assets/blue-protocol-star-resonance/shared/{}",
-                presentation.icon
-            ));
         }
     }
     Ok(())
@@ -14484,6 +14513,11 @@ fn enrich_bpsr_catalog_presentation(
             &entry.client_build,
             &entry.protocol_pack_digest,
         )?;
+        let exact_catalog_authorized = exact_bpsr_catalog_authority(
+            &entry.deployment_id,
+            &entry.client_build,
+            &entry.protocol_pack_digest,
+        );
         entry.presentation_scene_name = entry
             .scene_id
             .map(|scene_id| {
@@ -14513,7 +14547,7 @@ fn enrich_bpsr_catalog_presentation(
             actor.presentation_role = semantic_authorized.then_some(presentation.role).flatten();
             actor.presentation_accent =
                 semantic_authorized.then_some(presentation.accent).flatten();
-            if semantic_authorized {
+            if exact_catalog_authorized {
                 enrich_bpsr_loadout_presentation(&mut actor.primary_loadout, locale)?;
                 enrich_bpsr_loadout_presentation(&mut actor.auxiliary_loadout, locale)?;
             } else {
@@ -16419,7 +16453,7 @@ mod tests {
             item_id: None,
             tier: None,
         };
-        let badge = live_overlay_primary_imagine_badge(&missing_runtime_tier);
+        let badge = live_overlay_primary_imagine_badge(&missing_runtime_tier, true);
 
         assert_eq!(badge.item_id, Some(3_000_101));
         assert_eq!(badge.tier, None);
@@ -16435,7 +16469,7 @@ mod tests {
             ..missing_runtime_tier
         };
         assert_eq!(
-            live_overlay_primary_imagine_badge(&observed_runtime_tier).tier,
+            live_overlay_primary_imagine_badge(&observed_runtime_tier, true).tier,
             Some(5)
         );
     }
@@ -16540,15 +16574,61 @@ mod tests {
             item_id: Some(3_000_101),
             tier: Some(5),
         };
+        let exact_catalog_authorized = exact_bpsr_catalog_authority(
+            BUNDLED_RUN_RULE_DEPLOYMENT_ID,
+            BUNDLED_RUN_RULE_CLIENT_BUILD,
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+        );
+        assert!(exact_catalog_authorized);
         assert_eq!(
-            live_overlay_primary_imagine_badges(std::slice::from_ref(&imagine), true).len(),
+            live_overlay_primary_imagine_badges(
+                std::slice::from_ref(&imagine),
+                exact_catalog_authorized,
+            )
+            .len(),
             1
         );
-        let cross_build_imagine =
-            live_overlay_primary_imagine_badges(std::slice::from_ref(&imagine), false);
+        let unsupported_catalog = exact_bpsr_catalog_authority(
+            BUNDLED_RUN_RULE_DEPLOYMENT_ID,
+            "24687927",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+        );
+        assert!(!unsupported_catalog);
+        let cross_build_imagine = live_overlay_primary_imagine_badges(
+            std::slice::from_ref(&imagine),
+            unsupported_catalog,
+        );
         assert_eq!(cross_build_imagine.len(), 1);
+        assert_eq!(cross_build_imagine[0].item_id, Some(3_000_101));
+        assert_eq!(cross_build_imagine[0].label, "Battle Imagine - Rorola");
         assert_eq!(cross_build_imagine[0].tier, None);
-        assert!(cross_build_imagine[0].icon_asset_path.is_some());
+        assert_eq!(cross_build_imagine[0].icon_asset_path, None);
+
+        let missing_item = ActorLoadoutSlot {
+            item_id: None,
+            ..imagine.clone()
+        };
+        let unsupported_missing = live_overlay_primary_imagine_badges(
+            std::slice::from_ref(&missing_item),
+            unsupported_catalog,
+        );
+        assert_eq!(unsupported_missing[0].item_id, None);
+        assert_eq!(unsupported_missing[0].label, "Imagine ability 3948");
+        assert_eq!(unsupported_missing[0].tier, None);
+        assert_eq!(unsupported_missing[0].icon_asset_path, None);
+
+        let conflicting_item = ActorLoadoutSlot {
+            item_id: Some(3_000_121),
+            ..imagine
+        };
+        let unsupported_conflict = live_overlay_primary_imagine_badges(
+            std::slice::from_ref(&conflicting_item),
+            unsupported_catalog,
+        );
+        assert_eq!(unsupported_conflict[0].item_id, Some(3_000_121));
+        assert_eq!(unsupported_conflict[0].label, "Battle Imagine - Igoreus");
+        assert_eq!(unsupported_conflict[0].tier, None);
+        assert_eq!(unsupported_conflict[0].icon_asset_path, None);
 
         assert_eq!(
             live_overlay_boss_name(
@@ -18152,6 +18232,55 @@ mod tests {
         assert_eq!(wrong_actor.abilities[0].presentation_kind, None);
         assert_eq!(wrong_actor.abilities[0].presentation_recount_group_id, None);
         assert!(wrong_actor.abilities[0].icon_asset_path.is_some());
+    }
+
+    #[test]
+    fn history_imagine_labels_cross_builds_only_from_observed_item_ids() {
+        let mut snapshot = captured_marksman_history();
+        snapshot.client_build = "24687926".into();
+        snapshot.protocol_pack_digest = "sha256:wrong-pack".into();
+        snapshot.runs[0].views[0].actors[0].primary_loadout = vec![
+            HistoryLoadoutSlot {
+                slot_id: 7,
+                ability_id: Some(3_948),
+                item_id: None,
+                tier: Some(5),
+                presentation_name: Some("stale inferred label".into()),
+                icon_asset_path: Some("stale inferred icon".into()),
+                item_tier: Some(4),
+                maximum_tier: Some(5),
+            },
+            HistoryLoadoutSlot {
+                slot_id: 8,
+                ability_id: Some(3_948),
+                item_id: Some(3_000_121),
+                tier: Some(5),
+                presentation_name: Some("stale conflicting label".into()),
+                icon_asset_path: Some("stale conflicting icon".into()),
+                item_tier: Some(4),
+                maximum_tier: Some(5),
+            },
+        ];
+
+        enrich_bpsr_history_presentation(&mut snapshot, "en-US").unwrap();
+
+        let loadout = &snapshot.runs[0].views[0].actors[0].primary_loadout;
+        assert_eq!(loadout[0].item_id, None);
+        assert_eq!(loadout[0].presentation_name, None);
+        assert_eq!(loadout[0].icon_asset_path, None);
+        assert_eq!(loadout[0].tier, None);
+        assert_eq!(loadout[0].item_tier, None);
+        assert_eq!(loadout[0].maximum_tier, None);
+
+        assert_eq!(loadout[1].item_id, Some(3_000_121));
+        assert_eq!(
+            loadout[1].presentation_name.as_deref(),
+            Some("Battle Imagine - Igoreus")
+        );
+        assert_eq!(loadout[1].icon_asset_path, None);
+        assert_eq!(loadout[1].tier, None);
+        assert_eq!(loadout[1].item_tier, None);
+        assert_eq!(loadout[1].maximum_tier, None);
     }
 
     #[test]
