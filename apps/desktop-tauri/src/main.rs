@@ -155,9 +155,31 @@ struct CombatOverlayWindowState {
 struct OverlayCanvasWindowState {
     ready: AtomicBool,
     layout_initialized: AtomicBool,
+    required_layout_revision: AtomicU64,
+    applied_layout_revision: AtomicU64,
     requested: AtomicBool,
     pending_interactive: AtomicU8,
     force_edit_until_acknowledged: AtomicBool,
+    lifecycle: Mutex<()>,
+}
+
+impl OverlayCanvasWindowState {
+    fn from_saved_settings(enabled: bool, locked: bool, revision: u64) -> Self {
+        Self {
+            ready: AtomicBool::new(false),
+            layout_initialized: AtomicBool::new(false),
+            required_layout_revision: AtomicU64::new(revision),
+            applied_layout_revision: AtomicU64::new(0),
+            requested: AtomicBool::new(enabled),
+            pending_interactive: AtomicU8::new(if locked {
+                INTERACTIVITY_DISABLED
+            } else {
+                INTERACTIVITY_ENABLED
+            }),
+            force_edit_until_acknowledged: AtomicBool::new(false),
+            lifecycle: Mutex::new(()),
+        }
+    }
 }
 
 const INTERACTIVITY_NONE: u8 = 0;
@@ -173,6 +195,43 @@ fn queue_overlay_canvas_interactivity(state: &OverlayCanvasWindowState, interact
         },
         Ordering::Release,
     );
+}
+
+fn require_overlay_canvas_layout_revision(state: &OverlayCanvasWindowState, revision: u64) -> bool {
+    state
+        .required_layout_revision
+        .store(revision, Ordering::Release);
+    let stale = !state.layout_initialized.load(Ordering::Acquire)
+        || state.applied_layout_revision.load(Ordering::Acquire) < revision;
+    if stale {
+        state.layout_initialized.store(false, Ordering::Release);
+    }
+    stale
+}
+
+fn acknowledge_overlay_canvas_layout_revision(
+    state: &OverlayCanvasWindowState,
+    revision: u64,
+) -> bool {
+    if revision < state.required_layout_revision.load(Ordering::Acquire) {
+        return false;
+    }
+    state
+        .applied_layout_revision
+        .fetch_max(revision, Ordering::AcqRel);
+    state.layout_initialized.store(true, Ordering::Release);
+    true
+}
+
+fn serialize_overlay_canvas_lifecycle<T>(
+    state: &OverlayCanvasWindowState,
+    operation: impl FnOnce() -> T,
+) -> T {
+    let _lifecycle = state
+        .lifecycle
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    operation()
 }
 
 fn ready_overlay_canvas_interactivity(state: &OverlayCanvasWindowState) -> Option<(u8, bool)> {
@@ -342,30 +401,14 @@ fn show_overlay_canvas(
     focus_state: tauri::State<'_, OverlayFocusWindowState>,
     host: tauri::State<'_, EmbeddedLocalHost>,
 ) -> Result<(), String> {
-    state.requested.store(true, Ordering::Release);
-    if !focus_state.allows_visibility() {
-        return Err(
-            "The map overlay cannot open while rLogs is automatically hiding overlays.".into(),
-        );
-    }
-    if app.get_webview_window("overlay-canvas").is_none() {
-        build_overlay_canvas_window(&app, &host)
-            .map_err(|error| format!("could not recreate Overlay Canvas: {error}"))?;
-        state.ready.store(false, Ordering::Release);
-        state.layout_initialized.store(false, Ordering::Release);
-    }
-    let window = app
-        .get_webview_window("overlay-canvas")
-        .ok_or_else(|| "Overlay Canvas could not be created".to_owned())?;
-    // Showing is safe before the WebView reports ready: the window is already
-    // transparent and the ready callback will reconcile the same request. The
-    // previous ready guard silently accepted clicks while leaving the window
-    // hidden whenever startup was delayed or the runtime had failed.
-    show_combat_overlay_without_activation(&window)?;
-    window
-        .emit("overlay-canvas-show-requested", ())
-        .map_err(|error| error.to_string())?;
-    Ok(())
+    serialize_overlay_canvas_lifecycle(&state, || {
+        prepare_overlay_canvas(&app, &state, &host)?;
+        state
+            .force_edit_until_acknowledged
+            .store(false, Ordering::Release);
+        queue_overlay_canvas_interactivity(&state, false);
+        reveal_overlay_canvas_if_ready_locked(&app, &state, &focus_state)
+    })
 }
 
 #[tauri::command]
@@ -375,21 +418,55 @@ fn show_overlay_canvas_editable(
     focus_state: tauri::State<'_, OverlayFocusWindowState>,
     host: tauri::State<'_, EmbeddedLocalHost>,
 ) -> Result<(), String> {
-    show_overlay_canvas(app.clone(), state.clone(), focus_state, host)?;
-    state
-        .force_edit_until_acknowledged
-        .store(true, Ordering::Release);
-    queue_overlay_canvas_interactivity(&state, true);
-    apply_pending_overlay_canvas_interactivity(&app, &state)
+    serialize_overlay_canvas_lifecycle(&state, || {
+        prepare_overlay_canvas(&app, &state, &host)?;
+        state
+            .force_edit_until_acknowledged
+            .store(true, Ordering::Release);
+        queue_overlay_canvas_interactivity(&state, true);
+        reveal_overlay_canvas_if_ready_locked(&app, &state, &focus_state)
+    })
+}
+
+fn prepare_overlay_canvas(
+    app: &tauri::AppHandle,
+    state: &OverlayCanvasWindowState,
+    host: &EmbeddedLocalHost,
+) -> Result<(), String> {
+    let required_revision = host.set_overlay_canvas_enabled(true)?;
+    state.requested.store(true, Ordering::Release);
+    if app.get_webview_window("overlay-canvas").is_none() {
+        build_overlay_canvas_window(app, host)
+            .map_err(|error| format!("could not recreate Overlay Canvas: {error}"))?;
+        state.ready.store(false, Ordering::Release);
+        state.layout_initialized.store(false, Ordering::Release);
+    }
+    if require_overlay_canvas_layout_revision(state, required_revision) {
+        let window = app
+            .get_webview_window("overlay-canvas")
+            .ok_or_else(|| "Overlay Canvas could not be created".to_owned())?;
+        hide_combat_overlay_window(&window)?;
+        window
+            .emit("overlay-canvas-layout-refresh-requested", required_revision)
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
 fn overlay_canvas_layout_initialized(
     app: tauri::AppHandle,
     state: tauri::State<'_, OverlayCanvasWindowState>,
+    focus_state: tauri::State<'_, OverlayFocusWindowState>,
+    revision: u64,
 ) -> Result<(), String> {
-    state.layout_initialized.store(true, Ordering::Release);
-    apply_pending_overlay_canvas_interactivity(&app, &state)
+    serialize_overlay_canvas_lifecycle(&state, || {
+        if !acknowledge_overlay_canvas_layout_revision(&state, revision) {
+            return Ok(());
+        }
+        apply_pending_overlay_canvas_interactivity(&app, &state)?;
+        reveal_overlay_canvas_if_ready_locked(&app, &state, &focus_state)
+    })
 }
 
 #[tauri::command]
@@ -404,12 +481,21 @@ fn acknowledge_overlay_canvas_interactivity(
 fn hide_overlay_canvas(
     app: tauri::AppHandle,
     state: tauri::State<'_, OverlayCanvasWindowState>,
+    host: tauri::State<'_, EmbeddedLocalHost>,
 ) -> Result<(), String> {
-    state.requested.store(false, Ordering::Release);
-    let window = app
-        .get_webview_window("overlay-canvas")
-        .ok_or_else(|| "Overlay Canvas is unavailable; restart rLogs".to_owned())?;
-    hide_combat_overlay_window(&window)
+    serialize_overlay_canvas_lifecycle(&state, || {
+        state.requested.store(false, Ordering::Release);
+        state
+            .force_edit_until_acknowledged
+            .store(false, Ordering::Release);
+        let persisted = host.set_overlay_canvas_enabled(false);
+        let hidden = app
+            .get_webview_window("overlay-canvas")
+            .ok_or_else(|| "Overlay Canvas is unavailable; restart rLogs".to_owned())
+            .and_then(|window| hide_combat_overlay_window(&window));
+        hidden?;
+        persisted.map(|_| ())
+    })
 }
 
 #[tauri::command]
@@ -418,14 +504,52 @@ fn overlay_canvas_ready(
     state: tauri::State<'_, OverlayCanvasWindowState>,
     focus_state: tauri::State<'_, OverlayFocusWindowState>,
 ) -> Result<(), String> {
-    state.ready.store(true, Ordering::Release);
-    if state.requested.load(Ordering::Acquire) && focus_state.allows_visibility() {
-        let window = app
-            .get_webview_window("overlay-canvas")
-            .ok_or_else(|| "Overlay Canvas is unavailable; restart rLogs".to_owned())?;
-        show_combat_overlay_without_activation(&window)?;
+    serialize_overlay_canvas_lifecycle(&state, || {
+        state.ready.store(true, Ordering::Release);
+        apply_pending_overlay_canvas_interactivity(&app, &state)?;
+        reveal_overlay_canvas_if_ready_locked(&app, &state, &focus_state)
+    })
+}
+
+fn overlay_canvas_should_be_visible(
+    requested: bool,
+    ready: bool,
+    layout_initialized: bool,
+    focus_allows_visibility: bool,
+) -> bool {
+    requested && ready && layout_initialized && focus_allows_visibility
+}
+
+fn overlay_canvas_state_should_be_visible(
+    state: &OverlayCanvasWindowState,
+    focus_state: &OverlayFocusWindowState,
+) -> bool {
+    overlay_canvas_should_be_visible(
+        state.requested.load(Ordering::Acquire),
+        state.ready.load(Ordering::Acquire),
+        state.layout_initialized.load(Ordering::Acquire)
+            && state.applied_layout_revision.load(Ordering::Acquire)
+                >= state.required_layout_revision.load(Ordering::Acquire),
+        focus_state.allows_visibility(),
+    )
+}
+
+fn reveal_overlay_canvas_if_ready_locked(
+    app: &tauri::AppHandle,
+    state: &OverlayCanvasWindowState,
+    focus_state: &OverlayFocusWindowState,
+) -> Result<(), String> {
+    if !overlay_canvas_state_should_be_visible(state, focus_state) {
+        return Ok(());
     }
-    apply_pending_overlay_canvas_interactivity(&app, &state)
+    apply_pending_overlay_canvas_interactivity(app, state)?;
+    let window = app
+        .get_webview_window("overlay-canvas")
+        .ok_or_else(|| "Overlay Canvas is unavailable; restart rLogs".to_owned())?;
+    show_combat_overlay_without_activation(&window)?;
+    window
+        .emit("overlay-canvas-show-requested", ())
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1054,8 +1178,24 @@ fn is_overlay_window_label(label: &str) -> bool {
 
 fn set_overlay_windows_hidden_by_focus(app: &tauri::AppHandle, hidden: bool) {
     let focus_state = app.state::<OverlayFocusWindowState>();
+    let canvas_state = app.state::<OverlayCanvasWindowState>();
     if hidden {
-        let was_hidden = focus_state.hidden.swap(true, Ordering::AcqRel);
+        // The focus gate and the canvas's native visibility transition are one
+        // canvas lifecycle operation. Otherwise a reveal can sample the old
+        // focus value and show after this branch has already inspected a still
+        // hidden window.
+        let (was_hidden, canvas_was_visible) =
+            serialize_overlay_canvas_lifecycle(&canvas_state, || {
+                let was_hidden = focus_state.hidden.swap(true, Ordering::AcqRel);
+                let canvas_was_visible = app
+                    .get_webview_window("overlay-canvas")
+                    .is_some_and(|window| window.is_visible().unwrap_or(false));
+                if canvas_was_visible && let Some(window) = app.get_webview_window("overlay-canvas")
+                {
+                    let _ = window.hide();
+                }
+                (was_hidden, canvas_was_visible)
+            });
         let mut restore_labels = focus_state
             .restore_labels
             .lock()
@@ -1063,8 +1203,11 @@ fn set_overlay_windows_hidden_by_focus(app: &tauri::AppHandle, hidden: bool) {
         if !was_hidden {
             restore_labels.clear();
         }
+        if canvas_was_visible {
+            restore_labels.insert("overlay-canvas".to_owned());
+        }
         for (label, window) in app.webview_windows() {
-            if !is_overlay_window_label(&label) {
+            if !is_overlay_window_label(&label) || label == "overlay-canvas" {
                 continue;
             }
             if window.is_visible().unwrap_or(false) {
@@ -1079,7 +1222,14 @@ fn set_overlay_windows_hidden_by_focus(app: &tauri::AppHandle, hidden: bool) {
         return;
     }
 
-    if !focus_state.hidden.swap(false, Ordering::AcqRel) {
+    let was_hidden = serialize_overlay_canvas_lifecycle(&canvas_state, || {
+        if !focus_state.hidden.swap(false, Ordering::AcqRel) {
+            return false;
+        }
+        let _ = reveal_overlay_canvas_if_ready_locked(app, &canvas_state, &focus_state);
+        true
+    });
+    if !was_hidden {
         return;
     }
     let restore_labels = std::mem::take(
@@ -1094,11 +1244,8 @@ fn set_overlay_windows_hidden_by_focus(app: &tauri::AppHandle, hidden: bool) {
                 continue;
             }
             if label == "overlay-canvas" {
-                let state = app.state::<OverlayCanvasWindowState>();
-                if state.requested.load(Ordering::Acquire) && state.ready.load(Ordering::Acquire) {
-                    let _ = show_combat_overlay_without_activation(&window);
-                    let _ = window.emit("overlay-canvas-show-requested", ());
-                }
+                // Reconciled below even when the canvas was requested while
+                // focus hiding was already active and was never visible here.
             } else {
                 let _ = window.show();
             }
@@ -1318,7 +1465,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 overlay_auto_hide,
             ));
             app.manage(OverlayFocusWindowState::default());
-            app.manage(OverlayCanvasWindowState::default());
+            let (canvas_enabled, canvas_locked, canvas_revision) =
+                host.overlay_canvas_startup_state();
+            app.manage(OverlayCanvasWindowState::from_saved_settings(
+                canvas_enabled,
+                canvas_locked,
+                canvas_revision,
+            ));
             app.manage(HotkeyRuntimeState::default());
             build_combat_overlay_window(app, &host)?;
             build_overlay_canvas_window(app, &host)?;
@@ -1366,15 +1519,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 #[allow(clippy::items_after_test_module)]
 mod tests {
     use super::{
-        OverlayCanvasWindowState, OverlayFocusPolicyDebounce,
-        acknowledge_overlay_canvas_interactivity_state,
+        OverlayCanvasWindowState, OverlayFocusPolicyDebounce, OverlayFocusWindowState,
+        acknowledge_overlay_canvas_interactivity_state, acknowledge_overlay_canvas_layout_revision,
         apply_pending_overlay_canvas_interactivity_with, combat_overlay_damage_started,
         combat_overlay_health_status, combat_overlay_hostile_activity_started,
         combat_overlay_renderer_is_stale, combat_overlay_should_be_visible,
-        is_overlay_window_label, overlay_canvas_runtime_url, overlay_focus_hold_from_inputs,
+        is_overlay_window_label, overlay_canvas_runtime_url, overlay_canvas_should_be_visible,
+        overlay_canvas_state_should_be_visible, overlay_focus_hold_from_inputs,
         queue_overlay_canvas_interactivity, queue_reported_overlay_canvas_interactivity,
+        require_overlay_canvas_layout_revision, serialize_overlay_canvas_lifecycle,
     };
-    use std::sync::atomic::Ordering;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, mpsc};
 
     #[test]
     fn overlay_canvas_route_selects_the_mechanics_map_runtime() {
@@ -1382,6 +1538,230 @@ mod tests {
             overlay_canvas_runtime_url("127.0.0.1:43117"),
             "http://127.0.0.1:43117/?surface=overlay-canvas&module=mechanics-map"
         );
+    }
+
+    #[test]
+    fn saved_canvas_state_restores_request_and_passive_interactivity() {
+        let enabled = OverlayCanvasWindowState::from_saved_settings(true, true, 7);
+        assert!(enabled.requested.load(Ordering::Acquire));
+        assert_eq!(
+            enabled.pending_interactive.load(Ordering::Acquire),
+            super::INTERACTIVITY_DISABLED
+        );
+        assert_eq!(enabled.required_layout_revision.load(Ordering::Acquire), 7);
+        let disabled = OverlayCanvasWindowState::from_saved_settings(false, false, 3);
+        assert!(!disabled.requested.load(Ordering::Acquire));
+        assert_eq!(
+            disabled.pending_interactive.load(Ordering::Acquire),
+            super::INTERACTIVITY_ENABLED
+        );
+    }
+
+    #[test]
+    fn canvas_reveal_requires_request_ready_layout_and_allowed_focus() {
+        assert!(!overlay_canvas_should_be_visible(true, false, true, true));
+        assert!(!overlay_canvas_should_be_visible(true, true, false, true));
+        assert!(!overlay_canvas_should_be_visible(true, true, true, false));
+        assert!(!overlay_canvas_should_be_visible(false, true, true, true));
+        assert!(overlay_canvas_should_be_visible(true, true, true, true));
+    }
+
+    #[test]
+    fn hidden_canvas_waits_for_the_exact_requested_layout_revision() {
+        let state = OverlayCanvasWindowState::from_saved_settings(true, true, 4);
+        state.ready.store(true, Ordering::Release);
+        state.applied_layout_revision.store(4, Ordering::Release);
+        state.layout_initialized.store(true, Ordering::Release);
+        assert!(require_overlay_canvas_layout_revision(&state, 5));
+        assert!(!overlay_canvas_should_be_visible(
+            true,
+            true,
+            state.layout_initialized.load(Ordering::Acquire),
+            true,
+        ));
+        assert!(!acknowledge_overlay_canvas_layout_revision(&state, 4));
+        assert!(!state.layout_initialized.load(Ordering::Acquire));
+        assert!(acknowledge_overlay_canvas_layout_revision(&state, 5));
+        assert_eq!(state.applied_layout_revision.load(Ordering::Acquire), 5);
+        assert!(overlay_canvas_should_be_visible(
+            true,
+            true,
+            state.layout_initialized.load(Ordering::Acquire),
+            true,
+        ));
+    }
+
+    #[test]
+    fn focus_reveal_cannot_finish_after_a_queued_hide() {
+        let state = Arc::new(OverlayCanvasWindowState::from_saved_settings(true, true, 1));
+        state.ready.store(true, Ordering::Release);
+        state.layout_initialized.store(true, Ordering::Release);
+        let durable = Arc::new(AtomicBool::new(true));
+        let visible = Arc::new(AtomicBool::new(false));
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let reveal_state = Arc::clone(&state);
+        let reveal_visible = Arc::clone(&visible);
+        let reveal = std::thread::spawn(move || {
+            serialize_overlay_canvas_lifecycle(&reveal_state, || {
+                entered_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+                if reveal_state.requested.load(Ordering::Acquire) {
+                    reveal_visible.store(true, Ordering::Release);
+                }
+            });
+        });
+        entered_rx.recv().unwrap();
+        assert!(state.lifecycle.try_lock().is_err());
+        let hide_state = Arc::clone(&state);
+        let hide_durable = Arc::clone(&durable);
+        let hide_visible = Arc::clone(&visible);
+        let hide = std::thread::spawn(move || {
+            serialize_overlay_canvas_lifecycle(&hide_state, || {
+                hide_state.requested.store(false, Ordering::Release);
+                hide_durable.store(false, Ordering::Release);
+                hide_visible.store(false, Ordering::Release);
+            });
+        });
+        release_tx.send(()).unwrap();
+        reveal.join().unwrap();
+        hide.join().unwrap();
+        assert!(!state.requested.load(Ordering::Acquire));
+        assert!(!durable.load(Ordering::Acquire));
+        assert!(!visible.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn focus_hide_queued_behind_an_active_reveal_finishes_hidden() {
+        let state = Arc::new(OverlayCanvasWindowState::from_saved_settings(true, true, 5));
+        state.ready.store(true, Ordering::Release);
+        state.applied_layout_revision.store(5, Ordering::Release);
+        state.layout_initialized.store(true, Ordering::Release);
+        let focus_state = Arc::new(OverlayFocusWindowState::default());
+        let visible = Arc::new(AtomicBool::new(false));
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let reveal_state = Arc::clone(&state);
+        let reveal_focus = Arc::clone(&focus_state);
+        let reveal_visible = Arc::clone(&visible);
+        let reveal = std::thread::spawn(move || {
+            serialize_overlay_canvas_lifecycle(&reveal_state, || {
+                entered_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+                if overlay_canvas_state_should_be_visible(&reveal_state, &reveal_focus) {
+                    reveal_visible.store(true, Ordering::Release);
+                }
+            });
+        });
+        entered_rx.recv().unwrap();
+        assert!(state.lifecycle.try_lock().is_err());
+        let hide_state = Arc::clone(&state);
+        let hide_focus = Arc::clone(&focus_state);
+        let hide_visible = Arc::clone(&visible);
+        let focus_hide = std::thread::spawn(move || {
+            serialize_overlay_canvas_lifecycle(&hide_state, || {
+                hide_focus.hidden.store(true, Ordering::Release);
+                hide_visible.store(false, Ordering::Release);
+            });
+        });
+        release_tx.send(()).unwrap();
+        reveal.join().unwrap();
+        focus_hide.join().unwrap();
+        assert!(focus_state.hidden.load(Ordering::Acquire));
+        assert!(!focus_state.allows_visibility());
+        assert!(!visible.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn focus_release_restores_only_a_requested_ready_current_layout() {
+        fn release_and_reconcile(
+            state: &OverlayCanvasWindowState,
+            focus_state: &OverlayFocusWindowState,
+        ) -> bool {
+            let mut visible = false;
+            serialize_overlay_canvas_lifecycle(state, || {
+                focus_state.hidden.store(false, Ordering::Release);
+                if overlay_canvas_state_should_be_visible(state, focus_state) {
+                    visible = true;
+                }
+            });
+            visible
+        }
+
+        let current = OverlayCanvasWindowState::from_saved_settings(true, true, 5);
+        current.ready.store(true, Ordering::Release);
+        current.applied_layout_revision.store(5, Ordering::Release);
+        current.layout_initialized.store(true, Ordering::Release);
+        let current_focus = OverlayFocusWindowState::default();
+        current_focus.hidden.store(true, Ordering::Release);
+        assert!(release_and_reconcile(&current, &current_focus));
+
+        let not_requested = OverlayCanvasWindowState::from_saved_settings(false, true, 5);
+        not_requested.ready.store(true, Ordering::Release);
+        not_requested
+            .applied_layout_revision
+            .store(5, Ordering::Release);
+        not_requested
+            .layout_initialized
+            .store(true, Ordering::Release);
+        let not_requested_focus = OverlayFocusWindowState::default();
+        not_requested_focus.hidden.store(true, Ordering::Release);
+        assert!(!release_and_reconcile(&not_requested, &not_requested_focus));
+
+        let not_ready = OverlayCanvasWindowState::from_saved_settings(true, true, 5);
+        not_ready
+            .applied_layout_revision
+            .store(5, Ordering::Release);
+        not_ready.layout_initialized.store(true, Ordering::Release);
+        let not_ready_focus = OverlayFocusWindowState::default();
+        not_ready_focus.hidden.store(true, Ordering::Release);
+        assert!(!release_and_reconcile(&not_ready, &not_ready_focus));
+
+        let stale = OverlayCanvasWindowState::from_saved_settings(true, true, 6);
+        stale.ready.store(true, Ordering::Release);
+        stale.applied_layout_revision.store(5, Ordering::Release);
+        stale.layout_initialized.store(true, Ordering::Release);
+        let stale_focus = OverlayFocusWindowState::default();
+        stale_focus.hidden.store(true, Ordering::Release);
+        assert!(!release_and_reconcile(&stale, &stale_focus));
+    }
+
+    #[test]
+    fn rapid_hide_then_show_finishes_durably_visible() {
+        let state = Arc::new(OverlayCanvasWindowState::from_saved_settings(true, true, 1));
+        let durable = Arc::new(AtomicBool::new(true));
+        let visible = Arc::new(AtomicBool::new(true));
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let hide_state = Arc::clone(&state);
+        let hide_durable = Arc::clone(&durable);
+        let hide_visible = Arc::clone(&visible);
+        let hide = std::thread::spawn(move || {
+            serialize_overlay_canvas_lifecycle(&hide_state, || {
+                entered_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+                hide_state.requested.store(false, Ordering::Release);
+                hide_durable.store(false, Ordering::Release);
+                hide_visible.store(false, Ordering::Release);
+            });
+        });
+        entered_rx.recv().unwrap();
+        let show_state = Arc::clone(&state);
+        let show_durable = Arc::clone(&durable);
+        let show_visible = Arc::clone(&visible);
+        let show = std::thread::spawn(move || {
+            serialize_overlay_canvas_lifecycle(&show_state, || {
+                show_durable.store(true, Ordering::Release);
+                show_state.requested.store(true, Ordering::Release);
+                show_visible.store(true, Ordering::Release);
+            });
+        });
+        release_tx.send(()).unwrap();
+        hide.join().unwrap();
+        show.join().unwrap();
+        assert!(state.requested.load(Ordering::Acquire));
+        assert!(durable.load(Ordering::Acquire));
+        assert!(visible.load(Ordering::Acquire));
     }
 
     #[test]
@@ -1515,6 +1895,14 @@ mod tests {
         // not need authority to query its native window state.
         assert!(main_capability.contains("allow-combat-overlay-health"));
         assert!(!combat_capability.contains("allow-combat-overlay-health"));
+    }
+
+    #[test]
+    fn full_canvas_hide_is_scoped_to_the_main_editor_not_the_overlay_runtime() {
+        let main_capability = include_str!("../capabilities/default.json");
+        let canvas_capability = include_str!("../capabilities/overlay-canvas.json");
+        assert!(main_capability.contains("allow-hide-overlay-canvas"));
+        assert!(!canvas_capability.contains("allow-hide-overlay-canvas"));
     }
 
     #[test]

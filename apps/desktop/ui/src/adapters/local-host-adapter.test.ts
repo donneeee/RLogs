@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { combatHistoryDetailRequestBody, openEditableOverlayCanvas } from "./local-host-adapter";
+import { combatHistoryDetailRequestBody, hideOverlayCanvas, openEditableOverlayCanvas, showOverlayCanvas } from "./local-host-adapter";
 
 describe("local host Combat History requests", () => {
   it("sends the selected UI locale with the history detail identity", () => {
@@ -21,5 +21,17 @@ describe("overlay canvas recovery", () => {
     });
     expect(available).toBe(true);
     expect(calls).toEqual(["show_overlay_canvas_editable"]);
+  });
+
+  it("keeps passive show, editable show, and full hide as distinct native commands", async () => {
+    const invoke = vi.fn(async (_command: string) => undefined);
+    await showOverlayCanvas(invoke);
+    await openEditableOverlayCanvas(invoke);
+    await hideOverlayCanvas(invoke);
+    expect(invoke.mock.calls.map(([command]) => command)).toEqual([
+      "show_overlay_canvas",
+      "show_overlay_canvas_editable",
+      "hide_overlay_canvas",
+    ]);
   });
 });

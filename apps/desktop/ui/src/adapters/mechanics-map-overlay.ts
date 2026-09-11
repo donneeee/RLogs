@@ -30,11 +30,11 @@ export interface MechanicsMapOverlayDependencies {
   loadSnapshot(): Promise<MechanicsMapUpdate>;
   waitForSnapshot(afterRevision: number): Promise<MechanicsMapUpdate>;
   prepareLocalMaps(): Promise<void>;
-  hide(): Promise<void>;
   setInteractive(interactive: boolean): Promise<void>;
   acknowledgeInteractivity?(interactive: boolean): Promise<void>;
   onInteractivity(handler: (interactive: boolean) => void): Promise<() => void>;
-  onLayoutInitialized?(error?: unknown): void;
+  onLayoutInitialized?(revision: number | undefined, error?: unknown): void;
+  onLayoutRefresh?(handler: (revision: number) => void): Promise<() => void>;
   onFocusHeld(handler: (held: boolean) => void): Promise<() => void>;
   loadAutomarkerPresets(): Promise<AutomarkerPresetView>;
   loadAutomarkerPreset(presetId: string): Promise<AutomarkerLoadResult>;
@@ -245,6 +245,7 @@ export function mountMechanicsMapOverlay(
   let imageReady = false;
   let preparingAsset = false;
   let removeInteractivityListener: (() => void) | null = null;
+  let removeLayoutRefreshListener: (() => void) | null = null;
   let removeFocusHeldListener: (() => void) | null = null;
   let targetTimer: number | null = null;
   let targetRenderedAtMillis = 0;
@@ -330,8 +331,9 @@ export function mountMechanicsMapOverlay(
   const lock = button(preferences.locked ? "Unlock" : "Lock", preferences.locked, () => {
     void setLocked(!preferences.locked);
   });
-  const hide = button("Hide", false, () => { void dependencies.hide(); });
-  actions.append(rotate, monsters, dim, contrast, fit, center, markerPresets, expand, lock, hide);
+  const done = button("Done", false, () => { void exitEditing(); });
+  done.title = "Exit editing and keep overlays visible";
+  actions.append(rotate, monsters, dim, contrast, fit, center, markerPresets, expand, lock, done);
   toolbar.append(identity, actions);
 
   const viewport = element("section", "mechanics-map-overlay-viewport");
@@ -609,15 +611,7 @@ export function mountMechanicsMapOverlay(
     }
     event.preventDefault();
     event.stopPropagation();
-    escapeLockPending = true;
-    // Receiving Escape proves that the editable WebView is initialized and
-    // accepting input. Clear any host-owned forced-edit request before asking
-    // the native window to become passive, otherwise the native safety gate
-    // intentionally rejects the click-through transition.
-    void dependencies.acknowledgeInteractivity?.(true)
-      .then(() => setLocked(true))
-      .catch(() => undefined)
-      .finally(() => { escapeLockPending = false; });
+    void exitEditing();
   };
   window.addEventListener("keydown", handleEscape);
   automarkerPreviewTimer = window.setInterval(refreshAutomarkerPreview, 500);
@@ -630,6 +624,8 @@ export function mountMechanicsMapOverlay(
       await dependencies.acknowledgeInteractivity?.(interactive);
     })();
   }).then((remove) => { removeInteractivityListener = remove; });
+  void dependencies.onLayoutRefresh?.((revision) => { void refreshLayout(revision); })
+    .then((remove) => { removeLayoutRefreshListener = remove; });
   void dependencies.onFocusHeld((held) => {
     root.dataset.focusHeld = String(held);
     actionsPanel.dataset.focused = String(held);
@@ -1471,6 +1467,18 @@ export function mountMechanicsMapOverlay(
     await dependencies.setInteractive(!value);
   }
 
+  async function exitEditing(): Promise<void> {
+    if (preferences.locked || escapeLockPending) return;
+    escapeLockPending = true;
+    try {
+      // User input proves the editable WebView is initialized. Clear the
+      // host-owned forced-edit request before restoring native click-through.
+      await dependencies.acknowledgeInteractivity?.(true);
+      await setLocked(true);
+    } catch { /* Leave the visible canvas available for an explicit retry. */ }
+    finally { escapeLockPending = false; }
+  }
+
   function setExpanded(value: boolean): void {
     preferences.expanded = value;
     panel.dataset.expanded = String(value);
@@ -1500,24 +1508,28 @@ export function mountMechanicsMapOverlay(
       }
       if (!loaded.legacyMigrationComplete) return;
       if (!alive) return;
+      if (layoutSettings !== null && loaded.revision < layoutSettings.revision) return;
       await applySharedLayout(loaded, true);
-      dependencies.onLayoutInitialized?.();
+      dependencies.onLayoutInitialized?.(loaded.revision);
     } catch (error) {
       console.error("Could not load shared overlay layout", error);
-      dependencies.onLayoutInitialized?.(error);
+      dependencies.onLayoutInitialized?.(undefined, error);
     }
   }
 
-  async function refreshLayout(): Promise<void> {
+  async function refreshLayout(requiredRevision?: number): Promise<void> {
     if (layoutSaving || layoutOperations.length > 0) {
       if (!layoutSaving) void flushSharedLayout();
       return;
     }
     try {
       const loaded = await dependencies.loadLayout();
+      if (requiredRevision !== undefined && loaded.revision < requiredRevision) return;
       if (!loaded.legacyMigrationComplete) { await initializeLayout(); return; }
-      if (!alive || loaded.revision === layoutSettings?.revision) return;
-      await applySharedLayout(loaded, true);
+      if (!alive) return;
+      if (layoutSettings !== null && loaded.revision < layoutSettings.revision) return;
+      if (loaded.revision !== layoutSettings?.revision) await applySharedLayout(loaded, true);
+      dependencies.onLayoutInitialized?.(loaded.revision);
     } catch { /* retain the last safe host-owned layout */ }
   }
 
@@ -1928,6 +1940,7 @@ export function mountMechanicsMapOverlay(
       if (layoutPollTimer !== null) window.clearInterval(layoutPollTimer);
       window.localStorage.removeItem(AUTOMARKER_PREVIEW_STORAGE_KEY);
       removeInteractivityListener?.();
+      removeLayoutRefreshListener?.();
       removeFocusHeldListener?.();
       image = null;
       root.remove();

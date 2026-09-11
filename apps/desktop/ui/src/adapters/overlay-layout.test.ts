@@ -11,7 +11,7 @@ describe("overlay layout authority", () => {
       .toEqual({ x: 0, y: .6, width: .2, height: .2, visible: true, zOrder: 1000, opacity: .2, scale: 2 });
   });
   it("rejects incomplete setup payloads", () => {
-    expect(() => parseOverlayLayoutSettings({ schemaVersion: 1, revision: 0, selectedSetupId: "default", legacyMigrationComplete: true,
+    expect(() => parseOverlayLayoutSettings({ schemaVersion: 2, revision: 0, canvasEnabled: false, selectedSetupId: "default", legacyMigrationComplete: true,
       setups: { default: { name: "Default", locked: false, modules: {} } } })).toThrow("Invalid overlay module layout");
   });
   it("renormalizes every layer before raising past the cap", () => {

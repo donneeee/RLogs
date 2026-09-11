@@ -401,6 +401,31 @@ impl EmbeddedLocalHost {
         )
     }
 
+    /// Persisted visibility and play-mode interactivity for the shared canvas.
+    ///
+    /// The native host reads this before the hidden WebView is ready so a
+    /// previously enabled canvas can be restored only after its layout has
+    /// initialized, without exposing an unpainted fullscreen surface.
+    pub fn overlay_canvas_startup_state(&self) -> (bool, bool, u64) {
+        let settings = self.controller.overlay_layout_settings();
+        let locked = settings
+            .setups
+            .get(&settings.selected_setup_id)
+            .map(|setup| setup.locked)
+            .unwrap_or(true);
+        (settings.canvas_enabled, locked, settings.revision)
+    }
+
+    pub fn set_overlay_canvas_enabled(&self, enabled: bool) -> Result<u64, String> {
+        self.controller
+            .overlay_layout_settings
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_canvas_enabled(enabled)
+            .map(|settings| settings.revision)
+            .map_err(|error| error.to_string())
+    }
+
     /// A low-cost native visibility signal for the preloaded Combat Overlay.
     ///
     /// The renderer still owns all meter calculations and visibility timing.

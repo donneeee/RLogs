@@ -93,6 +93,18 @@ export async function openEditableOverlayCanvas(
 ): Promise<void> {
   await invokeCommand("show_overlay_canvas_editable");
 }
+
+export async function showOverlayCanvas(
+  invokeCommand: (command: string, args?: Record<string, unknown>) => Promise<unknown>,
+): Promise<void> {
+  await invokeCommand("show_overlay_canvas");
+}
+
+export async function hideOverlayCanvas(
+  invokeCommand: (command: string, args?: Record<string, unknown>) => Promise<unknown>,
+): Promise<void> {
+  await invokeCommand("hide_overlay_canvas");
+}
 import { mountAutomarkerPresetsSurface } from "./automarker-presets-surface";
 import {
   PHOTO_WALL_CAPTURE_STEPS,
@@ -686,9 +698,9 @@ function createLocalHostAdapter(localizer: UiLocalizer): DesktopHostAdapter {
             save: async (settings) => parseOverlayLayoutSettings(await apiJson<unknown>("/api/settings/overlay-layout", {
               method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings),
             })),
-            openOverlay: async () => {
-              await openEditableOverlayCanvas(invoke);
-            },
+            showOverlay: async () => { await showOverlayCanvas(invoke); },
+            editOverlay: async () => { await openEditableOverlayCanvas(invoke); },
+            hideOverlay: async () => { await hideOverlayCanvas(invoke); },
           });
         case `builtin://${OVERLAY_PLUGIN_ID}/mechanics-map`:
           return mountMechanicsMapSurface(container, {

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-const SCHEMA_VERSION: u16 = 1;
+const SCHEMA_VERSION: u16 = 2;
 const MAX_SETTINGS_BYTES: u64 = 128 * 1024;
 const MAX_SETUPS: usize = 16;
 const MODULE_IDS: [&str; 7] = [
@@ -43,6 +43,7 @@ pub struct OverlaySetupLayout {
 pub struct OverlayLayoutSettings {
     pub schema_version: u16,
     pub revision: u64,
+    pub canvas_enabled: bool,
     pub selected_setup_id: String,
     pub legacy_migration_complete: bool,
     pub setups: BTreeMap<String, OverlaySetupLayout>,
@@ -54,6 +55,7 @@ impl Default for OverlayLayoutSettings {
         Self {
             schema_version: SCHEMA_VERSION,
             revision: 0,
+            canvas_enabled: false,
             selected_setup_id: setup_id.clone(),
             legacy_migration_complete: false,
             setups: BTreeMap::from([(setup_id, default_setup())]),
@@ -138,6 +140,18 @@ impl OverlayLayoutSettingsStore {
         write(&self.path, &settings).map_err(OverlayLayoutUpdateError::Io)?;
         self.settings = settings;
         Ok(self.snapshot())
+    }
+
+    pub fn set_canvas_enabled(
+        &mut self,
+        enabled: bool,
+    ) -> Result<OverlayLayoutSettings, OverlayLayoutUpdateError> {
+        if self.settings.canvas_enabled == enabled {
+            return Ok(self.snapshot());
+        }
+        let mut settings = self.snapshot();
+        settings.canvas_enabled = enabled;
+        self.update(settings)
     }
 }
 
@@ -230,7 +244,23 @@ fn read_valid(path: &Path) -> Result<OverlayLayoutSettings, String> {
     if bytes.len() as u64 > MAX_SETTINGS_BYTES {
         return Err("overlay layout settings exceed 128 KiB".into());
     }
-    let mut settings: OverlayLayoutSettings = serde_json::from_slice(&bytes)
+    let mut value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("overlay layout settings are invalid: {error}"))?;
+    if value
+        .get("schemaVersion")
+        .and_then(serde_json::Value::as_u64)
+        == Some(1)
+    {
+        let object = value
+            .as_object_mut()
+            .ok_or_else(|| "overlay layout settings must be an object".to_owned())?;
+        object.insert(
+            "schemaVersion".into(),
+            serde_json::Value::from(SCHEMA_VERSION),
+        );
+        object.insert("canvasEnabled".into(), serde_json::Value::Bool(false));
+    }
+    let mut settings: OverlayLayoutSettings = serde_json::from_value(value)
         .map_err(|error| format!("overlay layout settings are invalid: {error}"))?;
     normalize_and_validate(&mut settings)?;
     Ok(settings)
@@ -392,6 +422,32 @@ mod tests {
         let reset = OverlayLayoutSettings::default();
         assert_eq!(reset.setups["default"].modules.len(), 7);
         assert!(!reset.setups["default"].locked);
+        assert!(!reset.canvas_enabled);
+    }
+
+    #[test]
+    fn schema_one_migrates_to_disabled_canvas_without_losing_layout() {
+        let path = std::env::temp_dir().join(format!(
+            "rlogs-overlay-layout-v1-{}-{}.json",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut legacy = serde_json::to_value(OverlayLayoutSettings::default()).unwrap();
+        let object = legacy.as_object_mut().unwrap();
+        object.insert("schemaVersion".into(), serde_json::Value::from(1));
+        object.remove("canvasEnabled");
+        object["setups"]["default"]["locked"] = serde_json::Value::Bool(true);
+        std::fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+
+        let migrated = OverlayLayoutSettingsStore::open(&path).unwrap().snapshot();
+        assert_eq!(migrated.schema_version, 2);
+        assert!(!migrated.canvas_enabled);
+        assert!(migrated.setups["default"].locked);
+        assert_eq!(migrated.setups["default"].modules.len(), 7);
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
@@ -407,6 +463,7 @@ mod tests {
         let mut store = OverlayLayoutSettingsStore::open(&path).unwrap();
         let mut changed = store.snapshot();
         let stale = changed.clone();
+        changed.canvas_enabled = true;
         changed.setups.get_mut("default").unwrap().locked = true;
         assert_eq!(store.update(changed).unwrap().revision, 1);
         assert!(store.update(stale).is_err());
@@ -418,9 +475,39 @@ mod tests {
         let reset = store.update(reset_request).unwrap();
         assert_eq!(reset.revision, 2);
         assert!(reset.legacy_migration_complete);
+        assert!(!reset.canvas_enabled);
         assert!(!reset.setups["default"].locked);
         let reopened = OverlayLayoutSettingsStore::open(&path).unwrap();
         assert_eq!(reopened.snapshot(), reset);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(sibling_path(&path, "backup"));
+    }
+    #[test]
+    fn canvas_enablement_round_trips_and_no_op_preserves_revision() {
+        let path = std::env::temp_dir().join(format!(
+            "rlogs-overlay-visibility-{}-{}.json",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut store = OverlayLayoutSettingsStore::open(&path).unwrap();
+        let enabled = store.set_canvas_enabled(true).unwrap();
+        assert!(enabled.canvas_enabled);
+        assert_eq!(enabled.revision, 1);
+        assert_eq!(store.set_canvas_enabled(true).unwrap().revision, 1);
+        drop(store);
+        let mut reopened = OverlayLayoutSettingsStore::open(&path).unwrap();
+        assert!(reopened.snapshot().canvas_enabled);
+        assert!(!reopened.set_canvas_enabled(false).unwrap().canvas_enabled);
+        drop(reopened);
+        assert!(
+            !OverlayLayoutSettingsStore::open(&path)
+                .unwrap()
+                .snapshot()
+                .canvas_enabled
+        );
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(sibling_path(&path, "backup"));
     }
@@ -438,27 +525,27 @@ mod tests {
         let mut store = OverlayLayoutSettingsStore::open(&path).unwrap();
         let mut first = store.snapshot();
         first.legacy_migration_complete = true;
+        first.canvas_enabled = true;
         store.update(first).unwrap();
         let mut second = store.snapshot();
+        second.canvas_enabled = false;
         second.setups.get_mut("default").unwrap().locked = true;
         store.update(second).unwrap();
         assert!(sibling_path(&path, "backup").exists());
         std::fs::write(&path, b"not json").unwrap();
         let recovered = OverlayLayoutSettingsStore::open(&path).unwrap().snapshot();
         assert!(!recovered.setups["default"].locked);
+        assert!(recovered.canvas_enabled);
 
         let mut store = OverlayLayoutSettingsStore::open(&path).unwrap();
         let mut next = store.snapshot();
+        next.canvas_enabled = false;
         next.setups.get_mut("default").unwrap().locked = true;
         store.update(next).unwrap();
         std::fs::write(&path, vec![b'x'; MAX_SETTINGS_BYTES as usize + 1]).unwrap();
-        assert!(
-            !OverlayLayoutSettingsStore::open(&path)
-                .unwrap()
-                .snapshot()
-                .setups["default"]
-                .locked
-        );
+        let recovered = OverlayLayoutSettingsStore::open(&path).unwrap().snapshot();
+        assert!(!recovered.setups["default"].locked);
+        assert!(recovered.canvas_enabled);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(sibling_path(&path, "backup"));
     }

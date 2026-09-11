@@ -121,6 +121,7 @@ if (isCombatOverlayRuntime) {
   try {
     const localizer = await loadUiLocalizer(navigator.languages[0] ?? navigator.language);
     let interactivityHandler: ((interactive: boolean) => void) | undefined;
+    let layoutRefreshHandler: ((revision: number) => void) | undefined;
     let focusHeldHandler: ((held: boolean) => void) | undefined;
     let resolveLayoutInitialized!: () => void;
     let rejectLayoutInitialized!: (error: unknown) => void;
@@ -131,6 +132,9 @@ if (isCombatOverlayRuntime) {
     // recreated WebView otherwise loses the one-shot pending Edit request.
     await appWindow.listen<boolean>("overlay-canvas-interactivity", ({ payload }) => {
       interactivityHandler?.(payload);
+    });
+    await appWindow.listen<number>("overlay-canvas-layout-refresh-requested", ({ payload }) => {
+      layoutRefreshHandler?.(payload);
     });
     await appWindow.listen<boolean>("overlay-canvas-focus-held", ({ payload }) => {
       focusHeldHandler?.(payload);
@@ -146,15 +150,21 @@ if (isCombatOverlayRuntime) {
         },
       )),
       prepareLocalMaps: async () => { await runtimeJson("/api/runtime/local-game-assets/prepare", { method: "POST" }); },
-      hide: async () => { await invoke("hide_overlay_canvas"); },
       setInteractive: async (interactive) => {
         await invoke("set_overlay_canvas_interactive", { interactive });
       },
       acknowledgeInteractivity: async (interactive) => {
         await invoke("acknowledge_overlay_canvas_interactivity", { interactive });
       },
-      onLayoutInitialized: (error) => {
-        if (error === undefined) resolveLayoutInitialized(); else rejectLayoutInitialized(error);
+      onLayoutInitialized: (revision, error) => {
+        if (revision === undefined) { rejectLayoutInitialized(error); return; }
+        void invoke("overlay_canvas_layout_initialized", { revision })
+          .then(() => resolveLayoutInitialized())
+          .catch(rejectLayoutInitialized);
+      },
+      onLayoutRefresh: async (handler) => {
+        layoutRefreshHandler = handler;
+        return () => { if (layoutRefreshHandler === handler) layoutRefreshHandler = undefined; };
       },
       onInteractivity: async (handler) => {
         interactivityHandler = handler;
@@ -181,7 +191,6 @@ if (isCombatOverlayRuntime) {
     }, localizer);
     await invoke("overlay_canvas_ready");
     await layoutInitialized;
-    await invoke("overlay_canvas_layout_initialized");
   } catch (error) {
     const failure = document.createElement("main");
     failure.className = "mechanics-map-overlay-failure";

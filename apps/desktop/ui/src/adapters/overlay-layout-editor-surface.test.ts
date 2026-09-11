@@ -8,7 +8,7 @@ function layout(): OverlayLayoutSettings {
   const modules = Object.fromEntries(["map", "player", "actions", "party", "target", "objectives", "alerts"].map((id, index) => [id, {
     x: .1, y: .1, width: .3, height: .3, visible: true, zOrder: index, opacity: 1, scale: 1,
   }]));
-  return parseOverlayLayoutSettings({ schemaVersion: 1, revision: 0, selectedSetupId: "default", legacyMigrationComplete: true,
+  return parseOverlayLayoutSettings({ schemaVersion: 2, revision: 0, canvasEnabled: false, selectedSetupId: "default", legacyMigrationComplete: true,
     setups: { default: { name: "Default HUD", locked: false, modules } } });
 }
 
@@ -28,7 +28,7 @@ describe("overlay layout editor", () => {
       return { ...structuredClone(value), revision: value.revision + 1 };
     });
     const container = document.createElement("div"); document.body.append(container);
-    mountOverlayLayoutEditorSurface(container, { load: async () => layout(), save, openOverlay: async () => undefined });
+    mountOverlayLayoutEditorSurface(container, { load: async () => layout(), save, ...lifecycle() });
     await Promise.resolve(); await Promise.resolve();
     (container.querySelector('.overlay-layout-module-card input[type="checkbox"]') as HTMLInputElement).click();
     const opacity = container.querySelectorAll('.overlay-layout-module-card input[type="number"]')[4] as HTMLInputElement;
@@ -49,7 +49,7 @@ describe("overlay layout editor", () => {
       return { ...structuredClone(value), revision: 6 };
     });
     const container = document.createElement("div"); document.body.append(container);
-    mountOverlayLayoutEditorSurface(container, { load: async () => (++loads === 1 ? initial : structuredClone(fresh)), save, openOverlay: async () => undefined });
+    mountOverlayLayoutEditorSurface(container, { load: async () => (++loads === 1 ? initial : structuredClone(fresh)), save, ...lifecycle() });
     await Promise.resolve(); await Promise.resolve();
     const opacity = container.querySelectorAll('.overlay-layout-module-card input[type="number"]')[4] as HTMLInputElement;
     opacity.value = "60"; opacity.dispatchEvent(new Event("change", { bubbles: true }));
@@ -65,7 +65,7 @@ describe("overlay layout editor", () => {
     let loads = 0; let saves = 0;
     const save = vi.fn(async () => { saves += 1; throw new LocalHostHttpError(saves === 1 ? 409 : 500, saves === 1 ? "conflict" : "disk failed"); });
     const container = document.createElement("div"); document.body.append(container);
-    mountOverlayLayoutEditorSurface(container, { load: async () => (++loads === 1 ? initial : structuredClone(fresh)), save, openOverlay: async () => undefined });
+    mountOverlayLayoutEditorSurface(container, { load: async () => (++loads === 1 ? initial : structuredClone(fresh)), save, ...lifecycle() });
     await Promise.resolve(); await Promise.resolve();
     (container.querySelector('.overlay-layout-module-card input[type="checkbox"]') as HTMLInputElement).click();
     await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
@@ -78,7 +78,7 @@ describe("overlay layout editor", () => {
     vi.useFakeTimers();
     const initial = layout(); const fresh = layout(); fresh.revision = 2; fresh.setups.default!.modules.map.opacity = .7;
     let loads = 0; const container = document.createElement("div"); document.body.append(container);
-    const mounted = mountOverlayLayoutEditorSurface(container, { load: async () => (++loads === 1 ? initial : fresh), save: async (value) => value, openOverlay: async () => undefined });
+    const mounted = mountOverlayLayoutEditorSurface(container, { load: async () => (++loads === 1 ? initial : fresh), save: async (value) => value, ...lifecycle() });
     await Promise.resolve(); await Promise.resolve();
     await vi.advanceTimersByTimeAsync(1_000);
     const opacity = container.querySelectorAll('.overlay-layout-module-card input[type="number"]')[4] as HTMLInputElement;
@@ -89,7 +89,7 @@ describe("overlay layout editor", () => {
   it("saves module visibility and layer controls to the shared setup", async () => {
     let shared = layout(); const save = vi.fn(async (value: OverlayLayoutSettings) => { shared = structuredClone(value); shared.revision++; return shared; });
     const container = document.createElement("div"); document.body.append(container);
-    mountOverlayLayoutEditorSurface(container, { load: async () => shared, save, openOverlay: async () => undefined });
+    mountOverlayLayoutEditorSurface(container, { load: async () => shared, save, ...lifecycle() });
     await Promise.resolve(); await Promise.resolve();
     const mapCard = container.querySelector(".overlay-layout-module-card")!;
     const visible = mapCard.querySelector('input[type="checkbox"]') as HTMLInputElement; visible.click();
@@ -100,9 +100,49 @@ describe("overlay layout editor", () => {
   it("requires confirmation and restores the host safe reset", async () => {
     const save = vi.fn(async (value: OverlayLayoutSettings) => value); vi.stubGlobal("confirm", () => true);
     const container = document.createElement("div"); document.body.append(container);
-    mountOverlayLayoutEditorSurface(container, { load: async () => layout(), save, openOverlay: async () => undefined });
+    mountOverlayLayoutEditorSurface(container, { load: async () => layout(), save, ...lifecycle() });
     await Promise.resolve(); await Promise.resolve();
     (Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Reset safe layout") as HTMLButtonElement).click();
     await Promise.resolve(); expect(save).toHaveBeenCalledOnce();
   });
+
+  it("offers distinct passive, editable, and disabled canvas lifecycle actions", async () => {
+    let shared = layout();
+    const save = vi.fn(async (value: OverlayLayoutSettings) => {
+      shared = structuredClone(value); shared.revision += 1; return structuredClone(shared);
+    });
+    const showOverlay = vi.fn(async () => { shared.canvasEnabled = true; shared.revision += 1; });
+    const editOverlay = vi.fn(async () => { shared.canvasEnabled = true; shared.revision += 1; });
+    const hideOverlay = vi.fn(async () => { shared.canvasEnabled = false; shared.revision += 1; });
+    const container = document.createElement("div"); document.body.append(container);
+    mountOverlayLayoutEditorSurface(container, {
+      load: async () => structuredClone(shared), save, showOverlay, editOverlay, hideOverlay,
+    });
+    await Promise.resolve(); await Promise.resolve();
+    const action = (label: string) => Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent === label) as HTMLButtonElement;
+
+    action("Show overlays").click();
+    await vi.waitFor(() => expect(showOverlay).toHaveBeenCalledOnce());
+    expect(shared.canvasEnabled).toBe(true);
+    expect(shared.setups.default!.locked).toBe(true);
+    expect(editOverlay).not.toHaveBeenCalled();
+    expect(hideOverlay).not.toHaveBeenCalled();
+
+    action("Hide overlays").click();
+    await vi.waitFor(() => expect(hideOverlay).toHaveBeenCalledOnce());
+    expect(shared.canvasEnabled).toBe(false);
+
+    action("Edit layout").click();
+    await vi.waitFor(() => expect(editOverlay).toHaveBeenCalledOnce());
+    expect(shared.canvasEnabled).toBe(true);
+  });
 });
+
+function lifecycle() {
+  return {
+    showOverlay: async () => undefined,
+    editOverlay: async () => undefined,
+    hideOverlay: async () => undefined,
+  };
+}

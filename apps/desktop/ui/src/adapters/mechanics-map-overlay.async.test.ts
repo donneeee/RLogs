@@ -102,7 +102,7 @@ function layout(): OverlayLayoutSettings {
   const modules = Object.fromEntries(["map", "player", "actions", "party", "target", "objectives", "alerts"].map((id, index) => [id, {
     x: 0, y: 0, width: .3, height: .3, visible: true, zOrder: index, opacity: 1, scale: 1,
   }]));
-  return parseOverlayLayoutSettings({ schemaVersion: 1, revision: 1, selectedSetupId: "default", legacyMigrationComplete: true,
+  return parseOverlayLayoutSettings({ schemaVersion: 2, revision: 1, canvasEnabled: true, selectedSetupId: "default", legacyMigrationComplete: true,
     setups: { default: { name: "Default", locked: false, modules } } });
 }
 
@@ -127,6 +127,8 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     const hide = vi.fn(async () => undefined);
     const acknowledgeInteractivity = vi.fn(async () => undefined);
     const setInteractive = vi.fn(async () => undefined);
+    let interactivityHandler: ((interactive: boolean) => void) | undefined;
+    const removeInteractivity = vi.fn();
     const saveLayout = vi.fn(async (value: OverlayLayoutSettings) => ({
       ...structuredClone(value),
       revision: value.revision + 1,
@@ -137,10 +139,10 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       loadSnapshot: async () => snapshot(1_633, 1),
       waitForSnapshot: () => new Promise(() => undefined),
       prepareLocalMaps: async () => undefined,
-      hide,
+      ...{ hide },
       setInteractive,
       acknowledgeInteractivity,
-      onInteractivity: async () => () => undefined,
+      onInteractivity: async (handler) => { interactivityHandler = handler; return removeInteractivity; },
       onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
       loadAutomarkerPreset: async () => ({
@@ -184,6 +186,18 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     expect(saved.setups.default!.locked).toBe(true);
     expect(saved.setups.default!.modules).toEqual(layout().setups.default!.modules);
 
+    interactivityHandler?.(true);
+    await vi.waitFor(() => expect(root.dataset.locked).toBe("false"));
+    setInteractive.mockClear(); saveLayout.mockClear(); hide.mockClear();
+    const done = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent === "Done") as HTMLButtonElement;
+    done.click();
+    await vi.waitFor(() => expect(setInteractive).toHaveBeenCalledWith(false));
+    expect(root.dataset.locked).toBe("true");
+    expect(map.isConnected).toBe(true);
+    expect(player.isConnected).toBe(true);
+    expect(hide).not.toHaveBeenCalled();
+
     const interactivityCallsAfterEscape = setInteractive.mock.calls.length;
     mounted.dispose();
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
@@ -191,6 +205,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     expect(hide).not.toHaveBeenCalled();
     expect(setInteractive).toHaveBeenCalledTimes(interactivityCallsAfterEscape);
     expect(saveLayout).toHaveBeenCalledTimes(1);
+    expect(removeInteractivity).toHaveBeenCalledOnce();
   });
 
   it("migrates legacy pixel geometry once into normalized host layout", async () => {
@@ -202,7 +217,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     const container = document.createElement("div"); document.body.append(container);
     const mounted = mountMechanicsMapOverlay(container, {
       loadSnapshot: async () => snapshot(1_633, 1), waitForSnapshot: () => new Promise(() => undefined),
-      prepareLocalMaps: async () => undefined, hide: async () => undefined, setInteractive: async () => undefined,
+      prepareLocalMaps: async () => undefined, setInteractive: async () => undefined,
       onInteractivity: async () => () => undefined, onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
       loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
@@ -227,7 +242,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     const container = document.createElement("div"); document.body.append(container);
     const mounted = mountMechanicsMapOverlay(container, {
       loadSnapshot: async () => snapshot(1_633, 1), waitForSnapshot: () => new Promise(() => undefined),
-      prepareLocalMaps: async () => undefined, hide: async () => undefined, setInteractive: async () => undefined,
+      prepareLocalMaps: async () => undefined, setInteractive: async () => undefined,
       onInteractivity: async () => () => undefined, onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
       loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
@@ -248,7 +263,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     const container = document.createElement("div"); document.body.append(container);
     const mounted = mountMechanicsMapOverlay(container, {
       loadSnapshot: async () => snapshot(1_633, 1), waitForSnapshot: () => new Promise(() => undefined),
-      prepareLocalMaps: async () => undefined, hide: async () => undefined,
+      prepareLocalMaps: async () => undefined,
       setInteractive: async (value) => { order.push(`set:${value}`); },
       acknowledgeInteractivity: async (value) => { order.push(`ack:${value}`); },
       onLayoutInitialized: () => { order.push("initialized"); },
@@ -268,6 +283,48 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     mounted.dispose();
   });
 
+  it("applies and acknowledges a required revision without allowing an older poll to roll it back", async () => {
+    vi.useFakeTimers();
+    const initial = layout();
+    const stale = structuredClone(initial); stale.revision = 2; stale.setups.default!.modules.map.opacity = .8;
+    const current = structuredClone(initial); current.revision = 3; current.setups.default!.modules.map.opacity = .45;
+    const oldPoll = deferred<OverlayLayoutSettings>();
+    let loads = 0;
+    let requestRefresh!: (revision: number) => void;
+    const acknowledged: number[] = [];
+    const container = document.createElement("div"); document.body.append(container);
+    const mounted = mountMechanicsMapOverlay(container, {
+      loadSnapshot: async () => snapshot(1_633, 1), waitForSnapshot: () => new Promise(() => undefined),
+      prepareLocalMaps: async () => undefined, setInteractive: async () => undefined,
+      onLayoutInitialized: (revision) => { if (revision !== undefined) acknowledged.push(revision); },
+      onLayoutRefresh: async (handler) => { requestRefresh = handler; return () => undefined; },
+      onInteractivity: async () => () => undefined, onFocusHeld: async () => () => undefined,
+      loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
+      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadLayout: async () => {
+        loads += 1;
+        if (loads === 1) return initial;
+        if (loads === 2) return oldPoll.promise;
+        return current;
+      },
+      saveLayout: async (value) => value,
+    }, localizer);
+    await flushPromises();
+    await vi.advanceTimersByTimeAsync(1_000);
+    requestRefresh(3);
+    await flushPromises();
+    const map = container.querySelector<HTMLElement>(".mechanics-map-overlay-runtime")!;
+    expect(map.style.opacity).toBe("0.45");
+    expect(acknowledged).toContain(3);
+
+    oldPoll.resolve(stale);
+    await flushPromises();
+    expect(map.style.opacity).toBe("0.45");
+    expect(acknowledged).not.toContain(2);
+    mounted.dispose();
+    vi.useRealTimers();
+  });
+
   it("persists pointer movement and raises the moved module in shared layout order", async () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1_000 });
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
@@ -278,7 +335,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     const container = document.createElement("div"); document.body.append(container);
     const mounted = mountMechanicsMapOverlay(container, {
       loadSnapshot: async () => snapshot(1_633, 1), waitForSnapshot: () => new Promise(() => undefined),
-      prepareLocalMaps: async () => undefined, hide: async () => undefined, setInteractive: async () => undefined,
+      prepareLocalMaps: async () => undefined, setInteractive: async () => undefined,
       onInteractivity: async () => () => undefined, onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
       loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
@@ -310,7 +367,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     const container = document.createElement("div"); document.body.append(container);
     const mounted = mountMechanicsMapOverlay(container, {
       loadSnapshot: async () => snapshot(1_633, 1), waitForSnapshot: () => new Promise(() => undefined),
-      prepareLocalMaps: async () => undefined, hide: async () => undefined, setInteractive: async () => undefined,
+      prepareLocalMaps: async () => undefined, setInteractive: async () => undefined,
       onInteractivity: async () => () => undefined, onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
       loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
@@ -339,7 +396,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     const container = document.createElement("div"); document.body.append(container);
     const mounted = mountMechanicsMapOverlay(container, {
       loadSnapshot: async () => snapshot(1_633, 1), waitForSnapshot: () => new Promise(() => undefined),
-      prepareLocalMaps: async () => undefined, hide: async () => undefined, setInteractive: async () => undefined,
+      prepareLocalMaps: async () => undefined, setInteractive: async () => undefined,
       onInteractivity: async () => () => undefined, onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
       loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
@@ -372,7 +429,6 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       loadSnapshot: async () => snapshot(1_633, 1),
       waitForSnapshot: () => waitCount++ === 0 ? transition.promise : new Promise(() => undefined),
       prepareLocalMaps: async () => undefined,
-      hide: async () => undefined,
       setInteractive: async () => undefined,
       onInteractivity: async () => () => undefined,
       onFocusHeld: async () => () => undefined,
@@ -443,7 +499,6 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       loadSnapshot: async () => snapshot(1_633, 1),
       waitForSnapshot: () => waitCount++ === 0 ? transition.promise : new Promise(() => undefined),
       prepareLocalMaps: async () => undefined,
-      hide: async () => undefined,
       setInteractive: async () => undefined,
       onInteractivity: async () => () => undefined,
       onFocusHeld: async () => () => undefined,

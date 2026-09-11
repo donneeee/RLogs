@@ -13,15 +13,16 @@ export interface OverlaySetupLayout {
 }
 
 export interface OverlayLayoutSettings {
-  schemaVersion: 1;
+  schemaVersion: 2;
   revision: number;
+  canvasEnabled: boolean;
   selectedSetupId: string;
   legacyMigrationComplete: boolean;
   setups: Record<string, OverlaySetupLayout>;
 }
 
 export function parseOverlayLayoutSettings(value: unknown): OverlayLayoutSettings {
-  if (!record(value) || value.schemaVersion !== 1 || !safeInteger(value.revision) ||
+  if (!record(value) || value.schemaVersion !== 2 || !safeInteger(value.revision) || typeof value.canvasEnabled !== "boolean" ||
       typeof value.selectedSetupId !== "string" || typeof value.legacyMigrationComplete !== "boolean" || !record(value.setups)) {
     throw new Error("The local host returned invalid overlay layout settings.");
   }
@@ -35,7 +36,7 @@ export function parseOverlayLayoutSettings(value: unknown): OverlayLayoutSetting
     setups[id] = { name: candidate.name, locked: candidate.locked, modules };
   }
   if (!(value.selectedSetupId in setups)) throw new Error("Selected overlay setup is unavailable.");
-  return { schemaVersion: 1, revision: value.revision, selectedSetupId: value.selectedSetupId,
+  return { schemaVersion: 2, revision: value.revision, canvasEnabled: value.canvasEnabled, selectedSetupId: value.selectedSetupId,
     legacyMigrationComplete: value.legacyMigrationComplete, setups };
 }
 
@@ -46,7 +47,7 @@ export function activeOverlaySetup(settings: OverlayLayoutSettings): OverlaySetu
 export function safeDefaultOverlayLayout(revision: number): OverlayLayoutSettings {
   const module = (x: number, y: number, width: number, height: number, zOrder: number): OverlayModuleLayout =>
     ({ x, y, width, height, visible: true, zOrder, opacity: 1, scale: 1 });
-  return { schemaVersion: 1, revision, selectedSetupId: "default", legacyMigrationComplete: true, setups: { default: {
+  return { schemaVersion: 2, revision, canvasEnabled: false, selectedSetupId: "default", legacyMigrationComplete: true, setups: { default: {
     name: "Default HUD", locked: false, modules: {
       map: module(.015, .15, .325, .65, 1), player: module(.015, .06, .263, .16, 2),
       actions: module(.015, .79, .325, .16, 3), party: module(.65, .06, .225, .48, 4),

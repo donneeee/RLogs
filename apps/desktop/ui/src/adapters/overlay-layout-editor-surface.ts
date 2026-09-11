@@ -5,7 +5,9 @@ import { activeOverlaySetup, OVERLAY_MODULE_IDS, safeDefaultOverlayLayout, type 
 export interface OverlayLayoutEditorDependencies {
   load(): Promise<OverlayLayoutSettings>;
   save(settings: OverlayLayoutSettings): Promise<OverlayLayoutSettings>;
-  openOverlay(): Promise<void>;
+  showOverlay(): Promise<void>;
+  editOverlay(): Promise<void>;
+  hideOverlay(): Promise<void>;
 }
 
 const LABELS: Record<OverlayModuleId, string> = { map: "Mechanics Map", player: "Player", actions: "Actions",
@@ -14,6 +16,7 @@ const LABELS: Record<OverlayModuleId, string> = { map: "Mechanics Map", player: 
 export function mountOverlayLayoutEditorSurface(container: HTMLElement, dependencies: OverlayLayoutEditorDependencies): MountedSurface {
   let alive = true; let settings: OverlayLayoutSettings | null = null; let saving = false;
   let pendingEdits: Array<(value: OverlayLayoutSettings) => void> = [];
+  let persistInFlight: Promise<void> | null = null;
   let pollTimer: number | null = null;
   let errorMessage: string | null = null;
   let failureStatus: number | null = null;
@@ -26,14 +29,22 @@ export function mountOverlayLayoutEditorSurface(container: HTMLElement, dependen
   const controls = element("section", "content-card overlay-layout-editor-controls");
   const setupSelect = document.createElement("select");
   const lock = input("checkbox"); const lockLabel = element("label"); lockLabel.append(lock, document.createTextNode(" Click-through play mode"));
-  const open = text("button", "Open editable overlay", "primary-button"); open.type = "button";
+  const show = text("button", "Show overlays", "primary-button"); show.type = "button";
+  const editLayout = text("button", "Edit layout", "quiet-button"); editLayout.type = "button";
+  const hide = text("button", "Hide overlays", "quiet-button"); hide.type = "button";
   const reset = text("button", "Reset safe layout", "quiet-button"); reset.type = "button";
-  controls.append(text("strong", "Selected setup"), setupSelect, lockLabel, open, reset);
+  controls.append(text("strong", "Selected setup"), setupSelect, lockLabel, show, editLayout, hide, reset);
   const grid = element("section", "overlay-layout-editor-grid"); root.append(header, controls, grid); container.replaceChildren(root);
 
-  open.addEventListener("click", () => void dependencies.openOverlay());
+  show.addEventListener("click", () => void runLifecycleAction("show"));
+  editLayout.addEventListener("click", () => void runLifecycleAction("edit"));
+  hide.addEventListener("click", () => void runLifecycleAction("hide"));
   reset.addEventListener("click", () => { if (!settings || !confirm("Reset all overlay setups to the safe default layout?")) return;
-    edit((value) => Object.assign(value, safeDefaultOverlayLayout(value.revision))); });
+    edit((value) => {
+      const canvasEnabled = value.canvasEnabled;
+      Object.assign(value, safeDefaultOverlayLayout(value.revision));
+      value.canvasEnabled = canvasEnabled;
+    }); });
   setupSelect.addEventListener("change", () => { if (!settings || !(setupSelect.value in settings.setups)) return;
     const selected = setupSelect.value; edit((value) => { value.selectedSetupId = selected; }); });
   lock.addEventListener("change", () => { const checked = lock.checked; edit((value) => { activeOverlaySetup(value).locked = checked; }); });
@@ -73,7 +84,13 @@ export function mountOverlayLayoutEditorSurface(container: HTMLElement, dependen
     operation(settings); pendingEdits.push(operation); errorMessage = null; failureStatus = null; render();
     if (!saving) void persist();
   }
-  async function persist(): Promise<void> {
+  function persist(): Promise<void> {
+    if (persistInFlight !== null) return persistInFlight;
+    if (!settings || pendingEdits.length === 0) return Promise.resolve();
+    persistInFlight = flushPendingEdits().finally(() => { persistInFlight = null; });
+    return persistInFlight;
+  }
+  async function flushPendingEdits(): Promise<void> {
     if (!settings || saving || pendingEdits.length === 0) return;
     saving = true; render(); let rebased = false;
     try {
@@ -95,6 +112,20 @@ export function mountOverlayLayoutEditorSurface(container: HTMLElement, dependen
       }
     } catch (error) { failureStatus = error instanceof LocalHostHttpError ? error.status : null; showError(error); }
     finally { saving = false; if (alive) render(); }
+  }
+  async function runLifecycleAction(action: "show" | "edit" | "hide"): Promise<void> {
+    if (!settings) return;
+    try {
+      if (action === "show" && !activeOverlaySetup(settings).locked) {
+        edit((value) => { activeOverlaySetup(value).locked = true; });
+      }
+      await persist();
+      if (pendingEdits.length > 0 || errorMessage !== null) return;
+      if (action === "show") await dependencies.showOverlay();
+      else if (action === "edit") await dependencies.editOverlay();
+      else await dependencies.hideOverlay();
+      apply(await dependencies.load());
+    } catch (error) { showError(error); }
   }
   async function poll(): Promise<void> {
     if (!alive || saving) return;
