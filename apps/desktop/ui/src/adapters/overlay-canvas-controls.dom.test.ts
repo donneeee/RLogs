@@ -4,16 +4,16 @@ import type { UiLocalizer } from "../localization/ui-locale";
 import { mountOverlayCanvasControls } from "./overlay-canvas-controls";
 
 const messages: Record<string, string> = {
-  "ui.mechanics_map.canvas_editor.aria": "Canvas layout controls",
-  "ui.mechanics_map.canvas_editor.label": "Canvas layout",
-  "ui.mechanics_map.canvas_editor.mode": "EDIT MODE",
-  "ui.mechanics_map.canvas_editor.lock": "Lock",
-  "ui.mechanics_map.canvas_editor.unlock": "Unlock",
-  "ui.mechanics_map.canvas_editor.lock_help": "Lock help",
-  "ui.mechanics_map.canvas_editor.hide": "Hide",
-  "ui.mechanics_map.canvas_editor.hide_help": "Hide help",
-  "ui.mechanics_map.canvas_editor.done": "Done",
-  "ui.mechanics_map.canvas_editor.done_help": "Done help",
+  "ui.overlay_canvas.controls.aria": "Canvas layout controls",
+  "ui.overlay_canvas.controls.label": "Canvas layout",
+  "ui.overlay_canvas.controls.mode": "EDIT MODE",
+  "ui.overlay_canvas.controls.lock": "Lock",
+  "ui.overlay_canvas.controls.unlock": "Unlock",
+  "ui.overlay_canvas.controls.lock_help": "Lock help",
+  "ui.overlay_canvas.controls.hide": "Hide",
+  "ui.overlay_canvas.controls.hide_help": "Hide help",
+  "ui.overlay_canvas.controls.done": "Done",
+  "ui.overlay_canvas.controls.done_help": "Done help",
 };
 const localizer: UiLocalizer = {
   locale: "en-US",

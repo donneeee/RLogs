@@ -26,29 +26,29 @@ export function mountOverlayCanvasControls(
   let locked = dependencies.locked;
   let exitPending = false;
   const bar = element("header", "overlay-canvas-editor-bar");
-  bar.setAttribute("aria-label", localizer.t("ui.mechanics_map.canvas_editor.aria"));
+  bar.setAttribute("aria-label", localizer.t("ui.overlay_canvas.controls.aria"));
   const identity = element("div", "overlay-canvas-editor-identity");
   identity.append(
-    text("strong", localizer.t("ui.mechanics_map.canvas_editor.label")),
-    text("span", localizer.t("ui.mechanics_map.canvas_editor.mode")),
+    text("strong", localizer.t("ui.overlay_canvas.controls.label")),
+    text("span", localizer.t("ui.overlay_canvas.controls.mode")),
   );
   const actions = element("div", "overlay-canvas-editor-actions");
   const lock = button("", () => { void invoke(dependencies.toggleLock, "toggle canvas lock"); });
-  lock.title = localizer.t("ui.mechanics_map.canvas_editor.lock_help");
-  const hide = button(localizer.t("ui.mechanics_map.canvas_editor.hide"), () => {
+  lock.title = localizer.t("ui.overlay_canvas.controls.lock_help");
+  const hide = button(localizer.t("ui.overlay_canvas.controls.hide"), () => {
     void invoke(dependencies.hide, "hide overlay canvas");
   });
-  hide.title = localizer.t("ui.mechanics_map.canvas_editor.hide_help");
-  const done = button(localizer.t("ui.mechanics_map.canvas_editor.done"), requestDone);
-  done.title = localizer.t("ui.mechanics_map.canvas_editor.done_help");
+  hide.title = localizer.t("ui.overlay_canvas.controls.hide_help");
+  const done = button(localizer.t("ui.overlay_canvas.controls.done"), requestDone);
+  done.title = localizer.t("ui.overlay_canvas.controls.done_help");
   actions.append(...dependencies.moduleControls, lock, hide, done);
   bar.append(identity, actions);
 
   const setLocked = (value: boolean): void => {
     locked = value;
     lock.textContent = localizer.t(value
-      ? "ui.mechanics_map.canvas_editor.unlock"
-      : "ui.mechanics_map.canvas_editor.lock");
+      ? "ui.overlay_canvas.controls.unlock"
+      : "ui.overlay_canvas.controls.lock");
     lock.dataset.active = String(value);
     lock.setAttribute("aria-pressed", String(value));
   };

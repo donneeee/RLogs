@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "locale": "en-US",
+  "namespace": "ui.overlay_canvas",
+  "messages": {
+    "ui.overlay_canvas.controls.aria": "Canvas layout controls",
+    "ui.overlay_canvas.controls.label": "Canvas layout",
+    "ui.overlay_canvas.controls.mode": "EDIT MODE",
+    "ui.overlay_canvas.controls.lock": "Lock",
+    "ui.overlay_canvas.controls.unlock": "Unlock",
+    "ui.overlay_canvas.controls.lock_help": "Lock the canvas and return overlays to click-through mode",
+    "ui.overlay_canvas.controls.hide": "Hide",
+    "ui.overlay_canvas.controls.hide_help": "Hide all overlays; restore them from Show overlays in the main app or press Scroll Lock",
+    "ui.overlay_canvas.controls.done": "Done",
+    "ui.overlay_canvas.controls.done_help": "Exit editing and keep overlays visible"
+  }
+}
