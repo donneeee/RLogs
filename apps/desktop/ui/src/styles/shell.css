@@ -8216,6 +8216,17 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
   filter: drop-shadow(0 0 2px rgb(3 16 20 / 88%));
 }
 
+.combat-history-skill-event-icon-ring {
+  fill: color-mix(in srgb, var(--surface-raised) 84%, transparent);
+  stroke: var(--series-color);
+  stroke-width: 1.4;
+}
+
+.combat-history-skill-event-icon {
+  clip-path: circle(8px at center);
+  pointer-events: none;
+}
+
 .combat-history-skill-event:focus-visible .combat-history-skill-event-hitbox {
   fill: color-mix(in srgb, var(--series-color) 16%, transparent);
   stroke: var(--series-color);

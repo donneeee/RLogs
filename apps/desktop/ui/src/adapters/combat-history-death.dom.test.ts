@@ -80,7 +80,10 @@ describe("Combat History death presentation", () => {
       death_events: [death()],
       death_seconds: [],
       skill_events: [{ at_micros: 1_250_000, ability_id: "2233" }],
-      abilities: [{ ability_id: "2233", presentation_name: "Powerdraw" }],
+      abilities: [{
+        ability_id: "2233", presentation_name: "Powerdraw",
+        icon_asset_path: "/assets/bpsr/current/abilities/2233.webp",
+      }],
       series: [{ second: 0, damage: 100, effective_healing: 0, damage_taken: 0 }],
       targets: [],
     } as unknown as HistoryActorSummary;
@@ -105,6 +108,9 @@ describe("Combat History death presentation", () => {
       .toContain("Alice used Powerdraw at 0:01.250");
     expect((visible.querySelector(".combat-history-skill-event") as SVGElement).style
       .getPropertyValue("--series-color")).toBe("#35c2ff");
+    expect(visible.querySelector(".combat-history-skill-event-icon")?.getAttribute("href"))
+      .toBe("/assets/bpsr/current/abilities/2233.webp");
+    expect(visible.querySelector(".combat-history-skill-event-glyph")).toBeNull();
     expect(visible.querySelector("[data-timeline-play]")).toBeNull();
 
     const hidden = render(new Set([actor.actor_id]));
@@ -141,6 +147,34 @@ describe("Combat History death presentation", () => {
     expect(deaths).toHaveLength(1);
     expect(deaths[0]!.getAttribute("aria-label"))
       .toContain("death observed in the 0:03.000–0:03.500 one-second bucket");
+  });
+
+  it("keeps a neutral glyph for mixed-ability clusters instead of showing a misleading icon", async () => {
+    const ui = await loadUiLocalizer("en-US");
+    const actor = {
+      actor_id: "alice", display_name: "Alice", actor_kind: "player",
+      death_events: [], death_seconds: [],
+      skill_events: [
+        { at_micros: 1_250_000, ability_id: "2233" },
+        { at_micros: 1_255_000, ability_id: "2244" },
+      ],
+      abilities: [
+        { ability_id: "2233", presentation_name: "Powerdraw", icon_asset_path: "/assets/2233.webp" },
+        { ability_id: "2244", presentation_name: "Volley", icon_asset_path: "/assets/2244.webp" },
+      ],
+      series: [{ second: 0, damage: 100, effective_healing: 0, damage_taken: 0 }], targets: [],
+    } as unknown as HistoryActorSummary;
+    const rendered = renderMetricGraph(
+      [actor],
+      { metric: "damage", title: "Damage", rateLabel: "DPS", description: "Damage rate" },
+      3_500_000, new Set(), new Map([[actor.actor_id, "#35c2ff"]]), null, () => undefined, ui,
+    );
+
+    expect(rendered.querySelectorAll(".combat-history-skill-event")).toHaveLength(1);
+    expect(rendered.querySelector(".combat-history-skill-event-icon")).toBeNull();
+    expect(rendered.querySelector(".combat-history-skill-event-glyph")).not.toBeNull();
+    expect(rendered.querySelector(".combat-history-skill-event")?.getAttribute("aria-label"))
+      .toContain("Powerdraw, Volley");
   });
 
   it("shows the same cause summary on pointer hover and keyboard focus", () => {

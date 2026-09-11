@@ -3454,6 +3454,11 @@ function recordedEventLanes(
           end: formatExactGraphTime(cluster.events.at(-1)!.at_micros),
           abilities: abilityNames.join(", "),
         });
+      const clusteredAbilityIds = new Set(cluster.events.map((event) => event.ability_id));
+      const iconAssetPath = clusteredAbilityIds.size === 1
+        ? actor.abilities.find((ability) => ability.ability_id === first.ability_id)
+          ?.icon_asset_path?.trim() || null
+        : null;
       const marker = svgNode("g", "combat-history-skill-event", {
         transform: `translate(${cluster.x.toFixed(2)} ${y.toFixed(2)})`,
         role: "img",
@@ -3462,11 +3467,19 @@ function recordedEventLanes(
         "data-event-count": cluster.events.length,
       });
       marker.style.setProperty("--series-color", color);
-      marker.append(
-        svgNode("circle", "combat-history-skill-event-hitbox", { cx: 0, cy: 0, r: 12 }),
-        svgNode("path", "combat-history-skill-event-glyph", { d: "M1-7L-4 1H0L-1 7L5-2H1Z" }),
-        svgTitle(summary),
-      );
+      marker.append(svgNode("circle", "combat-history-skill-event-hitbox", { cx: 0, cy: 0, r: 12 }));
+      if (iconAssetPath) {
+        marker.append(
+          svgNode("circle", "combat-history-skill-event-icon-ring", { cx: 0, cy: 0, r: 9 }),
+          svgNode("image", "combat-history-skill-event-icon", {
+            href: iconAssetPath, x: -8, y: -8, width: 16, height: 16,
+            preserveAspectRatio: "xMidYMid slice",
+          }),
+        );
+      } else {
+        marker.append(svgNode("path", "combat-history-skill-event-glyph", { d: "M1-7L-4 1H0L-1 7L5-2H1Z" }));
+      }
+      marker.append(svgTitle(summary));
       if (cluster.events.length > 1) {
         marker.append(
           svgNode("circle", "combat-history-skill-event-badge", { cx: 8, cy: -8, r: 7 }),
