@@ -122,6 +122,77 @@ afterEach(() => {
 });
 
 describe("mounted Mechanics Map automarker request ordering", () => {
+  it("exits edit mode on Escape without hiding widgets or consuming editor input Escape", async () => {
+    const shared = layout();
+    const hide = vi.fn(async () => undefined);
+    const acknowledgeInteractivity = vi.fn(async () => undefined);
+    const setInteractive = vi.fn(async () => undefined);
+    const saveLayout = vi.fn(async (value: OverlayLayoutSettings) => ({
+      ...structuredClone(value),
+      revision: value.revision + 1,
+    }));
+    const container = document.createElement("div");
+    document.body.append(container);
+    const mounted = mountMechanicsMapOverlay(container, {
+      loadSnapshot: async () => snapshot(1_633, 1),
+      waitForSnapshot: () => new Promise(() => undefined),
+      prepareLocalMaps: async () => undefined,
+      hide,
+      setInteractive,
+      acknowledgeInteractivity,
+      onInteractivity: async () => () => undefined,
+      onFocusHeld: async () => () => undefined,
+      loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
+      loadAutomarkerPreset: async () => ({
+        supported: false,
+        reason: "native_waymark_request_unverified",
+      }),
+      loadLayout: async () => shared,
+      saveLayout,
+    }, localizer);
+    await flushPromises();
+    setInteractive.mockClear();
+
+    const root = container.querySelector<HTMLElement>(".overlay-canvas-runtime")!;
+    const map = container.querySelector<HTMLElement>(".mechanics-map-overlay-runtime")!;
+    const player = container.querySelector<HTMLElement>(".player-frame-overlay-runtime")!;
+    const resize = container.querySelector<HTMLElement>(".mechanics-map-overlay-resize")!;
+    expect(root.dataset.locked).toBe("false");
+
+    const select = container.querySelector("select")!;
+    const editorEscape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    select.dispatchEvent(editorEscape);
+    await flushPromises();
+    expect(editorEscape.defaultPrevented).toBe(false);
+    expect(hide).not.toHaveBeenCalled();
+    expect(setInteractive).not.toHaveBeenCalled();
+    expect(acknowledgeInteractivity).not.toHaveBeenCalled();
+
+    const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    window.dispatchEvent(escape);
+    await vi.waitFor(() => expect(setInteractive).toHaveBeenCalledWith(false));
+    expect(escape.defaultPrevented).toBe(true);
+    expect(acknowledgeInteractivity).toHaveBeenCalledWith(true);
+    expect(hide).not.toHaveBeenCalled();
+    expect(root.dataset.locked).toBe("true");
+    expect(map.dataset.locked).toBe("true");
+    expect(resize.isConnected).toBe(true);
+    expect(map.isConnected).toBe(true);
+    expect(player.isConnected).toBe(true);
+    await vi.waitFor(() => expect(saveLayout).toHaveBeenCalled());
+    const saved = saveLayout.mock.calls[0]![0];
+    expect(saved.setups.default!.locked).toBe(true);
+    expect(saved.setups.default!.modules).toEqual(layout().setups.default!.modules);
+
+    const interactivityCallsAfterEscape = setInteractive.mock.calls.length;
+    mounted.dispose();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await flushPromises();
+    expect(hide).not.toHaveBeenCalled();
+    expect(setInteractive).toHaveBeenCalledTimes(interactivityCallsAfterEscape);
+    expect(saveLayout).toHaveBeenCalledTimes(1);
+  });
+
   it("migrates legacy pixel geometry once into normalized host layout", async () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1_000 });
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });

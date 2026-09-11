@@ -594,6 +594,32 @@ export function mountMechanicsMapOverlay(
     if (event.key === AUTOMARKER_PREVIEW_STORAGE_KEY) refreshAutomarkerPreview();
   };
   window.addEventListener("storage", handlePreviewStorage);
+  let escapeLockPending = false;
+  const handleEscape = (event: KeyboardEvent): void => {
+    if (
+      event.key !== "Escape"
+      || event.defaultPrevented
+      || event.isComposing
+      || preferences.locked
+      || escapeLockPending
+    ) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest("input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='textbox'], [role='combobox'], [role='listbox']")) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    escapeLockPending = true;
+    // Receiving Escape proves that the editable WebView is initialized and
+    // accepting input. Clear any host-owned forced-edit request before asking
+    // the native window to become passive, otherwise the native safety gate
+    // intentionally rejects the click-through transition.
+    void dependencies.acknowledgeInteractivity?.(true)
+      .then(() => setLocked(true))
+      .catch(() => undefined)
+      .finally(() => { escapeLockPending = false; });
+  };
+  window.addEventListener("keydown", handleEscape);
   automarkerPreviewTimer = window.setInterval(refreshAutomarkerPreview, 500);
 
   void initializeLayout();
@@ -1897,6 +1923,7 @@ export function mountMechanicsMapOverlay(
       resizeObserver.disconnect();
       window.removeEventListener("resize", handleScreenResize);
       window.removeEventListener("storage", handlePreviewStorage);
+      window.removeEventListener("keydown", handleEscape);
       if (automarkerPreviewTimer !== null) window.clearInterval(automarkerPreviewTimer);
       if (layoutPollTimer !== null) window.clearInterval(layoutPollTimer);
       window.localStorage.removeItem(AUTOMARKER_PREVIEW_STORAGE_KEY);
