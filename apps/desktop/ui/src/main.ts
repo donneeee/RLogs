@@ -115,8 +115,13 @@ if (isCombatOverlayRuntime) {
     await invoke("combat_overlay_ready").catch(() => undefined);
   }
 } else if (isOverlayCanvasRuntime) {
-  await loadAndApplyThemeSettings();
+  // The shared canvas is a transparent native surface. Mark both document
+  // layers before applying the user's shell theme so the ordinary opaque
+  // `:root` and themed body backgrounds can never become its compositor
+  // backdrop.
+  document.documentElement.dataset.surface = "overlay-canvas";
   document.body.dataset.surface = "overlay-canvas";
+  await loadAndApplyThemeSettings();
   const appWindow = getCurrentWindow();
   try {
     const localizer = await loadUiLocalizer(navigator.languages[0] ?? navigator.language);

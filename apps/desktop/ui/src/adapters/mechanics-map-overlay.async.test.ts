@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 
 import type { UiLocalizer } from "../localization/ui-locale";
 import { AUTOMARKER_PREVIEW_STORAGE_KEY, AUTOMARKER_PREVIEW_TTL_MILLIS, parseAutomarkerPreview, type AutomarkerPresetView } from "./automarker-presets";
@@ -118,11 +119,23 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   document.body.replaceChildren();
+  document.head.querySelectorAll("[data-overlay-style-test]").forEach((element) => element.remove());
+  delete document.documentElement.dataset.surface;
+  delete document.documentElement.dataset.background;
+  delete document.body.dataset.surface;
+  document.body.removeAttribute("id");
   window.localStorage.clear();
 });
 
 describe("mounted Mechanics Map automarker request ordering", () => {
   it("exits edit mode on Escape without hiding widgets or consuming editor input Escape", async () => {
+    document.documentElement.dataset.surface = "overlay-canvas";
+    document.documentElement.dataset.background = "aurora";
+    document.body.dataset.surface = "overlay-canvas";
+    const styles = document.createElement("style");
+    styles.dataset.overlayStyleTest = "true";
+    styles.textContent = readFileSync("src/styles/shell.css", "utf8");
+    document.head.append(styles);
     const shared = layout();
     const hide = vi.fn(async () => undefined);
     const acknowledgeInteractivity = vi.fn(async () => undefined);
@@ -134,6 +147,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       revision: value.revision + 1,
     }));
     const container = document.createElement("div");
+    container.id = "app";
     document.body.append(container);
     const mounted = mountMechanicsMapOverlay(container, {
       loadSnapshot: async () => snapshot(1_633, 1),
@@ -181,6 +195,18 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     expect(resize.isConnected).toBe(true);
     expect(map.isConnected).toBe(true);
     expect(player.isConnected).toBe(true);
+    expect(getComputedStyle(resize).display).toBe("none");
+    expect(getComputedStyle(map.querySelector(".mechanics-map-overlay-toolbar")!).display).toBe("none");
+    for (const surface of [document.documentElement, document.body, container, root]) {
+      const computed = getComputedStyle(surface);
+      expect(["transparent", "rgba(0, 0, 0, 0)"]).toContain(computed.backgroundColor);
+      expect(["", "none"]).toContain(computed.backgroundImage);
+      expect(["", "none"]).toContain(computed.boxShadow);
+      expect(["", "none"]).toContain(computed.backdropFilter);
+    }
+    expect(["transparent", "rgba(0, 0, 0, 0)"]).not.toContain(
+      getComputedStyle(map).backgroundColor,
+    );
     await vi.waitFor(() => expect(saveLayout).toHaveBeenCalled());
     const saved = saveLayout.mock.calls[0]![0];
     expect(saved.setups.default!.locked).toBe(true);
@@ -188,14 +214,43 @@ describe("mounted Mechanics Map automarker request ordering", () => {
 
     interactivityHandler?.(true);
     await vi.waitFor(() => expect(root.dataset.locked).toBe("false"));
+    await vi.waitFor(() => expect(saveLayout).toHaveBeenCalled());
+    await flushPromises();
     setInteractive.mockClear(); saveLayout.mockClear(); hide.mockClear();
     const done = Array.from(container.querySelectorAll("button"))
       .find((button) => button.textContent === "Done") as HTMLButtonElement;
+    const doneAcknowledged = deferred<undefined>();
+    acknowledgeInteractivity.mockImplementationOnce(() => doneAcknowledged.promise);
     done.click();
+    expect(root.dataset.locked).toBe("true");
+    expect(getComputedStyle(resize).display).toBe("none");
+    expect(getComputedStyle(document.documentElement).backgroundColor).toBe("transparent");
+    expect(getComputedStyle(document.body).backgroundColor).toBe("transparent");
+    expect(getComputedStyle(container).backgroundColor).toBe("transparent");
+    expect(getComputedStyle(root).backgroundColor).toBe("transparent");
+    expect(setInteractive).not.toHaveBeenCalled();
+    doneAcknowledged.resolve(undefined);
     await vi.waitFor(() => expect(setInteractive).toHaveBeenCalledWith(false));
+    await flushPromises();
     expect(root.dataset.locked).toBe("true");
     expect(map.isConnected).toBe(true);
     expect(player.isConnected).toBe(true);
+    expect(hide).not.toHaveBeenCalled();
+
+    interactivityHandler?.(true);
+    await vi.waitFor(() => expect(root.dataset.locked).toBe("false"));
+    await vi.waitFor(() => expect(saveLayout).toHaveBeenCalled());
+    await flushPromises();
+    setInteractive.mockClear(); saveLayout.mockClear();
+    setInteractive.mockRejectedValueOnce(new Error("native click-through failed"));
+    done.click();
+    expect(root.dataset.locked).toBe("true");
+    await vi.waitFor(() => expect(root.dataset.locked).toBe("false"));
+    expect(map.dataset.locked).toBe("false");
+    expect(getComputedStyle(resize).display).not.toBe("none");
+    expect(getComputedStyle(map.querySelector(".mechanics-map-overlay-toolbar")!).display).not.toBe("none");
+    expect(saveLayout).not.toHaveBeenCalled();
+    expect(JSON.parse(window.localStorage.getItem("rlogs.mechanics-map-overlay.canvas.v1") ?? "null").locked).toBe(false);
     expect(hide).not.toHaveBeenCalled();
 
     const interactivityCallsAfterEscape = setInteractive.mock.calls.length;
@@ -204,7 +259,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     await flushPromises();
     expect(hide).not.toHaveBeenCalled();
     expect(setInteractive).toHaveBeenCalledTimes(interactivityCallsAfterEscape);
-    expect(saveLayout).toHaveBeenCalledTimes(1);
+    expect(saveLayout).not.toHaveBeenCalled();
     expect(removeInteractivity).toHaveBeenCalledOnce();
   });
 
@@ -377,6 +432,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     const lock = [...container.querySelectorAll("button")].find((button) => button.textContent === "Lock")!;
     lock.click();
     [...container.querySelectorAll("button")].find((button) => button.textContent === "Unlock")!.click();
+    await flushPromises();
     firstSave.resolve({ ...structuredClone(saveLayout.mock.calls[0]![0]), revision: 2 });
     await flushPromises(); await flushPromises();
     expect(saveLayout).toHaveBeenCalledTimes(2);

@@ -266,6 +266,8 @@ export function mountMechanicsMapOverlay(
   let layoutAcknowledged: OverlayLayoutSettings | null = null;
   let layoutPollTimer: number | null = null;
   let layoutSaving = false;
+  let requestedLocked = preferences.locked;
+  let lockTransitionTail: Promise<void> = Promise.resolve();
   type LayoutOperation = (settings: OverlayLayoutSettings) => void;
   const layoutOperations: LayoutOperation[] = [];
 
@@ -329,7 +331,7 @@ export function mountMechanicsMapOverlay(
     setExpanded(!preferences.expanded);
   });
   const lock = button(preferences.locked ? "Unlock" : "Lock", preferences.locked, () => {
-    void setLocked(!preferences.locked);
+    void setLocked(!requestedLocked);
   });
   const done = button("Done", false, () => { void exitEditing(); });
   done.title = "Exit editing and keep overlays visible";
@@ -1456,26 +1458,54 @@ export function mountMechanicsMapOverlay(
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
   }
 
-  async function setLocked(value: boolean): Promise<void> {
-    preferences.locked = value;
+  function applyLockedPresentation(value: boolean): void {
     root.dataset.locked = String(value);
     panel.dataset.locked = String(value);
     lock.textContent = value ? "Unlock" : "Lock";
     lock.dataset.active = String(value);
-    savePreferences();
-    persistSharedLayout();
-    await dependencies.setInteractive(!value);
+  }
+
+  async function setLocked(value: boolean): Promise<void> {
+    requestedLocked = value;
+    applyLockedPresentation(value);
+    const transition = lockTransitionTail.then(async () => {
+      // Commit the durable/UI state only after native input routing accepts
+      // the matching mode. Otherwise a failed click-through transition could
+      // leave an apparently passive canvas intercepting game input.
+      await dependencies.setInteractive(!value);
+      preferences.locked = value;
+      savePreferences();
+      persistSharedLayout();
+    });
+    lockTransitionTail = transition.catch(() => undefined);
+    try {
+      await transition;
+    } catch (error) {
+      if (requestedLocked === value) {
+        requestedLocked = preferences.locked;
+        applyLockedPresentation(preferences.locked);
+      }
+      throw error;
+    }
   }
 
   async function exitEditing(): Promise<void> {
     if (preferences.locked || escapeLockPending) return;
     escapeLockPending = true;
+    // Remove every editor-only painted layer synchronously with the user's
+    // Done/Escape input. Native click-through still waits for the required
+    // forced-edit acknowledgement below.
+    applyLockedPresentation(true);
     try {
       // User input proves the editable WebView is initialized. Clear the
       // host-owned forced-edit request before restoring native click-through.
       await dependencies.acknowledgeInteractivity?.(true);
       await setLocked(true);
-    } catch { /* Leave the visible canvas available for an explicit retry. */ }
+    } catch {
+      // The native surface is still interactive, so restore its editor affordances
+      // and leave it available for an explicit retry.
+      applyLockedPresentation(preferences.locked);
+    }
     finally { escapeLockPending = false; }
   }
 
@@ -1587,8 +1617,8 @@ export function mountMechanicsMapOverlay(
       element.style.transformOrigin = "top left";
     }
     preferences.locked = setup.locked;
-    root.dataset.locked = String(setup.locked); panel.dataset.locked = String(setup.locked);
-    lock.textContent = setup.locked ? "Unlock" : "Lock"; lock.dataset.active = String(setup.locked);
+    requestedLocked = setup.locked;
+    applyLockedPresentation(setup.locked);
     applyModuleGeometry(); scheduleDraw();
     await dependencies.setInteractive(!setup.locked);
   }
