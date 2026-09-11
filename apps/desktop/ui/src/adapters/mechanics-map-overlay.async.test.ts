@@ -139,6 +139,8 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     const shared = layout();
     shared.setups.default!.modules.map!.opacity = 0.43;
     shared.setups.default!.modules.player!.opacity = 0.61;
+    shared.setups.default!.modules.map!.backgroundOpacity = 0.35;
+    shared.setups.default!.modules.player!.backgroundOpacity = 0.2;
     const hide = vi.fn(async () => undefined);
     const acknowledgeInteractivity = vi.fn(async () => undefined);
     const setInteractive = vi.fn(async () => undefined);
@@ -187,8 +189,8 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     );
     expect(map.style.opacity).toBe("0.43");
     expect(player.style.opacity).toBe("0.61");
-    expect(map.style.getPropertyValue("--overlay-module-background-opacity")).toBe("0");
-    expect(player.style.getPropertyValue("--overlay-module-background-opacity")).toBe("0");
+    expect(map.style.getPropertyValue("--overlay-module-background-opacity")).toBe("0.35");
+    expect(player.style.getPropertyValue("--overlay-module-background-opacity")).toBe("0.2");
 
     const select = container.querySelector("select")!;
     const editorEscape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
@@ -225,7 +227,11 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       ".mechanics-map-overlay-runtime, .player-frame-overlay-runtime, .action-controls-overlay-runtime, .party-frame-overlay-runtime, .target-frame-overlay-runtime, .dungeon-objectives-overlay-runtime, .mechanic-alerts-overlay-runtime",
     )) {
       const computed = getComputedStyle(module);
-      expect(["", "transparent", "rgba(0, 0, 0, 0)"]).toContain(computed.backgroundColor);
+      // happy-dom does not resolve a custom property used as the alpha channel;
+      // the inline variable assertions above cover configured passive backing.
+      if (module !== map && module !== player) {
+        expect(["", "transparent", "rgba(0, 0, 0, 0)"]).toContain(computed.backgroundColor);
+      }
       expect(["", "0px"]).toContain(computed.borderWidth);
       expect(["", "none"]).toContain(computed.boxShadow);
     }
