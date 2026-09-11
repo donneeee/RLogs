@@ -14297,10 +14297,11 @@ fn enrich_bpsr_actor_combat_presentation(
             effect_id,
             locale,
         )?;
-        effect.presentation_name = display
-            .as_ref()
-            .map(|value| value.name.to_owned())
-            .or_else(|| presentation.technical_name.clone());
+        // `technical_name` is an exact catalog/debug identity, not reviewed
+        // user-facing copy. Keep the numeric effect ID and exact-authority
+        // semantic/icon metadata below, but fail closed on the visible label
+        // when neither shipped localization nor a reviewed source name exists.
+        effect.presentation_name = display.as_ref().map(|value| value.name.to_owned());
         if semantic_authorized {
             effect.presentation_kind = Some(presentation.kind.clone());
             effect.presentation_resolution = Some(
@@ -18784,6 +18785,62 @@ mod tests {
         );
         assert_eq!(effect.presentation_kind, None);
         assert_eq!(effect.presentation_resolution, None);
+    }
+
+    #[test]
+    fn actor_status_presentation_exposes_only_trusted_display_names() {
+        fn effect(effect_id: i64) -> rlogs_plugin_combat_meter::HistoryEffectSummary {
+            rlogs_plugin_combat_meter::HistoryEffectSummary {
+                effect_id: effect_id.to_string(),
+                presentation_name: Some("stale label".into()),
+                presentation_kind: None,
+                presentation_resolution: None,
+                icon_asset_path: None,
+                target_actor_id: "2".into(),
+                target_entity_uuid: "102".into(),
+                applied: 1,
+                refreshed: 0,
+                stacked: 0,
+                consumed: 0,
+                removed: 1,
+            }
+        }
+
+        let mut snapshot = captured_marksman_history();
+        let actor = &mut snapshot.runs[0].views[0].actors[0];
+        actor.effects = vec![effect(55_228), effect(2_203_291), effect(682_501)];
+
+        enrich_bpsr_actor_combat_presentation(
+            actor,
+            "global",
+            "24687926",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+            "en-US",
+        )
+        .unwrap();
+
+        let reviewed = &actor.effects[0];
+        assert_eq!(reviewed.effect_id, "55228");
+        assert_eq!(
+            reviewed.presentation_name.as_deref(),
+            Some("Luminary Bolt Vulnerability")
+        );
+        assert_eq!(reviewed.presentation_kind.as_deref(), Some("status-effect"));
+        assert_eq!(
+            reviewed.presentation_resolution.as_deref(),
+            Some("reviewed-source-name")
+        );
+
+        for (effect, expected_id) in actor.effects[1..].iter().zip(["2203291", "682501"]) {
+            assert_eq!(effect.effect_id, expected_id);
+            assert_eq!(effect.presentation_name, None);
+            assert_eq!(effect.presentation_kind.as_deref(), Some("status-effect"));
+            assert_eq!(
+                effect.presentation_resolution.as_deref(),
+                Some("design-only")
+            );
+            assert_eq!(effect.icon_asset_path, None);
+        }
     }
 
     #[test]

@@ -1268,9 +1268,7 @@ impl MechanicsMapProjector {
                         Some(TargetFrameDebuff {
                             effect_id: status.effect_id,
                             instance_id: status.instance_id,
-                            presentation_name: self
-                                .localized_status_display_name(status.effect_id)
-                                .or_else(|| presentation.technical_name.clone()),
+                            presentation_name: self.localized_status_display_name(status.effect_id),
                             icon_asset_path: Some(format!(
                                 "/game-assets/blue-protocol-star-resonance/shared/{icon}"
                             )),
@@ -1537,9 +1535,7 @@ impl MechanicsMapProjector {
                 Some(TargetFrameDebuff {
                     effect_id: status.effect_id,
                     instance_id: status.instance_id,
-                    presentation_name: self
-                        .localized_status_display_name(status.effect_id)
-                        .or_else(|| presentation.technical_name.clone()),
+                    presentation_name: self.localized_status_display_name(status.effect_id),
                     icon_asset_path: Some(format!(
                         "/game-assets/blue-protocol-star-resonance/shared/{icon}"
                     )),
@@ -1646,7 +1642,7 @@ impl MechanicsMapProjector {
 
     fn localized_status_display_name(&self, effect_id: i64) -> Option<String> {
         self.runtime_identity.as_ref().and_then(|identity| {
-            rlogs_game_bpsr::localized_status_effect_name_for_identity(
+            rlogs_game_bpsr::status_effect_display_presentation_for_identity(
                 &identity.deployment_id,
                 &identity.client_build,
                 &identity.protocol_pack_digest,
@@ -1655,7 +1651,7 @@ impl MechanicsMapProjector {
             )
             .ok()
             .flatten()
-            .map(str::to_owned)
+            .map(|presentation| presentation.name.to_owned())
         })
     }
 
@@ -2414,6 +2410,19 @@ mod tests {
         );
         assert_eq!(pack.digest(), REVIEWED_MECHANICS_PROTOCOL_PACK_DIGEST);
         assert!(reviewed_mechanics_identity(Some(&reviewed_identity())));
+    }
+
+    #[test]
+    fn live_status_labels_use_reviewed_presentation_and_hide_technical_names() {
+        let mut projector = MechanicsMapProjector::default();
+        projector.runtime_identity = Some(reviewed_identity());
+
+        assert_eq!(
+            projector.localized_status_display_name(55_228).as_deref(),
+            Some("Luminary Bolt Vulnerability")
+        );
+        assert_eq!(projector.localized_status_display_name(2_203_291), None);
+        assert_eq!(projector.localized_status_display_name(682_501), None);
     }
 
     fn entity(actor_id: u64, uuid: i64) -> EntityRef {
