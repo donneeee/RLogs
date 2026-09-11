@@ -2386,6 +2386,18 @@ impl RdpsRuntimeConfig {
     }
 
     fn validate(&self) -> Result<(), String> {
+        let same_build_bootstrap_digest = self.deployment_id
+            == crate::BPSR_COMPATIBILITY_EPOCH_DEPLOYMENT_ID
+            && self.game_build == crate::BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD
+            && crate::rdps_compatibility::reviewed_same_build_bootstrap_rdps_digests()?
+                .contains(&self.protocol_pack_digest);
+        let digest_has_formula_authority = |authorized: &[String]| {
+            authorized.contains(&self.protocol_pack_digest)
+                || (same_build_bootstrap_digest
+                    && authorized
+                        .iter()
+                        .any(|digest| digest == crate::BPSR_COMPATIBILITY_EPOCH_SOURCE_DIGEST))
+        };
         let promotion_state_is_consistent = match self.promotion_state.as_str() {
             "approved" => self.runtime_promotion_allowed(),
             "blocked-current-build-proof-gates-open" => !self.runtime_promotion_allowed(),
@@ -2523,9 +2535,9 @@ impl RdpsRuntimeConfig {
                     "sha256:9de9c7eccc5309686ad4e982968aef67c1d6cf6f59e71762c457ce8ce8f23ac3",
                     "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
                 ]
-            && team_luck
-                .critical_damage_authorized_protocol_pack_digests
-                .contains(&self.protocol_pack_digest)
+            && digest_has_formula_authority(
+                &team_luck.critical_damage_authorized_protocol_pack_digests,
+            )
             && team_luck.critical_damage_formula_authority_basis
                 == "current-build-strict-normal-vs-critical-ratio-replay-plus-target-pack-decoder-contract-migration"
             && team_luck.critical_damage_ratio_proof.is_valid()
@@ -2549,9 +2561,9 @@ impl RdpsRuntimeConfig {
                     "sha256:9de9c7eccc5309686ad4e982968aef67c1d6cf6f59e71762c457ce8ce8f23ac3",
                     "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
                 ]
-            && team_luck
-                .lucky_damage_authorized_protocol_pack_digests
-                .contains(&self.protocol_pack_digest)
+            && digest_has_formula_authority(
+                &team_luck.lucky_damage_authorized_protocol_pack_digests,
+            )
             && team_luck.formula_authority_basis
                 == "current-build-prior-pack-replay-plus-target-pack-decoder-contract-migration"
             && team_luck.accounting_method == "observed-final-damage-proportional-stage-share"
@@ -2920,9 +2932,7 @@ impl RdpsRuntimeConfig {
                     "sha256:9de9c7eccc5309686ad4e982968aef67c1d6cf6f59e71762c457ce8ce8f23ac3",
                     "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
                 ]
-            && inspiration
-                .authorized_protocol_pack_digests
-                .contains(&self.protocol_pack_digest)
+            && digest_has_formula_authority(&inspiration.authorized_protocol_pack_digests)
             && inspiration.formula_authority_basis
                 == "current-build-exact-lifecycle-removal-magnitude-and-critical-factor-replay-plus-target-pack-decoder-contract-migration"
             && inspiration.accounting_method == "observed-final-damage-proportional-stage-share"
@@ -4024,6 +4034,7 @@ fn rdps_runtime_registry() -> Result<&'static RdpsRuntimeRegistry, String> {
             let mut default_identity_by_build =
                 HashMap::from([(base.game_build.clone(), default_identity.clone())]);
             let mut by_identity = HashMap::from([(default_identity.clone(), base)]);
+            let mut compatibility_source_value = None;
             for build_override in overrides.builds {
                 if build_override.game_build.is_empty()
                     || !is_prefixed_sha256(&build_override.protocol_pack_digest)
@@ -4039,6 +4050,12 @@ fn rdps_runtime_registry() -> Result<&'static RdpsRuntimeRegistry, String> {
                 }
                 let mut value = base_value.clone();
                 merge_json_object(&mut value, build_override.patch);
+                if build_override.game_build == crate::BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD
+                    && build_override.protocol_pack_digest
+                        == crate::BPSR_COMPATIBILITY_EPOCH_SOURCE_DIGEST
+                {
+                    compatibility_source_value = Some(value.clone());
+                }
                 let config: RdpsRuntimeConfig = serde_json::from_value(value).map_err(|error| {
                     format!("bundled BPSR rDPS formula override is invalid: {error}")
                 })?;
@@ -4055,6 +4072,42 @@ fn rdps_runtime_registry() -> Result<&'static RdpsRuntimeRegistry, String> {
                 default_identity_by_build
                     .entry(config.game_build.clone())
                     .or_insert_with(|| identity.clone());
+                by_identity.insert(identity, config);
+            }
+
+            let source_identity = (
+                crate::BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD.to_owned(),
+                crate::BPSR_COMPATIBILITY_EPOCH_SOURCE_DIGEST.to_owned(),
+            );
+            if !by_identity.contains_key(&source_identity) {
+                return Err(
+                    "same-build bootstrap rDPS authority has no reviewed source formula identity"
+                        .into(),
+                );
+            }
+            let compatibility_source_value = compatibility_source_value.ok_or_else(|| {
+                "same-build bootstrap rDPS authority has no reviewed source formula value"
+                    .to_owned()
+            })?;
+            for protocol_pack_digest in
+                crate::rdps_compatibility::reviewed_same_build_bootstrap_rdps_digests()?
+            {
+                let identity = (
+                    crate::BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD.to_owned(),
+                    protocol_pack_digest.clone(),
+                );
+                if by_identity.contains_key(&identity) {
+                    return Err(
+                        "same-build bootstrap rDPS authority duplicates a formula identity".into(),
+                    );
+                }
+                let mut value = compatibility_source_value.clone();
+                value["game_build"] = serde_json::Value::String(identity.0.clone());
+                value["protocol_pack_digest"] = serde_json::Value::String(identity.1.clone());
+                let config: RdpsRuntimeConfig = serde_json::from_value(value).map_err(|error| {
+                    format!("same-build bootstrap rDPS formula alias is invalid: {error}")
+                })?;
+                config.validate()?;
                 by_identity.insert(identity, config);
             }
 
@@ -5141,6 +5194,64 @@ mod tests {
                 .expect("build-default identity should remain available")
                 .protocol_pack_digest,
             base_digest,
+        );
+    }
+
+    #[test]
+    fn registry_allows_only_reviewed_same_build_bootstrap_aliases() {
+        let reviewed =
+            crate::rdps_compatibility::reviewed_same_build_bootstrap_rdps_digests().unwrap();
+        for digest in reviewed {
+            let runtime = rdps_runtime_config_for_identity(
+                crate::BPSR_COMPATIBILITY_EPOCH_DEPLOYMENT_ID,
+                crate::BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD,
+                digest,
+            )
+            .unwrap()
+            .expect("every reviewed same-build bootstrap digest should have formula authority");
+            assert_eq!(
+                runtime.game_build,
+                crate::BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD
+            );
+            assert_eq!(runtime.protocol_pack_digest, *digest);
+            assert!(runtime.has_any_runtime_transfer_enabled());
+        }
+
+        let source = crate::ProtocolPack::from_json(include_bytes!(
+            "../protocol-packs/global/steam-24687926/pack.json"
+        ))
+        .unwrap();
+        let newer_build = crate::compatibility_epoch::retarget_protocol_pack(
+            &source,
+            "compatibility-fallback",
+            "global",
+            "steam",
+            "24699999",
+        )
+        .unwrap();
+        assert!(
+            rdps_runtime_config_for_identity("global", "24699999", newer_build.digest())
+                .unwrap()
+                .is_none()
+        );
+        let reviewed_digest = reviewed.first().unwrap();
+        assert!(
+            rdps_runtime_config_for_identity(
+                "unknown",
+                crate::BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD,
+                reviewed_digest,
+            )
+            .unwrap()
+            .is_none()
+        );
+        assert!(
+            rdps_runtime_config_for_identity(
+                "global",
+                crate::BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD,
+                "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            )
+            .unwrap()
+            .is_none()
         );
     }
 

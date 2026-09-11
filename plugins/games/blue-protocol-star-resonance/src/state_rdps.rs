@@ -120,6 +120,13 @@ pub fn state_damage_contribution_formula_identity() -> &'static str {
                         .as_slice(),
                 ),
                 (
+                    "rdps-same-build-bootstrap-authority.v1.json",
+                    include_bytes!(
+                        "../game-data/runtime/rdps-same-build-bootstrap-authority.v1.json"
+                    )
+                    .as_slice(),
+                ),
+                (
                     "external-state-rdps.v1.json",
                     include_bytes!("../game-data/runtime/external-state-rdps.v1.json").as_slice(),
                 ),
@@ -22931,6 +22938,31 @@ mod tests {
             "24687926",
             "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
         ));
+    }
+
+    #[test]
+    fn reviewed_same_build_bootstrap_identity_enables_rdps_without_authorizing_new_builds() {
+        let digest = crate::rdps_compatibility::reviewed_same_build_bootstrap_rdps_digests()
+            .unwrap()
+            .first()
+            .unwrap();
+        assert!(state_damage_contribution_target_matches("global", "24687926", digest).unwrap());
+        let runtime = rdps_runtime_config_for_identity("global", "24687926", digest)
+            .unwrap()
+            .unwrap();
+        assert!(runtime_matches_event_identity(
+            runtime, "global", "24687926", digest,
+        ));
+        assert!(!state_damage_contribution_target_matches("unknown", "24687926", digest).unwrap());
+        assert!(!state_damage_contribution_target_matches("global", "24699999", digest).unwrap());
+        assert!(
+            !state_damage_contribution_target_matches(
+                "global",
+                "24687926",
+                "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            )
+            .unwrap()
+        );
     }
 
     #[test]

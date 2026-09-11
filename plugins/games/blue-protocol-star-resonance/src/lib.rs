@@ -41,6 +41,7 @@ mod profile;
 mod profile_projection;
 mod rdps;
 mod rdps_audit;
+mod rdps_compatibility;
 mod rdps_runtime;
 mod rdps_validation;
 mod region;

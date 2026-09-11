@@ -6,7 +6,7 @@ pub const BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD: &str = "24687926";
 pub const BPSR_COMPATIBILITY_EPOCH_SOURCE_DIGEST: &str =
     "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
 
-const BOOTSTRAP_CHANNELS: &[&str] = &[
+pub(crate) const BPSR_COMPATIBILITY_BOOTSTRAP_CHANNELS: &[&str] = &[
     "standalone",
     "epic",
     "starsea",
@@ -107,7 +107,7 @@ pub fn bpsr_runtime_authority(
     if client_build == BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD
         && matches!(deployment_id, "global" | "unknown")
     {
-        for channel in BOOTSTRAP_CHANNELS {
+        for channel in BPSR_COMPATIBILITY_BOOTSTRAP_CHANNELS {
             let bootstrap = retarget_protocol_pack(
                 &pack,
                 "client-bootstrap",

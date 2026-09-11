@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "compatibility_epoch_version": 1,
+  "deployment_id": "global",
+  "game_build": "24687926",
+  "source_protocol_pack_digest": "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
+  "derivation": "client-bootstrap",
+  "derived_target_deployment_id": "unknown",
+  "equivalence_scope": "same-build-protocol-definition-identical-except-pack-id-target-and-appended-provenance",
+  "variants": [
+    { "channel": "standalone", "protocol_pack_digest": "sha256:670d709e370b4fd6affb41d3f79da12203c009cc0e5fb35c8c7c6529df8e9c22" },
+    { "channel": "epic", "protocol_pack_digest": "sha256:4148a56291567ee4a66dc4dcd2e021540f06f120df3547f297add8b7eb3731f2" },
+    { "channel": "starsea", "protocol_pack_digest": "sha256:70b467cef66bb8cbc6b136d7053595677793a18ad1d01757708e1f5285614ded" },
+    { "channel": "starasia", "protocol_pack_digest": "sha256:b607e974fe8448d30c1eb390376bbb3ff3ee2bad9b266342bbf93e3cb9847f5f" },
+    { "channel": "starsea-steam", "protocol_pack_digest": "sha256:9767fbf397276d1c8de1b0081ff373bbb0d475e6ceb60a3f0f35e2e33b9f36c0" },
+    { "channel": "starasia-steam", "protocol_pack_digest": "sha256:e8f8cf0dd22d9624bd4200787c64da5adf498e9610f33f733c55397f280d6cc9" },
+    { "channel": "starttw", "protocol_pack_digest": "sha256:707d219df6846ec47f177acb8dab732d7c5fbb803d4e7766a9ab449494374bbf" },
+    { "channel": "star", "protocol_pack_digest": "sha256:2a0b8302ed11d18fae61b4c5bda1b175b815327c293cedd0f719aeb1f659231a" },
+    { "channel": "unknown", "protocol_pack_digest": "sha256:52b0d954ed3d1179f9fd75dd2edd312cbea66d0d84168f957a47cf81ef3e86ee" }
+  ]
+}

@@ -8755,7 +8755,7 @@ impl RuntimeController {
                     format!("{} BPSR", target.channel)
                 };
                 Some(format!(
-                    "{client_label} is using reviewed pack build {pack_source_build} under compatibility epoch {}. Ordinary damage, history, overlay, and submissions remain enabled until a reviewed seasonal update replaces this pack; rDPS stays unavailable until formula authority is reviewed for this runtime. Region resolves automatically from NotifyEnterWorld.scene_ip when it is observed.",
+                    "{client_label} is using reviewed pack build {pack_source_build} under compatibility epoch {}. Ordinary damage, history, overlay, and submissions remain enabled until a reviewed seasonal update replaces this pack. Same-build rDPS becomes available only after the region resolves to Global and the derived decoder digest matches the reviewed bootstrap receipt. Region resolves automatically from NotifyEnterWorld.scene_ip when it is observed.",
                     rlogs_game_bpsr::BPSR_COMPATIBILITY_EPOCH_VERSION,
                 ))
             }
