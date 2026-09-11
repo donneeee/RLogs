@@ -19,9 +19,9 @@ include!(concat!(env!("OUT_DIR"), "/bundled_dungeon_seasons.rs"));
 /// objective mapping remains follow-up evidence; this target does not imply
 /// that receipt already exists.
 pub const BUNDLED_RUN_RULE_DEPLOYMENT_ID: &str = "global";
-pub const BUNDLED_RUN_RULE_CLIENT_BUILD: &str = "24687926";
+pub const BUNDLED_RUN_RULE_CLIENT_BUILD: &str = crate::BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD;
 pub const BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST: &str =
-    "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
+    crate::BPSR_COMPATIBILITY_EPOCH_SOURCE_DIGEST;
 
 const TINA_MINDREALM_RULES: &[u8] =
     include_bytes!("../run-rules/global/steam-24252055/activities/tina-mindrealm.json");
@@ -336,9 +336,9 @@ pub fn bundled_run_rules_support_identity(
     client_build: &str,
     protocol_pack_digest: &str,
 ) -> Result<bool, BpsrRunRuleError> {
-    Ok(deployment_id == BUNDLED_RUN_RULE_DEPLOYMENT_ID
-        && client_build == BUNDLED_RUN_RULE_CLIENT_BUILD
-        && protocol_pack_digest == BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST)
+    crate::bpsr_runtime_authority(deployment_id, client_build, protocol_pack_digest)
+        .map(|authority| authority.is_some())
+        .map_err(BpsrRunRuleError::CompatibilityAuthority)
 }
 
 pub fn bundled_gauntlet_scene_ids() -> Result<BTreeSet<i32>, BpsrRunRuleError> {
@@ -401,6 +401,8 @@ pub enum BpsrRunRuleError {
     InvalidDungeonSeason { file: String, reason: String },
     #[error("bundled BPSR dungeon-season catalogs contradict master scene {0}")]
     ConflictingMasterScene(i32),
+    #[error("could not resolve the BPSR compatibility epoch: {0}")]
+    CompatibilityAuthority(String),
 }
 
 #[cfg(test)]
@@ -416,7 +418,7 @@ mod tests {
     }
 
     #[test]
-    fn authoritative_run_rules_require_the_exact_authorized_runtime_identity() {
+    fn authoritative_run_rules_require_a_digest_verified_runtime_identity() {
         let authorized_pack = crate::ProtocolPack::from_json(include_bytes!(
             "../protocol-packs/global/steam-24687926/pack.json"
         ))
@@ -436,6 +438,22 @@ mod tests {
         let (deployment, build, digest) = authorized_identity();
         assert!(
             bundled_run_reducer_config_for_identity(deployment, build, digest)
+                .unwrap()
+                .is_some()
+        );
+        let fallback = crate::LiveProtocolPackSelection {
+            path: std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("protocol-packs/global/steam-24687926/pack.json"),
+            build_id: "24699999".into(),
+            pack_build_id: build.into(),
+            deployment_id: deployment.into(),
+            channel: "steam".into(),
+            kind: crate::LiveProtocolPackKind::CompatibilityFallback,
+        }
+        .load_pack()
+        .unwrap();
+        assert!(
+            bundled_run_reducer_config_for_identity(deployment, "24699999", fallback.digest())
                 .unwrap()
                 .is_some()
         );

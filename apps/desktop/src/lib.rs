@@ -8743,8 +8743,10 @@ impl RuntimeController {
                 target.build_id,
             )),
             LiveProtocolPackKind::CompatibilityFallback => Some(format!(
-                "PROVISIONAL BPSR compatibility decode using pack build {} on client build {}. History, overlay, submissions, and rDPS remain active; results may be affected by changed routes and every unresolved protocol record is retained.",
-                pack_source_build, target.build_id,
+                "PROVISIONAL BPSR compatibility decode using pack build {} on client build {}. Ordinary damage, history, overlay, and submissions remain active under compatibility epoch {}; rDPS stays unavailable until formula authority is reviewed for this runtime. Results may be affected by changed routes and every unresolved protocol record is retained.",
+                pack_source_build,
+                target.build_id,
+                rlogs_game_bpsr::BPSR_COMPATIBILITY_EPOCH_VERSION,
             )),
             LiveProtocolPackKind::ClientBootstrap => {
                 let client_label = if target.channel == "unknown" {
@@ -8753,7 +8755,8 @@ impl RuntimeController {
                     format!("{} BPSR", target.channel)
                 };
                 Some(format!(
-                    "{client_label} is using reviewed pack build {pack_source_build} under the current carry-forward compatibility policy. Ordinary builds remain enabled until a reviewed seasonal update replaces this pack. Region resolves automatically from NotifyEnterWorld.scene_ip when it is observed.",
+                    "{client_label} is using reviewed pack build {pack_source_build} under compatibility epoch {}. Ordinary damage, history, overlay, and submissions remain enabled until a reviewed seasonal update replaces this pack; rDPS stays unavailable until formula authority is reviewed for this runtime. Region resolves automatically from NotifyEnterWorld.scene_ip when it is observed.",
+                    rlogs_game_bpsr::BPSR_COMPATIBILITY_EPOCH_VERSION,
                 ))
             }
         };
@@ -15632,11 +15635,41 @@ mod tests {
     }
 
     #[test]
-    fn desktop_run_authority_requires_the_sealed_exact_runtime_identity() {
+    fn desktop_run_authority_requires_a_digest_verified_runtime_identity() {
         let exact = reviewed_bpsr_region_context().unwrap();
         assert!(bpsr_has_run_authority(&exact).unwrap());
         assert!(
             bpsr_encounter_recorder(&exact)
+                .unwrap()
+                .authoritative_projection_enabled()
+        );
+
+        let fallback = rlogs_game_bpsr::LiveProtocolPackSelection {
+            path: Path::new(env!("CARGO_MANIFEST_DIR")).join(
+                "../../plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24687926/pack.json",
+            ),
+            build_id: "24699999".into(),
+            pack_build_id: rlogs_game_bpsr::BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD.into(),
+            deployment_id: "global".into(),
+            channel: "steam".into(),
+            kind: LiveProtocolPackKind::CompatibilityFallback,
+        }
+        .load_pack()
+        .unwrap();
+        let fallback_region = RegionContext {
+            identity: RegionIdentity {
+                deployment_id: "global".into(),
+                region_id: "global".into(),
+                realm_id: None,
+                world_id: None,
+            },
+            client_build: "24699999".into(),
+            protocol_pack_digest: fallback.digest().into(),
+            evidence: Vec::new(),
+        };
+        assert!(bpsr_has_run_authority(&fallback_region).unwrap());
+        assert!(
+            bpsr_encounter_recorder(&fallback_region)
                 .unwrap()
                 .authoritative_projection_enabled()
         );

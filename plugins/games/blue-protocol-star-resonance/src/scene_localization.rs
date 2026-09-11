@@ -45,9 +45,17 @@ pub fn bundled_localization_supports_identity(
     protocol_pack_digest: &str,
 ) -> Result<bool, String> {
     let identity = localization_runtime_identity()?;
+    if identity.deployment_id != crate::BPSR_COMPATIBILITY_EPOCH_DEPLOYMENT_ID
+        || identity.client_build != crate::BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD
+        || identity.protocol_pack_digest != crate::BPSR_COMPATIBILITY_EPOCH_SOURCE_DIGEST
+    {
+        return Err(
+            "bundled BPSR localization identity is outside the active compatibility epoch".into(),
+        );
+    }
     Ok(deployment_id == identity.deployment_id
-        && client_build == identity.client_build
-        && protocol_pack_digest == identity.protocol_pack_digest)
+        && crate::bpsr_runtime_authority(deployment_id, client_build, protocol_pack_digest)?
+            .is_some())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]

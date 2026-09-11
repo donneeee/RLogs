@@ -9,6 +9,7 @@ mod boss_presentation;
 mod catalog;
 mod class_localization;
 mod combat_presentation;
+mod compatibility_epoch;
 mod continuous_recording;
 mod coverage;
 mod damage_protocol;
@@ -112,6 +113,11 @@ pub use combat_presentation::{
     localized_status_effect_name, localized_status_effect_name_for_identity,
     rdps_attribution_effect_presentation, status_effect_display_presentation,
     status_effect_display_presentation_for_identity, status_effect_presentation,
+};
+pub use compatibility_epoch::{
+    BPSR_COMPATIBILITY_EPOCH_DEPLOYMENT_ID, BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD,
+    BPSR_COMPATIBILITY_EPOCH_SOURCE_DIGEST, BPSR_COMPATIBILITY_EPOCH_VERSION, BpsrRuntimeAuthority,
+    bpsr_runtime_authority,
 };
 pub use continuous_recording::{
     ContinuousBpsrRecorder, ContinuousForcedReset, ContinuousRecordingConfig,

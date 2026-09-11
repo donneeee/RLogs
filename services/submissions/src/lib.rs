@@ -1493,14 +1493,13 @@ impl SubmissionService {
             .iter()
             .map(|participant| (public_participant_key(participant), participant.damage))
             .collect::<BTreeMap<_, _>>();
-        let exact_presentation_semantics =
-            bpsr_has_exact_presentation_semantic_authority(&history)?;
+        let presentation_semantics_authorized = bpsr_has_presentation_semantic_authority(&history)?;
         let replay_damage = view
             .actors
             .iter()
             .filter(|actor| is_public_participant(actor))
             .map(|actor| {
-                let participant = public_participant(actor, exact_presentation_semantics);
+                let participant = public_participant(actor, presentation_semantics_authorized);
                 (public_participant_key(&participant), participant.damage)
             })
             .collect::<BTreeMap<_, _>>();
@@ -1515,7 +1514,7 @@ impl SubmissionService {
             .iter()
             .filter(|actor| is_public_participant(actor))
             .map(|actor| PublicReconciledParticipant {
-                participant: public_participant(actor, exact_presentation_semantics),
+                participant: public_participant(actor, presentation_semantics_authorized),
                 rdps_damage: actor.rdps_damage,
                 contribution_given: actor.rdps_contribution_given,
                 contribution_received: actor.rdps_contribution_received,
@@ -1565,7 +1564,7 @@ impl SubmissionService {
             rdps_status: run.rdps_status.clone(),
             rate_clock: view.rate_clock.clone(),
             rate_clock_complete: view.rate_clock_complete,
-            rdps_effects: public_rdps_effects(view, exact_presentation_semantics),
+            rdps_effects: public_rdps_effects(view, presentation_semantics_authorized),
             rdps_influences: public_rdps_influences(view),
             canonical_run_observed_bounds,
             aligned_profile_observed_micros,
@@ -5025,7 +5024,7 @@ fn bpsr_has_run_authority_for_region(region: &RegionContext) -> Result<bool, Ser
     .is_some())
 }
 
-fn bpsr_has_exact_presentation_semantic_authority(
+fn bpsr_has_presentation_semantic_authority(
     history: &CombatHistorySnapshot,
 ) -> Result<bool, ServiceError> {
     bundled_localization_supports_identity(
@@ -5061,8 +5060,8 @@ fn public_runs(
     character_id_by_entity_uuid: &BTreeMap<i64, Option<String>>,
     observed_timeline: &ObservedTimelineProjection,
 ) -> Vec<PublicRun> {
-    let exact_presentation_semantics =
-        bpsr_has_exact_presentation_semantic_authority(history).unwrap_or(false);
+    let presentation_semantics_authorized =
+        bpsr_has_presentation_semantic_authority(history).unwrap_or(false);
     history
         .runs
         .iter()
@@ -5143,7 +5142,7 @@ fn public_runs(
                     })
                     .map(str::to_owned)
                     .or_else(|| {
-                        exact_presentation_semantics
+                        presentation_semantics_authorized
                             .then(|| run.presentation_scene_name.clone())
                             .flatten()
                     }),
@@ -5182,13 +5181,15 @@ fn public_runs(
                         view.actors
                             .iter()
                             .filter(|actor| is_public_participant(actor))
-                            .map(|actor| public_participant(actor, exact_presentation_semantics))
+                            .map(|actor| {
+                                public_participant(actor, presentation_semantics_authorized)
+                            })
                             .collect()
                     })
                     .unwrap_or_default(),
                 rdps_influences: view.map(public_rdps_influences).unwrap_or_default(),
                 rdps_effects: view
-                    .map(|view| public_rdps_effects(view, exact_presentation_semantics))
+                    .map(|view| public_rdps_effects(view, presentation_semantics_authorized))
                     .unwrap_or_default(),
                 timeline: PublicCombatTimeline::default(),
             };
@@ -5199,7 +5200,7 @@ fn public_runs(
                 analysis,
                 history,
                 observed_timeline,
-                exact_presentation_semantics,
+                presentation_semantics_authorized,
             );
             Some(public_run)
         })
@@ -7388,17 +7389,17 @@ fn private_parse_membership(
 
 fn public_participant(
     actor: &HistoryActorSummary,
-    exact_presentation_semantics: bool,
+    presentation_semantics_authorized: bool,
 ) -> PublicParticipant {
     PublicParticipant {
         actor_id: actor.actor_id.clone(),
         character_id: actor.character_id.clone(),
         observed_character_key: None,
-        display_name: exact_presentation_semantics
+        display_name: presentation_semantics_authorized
             .then(|| actor.presentation_name.clone())
             .flatten()
             .or_else(|| actor.display_name.clone()),
-        actor_kind: exact_presentation_semantics
+        actor_kind: presentation_semantics_authorized
             .then(|| actor.presentation_kind.clone())
             .flatten()
             .or_else(|| actor.actor_kind.clone()),
@@ -7432,7 +7433,7 @@ fn public_participant(
                             .flatten()
                             .map(str::to_owned)
                     }),
-                    presentation_kind: exact_presentation_semantics
+                    presentation_kind: presentation_semantics_authorized
                         .then(|| ability.presentation_kind.clone())
                         .flatten(),
                     icon_asset_path: trusted_presentation.and_then(|presentation| {
@@ -7440,10 +7441,10 @@ fn public_participant(
                             format!("/game-assets/blue-protocol-star-resonance/shared/{path}")
                         })
                     }),
-                    presentation_recount_group_id: exact_presentation_semantics
+                    presentation_recount_group_id: presentation_semantics_authorized
                         .then(|| ability.presentation_recount_group_id.clone())
                         .flatten(),
-                    presentation_recount_group_name: exact_presentation_semantics
+                    presentation_recount_group_name: presentation_semantics_authorized
                         .then(|| ability.presentation_recount_group_name.clone())
                         .flatten(),
                     casts: ability.casts,
@@ -7475,9 +7476,9 @@ fn public_participant(
 
 fn public_rdps_effects(
     view: &CombatHistoryView,
-    exact_presentation_semantics: bool,
+    presentation_semantics_authorized: bool,
 ) -> Vec<PublicRdpsEffectPresentation> {
-    if !exact_presentation_semantics {
+    if !presentation_semantics_authorized {
         return Vec::new();
     }
     view.rdps_effect_presentations
@@ -7668,7 +7669,7 @@ fn public_timeline_death_actor_presentation(
         let name = bounded_timeline_death_presentation_name(
             public_participant(
                 actor,
-                bpsr_has_exact_presentation_semantic_authority(history).unwrap_or(false),
+                bpsr_has_presentation_semantic_authority(history).unwrap_or(false),
             )
             .display_name
             .as_deref()?,
@@ -7756,7 +7757,7 @@ fn public_combat_timeline(
     analysis: &RunAnalysis,
     history: &CombatHistorySnapshot,
     observed_timeline: &ObservedTimelineProjection,
-    exact_presentation_semantics: bool,
+    presentation_semantics_authorized: bool,
 ) -> PublicCombatTimeline {
     let death_events = projected_timeline_death_events(view, history);
     let mut timeline = PublicCombatTimeline {
@@ -7826,7 +7827,7 @@ fn public_combat_timeline(
         &run.participants,
         &observed_timeline.skill_uses,
         canonical_run_observed_bounds(analysis),
-        exact_presentation_semantics,
+        presentation_semantics_authorized,
     );
     timeline
 }
@@ -8224,7 +8225,7 @@ fn populate_timeline_skill_uses(
     participants: &[PublicParticipant],
     observations: &[ObservedTimelineSkillUse],
     canonical_bounds: Option<CanonicalRunObservedBounds>,
-    exact_presentation_semantics: bool,
+    presentation_semantics_authorized: bool,
 ) {
     populate_timeline_skill_uses_with_limits(
         timeline,
@@ -8232,7 +8233,7 @@ fn populate_timeline_skill_uses(
         participants,
         observations,
         canonical_bounds,
-        exact_presentation_semantics,
+        presentation_semantics_authorized,
         MAXIMUM_TIMELINE_SKILL_USES,
         MAXIMUM_TIMELINE_SKILL_USES_PER_PARTICIPANT,
     );
@@ -8245,7 +8246,7 @@ fn populate_timeline_skill_uses_with_limits(
     participants: &[PublicParticipant],
     observations: &[ObservedTimelineSkillUse],
     canonical_bounds: Option<CanonicalRunObservedBounds>,
-    exact_presentation_semantics: bool,
+    presentation_semantics_authorized: bool,
     maximum_rows: usize,
     maximum_rows_per_participant: usize,
 ) {
@@ -8315,7 +8316,7 @@ fn populate_timeline_skill_uses_with_limits(
             action_id: observation.action_id.clone(),
             action_instance_id: observation.action_instance_id.map(|id| id.to_string()),
             state: CastState::Started,
-            action_kind: exact_presentation_semantics
+            action_kind: presentation_semantics_authorized
                 .then(|| {
                     observation
                         .action_id
@@ -9096,7 +9097,101 @@ mod tests {
     }
 
     #[test]
-    fn backend_presentation_semantics_require_the_artifact_exact_runtime_identity() {
+    fn backend_run_authority_completes_a_digest_verified_compatibility_epoch_run() {
+        let pack_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "../../plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24687926/pack.json",
+        );
+        let pack = rlogs_game_bpsr::LiveProtocolPackSelection {
+            path: pack_path,
+            build_id: "24699999".into(),
+            pack_build_id: BUNDLED_RUN_RULE_CLIENT_BUILD.into(),
+            deployment_id: BUNDLED_RUN_RULE_DEPLOYMENT_ID.into(),
+            channel: "steam".into(),
+            kind: rlogs_game_bpsr::LiveProtocolPackKind::CompatibilityFallback,
+        }
+        .load_pack()
+        .unwrap();
+        let region = RegionContext {
+            identity: RegionIdentity {
+                deployment_id: BUNDLED_RUN_RULE_DEPLOYMENT_ID.into(),
+                region_id: "global".into(),
+                realm_id: None,
+                world_id: None,
+            },
+            client_build: "24699999".into(),
+            protocol_pack_digest: pack.digest().into(),
+            evidence: Vec::new(),
+        };
+        let mut recorder = bpsr_encounter_recorder_for_region(&region).unwrap();
+        assert!(recorder.authoritative_projection_enabled());
+        recorder.begin_live(&rlogs_log_format::RlogHeader::new(
+            "compatibility-epoch-run",
+            region.clone(),
+            "unit-test",
+        ));
+        let mut events = vec![
+            cross_vantage_dungeon_envelope(1, 5, rlogs_events::DungeonEventKind::Started),
+            cross_vantage_timeline_envelope(
+                2,
+                10,
+                Some(10),
+                TimelineEventKind::RunBoundary {
+                    state: RunState::Entered,
+                    scene_id: Some(rlogs_events::SceneId(7152)),
+                    reason: rlogs_events::BoundaryReason::AuthoritativePacket,
+                },
+            ),
+            cross_vantage_timeline_envelope(
+                3,
+                20,
+                Some(20),
+                TimelineEventKind::CombatBoundary {
+                    state: rlogs_events::CombatState::Started,
+                    reason: rlogs_events::BoundaryReason::AuthoritativePacket,
+                },
+            ),
+            cross_vantage_timeline_envelope(
+                4,
+                30,
+                Some(30),
+                TimelineEventKind::CombatBoundary {
+                    state: rlogs_events::CombatState::Ended,
+                    reason: rlogs_events::BoundaryReason::AuthoritativePacket,
+                },
+            ),
+            cross_vantage_timeline_envelope(
+                5,
+                40,
+                Some(40),
+                TimelineEventKind::RunBoundary {
+                    state: RunState::Completed,
+                    scene_id: Some(rlogs_events::SceneId(7152)),
+                    reason: rlogs_events::BoundaryReason::Completion,
+                },
+            ),
+            cross_vantage_dungeon_envelope(6, 45, rlogs_events::DungeonEventKind::Completed),
+        ];
+        let mut timeline_sequence = 0;
+        for event in &mut events {
+            event.region = region.clone();
+            if let CanonicalEvent::Timeline(timeline) = &mut event.event {
+                timeline_sequence += 1;
+                timeline.sequence = timeline_sequence;
+            }
+            recorder.observe_live(event).unwrap();
+        }
+        assert!(
+            recorder
+                .live_snapshot()
+                .unwrap()
+                .runs
+                .iter()
+                .any(RunAnalysis::is_completed_submission)
+        );
+    }
+
+    #[test]
+    fn backend_presentation_semantics_require_digest_verified_runtime_authority() {
         let exact = CombatHistorySnapshot {
             schema_version: 1,
             session_id: "history".into(),
@@ -9109,19 +9204,37 @@ mod tests {
             rdps_formula_identity: None,
             runs: Vec::new(),
         };
-        assert!(bpsr_has_exact_presentation_semantic_authority(&exact).unwrap());
+        assert!(bpsr_has_presentation_semantic_authority(&exact).unwrap());
+
+        let fallback_pack = rlogs_game_bpsr::LiveProtocolPackSelection {
+            path: Path::new(env!("CARGO_MANIFEST_DIR")).join(
+                "../../plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24687926/pack.json",
+            ),
+            build_id: "24699999".into(),
+            pack_build_id: BUNDLED_RUN_RULE_CLIENT_BUILD.into(),
+            deployment_id: BUNDLED_RUN_RULE_DEPLOYMENT_ID.into(),
+            channel: "steam".into(),
+            kind: rlogs_game_bpsr::LiveProtocolPackKind::CompatibilityFallback,
+        }
+        .load_pack()
+        .unwrap();
+        let mut compatibility_epoch = exact.clone();
+        compatibility_epoch.client_build = "24699999".into();
+        compatibility_epoch.protocol_pack_digest = fallback_pack.digest().into();
+        assert!(bpsr_has_presentation_semantic_authority(&compatibility_epoch).unwrap());
 
         let mut wrong_deployment = exact.clone();
         wrong_deployment.deployment_id = "cn".into();
-        assert!(!bpsr_has_exact_presentation_semantic_authority(&wrong_deployment).unwrap());
+        assert!(!bpsr_has_presentation_semantic_authority(&wrong_deployment).unwrap());
 
         let mut wrong_build = exact.clone();
         wrong_build.client_build = "24687927".into();
-        assert!(!bpsr_has_exact_presentation_semantic_authority(&wrong_build).unwrap());
+        wrong_build.protocol_pack_digest = "sha256:unverified-for-24687927".into();
+        assert!(!bpsr_has_presentation_semantic_authority(&wrong_build).unwrap());
 
         let mut wrong_digest = exact;
         wrong_digest.protocol_pack_digest = "sha256:wrong-pack".into();
-        assert!(!bpsr_has_exact_presentation_semantic_authority(&wrong_digest).unwrap());
+        assert!(!bpsr_has_presentation_semantic_authority(&wrong_digest).unwrap());
     }
 
     fn timeline_participant(actor_id: &str) -> PublicParticipant {
@@ -11414,7 +11527,7 @@ mod tests {
             history.deployment_id = deployment.into();
             history.client_build = build.into();
             history.protocol_pack_digest = digest.into();
-            let exact = bpsr_has_exact_presentation_semantic_authority(&history).unwrap_or(false);
+            let exact = bpsr_has_presentation_semantic_authority(&history).unwrap_or(false);
             let projected = public_participant(&actor, exact);
             assert_eq!(projected.class_name.as_deref(), Some("Marksman"));
             assert_eq!(

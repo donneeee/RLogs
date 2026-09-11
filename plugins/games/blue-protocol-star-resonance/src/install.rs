@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use crate::{MappingProvenance, ProtocolPack, ProtocolPackError};
+use crate::{ProtocolPack, ProtocolPackError, compatibility_epoch::retarget_protocol_pack};
 
 pub const BPSR_STEAM_APP_ID: &str = "3681810";
 
@@ -92,7 +92,6 @@ impl LiveProtocolPackSelection {
             return Ok(pack);
         }
 
-        let mut definition = pack.definition().clone();
         let derivation = match self.kind {
             LiveProtocolPackKind::CompatibilityFallback => "compatibility-fallback",
             LiveProtocolPackKind::ClientBootstrap => "client-bootstrap",
@@ -100,26 +99,16 @@ impl LiveProtocolPackSelection {
                 unreachable!("exact packs returned before provisional retargeting")
             }
         };
-        definition.pack_id = format!("{}-{derivation}-{}", definition.pack_id, self.channel);
-        definition
-            .target
-            .deployment_id
-            .clone_from(&self.deployment_id);
-        definition.target.region_id = None;
-        definition.target.channel.clone_from(&self.channel);
-        definition.target.build_id.clone_from(&self.build_id);
-        definition.provenance.push(MappingProvenance {
-            source: format!("provisional-{derivation}"),
-            reference: format!(
-                "pack_build={};client_deployment={};client_channel={};client_build={}",
-                self.pack_build_id, self.deployment_id, self.channel, self.build_id
-            ),
-        });
-        ProtocolPack::build(definition).map_err(|source| {
-            LiveProtocolPackSelectionError::InvalidPack {
-                path: self.path.clone(),
-                source,
-            }
+        retarget_protocol_pack(
+            &pack,
+            derivation,
+            &self.deployment_id,
+            &self.channel,
+            &self.build_id,
+        )
+        .map_err(|message| LiveProtocolPackSelectionError::InvalidPack {
+            path: self.path.clone(),
+            source: ProtocolPackError::Serialization(message),
         })
     }
 }
