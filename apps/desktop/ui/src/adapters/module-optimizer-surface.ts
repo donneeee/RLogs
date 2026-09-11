@@ -760,7 +760,7 @@ function renderModuleLinkSummary(
     );
   }
   container.replaceChildren(...children);
-  container.hidden = effects.childElementCount === 0 && solution === null;
+  container.hidden = effects.childElementCount === 0 && solution === null && catalog === null;
 }
 
 function solutionModuleTile(
