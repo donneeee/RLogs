@@ -268,11 +268,13 @@ export function mountMechanicsMapOverlay(
   let layoutSaving = false;
   let requestedLocked = preferences.locked;
   let lockTransitionTail: Promise<void> = Promise.resolve();
+  let presentationTransitionsPending = 0;
   type LayoutOperation = (settings: OverlayLayoutSettings) => void;
   const layoutOperations: LayoutOperation[] = [];
 
   const root = element("main", "overlay-canvas-runtime");
   root.dataset.locked = String(preferences.locked);
+  root.dataset.mode = preferences.locked ? "passive" : "edit";
   const panel = element("section", "mechanics-map-overlay-runtime");
   panel.dataset.locked = String(preferences.locked);
   panel.dataset.expanded = String(preferences.expanded);
@@ -1460,12 +1462,14 @@ export function mountMechanicsMapOverlay(
 
   function applyLockedPresentation(value: boolean): void {
     root.dataset.locked = String(value);
+    root.dataset.mode = value ? "passive" : "edit";
     panel.dataset.locked = String(value);
     lock.textContent = value ? "Unlock" : "Lock";
     lock.dataset.active = String(value);
   }
 
   async function setLocked(value: boolean): Promise<void> {
+    presentationTransitionsPending += 1;
     requestedLocked = value;
     applyLockedPresentation(value);
     const transition = lockTransitionTail.then(async () => {
@@ -1486,12 +1490,15 @@ export function mountMechanicsMapOverlay(
         applyLockedPresentation(preferences.locked);
       }
       throw error;
+    } finally {
+      presentationTransitionsPending -= 1;
     }
   }
 
   async function exitEditing(): Promise<void> {
     if (preferences.locked || escapeLockPending) return;
     escapeLockPending = true;
+    presentationTransitionsPending += 1;
     // Remove every editor-only painted layer synchronously with the user's
     // Done/Escape input. Native click-through still waits for the required
     // forced-edit acknowledgement below.
@@ -1506,7 +1513,10 @@ export function mountMechanicsMapOverlay(
       // and leave it available for an explicit retry.
       applyLockedPresentation(preferences.locked);
     }
-    finally { escapeLockPending = false; }
+    finally {
+      presentationTransitionsPending -= 1;
+      escapeLockPending = false;
+    }
   }
 
   function setExpanded(value: boolean): void {
@@ -1548,7 +1558,7 @@ export function mountMechanicsMapOverlay(
   }
 
   async function refreshLayout(requiredRevision?: number): Promise<void> {
-    if (layoutSaving || layoutOperations.length > 0) {
+    if (presentationTransitionsPending > 0 || layoutSaving || layoutOperations.length > 0) {
       if (!layoutSaving) void flushSharedLayout();
       return;
     }

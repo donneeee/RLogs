@@ -5720,50 +5720,50 @@ body {
 body[data-surface="overlay-canvas"] { margin: 0; min-width: 0; min-height: 100vh; overflow: hidden; }
 body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw; height: 100vh; }
 .overlay-canvas-runtime { position: relative; overflow: hidden; background: transparent; }
-.overlay-canvas-runtime[data-locked="true"] { background: transparent; background-image: none; border: 0; box-shadow: none; backdrop-filter: none; }
-:root[data-surface="overlay-canvas"] .overlay-canvas-runtime[data-locked="false"] {
+.overlay-canvas-runtime[data-mode="passive"] { background: transparent; background-image: none; border: 0; box-shadow: none; backdrop-filter: none; }
+:root[data-surface="overlay-canvas"] .overlay-canvas-runtime[data-mode="edit"] {
   background: rgba(2, 7, 12, 0.58) !important;
 }
-.overlay-canvas-runtime[data-locked="false"] .mechanics-map-overlay-runtime,
-.overlay-canvas-runtime[data-locked="false"] .player-frame-overlay-runtime,
-.overlay-canvas-runtime[data-locked="false"] .action-controls-overlay-runtime,
-.overlay-canvas-runtime[data-locked="false"] .party-frame-overlay-runtime,
-.overlay-canvas-runtime[data-locked="false"] .target-frame-overlay-runtime,
-.overlay-canvas-runtime[data-locked="false"] .dungeon-objectives-overlay-runtime,
-.overlay-canvas-runtime[data-locked="false"] .mechanic-alerts-overlay-runtime {
+.overlay-canvas-runtime[data-mode="edit"] .mechanics-map-overlay-runtime,
+.overlay-canvas-runtime[data-mode="edit"] .player-frame-overlay-runtime,
+.overlay-canvas-runtime[data-mode="edit"] .action-controls-overlay-runtime,
+.overlay-canvas-runtime[data-mode="edit"] .party-frame-overlay-runtime,
+.overlay-canvas-runtime[data-mode="edit"] .target-frame-overlay-runtime,
+.overlay-canvas-runtime[data-mode="edit"] .dungeon-objectives-overlay-runtime,
+.overlay-canvas-runtime[data-mode="edit"] .mechanic-alerts-overlay-runtime {
   border: 1px solid rgb(92 228 212 / 64%) !important;
   background: rgba(8, 18, 28, 0.62) !important;
   box-shadow: 0 8px 28px rgb(0 0 0 / 42%) !important;
 }
-.overlay-canvas-runtime[data-locked="true"] .mechanics-map-overlay-runtime,
-.overlay-canvas-runtime[data-locked="true"] .player-frame-overlay-runtime,
-.overlay-canvas-runtime[data-locked="true"] .action-controls-overlay-runtime,
-.overlay-canvas-runtime[data-locked="true"] .party-frame-overlay-runtime,
-.overlay-canvas-runtime[data-locked="true"] .target-frame-overlay-runtime,
-.overlay-canvas-runtime[data-locked="true"] .dungeon-objectives-overlay-runtime,
-.overlay-canvas-runtime[data-locked="true"] .mechanic-alerts-overlay-runtime {
+.overlay-canvas-runtime[data-mode="passive"] .mechanics-map-overlay-runtime,
+.overlay-canvas-runtime[data-mode="passive"] .player-frame-overlay-runtime,
+.overlay-canvas-runtime[data-mode="passive"] .action-controls-overlay-runtime,
+.overlay-canvas-runtime[data-mode="passive"] .party-frame-overlay-runtime,
+.overlay-canvas-runtime[data-mode="passive"] .target-frame-overlay-runtime,
+.overlay-canvas-runtime[data-mode="passive"] .dungeon-objectives-overlay-runtime,
+.overlay-canvas-runtime[data-mode="passive"] .mechanic-alerts-overlay-runtime {
   border: 0 !important;
   background: transparent !important;
   background-image: none !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
 }
-.overlay-canvas-runtime[data-locked="true"] .mechanics-map-overlay-toolbar,
-.overlay-canvas-runtime[data-locked="true"] .mechanics-map-overlay-footer,
-.overlay-canvas-runtime[data-locked="true"] .player-frame-overlay-toolbar,
-.overlay-canvas-runtime[data-locked="true"] .action-controls-overlay-toolbar,
-.overlay-canvas-runtime[data-locked="true"] .party-frame-overlay-toolbar,
-.overlay-canvas-runtime[data-locked="true"] .target-frame-overlay-toolbar,
-.overlay-canvas-runtime[data-locked="true"] .dungeon-objectives-overlay-toolbar,
-.overlay-canvas-runtime[data-locked="true"] .mechanic-alerts-overlay-toolbar,
-.overlay-canvas-runtime[data-locked="true"] .automarker-overlay-picker,
-.overlay-canvas-runtime[data-locked="true"] .mechanics-map-overlay-resize,
-.overlay-canvas-runtime[data-locked="true"] .player-frame-overlay-resize,
-.overlay-canvas-runtime[data-locked="true"] .action-controls-overlay-resize,
-.overlay-canvas-runtime[data-locked="true"] .party-frame-overlay-resize,
-.overlay-canvas-runtime[data-locked="true"] .target-frame-overlay-resize,
-.overlay-canvas-runtime[data-locked="true"] .dungeon-objectives-overlay-resize,
-.overlay-canvas-runtime[data-locked="true"] .mechanic-alerts-overlay-resize { display: none; }
+.overlay-canvas-runtime[data-mode="passive"] .mechanics-map-overlay-toolbar,
+.overlay-canvas-runtime[data-mode="passive"] .mechanics-map-overlay-footer,
+.overlay-canvas-runtime[data-mode="passive"] .player-frame-overlay-toolbar,
+.overlay-canvas-runtime[data-mode="passive"] .action-controls-overlay-toolbar,
+.overlay-canvas-runtime[data-mode="passive"] .party-frame-overlay-toolbar,
+.overlay-canvas-runtime[data-mode="passive"] .target-frame-overlay-toolbar,
+.overlay-canvas-runtime[data-mode="passive"] .dungeon-objectives-overlay-toolbar,
+.overlay-canvas-runtime[data-mode="passive"] .mechanic-alerts-overlay-toolbar,
+.overlay-canvas-runtime[data-mode="passive"] .automarker-overlay-picker,
+.overlay-canvas-runtime[data-mode="passive"] .mechanics-map-overlay-resize,
+.overlay-canvas-runtime[data-mode="passive"] .player-frame-overlay-resize,
+.overlay-canvas-runtime[data-mode="passive"] .action-controls-overlay-resize,
+.overlay-canvas-runtime[data-mode="passive"] .party-frame-overlay-resize,
+.overlay-canvas-runtime[data-mode="passive"] .target-frame-overlay-resize,
+.overlay-canvas-runtime[data-mode="passive"] .dungeon-objectives-overlay-resize,
+.overlay-canvas-runtime[data-mode="passive"] .mechanic-alerts-overlay-resize { display: none; }
 .mechanics-map-overlay-runtime { position: absolute; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; box-sizing: border-box; overflow: hidden; border: 1px solid rgb(92 228 212 / 38%); border-radius: 12px; color: #eef6fb; background: rgb(5 13 23 / 86%); box-shadow: 0 8px 28px rgb(0 0 0 / 38%); }
 .mechanics-map-overlay-runtime[data-expanded="true"] { border-radius: 8px; background: rgb(5 13 23 / 94%); }
 .mechanics-map-overlay-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 7px 8px; border-bottom: 1px solid rgb(92 228 212 / 18%); background: rgb(8 20 33 / 90%); user-select: none; }

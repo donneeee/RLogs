@@ -551,16 +551,48 @@ mod tests {
                 .as_nanos()
         ));
         let mut store = OverlayLayoutSettingsStore::open(&path).unwrap();
+        let selected_id = store.snapshot().selected_setup_id;
+        let mut edited = store.snapshot();
+        let map = edited.setups[&selected_id].modules["map"].clone();
+        edited.setups.get_mut(&selected_id).unwrap().locked = false;
+        edited
+            .setups
+            .get_mut(&selected_id)
+            .unwrap()
+            .modules
+            .get_mut("map")
+            .unwrap()
+            .opacity = 0.43;
+        edited
+            .setups
+            .get_mut(&selected_id)
+            .unwrap()
+            .modules
+            .get_mut("map")
+            .unwrap()
+            .x = 0.17;
+        let edited = store.update(edited).unwrap();
+        let edited_map = edited.setups[&selected_id].modules["map"].clone();
+        assert_ne!(edited_map, map);
         let enabled = store.set_canvas_passive_enabled().unwrap();
         assert!(enabled.canvas_enabled);
         assert!(enabled.setups[&enabled.selected_setup_id].locked);
-        assert_eq!(enabled.revision, 1);
-        assert_eq!(store.set_canvas_passive_enabled().unwrap().revision, 1);
+        assert_eq!(enabled.setups[&selected_id].modules["map"], edited_map);
+        assert_eq!(enabled.revision, 2);
+        assert_eq!(store.set_canvas_passive_enabled().unwrap().revision, 2);
+        let hidden = store.set_canvas_enabled(false).unwrap();
+        assert!(!hidden.canvas_enabled);
+        assert_eq!(hidden.setups[&selected_id].modules["map"], edited_map);
+        let restored = store.set_canvas_passive_enabled().unwrap();
+        assert!(restored.canvas_enabled);
+        assert!(restored.setups[&selected_id].locked);
+        assert_eq!(restored.setups[&selected_id].modules["map"], edited_map);
         drop(store);
 
         let reopened = OverlayLayoutSettingsStore::open(&path).unwrap().snapshot();
         assert!(reopened.canvas_enabled);
         assert!(reopened.setups[&reopened.selected_setup_id].locked);
+        assert_eq!(reopened.setups[&selected_id].modules["map"], edited_map);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(sibling_path(&path, "backup"));
     }

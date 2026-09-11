@@ -143,6 +143,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     const acknowledgeInteractivity = vi.fn(async () => undefined);
     const setInteractive = vi.fn(async () => undefined);
     let interactivityHandler: ((interactive: boolean) => void) | undefined;
+    let layoutRefreshHandler: ((revision: number) => void) | undefined;
     const removeInteractivity = vi.fn();
     const saveLayout = vi.fn(async (value: OverlayLayoutSettings) => ({
       ...structuredClone(value),
@@ -159,6 +160,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       setInteractive,
       acknowledgeInteractivity,
       onInteractivity: async (handler) => { interactivityHandler = handler; return removeInteractivity; },
+      onLayoutRefresh: async (handler) => { layoutRefreshHandler = handler; return () => undefined; },
       onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
       loadAutomarkerPreset: async () => ({
@@ -176,6 +178,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     const player = container.querySelector<HTMLElement>(".player-frame-overlay-runtime")!;
     const resize = container.querySelector<HTMLElement>(".mechanics-map-overlay-resize")!;
     expect(root.dataset.locked).toBe("false");
+    expect(root.dataset.mode).toBe("edit");
     expect(["transparent", "rgba(0, 0, 0, 0)"]).not.toContain(
       getComputedStyle(root).backgroundColor,
     );
@@ -201,6 +204,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     expect(acknowledgeInteractivity).toHaveBeenCalledWith(true);
     expect(hide).not.toHaveBeenCalled();
     expect(root.dataset.locked).toBe("true");
+    expect(root.dataset.mode).toBe("passive");
     expect(map.dataset.locked).toBe("true");
     expect(resize.isConnected).toBe(true);
     expect(map.isConnected).toBe(true);
@@ -231,6 +235,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
 
     interactivityHandler?.(true);
     await vi.waitFor(() => expect(root.dataset.locked).toBe("false"));
+    expect(root.dataset.mode).toBe("edit");
     await vi.waitFor(() => expect(saveLayout).toHaveBeenCalled());
     await flushPromises();
     setInteractive.mockClear(); saveLayout.mockClear(); hide.mockClear();
@@ -240,6 +245,13 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     acknowledgeInteractivity.mockImplementationOnce(() => doneAcknowledged.promise);
     done.click();
     expect(root.dataset.locked).toBe("true");
+    expect(root.dataset.mode).toBe("passive");
+    const originalSharedRevision = shared.revision;
+    shared.revision += 100;
+    layoutRefreshHandler?.(shared.revision);
+    await flushPromises();
+    expect(root.dataset.mode).toBe("passive");
+    shared.revision = originalSharedRevision;
     expect(getComputedStyle(resize).display).toBe("none");
     expect(getComputedStyle(document.documentElement).backgroundColor).toBe("transparent");
     expect(getComputedStyle(document.body).backgroundColor).toBe("transparent");
@@ -256,6 +268,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
 
     interactivityHandler?.(true);
     await vi.waitFor(() => expect(root.dataset.locked).toBe("false"));
+    expect(root.dataset.mode).toBe("edit");
     await vi.waitFor(() => expect(saveLayout).toHaveBeenCalled());
     await flushPromises();
     setInteractive.mockClear(); saveLayout.mockClear();
