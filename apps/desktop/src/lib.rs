@@ -16482,6 +16482,7 @@ mod tests {
             friendly_name: "Ethernet".into(),
             description: "Intel fixture adapter".into(),
             interface_index: 8,
+            ipv6_interface_index: 8,
             interface_type: 6,
             physical_address: vec![0x00, 0x11, 0x22, 0x33, 0x44, 0x55],
             operational: true,

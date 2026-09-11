@@ -11,13 +11,17 @@ use windows_sys::Win32::{
     NetworkManagement::{
         IpHelper::{
             GAA_FLAG_INCLUDE_GATEWAYS, GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_DNS_SERVER,
-            GAA_FLAG_SKIP_MULTICAST, GetAdaptersAddresses, GetExtendedTcpTable,
-            IP_ADAPTER_ADDRESSES_LH, MIB_TCP6ROW_OWNER_PID, MIB_TCP6TABLE_OWNER_PID,
-            MIB_TCPROW_OWNER_PID, MIB_TCPTABLE_OWNER_PID, TCP_TABLE_OWNER_PID_ALL,
+            GAA_FLAG_SKIP_MULTICAST, GetAdaptersAddresses, GetBestInterfaceEx, GetExtendedTcpTable,
+            IF_TYPE_SOFTWARE_LOOPBACK, IP_ADAPTER_ADDRESSES_LH, MIB_TCP6ROW_OWNER_PID,
+            MIB_TCP6TABLE_OWNER_PID, MIB_TCPROW_OWNER_PID, MIB_TCPTABLE_OWNER_PID,
+            TCP_TABLE_OWNER_PID_ALL,
         },
         Ndis::IfOperStatusUp,
     },
-    Networking::WinSock::{AF_INET, AF_INET6, AF_UNSPEC, SOCKADDR_IN, SOCKADDR_IN6},
+    Networking::WinSock::{
+        AF_INET, AF_INET6, AF_UNSPEC, IN_ADDR, IN_ADDR_0, IN_ADDR_0_0, IN6_ADDR, IN6_ADDR_0,
+        SOCKADDR, SOCKADDR_IN, SOCKADDR_IN6,
+    },
 };
 
 use crate::dumpcap::DumpcapLiveCapture;
@@ -34,6 +38,8 @@ const MAX_TABLE_QUERY_ATTEMPTS: usize = 4;
 const MAX_ADAPTER_QUERY_ATTEMPTS: usize = 4;
 const MAX_ADAPTERS: usize = 512;
 const MAX_UNICAST_ADDRESSES_PER_ADAPTER: usize = 512;
+pub const MAX_WINDOWS_CAPTURE_CANDIDATES: usize = 4;
+pub const NPCAP_LOOPBACK_ADAPTER_NAME: &str = r"\Device\NPF_Loopback";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsCaptureAdapter {
@@ -43,6 +49,7 @@ pub struct WindowsCaptureAdapter {
     pub friendly_name: String,
     pub description: String,
     pub interface_index: u32,
+    pub ipv6_interface_index: u32,
     pub interface_type: u32,
     pub physical_address: Vec<u8>,
     pub operational: bool,
@@ -63,6 +70,31 @@ pub struct WindowsCaptureAdapterRecommendation {
     pub source: WindowsCaptureAdapterRecommendationSource,
     pub matched_game_connections: usize,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum WindowsCaptureCandidateSource {
+    ExplicitPrimary,
+    GameSocketLocalAddress,
+    GameSocketRoute,
+    LoopbackProbation,
+    SystemRoute,
+}
+
+/// One bounded, privacy-safe adapter candidate for a future multi-adapter
+/// capture. Reasons contain no socket endpoints or packet-derived data.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsCaptureCandidate {
+    pub adapter_name: String,
+    pub sources: Vec<WindowsCaptureCandidateSource>,
+    pub matched_game_connections: usize,
+}
+
+trait WindowsRouteResolver {
+    fn interface_index(&self, destination: IpAddr) -> Option<u32>;
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SystemWindowsRouteResolver;
 
 /// Enumerates Windows adapters using the native IP Helper API.
 ///
@@ -134,55 +166,229 @@ pub fn recommend_windows_capture_adapter(
     adapters: &[WindowsCaptureAdapter],
     process_ids: &[u32],
 ) -> Option<WindowsCaptureAdapterRecommendation> {
-    let mut address_counts = BTreeMap::<IpAddr, usize>::new();
-    for process_id in process_ids.iter().copied().filter(|value| *value != 0) {
-        let Ok(mut owner) = WindowsProcessSocketOwner::new(process_id) else {
-            continue;
-        };
-        let Ok(connections) = owner.snapshot() else {
-            continue;
-        };
-        for connection in connections {
-            *address_counts.entry(connection.client.address).or_default() += 1;
-        }
-    }
+    let candidates = recommend_windows_capture_candidates(adapters, process_ids, None);
+    compatibility_capture_recommendation(adapters, &candidates)
+}
 
-    let matched = adapters
-        .iter()
-        .map(|adapter| {
-            let count = adapter
-                .unicast_addresses
-                .iter()
-                .map(|address| address_counts.get(address).copied().unwrap_or_default())
-                .sum::<usize>();
-            (adapter, count)
-        })
-        .filter(|(_, count)| *count > 0)
-        .max_by_key(|(adapter, count)| {
-            (
-                *count,
-                usize::from(adapter.operational),
-                usize::from(adapter.has_gateway),
-                u32::MAX - adapter.ipv4_metric,
-            )
-        });
-    if let Some((adapter, matched_game_connections)) = matched {
+fn compatibility_capture_recommendation(
+    adapters: &[WindowsCaptureAdapter],
+    candidates: &[WindowsCaptureCandidate],
+) -> Option<WindowsCaptureAdapterRecommendation> {
+    if let Some(candidate) = candidates.iter().find(|candidate| {
+        candidate
+            .sources
+            .contains(&WindowsCaptureCandidateSource::GameSocketLocalAddress)
+    }) {
         return Some(WindowsCaptureAdapterRecommendation {
-            adapter_name: adapter.adapter_name.clone(),
+            adapter_name: candidate.adapter_name.clone(),
             source: WindowsCaptureAdapterRecommendationSource::GameTraffic,
-            matched_game_connections,
+            matched_game_connections: candidate.matched_game_connections,
         });
     }
-
+    // Keep the legacy API's weaker fallback independent of the candidate cap:
+    // several route-derived probes must not make the single recommendation
+    // disappear when a routed adapter is still available.
     adapters
         .iter()
         .filter(|adapter| adapter.operational && adapter.has_gateway)
-        .min_by_key(|adapter| (adapter.ipv4_metric, adapter.interface_index))
+        .min_by_key(|adapter| {
+            (
+                adapter.ipv4_metric,
+                adapter.interface_index,
+                adapter.adapter_name.as_str(),
+            )
+        })
         .map(|adapter| WindowsCaptureAdapterRecommendation {
             adapter_name: adapter.adapter_name.clone(),
             source: WindowsCaptureAdapterRecommendationSource::SystemRoute,
             matched_game_connections: 0,
         })
+}
+
+/// Plans at most four adapter candidates without opening capture handles or
+/// mutating the caller's selected interface. This is intentionally only a
+/// discovery result; protocol ownership must still be proven by the signature
+/// boundary before any frame is exposed.
+pub fn recommend_windows_capture_candidates(
+    adapters: &[WindowsCaptureAdapter],
+    process_ids: &[u32],
+    explicit_primary: Option<&str>,
+) -> Vec<WindowsCaptureCandidate> {
+    let mut connections = Vec::new();
+    for process_id in process_ids.iter().copied().filter(|value| *value != 0) {
+        let Ok(owner) = WindowsProcessSocketOwner::new(process_id) else {
+            continue;
+        };
+        let Ok(mut snapshot) = owner.snapshot_adapter_candidates() else {
+            continue;
+        };
+        connections.append(&mut snapshot);
+    }
+    connections.sort_unstable();
+    connections.dedup();
+    plan_windows_capture_candidates(
+        adapters,
+        &connections,
+        explicit_primary,
+        &SystemWindowsRouteResolver,
+    )
+}
+
+fn plan_windows_capture_candidates<R: WindowsRouteResolver>(
+    adapters: &[WindowsCaptureAdapter],
+    connections: &[TcpConnection],
+    explicit_primary: Option<&str>,
+    routes: &R,
+) -> Vec<WindowsCaptureCandidate> {
+    let mut candidates = Vec::new();
+    if let Some(primary) = explicit_primary
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let canonical = adapters
+            .iter()
+            .find(|adapter| same_adapter_name(&adapter.adapter_name, primary))
+            .map_or(primary, |adapter| adapter.adapter_name.as_str());
+        add_capture_candidate(
+            &mut candidates,
+            canonical,
+            WindowsCaptureCandidateSource::ExplicitPrimary,
+            0,
+        );
+    }
+
+    let mut address_counts = BTreeMap::<IpAddr, usize>::new();
+    for connection in connections {
+        *address_counts.entry(connection.client.address).or_default() += 1;
+    }
+    let mut directly_matched = adapters
+        .iter()
+        .filter(|adapter| adapter.interface_type != IF_TYPE_SOFTWARE_LOOPBACK)
+        .filter_map(|adapter| {
+            let count = adapter
+                .unicast_addresses
+                .iter()
+                .filter(|address| !address.is_loopback())
+                .map(|address| address_counts.get(address).copied().unwrap_or_default())
+                .sum::<usize>();
+            (count > 0).then_some((adapter, count))
+        })
+        .collect::<Vec<_>>();
+    directly_matched.sort_by(|(left, left_count), (right, right_count)| {
+        right_count
+            .cmp(left_count)
+            .then_with(|| right.operational.cmp(&left.operational))
+            .then_with(|| right.has_gateway.cmp(&left.has_gateway))
+            .then_with(|| left.ipv4_metric.cmp(&right.ipv4_metric))
+            .then_with(|| left.interface_index.cmp(&right.interface_index))
+            .then_with(|| left.adapter_name.cmp(&right.adapter_name))
+    });
+    for (adapter, count) in &directly_matched {
+        add_capture_candidate(
+            &mut candidates,
+            &adapter.adapter_name,
+            WindowsCaptureCandidateSource::GameSocketLocalAddress,
+            *count,
+        );
+    }
+
+    let mut destinations = connections
+        .iter()
+        .map(|connection| connection.server.address)
+        .filter(|address| !address.is_unspecified() && !address.is_loopback())
+        .collect::<Vec<_>>();
+    destinations.sort_unstable();
+    destinations.dedup();
+    for destination in destinations {
+        let Some(interface_index) = routes.interface_index(destination) else {
+            continue;
+        };
+        let Some(adapter) = adapters.iter().find(|adapter| match destination {
+            IpAddr::V4(_) => adapter.interface_index == interface_index,
+            IpAddr::V6(_) => adapter.ipv6_interface_index == interface_index,
+        }) else {
+            continue;
+        };
+        add_capture_candidate(
+            &mut candidates,
+            &adapter.adapter_name,
+            WindowsCaptureCandidateSource::GameSocketRoute,
+            0,
+        );
+    }
+
+    if connections.iter().any(|connection| {
+        connection.client.address.is_loopback() || connection.server.address.is_loopback()
+    }) {
+        add_capture_candidate(
+            &mut candidates,
+            NPCAP_LOOPBACK_ADAPTER_NAME,
+            WindowsCaptureCandidateSource::LoopbackProbation,
+            0,
+        );
+    }
+
+    if let Some(adapter) = adapters
+        .iter()
+        .filter(|adapter| adapter.operational && adapter.has_gateway)
+        .min_by_key(|adapter| {
+            (
+                adapter.ipv4_metric,
+                adapter.interface_index,
+                adapter.adapter_name.as_str(),
+            )
+        })
+    {
+        add_capture_candidate(
+            &mut candidates,
+            &adapter.adapter_name,
+            WindowsCaptureCandidateSource::SystemRoute,
+            0,
+        );
+    }
+
+    for candidate in &mut candidates {
+        candidate.sources.sort_unstable();
+        candidate.sources.dedup();
+    }
+    candidates.truncate(MAX_WINDOWS_CAPTURE_CANDIDATES);
+    candidates
+}
+
+fn add_capture_candidate(
+    candidates: &mut Vec<WindowsCaptureCandidate>,
+    adapter_name: &str,
+    source: WindowsCaptureCandidateSource,
+    matched_game_connections: usize,
+) {
+    if let Some(candidate) = candidates
+        .iter_mut()
+        .find(|candidate| same_adapter_name(&candidate.adapter_name, adapter_name))
+    {
+        candidate.sources.push(source);
+        candidate.matched_game_connections = candidate
+            .matched_game_connections
+            .saturating_add(matched_game_connections);
+        return;
+    }
+    candidates.push(WindowsCaptureCandidate {
+        adapter_name: adapter_name.to_owned(),
+        sources: vec![source],
+        matched_game_connections,
+    });
+}
+
+fn same_adapter_name(left: &str, right: &str) -> bool {
+    normalized_adapter_name(left) == normalized_adapter_name(right)
+}
+
+fn normalized_adapter_name(value: &str) -> String {
+    let normalized = value.trim().to_ascii_lowercase();
+    normalized
+        .strip_prefix(r"\device\npf_")
+        .unwrap_or(&normalized)
+        .trim_matches(|character| character == '{' || character == '}')
+        .to_owned()
 }
 
 #[derive(Debug, Clone)]
@@ -203,6 +409,13 @@ impl WindowsProcessSocketOwner {
     }
 
     fn snapshot_ipv4(&self) -> Result<Vec<TcpConnection>, CaptureError> {
+        self.snapshot_ipv4_with_loopback(false)
+    }
+
+    fn snapshot_ipv4_with_loopback(
+        &self,
+        include_loopback: bool,
+    ) -> Result<Vec<TcpConnection>, CaptureError> {
         let buffer = query_tcp_table(u32::from(AF_INET))?;
         // SAFETY: `query_tcp_table` returns an aligned buffer initialized by
         // `GetExtendedTcpTable` for AF_INET and TCP_TABLE_OWNER_PID_ALL.
@@ -233,7 +446,9 @@ impl WindowsProcessSocketOwner {
                     network_port(row.dwRemotePort),
                 ),
             );
-            if usable_remote_connection(connection) {
+            if usable_candidate_connection(connection)
+                && (include_loopback || usable_remote_connection(connection))
+            {
                 connections.push(connection);
             }
         }
@@ -241,6 +456,13 @@ impl WindowsProcessSocketOwner {
     }
 
     fn snapshot_ipv6(&self) -> Result<Vec<TcpConnection>, CaptureError> {
+        self.snapshot_ipv6_with_loopback(false)
+    }
+
+    fn snapshot_ipv6_with_loopback(
+        &self,
+        include_loopback: bool,
+    ) -> Result<Vec<TcpConnection>, CaptureError> {
         let buffer = query_tcp_table(u32::from(AF_INET6))?;
         // SAFETY: `query_tcp_table` returns an aligned buffer initialized by
         // `GetExtendedTcpTable` for AF_INET6 and TCP_TABLE_OWNER_PID_ALL.
@@ -271,10 +493,20 @@ impl WindowsProcessSocketOwner {
                     network_port(row.dwRemotePort),
                 ),
             );
-            if usable_remote_connection(connection) {
+            if usable_candidate_connection(connection)
+                && (include_loopback || usable_remote_connection(connection))
+            {
                 connections.push(connection);
             }
         }
+        Ok(connections)
+    }
+
+    fn snapshot_adapter_candidates(&self) -> Result<Vec<TcpConnection>, CaptureError> {
+        let mut connections = self.snapshot_ipv4_with_loopback(true)?;
+        connections.extend(self.snapshot_ipv6_with_loopback(true)?);
+        connections.sort_unstable();
+        connections.dedup();
         Ok(connections)
     }
 }
@@ -726,6 +958,7 @@ fn parse_adapter_table(buffer: &[usize]) -> Result<Vec<WindowsCaptureAdapter>, C
             friendly_name,
             description,
             interface_index,
+            ipv6_interface_index: adapter.Ipv6IfIndex,
             interface_type: adapter.IfType,
             physical_address: adapter.PhysicalAddress[..usize::try_from(
                 adapter.PhysicalAddressLength,
@@ -909,11 +1142,71 @@ fn network_port(value: u32) -> u16 {
     u16::from_be(value as u16)
 }
 
-fn usable_remote_connection(connection: TcpConnection) -> bool {
+impl WindowsRouteResolver for SystemWindowsRouteResolver {
+    fn interface_index(&self, destination: IpAddr) -> Option<u32> {
+        let mut interface_index = 0_u32;
+        let status = match destination {
+            IpAddr::V4(address) => {
+                let octets = address.octets();
+                let socket = SOCKADDR_IN {
+                    sin_family: AF_INET,
+                    sin_port: 0,
+                    sin_addr: IN_ADDR {
+                        S_un: IN_ADDR_0 {
+                            S_un_b: IN_ADDR_0_0 {
+                                s_b1: octets[0],
+                                s_b2: octets[1],
+                                s_b3: octets[2],
+                                s_b4: octets[3],
+                            },
+                        },
+                    },
+                    sin_zero: [0; 8],
+                };
+                // SAFETY: `socket` is a fully initialized IPv4 sockaddr and
+                // `interface_index` is writable for the duration of the call.
+                unsafe {
+                    GetBestInterfaceEx(
+                        ptr::addr_of!(socket).cast::<SOCKADDR>(),
+                        &mut interface_index,
+                    )
+                }
+            }
+            IpAddr::V6(address) => {
+                let socket = SOCKADDR_IN6 {
+                    sin6_family: AF_INET6,
+                    sin6_port: 0,
+                    sin6_flowinfo: 0,
+                    sin6_addr: IN6_ADDR {
+                        u: IN6_ADDR_0 {
+                            Byte: address.octets(),
+                        },
+                    },
+                    Anonymous: Default::default(),
+                };
+                // SAFETY: `socket` is a fully initialized IPv6 sockaddr and
+                // `interface_index` is writable for the duration of the call.
+                unsafe {
+                    GetBestInterfaceEx(
+                        ptr::addr_of!(socket).cast::<SOCKADDR>(),
+                        &mut interface_index,
+                    )
+                }
+            }
+        };
+        (status == NO_ERROR && interface_index != 0).then_some(interface_index)
+    }
+}
+
+fn usable_candidate_connection(connection: TcpConnection) -> bool {
     connection.client.port > 0
         && connection.server.port > 0
         && !connection.client.address.is_unspecified()
         && !connection.server.address.is_unspecified()
+}
+
+fn usable_remote_connection(connection: TcpConnection) -> bool {
+    usable_candidate_connection(connection)
         && !connection.client.address.is_loopback()
         && !connection.server.address.is_loopback()
 }
@@ -947,6 +1240,277 @@ fn adapter_table_error(message: impl Into<String>) -> CaptureError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Debug, Default)]
+    struct FixtureRoutes(BTreeMap<IpAddr, u32>);
+
+    impl WindowsRouteResolver for FixtureRoutes {
+        fn interface_index(&self, destination: IpAddr) -> Option<u32> {
+            self.0.get(&destination).copied()
+        }
+    }
+
+    fn adapter(
+        name: &str,
+        interface_index: u32,
+        metric: u32,
+        address: [u8; 4],
+    ) -> WindowsCaptureAdapter {
+        WindowsCaptureAdapter {
+            adapter_name: name.into(),
+            friendly_name: name.into(),
+            description: String::new(),
+            interface_index,
+            ipv6_interface_index: interface_index,
+            interface_type: 6,
+            physical_address: Vec::new(),
+            operational: true,
+            has_gateway: true,
+            ipv4_metric: metric,
+            unicast_addresses: vec![IpAddr::V4(Ipv4Addr::from(address))],
+        }
+    }
+
+    fn connection(client: [u8; 4], server: [u8; 4]) -> TcpConnection {
+        TcpConnection::new(
+            TcpEndpoint::new(IpAddr::V4(Ipv4Addr::from(client)), 50_000),
+            TcpEndpoint::new(IpAddr::V4(Ipv4Addr::from(server)), 443),
+        )
+    }
+
+    fn ipv6_connection(client: &str, server: &str) -> TcpConnection {
+        TcpConnection::new(
+            TcpEndpoint::new(client.parse().expect("fixture IPv6 client"), 50_000),
+            TcpEndpoint::new(server.parse().expect("fixture IPv6 server"), 443),
+        )
+    }
+
+    #[test]
+    fn candidate_plan_prioritizes_explicit_then_direct_game_traffic() {
+        let adapters = vec![
+            adapter("{PRIMARY}", 1, 5, [192, 0, 2, 10]),
+            adapter("{GAME}", 2, 25, [198, 51, 100, 10]),
+        ];
+        let plan = plan_windows_capture_candidates(
+            &adapters,
+            &[connection([198, 51, 100, 10], [203, 0, 113, 8])],
+            Some(r"\Device\NPF_{PRIMARY}"),
+            &FixtureRoutes::default(),
+        );
+
+        assert_eq!(plan[0].adapter_name, "{PRIMARY}");
+        assert_eq!(
+            plan[0].sources,
+            vec![
+                WindowsCaptureCandidateSource::ExplicitPrimary,
+                WindowsCaptureCandidateSource::SystemRoute,
+            ]
+        );
+        assert_eq!(plan[1].adapter_name, "{GAME}");
+        assert_eq!(plan[1].matched_game_connections, 1);
+        assert!(
+            plan[1]
+                .sources
+                .contains(&WindowsCaptureCandidateSource::GameSocketLocalAddress)
+        );
+    }
+
+    #[test]
+    fn exitlag_style_loopback_evidence_adds_only_bounded_loopback_probation() {
+        let adapters = vec![adapter("{ETHERNET}", 8, 10, [192, 0, 2, 10])];
+        let routes = FixtureRoutes(BTreeMap::from([(
+            IpAddr::V4(Ipv4Addr::new(203, 0, 113, 9)),
+            8,
+        )]));
+        let loopback = connection([127, 0, 0, 1], [127, 0, 0, 2]);
+        let plan = plan_windows_capture_candidates(&adapters, &[loopback], None, &routes);
+
+        assert_eq!(plan[0].adapter_name, NPCAP_LOOPBACK_ADAPTER_NAME);
+        assert_eq!(
+            plan[0].sources,
+            vec![WindowsCaptureCandidateSource::LoopbackProbation]
+        );
+        assert_eq!(plan[1].adapter_name, "{ETHERNET}");
+        assert!(
+            plan[1]
+                .sources
+                .contains(&WindowsCaptureCandidateSource::SystemRoute)
+        );
+    }
+
+    #[test]
+    fn mixed_direct_and_loopback_connections_keep_special_loopback_candidate() {
+        let adapters = vec![adapter("{ETHERNET}", 8, 10, [192, 0, 2, 10])];
+        let connections = [
+            connection([192, 0, 2, 10], [203, 0, 113, 9]),
+            connection([127, 0, 0, 1], [127, 0, 0, 2]),
+        ];
+        let plan = plan_windows_capture_candidates(
+            &adapters,
+            &connections,
+            None,
+            &FixtureRoutes::default(),
+        );
+
+        assert_eq!(plan[0].adapter_name, "{ETHERNET}");
+        assert_eq!(plan[1].adapter_name, NPCAP_LOOPBACK_ADAPTER_NAME);
+        assert_eq!(
+            plan[1].sources,
+            vec![WindowsCaptureCandidateSource::LoopbackProbation]
+        );
+    }
+
+    #[test]
+    fn enumerated_software_loopback_does_not_replace_npcap_loopback() {
+        let mut enumerated_loopback = adapter("{WINDOWS-LOOPBACK}", 7, 1, [127, 0, 0, 1]);
+        enumerated_loopback.interface_type = IF_TYPE_SOFTWARE_LOOPBACK;
+        enumerated_loopback.has_gateway = false;
+        let physical = adapter("{ETHERNET}", 8, 10, [192, 0, 2, 10]);
+        let loopback = connection([127, 0, 0, 1], [127, 0, 0, 2]);
+        let plan = plan_windows_capture_candidates(
+            &[enumerated_loopback, physical],
+            &[loopback],
+            None,
+            &FixtureRoutes::default(),
+        );
+
+        assert_eq!(plan[0].adapter_name, NPCAP_LOOPBACK_ADAPTER_NAME);
+        assert!(
+            plan.iter()
+                .all(|candidate| candidate.adapter_name != "{WINDOWS-LOOPBACK}")
+        );
+    }
+
+    #[test]
+    fn route_mapping_uses_only_the_destination_address_family_index() {
+        let mut ipv6_route = adapter("{IPV6-ROUTE}", 7, 10, [192, 0, 2, 7]);
+        ipv6_route.ipv6_interface_index = 42;
+        let mut ipv4_route = adapter("{IPV4-ROUTE}", 42, 20, [192, 0, 2, 42]);
+        ipv4_route.ipv6_interface_index = 7;
+        let ipv4_remote = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 9));
+        let ipv6_remote: IpAddr = "2001:db8::9".parse().unwrap();
+        let routes = FixtureRoutes(BTreeMap::from([(ipv4_remote, 42), (ipv6_remote, 42)]));
+        let connections = [
+            connection([198, 51, 100, 5], [203, 0, 113, 9]),
+            ipv6_connection("2001:db8:1::5", "2001:db8::9"),
+        ];
+        let expected = plan_windows_capture_candidates(
+            &[ipv6_route.clone(), ipv4_route.clone()],
+            &connections,
+            None,
+            &routes,
+        );
+        let reversed =
+            plan_windows_capture_candidates(&[ipv4_route, ipv6_route], &connections, None, &routes);
+
+        assert_eq!(expected, reversed);
+        assert_eq!(expected[0].adapter_name, "{IPV4-ROUTE}");
+        assert_eq!(expected[1].adapter_name, "{IPV6-ROUTE}");
+        assert!(
+            expected[0]
+                .sources
+                .contains(&WindowsCaptureCandidateSource::GameSocketRoute)
+        );
+        assert!(
+            expected[1]
+                .sources
+                .contains(&WindowsCaptureCandidateSource::GameSocketRoute)
+        );
+    }
+
+    #[test]
+    fn route_and_system_reasons_deduplicate_on_one_adapter() {
+        let adapters = vec![adapter("{TUNNEL}", 12, 5, [10, 0, 0, 2])];
+        let remote = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 9));
+        let routes = FixtureRoutes(BTreeMap::from([(remote, 12)]));
+        let plan = plan_windows_capture_candidates(
+            &adapters,
+            &[connection([198, 51, 100, 5], [203, 0, 113, 9])],
+            Some(r"\Device\NPF_{TUNNEL}"),
+            &routes,
+        );
+
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].adapter_name, "{TUNNEL}");
+        assert_eq!(
+            plan[0].sources,
+            vec![
+                WindowsCaptureCandidateSource::ExplicitPrimary,
+                WindowsCaptureCandidateSource::GameSocketRoute,
+                WindowsCaptureCandidateSource::SystemRoute,
+            ]
+        );
+    }
+
+    #[test]
+    fn candidate_plan_is_deterministic_and_capped_at_four() {
+        let adapters = (1_u8..=6)
+            .rev()
+            .map(|index| {
+                adapter(
+                    &format!("{{ADAPTER-{index}}}"),
+                    u32::from(index),
+                    u32::from(index),
+                    [10, 0, 0, index],
+                )
+            })
+            .collect::<Vec<_>>();
+        let connections = (1_u8..=6)
+            .map(|index| connection([10, 0, 0, index], [203, 0, 113, index]))
+            .collect::<Vec<_>>();
+        let first = plan_windows_capture_candidates(
+            &adapters,
+            &connections,
+            None,
+            &FixtureRoutes::default(),
+        );
+        let mut reversed = adapters.clone();
+        reversed.reverse();
+        let second = plan_windows_capture_candidates(
+            &reversed,
+            &connections,
+            None,
+            &FixtureRoutes::default(),
+        );
+
+        assert_eq!(first, second);
+        assert_eq!(first.len(), MAX_WINDOWS_CAPTURE_CANDIDATES);
+        assert_eq!(first[0].adapter_name, "{ADAPTER-1}");
+    }
+
+    #[test]
+    fn unavailable_route_and_pid_do_not_enable_loopback_probation() {
+        let adapters = vec![adapter("{ETHERNET}", 8, 10, [192, 0, 2, 10])];
+        let plan = plan_windows_capture_candidates(&adapters, &[], None, &FixtureRoutes::default());
+
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].adapter_name, "{ETHERNET}");
+        assert_eq!(
+            plan[0].sources,
+            vec![WindowsCaptureCandidateSource::SystemRoute]
+        );
+    }
+
+    #[test]
+    fn legacy_recommendation_retains_system_fallback_outside_candidate_cap() {
+        let adapters = vec![adapter("{SYSTEM}", 1, 1, [192, 0, 2, 1])];
+        let candidates = (0..MAX_WINDOWS_CAPTURE_CANDIDATES)
+            .map(|index| WindowsCaptureCandidate {
+                adapter_name: format!("{{ROUTE-{index}}}"),
+                sources: vec![WindowsCaptureCandidateSource::GameSocketRoute],
+                matched_game_connections: 0,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            compatibility_capture_recommendation(&adapters, &candidates),
+            Some(WindowsCaptureAdapterRecommendation {
+                adapter_name: "{SYSTEM}".into(),
+                source: WindowsCaptureAdapterRecommendationSource::SystemRoute,
+                matched_game_connections: 0,
+            })
+        );
+    }
 
     #[test]
     fn windows_network_order_port_is_decoded() {

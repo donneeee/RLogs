@@ -42,11 +42,13 @@ pub use signature_filter::{
 };
 #[cfg(windows)]
 pub use windows::{
-    WindowsCaptureAdapter, WindowsCaptureAdapterRecommendation,
-    WindowsCaptureAdapterRecommendationSource, WindowsLiveCaptureStopHandle,
+    MAX_WINDOWS_CAPTURE_CANDIDATES, NPCAP_LOOPBACK_ADAPTER_NAME, WindowsCaptureAdapter,
+    WindowsCaptureAdapterRecommendation, WindowsCaptureAdapterRecommendationSource,
+    WindowsCaptureCandidate, WindowsCaptureCandidateSource, WindowsLiveCaptureStopHandle,
     WindowsOwnedDumpcapCapture, WindowsOwnedLiveCapture, WindowsOwnedNpcapCapture,
     WindowsProcessSocketOwner, WindowsSignatureDumpcapCapture, WindowsSignatureLiveCapture,
-    WindowsSignatureNpcapCapture, recommend_windows_capture_adapter, windows_capture_adapters,
+    WindowsSignatureNpcapCapture, recommend_windows_capture_adapter,
+    recommend_windows_capture_candidates, windows_capture_adapters,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
