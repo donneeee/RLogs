@@ -5748,6 +5748,15 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
   box-shadow: none !important;
   backdrop-filter: none !important;
 }
+.overlay-canvas-runtime[data-mode="passive"] .party-frame-overlay-member,
+.overlay-canvas-runtime[data-mode="passive"] .dungeon-objectives-overlay-attempt,
+.overlay-canvas-runtime[data-mode="passive"] .dungeon-objectives-overlay-row,
+.overlay-canvas-runtime[data-mode="passive"] .mechanic-alerts-overlay-row {
+  border-color: transparent !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
 .overlay-canvas-runtime[data-mode="passive"] .mechanics-map-overlay-toolbar,
 .overlay-canvas-runtime[data-mode="passive"] .mechanics-map-overlay-footer,
 .overlay-canvas-runtime[data-mode="passive"] .player-frame-overlay-toolbar,

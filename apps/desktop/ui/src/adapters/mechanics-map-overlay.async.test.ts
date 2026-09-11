@@ -226,6 +226,21 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       expect(["", "0px"]).toContain(computed.borderWidth);
       expect(["", "none"]).toContain(computed.boxShadow);
     }
+    const runtimeCards = [
+      "party-frame-overlay-member", "dungeon-objectives-overlay-attempt",
+      "dungeon-objectives-overlay-row", "mechanic-alerts-overlay-row",
+    ].map((className) => {
+      const card = document.createElement("article");
+      card.className = className;
+      root.append(card);
+      return card;
+    });
+    for (const runtimeCard of runtimeCards) {
+      const computed = getComputedStyle(runtimeCard);
+      expect(["", "transparent", "rgba(0, 0, 0, 0)"]).toContain(computed.backgroundColor);
+      expect(["", "transparent", "rgba(0, 0, 0, 0)"]).toContain(computed.borderColor);
+      expect(["", "none"]).toContain(computed.boxShadow);
+    }
     expect(map.style.opacity).toBe("0.43");
     expect(player.style.opacity).toBe("0.61");
     await vi.waitFor(() => expect(saveLayout).toHaveBeenCalled());
