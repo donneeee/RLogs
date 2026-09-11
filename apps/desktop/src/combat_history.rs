@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use rlogs_game_bpsr::character_id_from_entity_uuid;
 use rlogs_plugin_combat_meter::{
     COMBAT_HISTORY_SCHEMA_VERSION, CombatHistorySnapshot, CombatHistoryView, HistoryAbilitySummary,
-    HistoryAbilityTargetSummary, HistoryActorSummary, HistoryLoadoutSlot,
+    HistoryAbilityTargetSummary, HistoryActorSummary, HistoryLoadoutSlot, HistoryRateClockPoint,
 };
 use serde::{Deserialize, Serialize};
 
@@ -650,6 +650,21 @@ pub(crate) fn merge_rdps_projection(
                 )
             })?;
 
+            let rate_clock_complete = view.elapsed_micros == projected_view.elapsed_micros
+                && view.active_combat_micros == projected_view.active_combat_micros
+                && validate_rate_clock(projected_view);
+            if rate_clock_complete {
+                view.rate_clock.clone_from(&projected_view.rate_clock);
+                view.rate_clock_complete = true;
+            } else {
+                // Scalar rDPS can still be refreshed, but a partial or
+                // boundary-mismatched clock cannot authorize a plausible
+                // timeline. Preserve the ordinary history series and make the
+                // derived curve explicitly unavailable.
+                view.rate_clock.clear();
+                view.rate_clock_complete = false;
+            }
+
             let projected_actors = projected_view
                 .actors
                 .iter()
@@ -680,6 +695,7 @@ pub(crate) fn merge_rdps_projection(
                     actor.rdps_contribution_given = None;
                     actor.rdps_contribution_received = None;
                     actor.rdps_incomplete = false;
+                    clear_rdps_series(&mut actor.series);
                     continue;
                 };
                 if actor.damage < projected_actor.damage {
@@ -702,6 +718,15 @@ pub(crate) fn merge_rdps_projection(
                 actor.rdps_contribution_received = projected_actor.rdps_contribution_received;
                 actor.rdps_incomplete =
                     projected_actor.rdps_incomplete || legacy_terminal_delta != 0;
+                if rate_clock_complete
+                    && legacy_terminal_delta == 0
+                    && !actor.rdps_incomplete
+                    && rdps_series_matches_terminal(projected_actor, projected_view.elapsed_micros)
+                {
+                    copy_rdps_series(&mut actor.series, &projected_actor.series);
+                } else {
+                    clear_rdps_series(&mut actor.series);
+                }
                 // Exact cast starts are ordinary replay evidence. Older schema-1
                 // artifacts deserialize without them, so replay may enrich the
                 // retained actor without deriving timestamps from cast totals.
@@ -740,6 +765,113 @@ pub(crate) fn merge_rdps_projection(
         run.rdps_status.clone_from(&projected.rdps_status);
     }
     Ok(refreshed)
+}
+
+fn validate_rate_clock(view: &CombatHistoryView) -> bool {
+    if !view.rate_clock_complete {
+        return false;
+    }
+    if view.rate_clock.is_empty() {
+        return view.elapsed_micros == 0 && view.active_combat_micros == 0;
+    }
+    let mut previous = HistoryRateClockPoint {
+        second: 0,
+        edps_elapsed_micros: 0,
+        adps_elapsed_micros: 0,
+    };
+    for (index, point) in view.rate_clock.iter().enumerate() {
+        if point.second as usize != index
+            || point.edps_elapsed_micros < previous.edps_elapsed_micros
+            || point.adps_elapsed_micros < previous.adps_elapsed_micros
+            || point.edps_elapsed_micros - previous.edps_elapsed_micros > 1_000_000
+            || point.adps_elapsed_micros - previous.adps_elapsed_micros > 1_000_000
+            || point.adps_elapsed_micros > point.edps_elapsed_micros
+            || point.edps_elapsed_micros > view.elapsed_micros
+            || point.adps_elapsed_micros > view.active_combat_micros
+        {
+            return false;
+        }
+        previous = point.clone();
+    }
+    previous.edps_elapsed_micros == view.elapsed_micros
+        && previous.adps_elapsed_micros == view.active_combat_micros
+}
+
+fn rdps_series_matches_terminal(actor: &HistoryActorSummary, elapsed_micros: u64) -> bool {
+    let (Some(expected_damage), Some(expected_given), Some(expected_received), Some(expected_rate)) = (
+        actor.rdps_damage,
+        actor.rdps_contribution_given,
+        actor.rdps_contribution_received,
+        actor.rdps,
+    ) else {
+        return false;
+    };
+    let mut damage = 0_i128;
+    let mut given = 0_i128;
+    let mut received = 0_i128;
+    let mut previous_second = None;
+    for point in &actor.series {
+        let (Some(point_damage), Some(point_given), Some(point_received)) = (
+            point.rdps_damage,
+            point.rdps_contribution_given,
+            point.rdps_contribution_received,
+        ) else {
+            return false;
+        };
+        if previous_second.is_some_and(|previous| point.second <= previous)
+            || point_given < 0
+            || point_received < 0
+            || i128::from(point.damage) + i128::from(point_given) - i128::from(point_received)
+                != i128::from(point_damage)
+        {
+            return false;
+        }
+        previous_second = Some(point.second);
+        damage += i128::from(point_damage);
+        given += i128::from(point_given);
+        received += i128::from(point_received);
+    }
+    let expected_terminal_rate = if elapsed_micros == 0 {
+        0.0
+    } else {
+        expected_damage as f64 * 1_000_000.0 / elapsed_micros as f64
+    };
+    let rate_tolerance = expected_terminal_rate.abs().max(1.0) * 1e-12;
+    damage == i128::from(expected_damage)
+        && given == i128::from(expected_given)
+        && received == i128::from(expected_received)
+        && expected_rate.is_finite()
+        && (expected_rate - expected_terminal_rate).abs() <= rate_tolerance
+}
+
+fn copy_rdps_series(
+    saved: &mut [rlogs_plugin_combat_meter::HistorySeriesPoint],
+    projected: &[rlogs_plugin_combat_meter::HistorySeriesPoint],
+) {
+    let compatible = saved.len() == projected.len()
+        && saved.iter().zip(projected).all(|(saved, projected)| {
+            saved.second == projected.second
+                && saved.damage == projected.damage
+                && saved.effective_healing == projected.effective_healing
+                && saved.damage_taken == projected.damage_taken
+        });
+    if !compatible {
+        clear_rdps_series(saved);
+        return;
+    }
+    for (saved, projected) in saved.iter_mut().zip(projected) {
+        saved.rdps_damage = projected.rdps_damage;
+        saved.rdps_contribution_given = projected.rdps_contribution_given;
+        saved.rdps_contribution_received = projected.rdps_contribution_received;
+    }
+}
+
+fn clear_rdps_series(series: &mut [rlogs_plugin_combat_meter::HistorySeriesPoint]) {
+    for point in series {
+        point.rdps_damage = None;
+        point.rdps_contribution_given = None;
+        point.rdps_contribution_received = None;
+    }
 }
 
 fn validate_ordinary_view_matches(
@@ -1451,6 +1583,72 @@ mod tests {
             actual.rdps_contribution_received = expected.rdps_contribution_received;
         }
         assert_eq!(without_rdps, saved_copy);
+    }
+
+    #[test]
+    fn rdps_refresh_copies_only_complete_clock_backed_series() {
+        let mut saved = fixture_snapshot("monitor.formula-clock", &[0]);
+        let view = &mut saved.runs[0].views[0];
+        view.elapsed_micros = 1_500_000;
+        view.active_combat_micros = 1_000_000;
+        let mut actor = fixture_actor("1", "101", 40);
+        actor.rdps = None;
+        actor.rdps_damage = None;
+        actor.rdps_contribution_given = None;
+        actor.rdps_contribution_received = None;
+        actor.series = vec![rlogs_plugin_combat_meter::HistorySeriesPoint {
+            second: 0,
+            damage: 40,
+            effective_healing: 0,
+            damage_taken: 0,
+            rdps_damage: None,
+            rdps_contribution_given: None,
+            rdps_contribution_received: None,
+        }];
+        view.actors = vec![actor];
+
+        let mut projection = saved.clone();
+        projection.rdps_formula_identity = Some("sha256:new".into());
+        let projected_view = &mut projection.runs[0].views[0];
+        projected_view.rate_clock_complete = true;
+        projected_view.rate_clock = vec![
+            HistoryRateClockPoint {
+                second: 0,
+                edps_elapsed_micros: 1_000_000,
+                adps_elapsed_micros: 1_000_000,
+            },
+            HistoryRateClockPoint {
+                second: 1,
+                edps_elapsed_micros: 1_500_000,
+                adps_elapsed_micros: 1_000_000,
+            },
+        ];
+        let projected_actor = &mut projected_view.actors[0];
+        projected_actor.rdps_damage = Some(40);
+        projected_actor.rdps_contribution_given = Some(0);
+        projected_actor.rdps_contribution_received = Some(0);
+        projected_actor.rdps = Some(40.0 * 1_000_000.0 / 1_500_000.0);
+        projected_actor.series[0].rdps_damage = Some(40);
+        projected_actor.series[0].rdps_contribution_given = Some(0);
+        projected_actor.series[0].rdps_contribution_received = Some(0);
+        let expected_clock = projected_view.rate_clock.clone();
+
+        let refreshed = merge_rdps_projection(&saved, &projection).unwrap();
+        let refreshed_view = &refreshed.runs[0].views[0];
+        assert!(refreshed_view.rate_clock_complete);
+        assert_eq!(refreshed_view.rate_clock, expected_clock);
+        assert_eq!(refreshed_view.actors[0].series[0].rdps_damage, Some(40));
+
+        let mut partial = projection;
+        partial.runs[0].views[0].rate_clock.pop();
+        let refreshed = merge_rdps_projection(&saved, &partial).unwrap();
+        assert!(!refreshed.runs[0].views[0].rate_clock_complete);
+        assert!(refreshed.runs[0].views[0].rate_clock.is_empty());
+        assert_eq!(
+            refreshed.runs[0].views[0].actors[0].series[0].rdps_damage,
+            None
+        );
+        assert_eq!(refreshed.runs[0].views[0].actors[0].series[0].damage, 40);
     }
 
     #[test]

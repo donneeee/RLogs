@@ -130,12 +130,20 @@ export interface CombatHistoryView {
   segment_indices: number[];
   elapsed_micros: number;
   active_combat_micros: number;
+  rate_clock?: HistoryRateClockPoint[];
+  rate_clock_complete?: boolean;
   actors: HistoryActorSummary[];
   targets: HistoryTargetIdentity[];
   hostile_casts?: HistoryHostileCast[];
   damage_influences: HistoryDamageInfluenceSummary[];
   rdps_effect_presentations: HistoryRdpsEffectPresentation[];
   status_effect_presentations?: HistoryRdpsEffectPresentation[];
+}
+
+export interface HistoryRateClockPoint {
+  second: number;
+  edps_elapsed_micros: number;
+  adps_elapsed_micros: number;
 }
 
 export interface HistoryRdpsEffectPresentation {
@@ -399,6 +407,9 @@ export interface HistorySeriesPoint {
   damage: number;
   effective_healing: number;
   damage_taken: number;
+  rdps_damage: number | null;
+  rdps_contribution_given: number | null;
+  rdps_contribution_received: number | null;
 }
 
 export function parseCombatHistoryCatalog(value: unknown): CombatHistoryCatalog {
@@ -592,6 +603,7 @@ export function parseCombatHistorySnapshot(value: unknown): CombatHistorySnapsho
       text(parsed.label, "view label");
       counter(parsed.elapsed_micros, "elapsed time");
       counter(parsed.active_combat_micros, "active combat time");
+      const rateClockValid = normalizeHistoryRateClock(parsed);
       const parsedActors = array(parsed.actors, "view actors", 100_000);
       parsedActors.forEach((actor, actorIndex) => {
         const parsedActor = record(
@@ -710,11 +722,23 @@ export function parseCombatHistorySnapshot(value: unknown): CombatHistorySnapsho
           (target, targetIndex) => {
             const parsedTarget = record(target, `actor target ${targetIndex}`);
             if (parsedTarget.series === undefined) parsedTarget.series = [];
-            normalizeHistorySeries(parsedTarget.series, `actor target ${targetIndex} series`);
+            normalizeHistorySeries(parsedTarget.series, `actor target ${targetIndex} series`, false, 0);
           },
         );
         if (parsedActor.series === undefined) parsedActor.series = [];
-        normalizeHistorySeries(parsedActor.series, "actor series");
+        const rdpsSeriesValid = normalizeHistorySeries(
+          parsedActor.series,
+          "actor series",
+          providerCreditEnabled && rateClockValid,
+          (parsed.rate_clock as unknown[]).length,
+        );
+        if (!rdpsSeriesValid || parsedActor.rdps_incomplete === true ||
+            !historyRdpsSeriesMatchesTerminal(
+              parsedActor,
+              parsed.elapsed_micros as number,
+            )) {
+          clearHistoryRdpsSeries(parsedActor.series as unknown[]);
+        }
         array(parsedActor.death_seconds, "actor death seconds", 10_000).forEach(
           (second) => counter(second, "actor death second"),
         );
@@ -866,14 +890,119 @@ export function parseCombatHistorySnapshot(value: unknown): CombatHistorySnapsho
   return snapshot as unknown as CombatHistorySnapshot;
 }
 
-function normalizeHistorySeries(value: unknown, label: string): void {
+function normalizeHistoryRateClock(view: Record<string, unknown>): boolean {
+  if (view.rate_clock === undefined) view.rate_clock = [];
+  if (view.rate_clock_complete === undefined) view.rate_clock_complete = false;
+  if (typeof view.rate_clock_complete !== "boolean" || !Array.isArray(view.rate_clock) ||
+      view.rate_clock.length > 86_400 || !view.rate_clock_complete) {
+    view.rate_clock = [];
+    view.rate_clock_complete = false;
+    return false;
+  }
+  if (view.rate_clock.length === 0) {
+    const complete = view.elapsed_micros === 0 && view.active_combat_micros === 0;
+    view.rate_clock_complete = complete;
+    return complete;
+  }
+  let previousEdps = 0;
+  let previousAdps = 0;
+  const valid = view.rate_clock.every((value, index) => {
+    if (!isRecord(value)) return false;
+    const second = value.second;
+    const edps = value.edps_elapsed_micros;
+    const adps = value.adps_elapsed_micros;
+    if (!Number.isSafeInteger(second) || second !== index ||
+        !Number.isSafeInteger(edps) || (edps as number) < previousEdps ||
+        !Number.isSafeInteger(adps) || (adps as number) < previousAdps ||
+        (edps as number) - previousEdps > 1_000_000 ||
+        (adps as number) - previousAdps > 1_000_000 ||
+        (adps as number) > (edps as number) ||
+        (edps as number) > (view.elapsed_micros as number) ||
+        (adps as number) > (view.active_combat_micros as number)) return false;
+    previousEdps = edps as number;
+    previousAdps = adps as number;
+    return true;
+  }) && previousEdps === view.elapsed_micros && previousAdps === view.active_combat_micros;
+  if (!valid) {
+    view.rate_clock = [];
+    view.rate_clock_complete = false;
+  }
+  return valid;
+}
+
+function normalizeHistorySeries(
+  value: unknown,
+  label: string,
+  rdpsEnabled: boolean,
+  clockLength: number,
+): boolean {
+  let rdpsValid = rdpsEnabled;
+  let previousSecond = -1;
   array(value, label, 100_000).forEach((point, index) => {
     const parsed = record(point, `${label} point ${index}`);
     counter(parsed.second, `${label} second`);
     integer(parsed.damage, `${label} damage`);
     integer(parsed.effective_healing, `${label} effective healing`);
     integer(parsed.damage_taken, `${label} damage taken`);
+    for (const field of [
+      "rdps_damage",
+      "rdps_contribution_given",
+      "rdps_contribution_received",
+    ] as const) if (parsed[field] === undefined) parsed[field] = null;
+    const tuple = [
+      parsed.rdps_damage,
+      parsed.rdps_contribution_given,
+      parsed.rdps_contribution_received,
+    ];
+    const tuplePresent = tuple.every((entry) => Number.isSafeInteger(entry));
+    const tupleAbsent = tuple.every((entry) => entry === null);
+    if (!rdpsEnabled || !tuplePresent || tupleAbsent ||
+        (parsed.second as number) <= previousSecond ||
+        (parsed.second as number) >= clockLength ||
+        (parsed.rdps_damage as number) < 0 ||
+        (parsed.rdps_contribution_given as number) < 0 ||
+        (parsed.rdps_contribution_received as number) < 0 ||
+        (parsed.damage as number) + (parsed.rdps_contribution_given as number) -
+          (parsed.rdps_contribution_received as number) !== parsed.rdps_damage) {
+      if (!tupleAbsent) rdpsValid = false;
+      parsed.rdps_damage = null;
+      parsed.rdps_contribution_given = null;
+      parsed.rdps_contribution_received = null;
+    }
+    previousSecond = parsed.second as number;
   });
+  return rdpsValid;
+}
+
+function historyRdpsSeriesMatchesTerminal(
+  actor: Record<string, unknown>,
+  elapsedMicros: number,
+): boolean {
+  if (actor.rdps_damage === null && actor.rdps_contribution_given === null &&
+      actor.rdps_contribution_received === null && actor.rdps === null) return true;
+  if (![actor.rdps_damage, actor.rdps_contribution_given, actor.rdps_contribution_received]
+    .every((value) => Number.isSafeInteger(value)) ||
+      typeof actor.rdps !== "number" || !Number.isFinite(actor.rdps)) return false;
+  const points = actor.series as Array<Record<string, unknown>>;
+  if (points.some((point) => point.rdps_damage === null)) return false;
+  const sum = (field: "rdps_damage" | "rdps_contribution_given" | "rdps_contribution_received") =>
+    points.reduce((total, point) => total + (point[field] as number), 0);
+  if (sum("rdps_damage") !== actor.rdps_damage ||
+      sum("rdps_contribution_given") !== actor.rdps_contribution_given ||
+      sum("rdps_contribution_received") !== actor.rdps_contribution_received) return false;
+  const expectedRate = elapsedMicros === 0
+    ? 0
+    : (actor.rdps_damage as number) * 1_000_000 / elapsedMicros;
+  return Math.abs((actor.rdps as number) - expectedRate) <= Math.max(1, Math.abs(expectedRate)) * 1e-12;
+}
+
+function clearHistoryRdpsSeries(series: unknown[]): void {
+  for (const value of series) {
+    if (!isRecord(value)) continue;
+    value.rdps_damage = null;
+    value.rdps_contribution_given = null;
+    value.rdps_contribution_received = null;
+  }
 }
 
 function normalizeHistoryDeathEvents(actor: Record<string, unknown>, elapsedMicros: number): void {

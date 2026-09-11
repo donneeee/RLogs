@@ -59,6 +59,78 @@ describe("combat history contracts", () => {
     }],
   });
 
+  const clockedRdpsHistory = () => {
+    const history: any = deathHistory();
+    history.rdps_formula_identity = "sha256:reviewed";
+    const run = history.runs[0];
+    run.rdps_status = "partial_packet_proven_rules";
+    const view = run.views[0];
+    view.elapsed_micros = 1_500_000;
+    view.active_combat_micros = 1_000_000;
+    view.rate_clock_complete = true;
+    view.rate_clock = [
+      { second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 1, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 2, edps_elapsed_micros: 1_500_000, adps_elapsed_micros: 1_000_000 },
+    ];
+    Object.assign(view.actors[0], {
+      rdps_damage: 150,
+      rdps: 100,
+      rdps_contribution_given: 20,
+      rdps_contribution_received: 20,
+      rdps_incomplete: false,
+      series: [
+        {
+          second: 0, damage: 100, effective_healing: 0, damage_taken: 0,
+          rdps_damage: 120, rdps_contribution_given: 20, rdps_contribution_received: 0,
+        },
+        {
+          second: 2, damage: 50, effective_healing: 0, damage_taken: 0,
+          rdps_damage: 30, rdps_contribution_given: 0, rdps_contribution_received: 20,
+        },
+      ],
+    });
+    return history;
+  };
+
+  it("retains canonical rDPS clocks including gaps and fractional trailing windows", () => {
+    const parsed = parseCombatHistorySnapshot(clockedRdpsHistory());
+    const view = parsed.runs[0]!.views[0]!;
+    expect(view.rate_clock_complete).toBe(true);
+    expect(view.rate_clock).toEqual([
+      { second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 1, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 2, edps_elapsed_micros: 1_500_000, adps_elapsed_micros: 1_000_000 },
+    ]);
+    expect(view.actors[0]!.series.map((point) => point.rdps_damage)).toEqual([120, 30]);
+  });
+
+  it("fails rDPS series closed for missing or partial clocks", () => {
+    const missing = clockedRdpsHistory();
+    delete missing.runs[0].views[0].rate_clock;
+    delete missing.runs[0].views[0].rate_clock_complete;
+    let parsed = parseCombatHistorySnapshot(missing).runs[0]!.views[0]!;
+    expect(parsed.rate_clock_complete).toBe(false);
+    expect(parsed.actors[0]!.series.every((point) => point.rdps_damage === null)).toBe(true);
+
+    const partial = clockedRdpsHistory();
+    partial.runs[0].views[0].rate_clock.pop();
+    parsed = parseCombatHistorySnapshot(partial).runs[0]!.views[0]!;
+    expect(parsed.rate_clock_complete).toBe(false);
+    expect(parsed.rate_clock).toEqual([]);
+    expect(parsed.actors[0]!.series.every((point) => point.rdps_damage === null)).toBe(true);
+  });
+
+  it("fails only the rDPS series closed when its terminal scalar is inconsistent", () => {
+    const inconsistent = clockedRdpsHistory();
+    inconsistent.runs[0].views[0].actors[0].rdps = 99;
+    const parsed = parseCombatHistorySnapshot(inconsistent).runs[0]!.views[0]!;
+    expect(parsed.rate_clock_complete).toBe(true);
+    expect(parsed.actors[0]!.rdps_damage).toBe(150);
+    expect(parsed.actors[0]!.series.every((point) => point.rdps_damage === null)).toBe(true);
+    expect(parsed.actors[0]!.series.map((point) => point.damage)).toEqual([100, 50]);
+  });
+
   it("accepts only ordered in-view exact skill starts and defaults legacy history", () => {
     expect(parseCombatHistorySnapshot(deathHistory()).runs[0]?.views[0]?.actors[0]?.skill_events)
       .toEqual([{ at_micros: 1_250_000, ability_id: "2233" }]);

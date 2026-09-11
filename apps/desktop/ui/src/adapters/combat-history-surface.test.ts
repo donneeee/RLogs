@@ -12,6 +12,7 @@ import {
   actorRdpsBreakdown,
   abilitySortMaximum,
   buildActorGraphSeries,
+  buildActorRdpsGraphSeries,
   catalogParticipantLabel,
   catalogParticipantTooltip,
   comparePartySortValues,
@@ -37,6 +38,76 @@ import {
   supplementalDifficultyLabel,
   terminalPresentationLabel,
 } from "./combat-history-surface";
+
+describe("Combat History canonical rDPS graph", () => {
+  const actor = {
+    actor_id: "1",
+    presentation_name: "Support",
+    rdps: 100,
+    rdps_damage: 150,
+    rdps_contribution_given: 20,
+    rdps_contribution_received: 20,
+    rdps_incomplete: false,
+    series: [
+      {
+        second: 0, damage: 100, effective_healing: 0, damage_taken: 0,
+        rdps_damage: 120, rdps_contribution_given: 20, rdps_contribution_received: 0,
+      },
+      {
+        second: 2, damage: 50, effective_healing: 0, damage_taken: 0,
+        rdps_damage: 30, rdps_contribution_given: 0, rdps_contribution_received: 20,
+      },
+    ],
+  } as HistoryActorSummary;
+  const view = {
+    elapsed_micros: 1_500_000,
+    active_combat_micros: 1_000_000,
+    rate_clock_complete: true,
+    rate_clock: [
+      { second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 1, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 },
+      { second: 2, edps_elapsed_micros: 1_500_000, adps_elapsed_micros: 1_000_000 },
+    ],
+  } as CombatHistoryView;
+
+  it("uses canonical elapsed time across gaps and a fractional trailing bucket", () => {
+    const series = buildActorRdpsGraphSeries(actor, view, "#abc", null);
+    expect(series?.values).toEqual([0, 120, 120, 100]);
+    expect(series?.average).toBe(100);
+    expect(series?.peak).toBe(120);
+    expect(graphInspectionAtSecond([series!], 3, 3).values[0]?.value).toBe(100);
+    expect(graphScaleMaximum([series!.values])).toBe(120);
+  });
+
+  it("does not invent a curve from missing, partial, or inconsistent authority", () => {
+    expect(buildActorRdpsGraphSeries(actor, { ...view, rate_clock_complete: false }, "#abc"))
+      .toBeNull();
+    expect(buildActorRdpsGraphSeries(actor, {
+      ...view,
+      rate_clock: view.rate_clock!.slice(0, 2),
+    }, "#abc")).toBeNull();
+    expect(buildActorRdpsGraphSeries({ ...actor, rdps: 99 }, view, "#abc")).toBeNull();
+    expect(buildActorRdpsGraphSeries({
+      ...actor,
+      rdps: 150,
+      series: [{
+        ...actor.series[0]!, second: 1, damage: 100, rdps_damage: 100,
+        rdps_contribution_given: 0,
+      }],
+      rdps_damage: 100,
+      rdps_contribution_given: 0,
+      rdps_contribution_received: 0,
+    }, {
+      ...view,
+      elapsed_micros: 1_000_000,
+      active_combat_micros: 0,
+      rate_clock: [
+        { second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 0 },
+        { second: 1, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 0 },
+      ],
+    }, "#abc", null, 1)).toBeNull();
+  });
+});
 
 it("uses reviewed effect names while preserving the explicit unresolved fallback", async () => {
   const ui = await loadUiLocalizer("en-US");

@@ -32,7 +32,7 @@ const COMPACT = new Intl.NumberFormat(undefined, {
   notation: "compact",
   maximumFractionDigits: 1,
 });
-export type GraphMetric = "damage" | "effective_healing" | "damage_taken";
+export type GraphMetric = "damage" | "rdps" | "effective_healing" | "damage_taken";
 type HistorySort = "newest" | "oldest" | "fastest" | "team_dps" | "team_edps";
 type PartySortKey = HistoryPartyColumnId;
 type PartySortDirection = "ascending" | "descending";
@@ -103,6 +103,12 @@ function graphDefinitions(localizer: UiLocalizer): readonly GraphDefinition[] {
       title: localizer.t("ui.combat_history.graph.damage_title"),
       rateLabel: localizer.t("ui.combat_history.graph.dps"),
       description: localizer.t("ui.combat_history.graph.damage_description"),
+    },
+    {
+      metric: "rdps",
+      title: localizer.t("ui.combat_history.graph.rdps_title"),
+      rateLabel: localizer.t("ui.combat_history.graph.rdps"),
+      description: localizer.t("ui.combat_history.graph.rdps_description"),
     },
     {
       metric: "effective_healing",
@@ -3349,7 +3355,9 @@ export function renderMetricGraph(
   showHostileEvents = true,
 ): HTMLElement {
   const card = element("section", "combat-history-metric-graph");
-  const durationSeconds = Math.max(1, Math.ceil(elapsedMicros / 1_000_000));
+  const durationSeconds = definition.metric === "rdps"
+    ? Math.max(1, historyView?.rate_clock?.length ?? 0)
+    : Math.max(1, Math.ceil(elapsedMicros / 1_000_000));
   const allSeries = actors
     .map((actor) =>
       buildActorGraphSeries(
@@ -3358,10 +3366,11 @@ export function renderMetricGraph(
         durationSeconds,
         actorColors.get(actor.actor_id) ?? graphColor(actors.indexOf(actor)),
         targetActorId,
+        historyView,
       ),
     )
     .filter((entry) =>
-      entry.peak > 0 || (targetActorId === null &&
+      entry.peak > 0 || (definition.metric !== "rdps" && targetActorId === null &&
         ((entry.actor.death_events?.length ?? 0) > 0 || entry.actor.death_seconds.length > 0 ||
           (entry.actor.skill_events?.length ?? 0) > 0 ||
           (entry.actor.status_events?.length ?? 0) > 0)),
@@ -3906,7 +3915,17 @@ export function buildActorGraphSeries(
   durationSeconds: number,
   color: string,
   targetActorId: string | null,
+  historyView?: CombatHistoryView,
 ): ActorGraphSeries {
+  if (metric === "rdps") {
+    return buildActorRdpsGraphSeries(actor, historyView, color, targetActorId) ?? {
+      actor,
+      color,
+      values: Array.from({ length: durationSeconds + 1 }, () => 0),
+      average: 0,
+      peak: 0,
+    };
+  }
   const raw = Array.from({ length: durationSeconds + 1 }, () => 0);
   const points = targetActorId === null
     ? actor.series
@@ -3922,6 +3941,83 @@ export function buildActorGraphSeries(
     color,
     values,
     average: total / durationSeconds,
+    peak: values.reduce((maximum, value) => Math.max(maximum, value), 0),
+  };
+}
+
+/**
+ * Projects reducer-authored adjusted-damage buckets through the reducer's
+ * cumulative eDPS clock. A missing/partial clock, inconsistent terminal
+ * scalar, or damage in a zero-time window makes the curve unavailable; this
+ * function never substitutes wall time or ordinary damage.
+ */
+export function buildActorRdpsGraphSeries(
+  actor: HistoryActorSummary,
+  view: CombatHistoryView | undefined,
+  color: string,
+  targetActorId: string | null = null,
+  windowSeconds = 5,
+): ActorGraphSeries | null {
+  const clock = view?.rate_clock;
+  if (targetActorId !== null || view?.rate_clock_complete !== true || !clock?.length ||
+      actor.rdps_incomplete || actor.rdps_damage === null || actor.rdps === null ||
+      actor.rdps_contribution_given === null || actor.rdps_contribution_received === null ||
+      !Number.isFinite(actor.rdps) || windowSeconds < 1) return null;
+  const amounts = Array.from({ length: clock.length }, () => 0);
+  let priorEdps = 0;
+  let priorAdps = 0;
+  for (const [index, point] of clock.entries()) {
+    if (point.second !== index || point.edps_elapsed_micros < priorEdps ||
+        point.adps_elapsed_micros < priorAdps ||
+        point.edps_elapsed_micros - priorEdps > 1_000_000 ||
+        point.adps_elapsed_micros - priorAdps > 1_000_000 ||
+        point.adps_elapsed_micros > point.edps_elapsed_micros) return null;
+    priorEdps = point.edps_elapsed_micros;
+    priorAdps = point.adps_elapsed_micros;
+  }
+  let damage = 0;
+  let given = 0;
+  let received = 0;
+  let previousSecond = -1;
+  for (const point of actor.series) {
+    if (point.second <= previousSecond || point.second >= clock.length ||
+        point.rdps_damage === null || point.rdps_contribution_given === null ||
+        point.rdps_contribution_received === null || point.rdps_damage < 0 ||
+        point.rdps_contribution_given < 0 || point.rdps_contribution_received < 0 ||
+        point.damage + point.rdps_contribution_given - point.rdps_contribution_received !==
+          point.rdps_damage) return null;
+    previousSecond = point.second;
+    amounts[point.second] = point.rdps_damage;
+    damage += point.rdps_damage;
+    given += point.rdps_contribution_given;
+    received += point.rdps_contribution_received;
+  }
+  const finalClock = clock.at(-1)!;
+  const expectedRate = finalClock.edps_elapsed_micros === 0
+    ? 0
+    : actor.rdps_damage * 1_000_000 / finalClock.edps_elapsed_micros;
+  if (finalClock.edps_elapsed_micros !== view.elapsed_micros ||
+      finalClock.adps_elapsed_micros !== view.active_combat_micros ||
+      damage !== actor.rdps_damage || given !== actor.rdps_contribution_given ||
+      received !== actor.rdps_contribution_received ||
+      Math.abs(actor.rdps - expectedRate) > Math.max(1, Math.abs(expectedRate)) * 1e-12) return null;
+
+  const prefix = [0];
+  for (const amount of amounts) prefix.push(prefix.at(-1)! + amount);
+  const values: number[] = [0];
+  for (let index = 0; index < clock.length; index += 1) {
+    const start = Math.max(0, index - windowSeconds + 1);
+    const elapsedStart = start === 0 ? 0 : clock[start - 1]!.edps_elapsed_micros;
+    const elapsed = clock[index]!.edps_elapsed_micros - elapsedStart;
+    const amount = prefix[index + 1]! - prefix[start]!;
+    if (elapsed === 0 && amount !== 0) return null;
+    values.push(elapsed === 0 ? 0 : amount * 1_000_000 / elapsed);
+  }
+  return {
+    actor,
+    color,
+    values,
+    average: actor.rdps,
     peak: values.reduce((maximum, value) => Math.max(maximum, value), 0),
   };
 }
