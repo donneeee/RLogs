@@ -306,6 +306,15 @@ impl MultiSourceRegistrationLease {
         register_source(&self.shared)
     }
 
+    pub(crate) fn active_sources(&self) -> usize {
+        self.shared
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .metrics
+            .active_sources
+    }
+
     pub(crate) fn close(mut self) {
         self.close_inner();
     }

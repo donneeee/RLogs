@@ -5,9 +5,12 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     panic::{AssertUnwindSafe, catch_unwind},
     ptr, slice,
-    sync::{Arc, Mutex, Once},
+    sync::{
+        Arc, Condvar, Mutex, Once,
+        atomic::{AtomicUsize, Ordering},
+    },
     thread::{self, JoinHandle},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use windows_sys::Win32::{
@@ -222,8 +225,18 @@ pub fn recommend_windows_capture_candidates(
     process_ids: &[u32],
     explicit_primary: Option<&str>,
 ) -> Vec<WindowsCaptureCandidate> {
+    let connections = snapshot_windows_process_connections(process_ids);
+    plan_windows_capture_candidates(
+        adapters,
+        &connections,
+        explicit_primary,
+        &SystemWindowsRouteResolver,
+    )
+}
+
+fn snapshot_windows_process_connections(process_ids: &[u32]) -> Vec<TcpConnection> {
     let mut connections = Vec::new();
-    for process_id in process_ids.iter().copied().filter(|value| *value != 0) {
+    for process_id in normalized_process_ids(process_ids) {
         let Ok(owner) = WindowsProcessSocketOwner::new(process_id) else {
             continue;
         };
@@ -234,12 +247,43 @@ pub fn recommend_windows_capture_candidates(
     }
     connections.sort_unstable();
     connections.dedup();
-    plan_windows_capture_candidates(
-        adapters,
-        &connections,
-        explicit_primary,
-        &SystemWindowsRouteResolver,
-    )
+    connections
+}
+
+fn normalized_process_ids(process_ids: &[u32]) -> Vec<u32> {
+    let mut normalized = process_ids
+        .iter()
+        .copied()
+        .filter(|process_id| *process_id != 0)
+        .collect::<Vec<_>>();
+    normalized.sort_unstable();
+    normalized.dedup();
+    normalized
+}
+
+fn has_loopback_connection(connections: &[TcpConnection]) -> bool {
+    connections.iter().any(|connection| {
+        connection.client.address.is_loopback() || connection.server.address.is_loopback()
+    })
+}
+
+fn reserve_late_loopback_slot(candidates: &mut Vec<WindowsCaptureCandidate>) -> bool {
+    if candidates
+        .iter()
+        .any(|candidate| same_adapter_name(&candidate.adapter_name, NPCAP_LOOPBACK_ADAPTER_NAME))
+    {
+        return false;
+    }
+    candidates.truncate(MAX_WINDOWS_CAPTURE_CANDIDATES.saturating_sub(1));
+    true
+}
+
+fn late_loopback_probation_process_ids(
+    candidates: &mut Vec<WindowsCaptureCandidate>,
+    process_ids: &[u32],
+) -> Option<Vec<u32>> {
+    let process_ids = normalized_process_ids(process_ids);
+    (!process_ids.is_empty() && reserve_late_loopback_slot(candidates)).then_some(process_ids)
 }
 
 fn plan_windows_capture_candidates<R: WindowsRouteResolver>(
@@ -325,9 +369,7 @@ fn plan_windows_capture_candidates<R: WindowsRouteResolver>(
         );
     }
 
-    if connections.iter().any(|connection| {
-        connection.client.address.is_loopback() || connection.server.address.is_loopback()
-    }) {
+    if has_loopback_connection(connections) {
         add_capture_candidate(
             &mut candidates,
             NPCAP_LOOPBACK_ADAPTER_NAME,
@@ -819,6 +861,8 @@ impl CaptureSource for WindowsSignatureDumpcapCapture {
 
 const WINDOWS_FAN_IN_QUEUE_FRAMES: usize = 512;
 const WINDOWS_FAN_IN_QUEUE_BYTES: usize = 16 * 1024 * 1024;
+const WINDOWS_LATE_LOOPBACK_PROBATION: Duration = Duration::from_secs(30);
+const WINDOWS_LATE_LOOPBACK_POLL_INTERVAL: Duration = Duration::from_secs(1);
 const CAPTURE_READER_THREAD_PREFIX: &str = "rlogs-capture-reader-";
 const SANITIZED_CAPTURE_READER_PANIC: &str = "rLogs capture reader stopped unexpectedly";
 static CAPTURE_READER_PANIC_HOOK: Once = Once::new();
@@ -876,11 +920,14 @@ pub struct WindowsSignatureFanInDiagnostics {
 pub struct WindowsSignatureFanInStopHandle {
     fan_in: MultiSourceFanInStopHandle,
     children: Arc<DynamicChildStopRegistry<NpcapLiveStopHandle>>,
+    coordinator: Arc<LateLoopbackCoordinatorSignal>,
 }
 
 impl WindowsSignatureFanInStopHandle {
     pub fn request_stop(&self) {
-        request_fan_in_stop(&self.fan_in, &self.children);
+        self.fan_in.request_stop();
+        self.coordinator.request_stop();
+        self.children.request_stop();
     }
 }
 
@@ -946,6 +993,7 @@ impl<S: FanInChildStop> DynamicChildStopRegistry<S> {
     }
 }
 
+#[cfg(test)]
 fn request_fan_in_stop<S: FanInChildStop>(
     fan_in: &MultiSourceFanInStopHandle,
     children: &DynamicChildStopRegistry<S>,
@@ -955,16 +1003,100 @@ fn request_fan_in_stop<S: FanInChildStop>(
     children.request_stop();
 }
 
+#[derive(Debug, Default)]
+struct LateLoopbackCoordinatorSignal {
+    state: Mutex<LateLoopbackCoordinatorState>,
+    changed: Condvar,
+}
+
+#[derive(Debug, Default)]
+struct LateLoopbackCoordinatorState {
+    stopped: bool,
+    signature_confirmed: bool,
+}
+
+impl LateLoopbackCoordinatorSignal {
+    fn request_stop(&self) {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .stopped = true;
+        self.changed.notify_all();
+    }
+
+    fn confirm_signature(&self) {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .signature_confirmed = true;
+        self.changed.notify_all();
+    }
+
+    fn finished(&self) -> bool {
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.stopped || state.signature_confirmed
+    }
+
+    fn wait_for(&self, duration: Duration) {
+        if self.finished() || duration.is_zero() {
+            return;
+        }
+        let guard = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = self
+            .changed
+            .wait_timeout_while(guard, duration, |state| {
+                !state.stopped && !state.signature_confirmed
+            })
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+    }
+}
+
+#[derive(Debug)]
+struct FanInCandidateCounters {
+    planned: AtomicUsize,
+    opened: AtomicUsize,
+    open_failures: AtomicUsize,
+}
+
+impl FanInCandidateCounters {
+    fn new(planned: usize, opened: usize, open_failures: usize) -> Self {
+        Self {
+            planned: AtomicUsize::new(planned),
+            opened: AtomicUsize::new(opened),
+            open_failures: AtomicUsize::new(open_failures),
+        }
+    }
+}
+
+trait LateLoopbackProbe {
+    fn bpsr_pid_has_loopback(&mut self) -> bool;
+}
+
+struct WindowsPidLoopbackProbe {
+    process_ids: Vec<u32>,
+}
+
+impl LateLoopbackProbe for WindowsPidLoopbackProbe {
+    fn bpsr_pid_has_loopback(&mut self) -> bool {
+        has_loopback_connection(&snapshot_windows_process_connections(&self.process_ids))
+    }
+}
+
 /// Initial bounded Windows adapter fan-in protected by exactly one shared
 /// protocol-signature filter. Raw frames never leave this wrapper.
 #[derive(Debug)]
 pub struct WindowsSignatureFanInCapture {
     inner: SignatureFlowCapture<MultiSourceFanIn>,
     stop: WindowsSignatureFanInStopHandle,
-    workers: Vec<JoinHandle<()>>,
-    planned_candidates: usize,
-    opened_candidates: usize,
-    candidate_open_failures: usize,
+    workers: Arc<Mutex<Vec<JoinHandle<()>>>>,
+    coordinator_worker: Option<JoinHandle<()>>,
+    candidate_counters: Arc<FanInCandidateCounters>,
 }
 
 trait FanInCandidateOpener {
@@ -1004,6 +1136,21 @@ struct StartedFanInSources<S> {
     workers: Vec<JoinHandle<()>>,
     open_failures: usize,
     first_open_error: Option<CaptureError>,
+}
+
+fn require_initial_fan_in_source<S>(
+    started: &mut StartedFanInSources<S>,
+) -> Result<(), CaptureError> {
+    if !started.workers.is_empty() {
+        return Ok(());
+    }
+    Err(started
+        .first_open_error
+        .take()
+        .unwrap_or_else(|| CaptureError::Adapter {
+            adapter: "windows-signature-fan-in".into(),
+            message: "no Npcap capture candidate could be opened".into(),
+        }))
 }
 
 fn start_fan_in_sources<O: FanInCandidateOpener>(
@@ -1063,13 +1210,115 @@ fn start_fan_in_sources<O: FanInCandidateOpener>(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+fn run_late_loopback_coordinator<P, O>(
+    registration: MultiSourceRegistrationLease,
+    signal: Arc<LateLoopbackCoordinatorSignal>,
+    children: Arc<DynamicChildStopRegistry<O::Stop>>,
+    workers: Arc<Mutex<Vec<JoinHandle<()>>>>,
+    counters: Arc<FanInCandidateCounters>,
+    duration_seconds: u32,
+    capture_started: Instant,
+    probation: Duration,
+    poll_interval: Duration,
+    mut probe: P,
+    mut opener: O,
+) where
+    P: LateLoopbackProbe,
+    O: FanInCandidateOpener,
+{
+    let deadline = capture_started + probation;
+    while !signal.finished() {
+        // The coordinator starts only after all initial readers are registered,
+        // so zero here means they have all completed or failed. Closing the
+        // lease lets the aggregate return its terminal result without waiting
+        // out the rest of the probation window.
+        if registration.active_sources() == 0 {
+            break;
+        }
+        if probe.bpsr_pid_has_loopback() {
+            counters.planned.fetch_add(1, Ordering::Relaxed);
+            let candidate = WindowsCaptureCandidate {
+                adapter_name: NPCAP_LOOPBACK_ADAPTER_NAME.to_owned(),
+                sources: vec![WindowsCaptureCandidateSource::LoopbackProbation],
+                matched_game_connections: 0,
+            };
+            let remaining_duration = remaining_capture_duration(duration_seconds, capture_started);
+            if duration_seconds != 0 && remaining_duration == 0 {
+                break;
+            }
+            let (source, stop) = match opener.open(&candidate, remaining_duration) {
+                Ok(opened) => opened,
+                Err(_) => {
+                    counters.open_failures.fetch_add(1, Ordering::Relaxed);
+                    break;
+                }
+            };
+            if signal.finished() {
+                stop.request_child_stop();
+                break;
+            }
+            let ingress = match registration.register_source() {
+                Ok(ingress) => ingress,
+                Err(_) => {
+                    stop.request_child_stop();
+                    break;
+                }
+            };
+            if children.register(stop.clone()).is_err() {
+                break;
+            }
+            match thread::Builder::new()
+                .name(format!(
+                    "{CAPTURE_READER_THREAD_PREFIX}{}",
+                    MAX_WINDOWS_CAPTURE_CANDIDATES - 1
+                ))
+                .spawn(move || run_fan_in_source_guarded(source, ingress))
+            {
+                Ok(worker) => {
+                    counters.opened.fetch_add(1, Ordering::Relaxed);
+                    workers
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .push(worker);
+                }
+                Err(_) => {
+                    counters.open_failures.fetch_add(1, Ordering::Relaxed);
+                    stop.request_child_stop();
+                }
+            }
+            break;
+        }
+
+        let now = Instant::now();
+        if now >= deadline {
+            break;
+        }
+        signal.wait_for(poll_interval.min(deadline.saturating_duration_since(now)));
+    }
+    registration.close();
+}
+
+fn remaining_capture_duration(duration_seconds: u32, capture_started: Instant) -> u32 {
+    if duration_seconds == 0 {
+        return 0;
+    }
+    let elapsed = capture_started.elapsed();
+    let elapsed_seconds = elapsed
+        .as_secs()
+        .saturating_add(u64::from(elapsed.subsec_nanos() != 0));
+    duration_seconds.saturating_sub(elapsed_seconds.try_into().unwrap_or(u32::MAX))
+}
+
 impl WindowsSignatureFanInCapture {
-    fn open_prefix(
+    fn open_prefix_with_late_loopback(
         candidates: &[WindowsCaptureCandidate],
         duration_seconds: u32,
         signature: TcpPayloadPrefixSignature,
         filter: SignatureFlowCaptureConfig,
+        late_process_ids: Option<Vec<u32>>,
     ) -> Result<Self, CaptureError> {
+        let capture_started = Instant::now();
         let (fan_in, registration) = MultiSourceFanIn::new_with_registration_lease(
             MAX_WINDOWS_CAPTURE_CANDIDATES,
             WINDOWS_FAN_IN_QUEUE_FRAMES,
@@ -1080,24 +1329,16 @@ impl WindowsSignatureFanInCapture {
         // Validate and establish the one shared privacy boundary before any
         // candidate reader can observe a frame.
         let inner = SignatureFlowCapture::new_prefix(fan_in, signature, filter)?;
-        let started = start_fan_in_sources(
+        let mut started = start_fan_in_sources(
             candidates,
             duration_seconds,
             &registration,
             &mut NpcapCandidateOpener,
         )?;
-        // This initial-only runtime has no coordinator yet, so seal dynamic
-        // registration immediately after the bounded candidate set starts.
-        registration.close();
 
-        if started.workers.is_empty() {
+        if let Err(error) = require_initial_fan_in_source(&mut started) {
             aggregate_stop.request_stop();
-            return Err(started
-                .first_open_error
-                .unwrap_or_else(|| CaptureError::Adapter {
-                    adapter: "windows-signature-fan-in".into(),
-                    message: "no Npcap capture candidate could be opened".into(),
-                }));
+            return Err(error);
         }
         let opened_candidates = started.workers.len();
         let children = Arc::new(DynamicChildStopRegistry::new(
@@ -1111,16 +1352,71 @@ impl WindowsSignatureFanInCapture {
                     message: "could not retain a bounded Npcap stop handle".into(),
                 })?;
         }
+        let workers = Arc::new(Mutex::new(started.workers));
+        let candidate_counters = Arc::new(FanInCandidateCounters::new(
+            candidates.len().min(MAX_WINDOWS_CAPTURE_CANDIDATES),
+            opened_candidates,
+            started.open_failures,
+        ));
+        let coordinator = Arc::new(LateLoopbackCoordinatorSignal::default());
+        let coordinator_worker = if let Some(process_ids) = late_process_ids {
+            let probation = if duration_seconds == 0 {
+                WINDOWS_LATE_LOOPBACK_PROBATION
+            } else {
+                WINDOWS_LATE_LOOPBACK_PROBATION.min(Duration::from_secs(duration_seconds.into()))
+            };
+            let coordinator_signal = Arc::clone(&coordinator);
+            let coordinator_children = Arc::clone(&children);
+            let coordinator_workers = Arc::clone(&workers);
+            let coordinator_counters = Arc::clone(&candidate_counters);
+            match thread::Builder::new()
+                .name("rlogs-late-loopback-coordinator".into())
+                .spawn(move || {
+                    run_late_loopback_coordinator(
+                        registration,
+                        coordinator_signal,
+                        coordinator_children,
+                        coordinator_workers,
+                        coordinator_counters,
+                        duration_seconds,
+                        capture_started,
+                        probation,
+                        WINDOWS_LATE_LOOPBACK_POLL_INTERVAL,
+                        WindowsPidLoopbackProbe { process_ids },
+                        NpcapCandidateOpener,
+                    )
+                }) {
+                Ok(worker) => Some(worker),
+                Err(error) => {
+                    aggregate_stop.request_stop();
+                    children.request_stop();
+                    for worker in workers
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .drain(..)
+                    {
+                        let _ = worker.join();
+                    }
+                    return Err(CaptureError::Adapter {
+                        adapter: "windows-signature-fan-in".into(),
+                        message: format!("could not start late loopback coordinator: {error}"),
+                    });
+                }
+            }
+        } else {
+            registration.close();
+            None
+        };
         Ok(Self {
             inner,
             stop: WindowsSignatureFanInStopHandle {
                 fan_in: aggregate_stop,
                 children,
+                coordinator: Arc::clone(&coordinator),
             },
-            workers: started.workers,
-            planned_candidates: candidates.len().min(MAX_WINDOWS_CAPTURE_CANDIDATES),
-            opened_candidates,
-            candidate_open_failures: started.open_failures,
+            workers,
+            coordinator_worker,
+            candidate_counters,
         })
     }
 
@@ -1139,15 +1435,27 @@ impl WindowsSignatureFanInCapture {
     pub fn diagnostics(&self) -> WindowsSignatureFanInDiagnostics {
         let metrics = self.inner.source().metrics();
         fan_in_diagnostics(
-            self.planned_candidates,
-            self.opened_candidates,
-            self.candidate_open_failures,
+            self.candidate_counters.planned.load(Ordering::Relaxed),
+            self.candidate_counters.opened.load(Ordering::Relaxed),
+            self.candidate_counters
+                .open_failures
+                .load(Ordering::Relaxed),
             metrics,
         )
     }
 
     fn finish_workers(&mut self) {
-        for worker in self.workers.drain(..) {
+        self.stop.coordinator.request_stop();
+        if let Some(worker) = self.coordinator_worker.take() {
+            let _ = worker.join();
+        }
+        let workers = self
+            .workers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .drain(..)
+            .collect::<Vec<_>>();
+        for worker in workers {
             let _ = worker.join();
         }
     }
@@ -1160,6 +1468,9 @@ impl CaptureSource for WindowsSignatureFanInCapture {
 
     fn next_frame(&mut self) -> Result<Option<CapturedFrame>, CaptureError> {
         let result = self.inner.next_frame();
+        if self.inner.metrics().signature_matches > 0 {
+            self.stop.coordinator.confirm_signature();
+        }
         if !matches!(result, Ok(Some(_))) {
             self.finish_workers();
         }
@@ -1303,8 +1614,9 @@ impl WindowsSignatureLiveCapture {
     }
 
     /// Opens the initial route-aware candidate set under one shared signature
-    /// filter. Candidate discovery is point-in-time in this slice; no setting is
-    /// changed and no adapter is added after the call returns.
+    /// filter. When the BPSR process has not exposed loopback yet, one bounded
+    /// reader slot remains available for a PID-owned loopback connection that
+    /// appears during the startup probation window.
     pub fn open_route_aware_prefix(
         primary_interface: &str,
         process_ids: &[u32],
@@ -1314,13 +1626,20 @@ impl WindowsSignatureLiveCapture {
         filter: SignatureFlowCaptureConfig,
     ) -> Result<Self, CaptureError> {
         let adapters = windows_capture_adapters().unwrap_or_default();
-        let candidates =
-            recommend_windows_capture_candidates(&adapters, process_ids, Some(primary_interface));
-        match WindowsSignatureFanInCapture::open_prefix(
+        let normalized_process_ids = normalized_process_ids(process_ids);
+        let mut candidates = recommend_windows_capture_candidates(
+            &adapters,
+            &normalized_process_ids,
+            Some(primary_interface),
+        );
+        let late_process_ids =
+            late_loopback_probation_process_ids(&mut candidates, &normalized_process_ids);
+        match WindowsSignatureFanInCapture::open_prefix_with_late_loopback(
             &candidates,
             duration_seconds,
             signature,
             filter,
+            late_process_ids,
         ) {
             Ok(capture) => Ok(Self::NpcapFanIn(capture)),
             Err(npcap_error) => match dumpcap_fallback {
@@ -1869,6 +2188,54 @@ mod tests {
         }
     }
 
+    struct SequenceLoopbackProbe {
+        observations: VecDeque<bool>,
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl LateLoopbackProbe for SequenceLoopbackProbe {
+        fn bpsr_pid_has_loopback(&mut self) -> bool {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.observations.pop_front().unwrap_or(false)
+        }
+    }
+
+    struct RecordingFixtureOpener {
+        attempts: Arc<Mutex<Vec<String>>>,
+        durations: Arc<Mutex<Vec<u32>>>,
+        fail: bool,
+    }
+
+    impl FanInCandidateOpener for RecordingFixtureOpener {
+        type Source = FixtureCaptureSource;
+        type Stop = FixtureStop;
+
+        fn open(
+            &mut self,
+            candidate: &WindowsCaptureCandidate,
+            duration_seconds: u32,
+        ) -> Result<(Self::Source, Self::Stop), CaptureError> {
+            self.attempts
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(candidate.adapter_name.clone());
+            self.durations
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(duration_seconds);
+            if self.fail {
+                return Err(CaptureError::Adapter {
+                    adapter: "fixture".into(),
+                    message: "fixture late open failure".into(),
+                });
+            }
+            Ok((
+                FixtureCaptureSource::empty(),
+                FixtureStop(Arc::new(AtomicBool::new(false))),
+            ))
+        }
+    }
+
     fn candidate(name: &str) -> WindowsCaptureCandidate {
         WindowsCaptureCandidate {
             adapter_name: name.into(),
@@ -1982,6 +2349,322 @@ mod tests {
         assert_eq!(started.stops.len(), 2);
         assert_eq!(started.open_failures, 2);
         assert!(started.first_open_error.is_some());
+    }
+
+    #[test]
+    fn all_initial_open_failures_return_immediately_for_dumpcap_fallback() {
+        let candidates = [candidate("FAIL-A"), candidate("FAIL-B")];
+        let (_fan_in, registration) =
+            MultiSourceFanIn::new_with_registration_lease(4, 8, 4_096, Vec::new()).unwrap();
+        let mut opener = FixtureOpener::default();
+        let started_at = Instant::now();
+        let mut started =
+            start_fan_in_sources(&candidates, 30, &registration, &mut opener).unwrap();
+
+        let error = require_initial_fan_in_source(&mut started).unwrap_err();
+
+        assert!(started_at.elapsed() < Duration::from_secs(1));
+        assert!(error.to_string().contains("fixture open failure"));
+        assert!(started.workers.is_empty());
+        assert_eq!(started.open_failures, 2);
+    }
+
+    #[test]
+    fn process_ids_are_nonzero_sorted_and_deduplicated_before_probation() {
+        assert_eq!(normalized_process_ids(&[0, 42, 7, 42, 0, 7]), [7, 42]);
+        assert!(normalized_process_ids(&[0, 0]).is_empty());
+
+        let mut zero_pid_candidates = vec![
+            candidate("A"),
+            candidate("B"),
+            candidate("C"),
+            candidate("D"),
+        ];
+        assert_eq!(
+            late_loopback_probation_process_ids(&mut zero_pid_candidates, &[0]),
+            None
+        );
+        assert_eq!(zero_pid_candidates.len(), MAX_WINDOWS_CAPTURE_CANDIDATES);
+
+        assert_eq!(
+            late_loopback_probation_process_ids(&mut zero_pid_candidates, &[42, 7, 42]),
+            Some(vec![7, 42])
+        );
+        assert_eq!(
+            zero_pid_candidates.len(),
+            MAX_WINDOWS_CAPTURE_CANDIDATES - 1
+        );
+    }
+
+    #[test]
+    fn late_loopback_slot_is_reserved_once_with_a_unique_bounded_ordinal() {
+        let mut candidates = vec![
+            candidate("EXPLICIT"),
+            candidate("DIRECT-A"),
+            candidate("DIRECT-B"),
+            candidate("ROUTE-C"),
+        ];
+        assert!(reserve_late_loopback_slot(&mut candidates));
+        assert_eq!(candidates.len(), MAX_WINDOWS_CAPTURE_CANDIDATES - 1);
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|candidate| candidate.adapter_name.as_str())
+                .collect::<Vec<_>>(),
+            ["EXPLICIT", "DIRECT-A", "DIRECT-B"]
+        );
+        assert!(is_capture_reader_thread_name(&format!(
+            "{CAPTURE_READER_THREAD_PREFIX}{}",
+            MAX_WINDOWS_CAPTURE_CANDIDATES - 1
+        )));
+
+        candidates.push(WindowsCaptureCandidate {
+            adapter_name: NPCAP_LOOPBACK_ADAPTER_NAME.into(),
+            sources: vec![WindowsCaptureCandidateSource::ExplicitPrimary],
+            matched_game_connections: 0,
+        });
+        assert!(!reserve_late_loopback_slot(&mut candidates));
+        assert_eq!(
+            candidates
+                .iter()
+                .filter(|candidate| same_adapter_name(
+                    &candidate.adapter_name,
+                    NPCAP_LOOPBACK_ADAPTER_NAME
+                ))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn coordinator_admits_one_late_pid_owned_loopback_reader() {
+        let (fan_in, registration) =
+            MultiSourceFanIn::new_with_registration_lease(4, 8, 4_096, Vec::new()).unwrap();
+        let mut initial_ingress = registration.register_source().unwrap();
+        let signal = Arc::new(LateLoopbackCoordinatorSignal::default());
+        let children = Arc::new(DynamicChildStopRegistry::new(4));
+        let workers = Arc::new(Mutex::new(Vec::new()));
+        let counters = Arc::new(FanInCandidateCounters::new(1, 1, 0));
+        let attempts = Arc::new(Mutex::new(Vec::new()));
+        let durations = Arc::new(Mutex::new(Vec::new()));
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        run_late_loopback_coordinator(
+            registration,
+            Arc::clone(&signal),
+            Arc::clone(&children),
+            Arc::clone(&workers),
+            Arc::clone(&counters),
+            0,
+            Instant::now(),
+            Duration::from_secs(30),
+            Duration::ZERO,
+            SequenceLoopbackProbe {
+                observations: VecDeque::from([false, true, true]),
+                calls: Arc::clone(&calls),
+            },
+            RecordingFixtureOpener {
+                attempts: Arc::clone(&attempts),
+                durations,
+                fail: false,
+            },
+        );
+
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            *attempts
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            [NPCAP_LOOPBACK_ADAPTER_NAME]
+        );
+        assert_eq!(counters.planned.load(Ordering::Relaxed), 2);
+        assert_eq!(counters.opened.load(Ordering::Relaxed), 2);
+        assert_eq!(fan_in.metrics().registered_sources, 2);
+
+        initial_ingress.finish();
+        for worker in workers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .drain(..)
+        {
+            worker.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn coordinator_closes_immediately_after_all_initial_readers_finish() {
+        let (_fan_in, registration) =
+            MultiSourceFanIn::new_with_registration_lease(4, 8, 4_096, Vec::new()).unwrap();
+        let mut initial_ingress = registration.register_source().unwrap();
+        initial_ingress.finish();
+        let signal = Arc::new(LateLoopbackCoordinatorSignal::default());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let started = Instant::now();
+
+        run_late_loopback_coordinator(
+            registration,
+            signal,
+            Arc::new(DynamicChildStopRegistry::new(4)),
+            Arc::new(Mutex::new(Vec::new())),
+            Arc::new(FanInCandidateCounters::new(1, 1, 0)),
+            0,
+            started,
+            Duration::from_secs(30),
+            Duration::from_secs(30),
+            SequenceLoopbackProbe {
+                observations: VecDeque::from([false]),
+                calls: Arc::clone(&calls),
+            },
+            RecordingFixtureOpener {
+                attempts: Arc::new(Mutex::new(Vec::new())),
+                durations: Arc::new(Mutex::new(Vec::new())),
+                fail: false,
+            },
+        );
+
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn coordinator_stop_wakes_and_joins_without_waiting_for_poll_interval() {
+        let (_fan_in, registration) =
+            MultiSourceFanIn::new_with_registration_lease(4, 8, 4_096, Vec::new()).unwrap();
+        let mut initial_ingress = registration.register_source().unwrap();
+        let signal = Arc::new(LateLoopbackCoordinatorSignal::default());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let worker_signal = Arc::clone(&signal);
+        let worker_calls = Arc::clone(&calls);
+        let worker = thread::spawn(move || {
+            run_late_loopback_coordinator(
+                registration,
+                worker_signal,
+                Arc::new(DynamicChildStopRegistry::new(4)),
+                Arc::new(Mutex::new(Vec::new())),
+                Arc::new(FanInCandidateCounters::new(1, 1, 0)),
+                0,
+                Instant::now(),
+                Duration::from_secs(30),
+                Duration::from_secs(30),
+                SequenceLoopbackProbe {
+                    observations: VecDeque::from([false]),
+                    calls: worker_calls,
+                },
+                RecordingFixtureOpener {
+                    attempts: Arc::new(Mutex::new(Vec::new())),
+                    durations: Arc::new(Mutex::new(Vec::new())),
+                    fail: false,
+                },
+            );
+        });
+        let wait_deadline = Instant::now() + Duration::from_secs(1);
+        while calls.load(Ordering::SeqCst) == 0 && Instant::now() < wait_deadline {
+            thread::yield_now();
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        let stopped = Instant::now();
+        signal.request_stop();
+        worker.join().unwrap();
+        assert!(stopped.elapsed() < Duration::from_secs(1));
+        initial_ingress.finish();
+    }
+
+    #[test]
+    fn signature_confirmation_wakes_and_joins_the_coordinator() {
+        let (_fan_in, registration) =
+            MultiSourceFanIn::new_with_registration_lease(4, 8, 4_096, Vec::new()).unwrap();
+        let mut initial_ingress = registration.register_source().unwrap();
+        let signal = Arc::new(LateLoopbackCoordinatorSignal::default());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let worker_signal = Arc::clone(&signal);
+        let worker_calls = Arc::clone(&calls);
+        let worker = thread::spawn(move || {
+            run_late_loopback_coordinator(
+                registration,
+                worker_signal,
+                Arc::new(DynamicChildStopRegistry::new(4)),
+                Arc::new(Mutex::new(Vec::new())),
+                Arc::new(FanInCandidateCounters::new(1, 1, 0)),
+                0,
+                Instant::now(),
+                Duration::from_secs(30),
+                Duration::from_secs(30),
+                SequenceLoopbackProbe {
+                    observations: VecDeque::from([false]),
+                    calls: worker_calls,
+                },
+                RecordingFixtureOpener {
+                    attempts: Arc::new(Mutex::new(Vec::new())),
+                    durations: Arc::new(Mutex::new(Vec::new())),
+                    fail: false,
+                },
+            );
+        });
+        let wait_deadline = Instant::now() + Duration::from_secs(1);
+        while calls.load(Ordering::SeqCst) == 0 && Instant::now() < wait_deadline {
+            thread::yield_now();
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        let confirmed = Instant::now();
+        signal.confirm_signature();
+        worker.join().unwrap();
+        assert!(confirmed.elapsed() < Duration::from_secs(1));
+        initial_ingress.finish();
+    }
+
+    #[test]
+    fn late_loopback_open_failure_does_not_end_a_healthy_initial_source() {
+        let (fan_in, registration) =
+            MultiSourceFanIn::new_with_registration_lease(4, 8, 4_096, Vec::new()).unwrap();
+        let mut initial_ingress = registration.register_source().unwrap();
+        let mut filtered = SignatureFlowCapture::new_prefix(
+            fan_in,
+            prefix_signature,
+            SignatureFlowCaptureConfig::default(),
+        )
+        .unwrap();
+        let counters = Arc::new(FanInCandidateCounters::new(1, 1, 0));
+
+        run_late_loopback_coordinator(
+            registration,
+            Arc::new(LateLoopbackCoordinatorSignal::default()),
+            Arc::new(DynamicChildStopRegistry::new(4)),
+            Arc::new(Mutex::new(Vec::new())),
+            Arc::clone(&counters),
+            0,
+            Instant::now(),
+            Duration::from_secs(30),
+            Duration::ZERO,
+            SequenceLoopbackProbe {
+                observations: VecDeque::from([true]),
+                calls: Arc::new(AtomicUsize::new(0)),
+            },
+            RecordingFixtureOpener {
+                attempts: Arc::new(Mutex::new(Vec::new())),
+                durations: Arc::new(Mutex::new(Vec::new())),
+                fail: true,
+            },
+        );
+        initial_ingress
+            .try_push(tcp_frame(10_000, b"BPSR split signature"))
+            .unwrap();
+        initial_ingress.finish();
+
+        assert!(filtered.next_frame().unwrap().is_some());
+        assert!(filtered.next_frame().unwrap().is_none());
+        assert_eq!(counters.open_failures.load(Ordering::Relaxed), 1);
+        assert_eq!(filtered.metrics().signature_matches, 1);
+    }
+
+    #[test]
+    fn remaining_duration_never_extends_a_finite_capture() {
+        let started = Instant::now() - Duration::from_millis(1_100);
+        assert_eq!(remaining_capture_duration(30, started), 28);
+        let expired = Instant::now() - Duration::from_secs(30);
+        assert_eq!(remaining_capture_duration(30, expired), 0);
+        assert_eq!(remaining_capture_duration(0, expired), 0);
     }
 
     #[test]
