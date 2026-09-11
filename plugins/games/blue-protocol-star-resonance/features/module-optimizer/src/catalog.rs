@@ -240,21 +240,21 @@ mod tests {
         assert_eq!(actual.link_power, expected.link_power);
         assert_eq!(catalog.attributes.len(), 21);
         assert_eq!(catalog.client_builds, ["24252055"]);
-        assert_eq!(
-            catalog
-                .attributes
-                .iter()
-                .find(|entry| entry.id == 1112)
-                .map(|entry| (entry.name.as_str(), entry.official_name.as_deref())),
-            Some(("Intelligence Boost", Some("Intellect Boost")))
-        );
-        assert_eq!(
-            catalog
-                .attributes
-                .iter()
-                .find(|entry| entry.id == 1307)
-                .map(|entry| entry.name.as_str()),
-            Some("Resistance (Magic)")
-        );
+        for (id, expected_name) in [
+            (1112, "Intellect Boost"),
+            (1307, "Resistance"),
+            (1308, "Armor"),
+            (2104, "DMG Stack"),
+            (2405, "Life Steal"),
+        ] {
+            assert_eq!(
+                catalog
+                    .attributes
+                    .iter()
+                    .find(|entry| entry.id == id)
+                    .map(|entry| (entry.name.as_str(), entry.official_name.as_deref())),
+                Some((expected_name, None))
+            );
+        }
     }
 }

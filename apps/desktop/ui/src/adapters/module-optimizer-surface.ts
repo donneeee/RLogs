@@ -87,6 +87,15 @@ export function moduleSolutionScoreSummary(solution: ModuleSolution): string {
     : `Score ${score} · Priority ${solution.ranking_score.toLocaleString()}`;
 }
 
+export function optimizerScoringStatus(
+  catalog: Pick<OptimizerCatalog, "client_builds" | "scoring_revision">,
+): string {
+  const builds = catalog.client_builds
+    .map((build) => Number(build).toLocaleString())
+    .join(", ");
+  return `reviewed scoring ${catalog.scoring_revision} · catalog build ${builds} · ordinary builds carry forward unless a seasonal update is declared`;
+}
+
 export function scoreModuleSet(
   modules: readonly ModuleCandidate[],
   catalog: OptimizerCatalog,
@@ -509,7 +518,7 @@ export function mountModuleOptimizerSurface(
       const ready = nextInventory.characters.filter(
         (entry) => entry.module_snapshot_available,
       ).length;
-      status.textContent = `${nextCatalog.attributes.length} localized effects · ${ready} usable character snapshot${ready === 1 ? "" : "s"} · exact-build scoring ${nextCatalog.scoring_revision}`;
+      status.textContent = `${nextCatalog.attributes.length} localized effects · ${ready} usable character snapshot${ready === 1 ? "" : "s"} · ${optimizerScoringStatus(nextCatalog)}`;
       if (nextInventory.issues.length > 0) {
         status.textContent += ` · ${nextInventory.issues.length} snapshot warning${nextInventory.issues.length === 1 ? "" : "s"}`;
       }

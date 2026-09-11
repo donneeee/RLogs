@@ -8,7 +8,12 @@ import {
   parseOptimizeResponse,
   parseOptimizerCatalog,
 } from "./module-optimizer";
-import { moduleSolutionScoreSummary, scoreModuleSet, summarizeModuleLinks } from "./module-optimizer-surface";
+import {
+  moduleSolutionScoreSummary,
+  optimizerScoringStatus,
+  scoreModuleSet,
+  summarizeModuleLinks,
+} from "./module-optimizer-surface";
 
 describe("local module optimizer contracts", () => {
   it("shows the score and only adds a priority score when preferences change ranking", () => {
@@ -28,6 +33,15 @@ describe("local module optimizer contracts", () => {
     expect(moduleSolutionScoreSummary(solution)).toBe("Score 420");
     expect(moduleSolutionScoreSummary({ ...solution, ranking_score: 460 })).toBe(
       "Score 420 · Priority 460",
+    );
+  });
+
+  it("describes reviewed scoring as ordinary-build carry-forward", () => {
+    expect(optimizerScoringStatus({
+      scoring_revision: "global-reviewed-v5",
+      client_builds: ["24252055"],
+    })).toBe(
+      "reviewed scoring global-reviewed-v5 · catalog build 24,252,055 · ordinary builds carry forward unless a seasonal update is declared",
     );
   });
 
