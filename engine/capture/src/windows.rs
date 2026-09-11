@@ -27,7 +27,7 @@ use crate::{
     LiveCaptureStopHandle, NpcapLiveConfig, NpcapLiveStopHandle, OwnedProcessCapture,
     OwnedProcessCaptureConfig, OwnedProcessCaptureMetrics, ProcessSocketOwner,
     SignatureFlowCapture, SignatureFlowCaptureConfig, SignatureFlowCaptureMetrics, TcpConnection,
-    TcpEndpoint, TcpPayloadSignature,
+    TcpEndpoint, TcpPayloadPrefixSignature, TcpPayloadSignature,
 };
 
 const MAX_TABLE_QUERY_ATTEMPTS: usize = 4;
@@ -485,6 +485,17 @@ impl WindowsSignatureNpcapCapture {
         })
     }
 
+    pub fn open_prefix(
+        npcap: NpcapLiveConfig,
+        signature: TcpPayloadPrefixSignature,
+        filter: SignatureFlowCaptureConfig,
+    ) -> Result<Self, CaptureError> {
+        let source = NpcapLiveCapture::open(npcap)?;
+        Ok(Self {
+            inner: SignatureFlowCapture::new_prefix(source, signature, filter)?,
+        })
+    }
+
     pub fn metrics(&self) -> &SignatureFlowCaptureMetrics {
         self.inner.metrics()
     }
@@ -524,6 +535,17 @@ impl WindowsSignatureDumpcapCapture {
         let source = DumpcapLiveCapture::spawn(dumpcap)?;
         Ok(Self {
             inner: SignatureFlowCapture::new(source, signature, filter)?,
+        })
+    }
+
+    pub fn spawn_prefix(
+        dumpcap: DumpcapLiveConfig,
+        signature: TcpPayloadPrefixSignature,
+        filter: SignatureFlowCaptureConfig,
+    ) -> Result<Self, CaptureError> {
+        let source = DumpcapLiveCapture::spawn(dumpcap)?;
+        Ok(Self {
+            inner: SignatureFlowCapture::new_prefix(source, signature, filter)?,
         })
     }
 
@@ -572,6 +594,32 @@ impl WindowsSignatureLiveCapture {
             Ok(capture) => Ok(Self::Npcap(capture)),
             Err(npcap_error) => match dumpcap_fallback {
                 Some(config) => WindowsSignatureDumpcapCapture::spawn(config, signature, filter)
+                    .map(Self::Dumpcap)
+                    .map_err(|dumpcap_error| CaptureError::Adapter {
+                        adapter: "windows-signature-live-capture".into(),
+                        message: format!(
+                            "native Npcap failed ({npcap_error}); dumpcap fallback also failed ({dumpcap_error})"
+                        ),
+                    }),
+                None => Err(npcap_error),
+            },
+        }
+    }
+
+    pub fn open_prefix(
+        interface: &str,
+        duration_seconds: u32,
+        dumpcap_fallback: Option<DumpcapLiveConfig>,
+        signature: TcpPayloadPrefixSignature,
+        filter: SignatureFlowCaptureConfig,
+    ) -> Result<Self, CaptureError> {
+        let npcap_result = NpcapLiveConfig::new(interface, duration_seconds).and_then(|config| {
+            WindowsSignatureNpcapCapture::open_prefix(config, signature, filter)
+        });
+        match npcap_result {
+            Ok(capture) => Ok(Self::Npcap(capture)),
+            Err(npcap_error) => match dumpcap_fallback {
+                Some(config) => WindowsSignatureDumpcapCapture::spawn_prefix(config, signature, filter)
                     .map(Self::Dumpcap)
                     .map_err(|dumpcap_error| CaptureError::Adapter {
                         adapter: "windows-signature-live-capture".into(),

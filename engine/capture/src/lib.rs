@@ -36,8 +36,9 @@ pub use recording::{
     OwnedCaptureRecordingError, OwnedCaptureRecordingResult, record_owned_capture_to_files,
 };
 pub use signature_filter::{
-    SignatureFlowCapture, SignatureFlowCaptureConfig, SignatureFlowCaptureConfigError,
-    SignatureFlowCaptureMetrics, TcpPayloadDirection, TcpPayloadSignature,
+    MAX_TCP_SIGNATURE_PREFIX_BYTES, SignatureFlowCapture, SignatureFlowCaptureConfig,
+    SignatureFlowCaptureConfigError, SignatureFlowCaptureMetrics, TcpPayloadDirection,
+    TcpPayloadPrefixSignature, TcpPayloadSignature, TcpPayloadSignatureResult,
 };
 #[cfg(windows)]
 pub use windows::{

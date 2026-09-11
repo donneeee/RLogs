@@ -62,7 +62,7 @@ impl ConnectionKey {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct DirectedTcpFlow {
     pub(crate) source: TcpEndpoint,
     pub(crate) destination: TcpEndpoint,
@@ -76,6 +76,11 @@ impl DirectedTcpFlow {
 
 pub(crate) struct TcpFrameView<'a> {
     pub(crate) flow: DirectedTcpFlow,
+    pub(crate) payload_sequence: u32,
+    pub(crate) syn: bool,
+    pub(crate) ack: bool,
+    pub(crate) fin: bool,
+    pub(crate) rst: bool,
     pub(crate) payload: &'a [u8],
 }
 
@@ -433,6 +438,11 @@ pub(crate) fn extract_tcp_frame(frame: &CapturedFrame) -> Option<TcpFrameView<'_
             source: TcpEndpoint::new(source_address, tcp.source_port()),
             destination: TcpEndpoint::new(destination_address, tcp.destination_port()),
         },
+        payload_sequence: tcp.sequence_number().wrapping_add(u32::from(tcp.syn())),
+        syn: tcp.syn(),
+        ack: tcp.ack(),
+        fin: tcp.fin(),
+        rst: tcp.rst(),
         payload: tcp.payload(),
     })
 }

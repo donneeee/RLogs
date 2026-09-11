@@ -338,7 +338,7 @@ pub use swift_vortex_audit::{
     SwiftVortexCandidateAuditAnalyzer, SwiftVortexCandidateAuditReport,
     SwiftVortexMagnitudeReceipt,
 };
-pub use traffic_signature::classify_bpsr_tcp_payload;
+pub use traffic_signature::{classify_bpsr_tcp_payload, classify_bpsr_tcp_prefix};
 pub use training_dummy::{
     GUILD_HALL_SCENE_ID, TRAINING_DURATION_MICROS, TrainingDummyController,
     TrainingDummyObservation, TrainingDummyPhase, TrainingDummyState,

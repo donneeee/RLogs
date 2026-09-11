@@ -98,7 +98,7 @@ use rlogs_game_bpsr::{
     auxiliary_action_presentation, battle_imagine_presentation, bundled_gauntlet_scene_ids,
     bundled_localization_supports_identity, bundled_run_reducer_config_for_identity,
     bundled_run_rules_support_identity, bundled_scene_run_identities,
-    bundled_terminal_boss_scene_ids, character_id_from_entity_uuid, classify_bpsr_tcp_payload,
+    bundled_terminal_boss_scene_ids, character_id_from_entity_uuid, classify_bpsr_tcp_prefix,
     combat_action_presentation, combat_breakdown_ability_id, combat_recount_group_id,
     confirmed_damage_contribution_rules, fight_attribute_presentation_catalog,
     installed_container_for_executable, is_boss_monster, is_boss_monster_for_identity,
@@ -8808,11 +8808,11 @@ impl RuntimeController {
             .and_then(|path| {
                 DumpcapLiveConfig::new(path, interface, request.duration_seconds).ok()
             });
-        let capture = WindowsSignatureLiveCapture::open(
+        let capture = WindowsSignatureLiveCapture::open_prefix(
             interface,
             request.duration_seconds,
             dumpcap_fallback,
-            classify_bpsr_tcp_payload,
+            classify_bpsr_tcp_prefix,
             SignatureFlowCaptureConfig::default(),
         )
         .map_err(|error| error.to_string())?;
