@@ -243,6 +243,15 @@ describe("Combat History death presentation", () => {
     const playerHidden = render(new Set([player.actor_id]));
     expect(playerHidden.querySelector(".combat-history-player-event-lane")).toBeNull();
     expect(playerHidden.querySelector(".combat-history-hostile-event-lane")).not.toBeNull();
+
+    const hostileHidden = renderMetricGraph(
+      [player],
+      { metric: "damage", title: "Damage", rateLabel: "DPS", description: "Damage rate" },
+      3_000_000, new Set(), new Map([[player.actor_id, "#35c2ff"]]), null,
+      () => undefined, ui, view, false,
+    );
+    expect(hostileHidden.querySelector(".combat-history-hostile-event-lane")).toBeNull();
+    expect(hostileHidden.querySelector(".combat-history-player-event-lane")).not.toBeNull();
   });
 
   it("uses neutral hostile cast labels and no icon without trusted presentation", async () => {

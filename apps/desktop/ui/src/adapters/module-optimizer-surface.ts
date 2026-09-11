@@ -276,6 +276,7 @@ export function mountModuleOptimizerSurface(
   function setSelectedCharacter(packageId: string): void {
     selectedCharacter =
       inventory?.characters.find((entry) => entry.package_id === packageId) ?? null;
+    if (catalog !== null) renderCatalog(catalog);
     restorePreferences();
     renderCharacter();
   }
@@ -331,13 +332,17 @@ export function mountModuleOptimizerSurface(
   function renderCatalog(value: OptimizerCatalog): void {
     attributeControls.clear();
     attributeList.replaceChildren();
+    const presentation = selectedCharacter === null
+      ? undefined
+      : modulePresentationForCharacter(selectedCharacter);
     for (const attribute of value.attributes) {
+      const displayName = presentation?.module_effects[String(attribute.id)] ?? attribute.name;
       const row = element("article", "module-attribute-row");
       const identityNode = element("div", "module-attribute-identity");
-      const icon = image(optimizerAssetUrl(attribute.icon), attribute.name);
+      const icon = image(optimizerAssetUrl(attribute.icon), displayName);
       const copy = element("div");
-      copy.append(text("strong", attribute.name));
-      if (attribute.official_name && attribute.official_name !== attribute.name) {
+      copy.append(text("strong", displayName));
+      if (attribute.official_name && attribute.official_name !== displayName) {
         copy.title = `In game: ${attribute.official_name}`;
       }
       identityNode.append(icon, copy);
@@ -348,8 +353,8 @@ export function mountModuleOptimizerSurface(
       minimum.min = "0";
       minimum.max = String(Math.max(...attribute.thresholds));
       minimum.placeholder = "Min";
-      minimum.setAttribute("aria-label", `Minimum ${attribute.name} Link`);
-      minimum.title = `Minimum required ${attribute.name} Link`;
+      minimum.setAttribute("aria-label", `Minimum ${displayName} Link`);
+      minimum.title = `Minimum required ${displayName} Link`;
       minimum.className = "module-minimum-input";
       target.input.addEventListener("change", () => {
         if (target.input.checked) exclude.input.checked = false;
@@ -367,7 +372,7 @@ export function mountModuleOptimizerSurface(
         target: target.input,
         exclude: exclude.input,
         minimum,
-        searchText: `${attribute.name} ${attribute.official_name ?? ""}`.toLocaleLowerCase(),
+        searchText: `${displayName} ${attribute.name} ${attribute.official_name ?? ""}`.toLocaleLowerCase(),
       });
     }
     sizeSelect.select.replaceChildren(
@@ -492,7 +497,6 @@ export function mountModuleOptimizerSurface(
       if (!alive) return;
       catalog = nextCatalog;
       inventory = nextInventory;
-      renderCatalog(nextCatalog);
       if (gpuSupport === null) renderGpuUnchecked();
       const previousId = selectedCharacter?.package_id;
       characterSelect.replaceChildren();
@@ -513,6 +517,7 @@ export function mountModuleOptimizerSurface(
         selectedCharacter = selected;
         if (selected) characterSelect.value = selected.package_id;
       }
+      renderCatalog(nextCatalog);
       restorePreferences();
       renderCharacter();
       const ready = nextInventory.characters.filter(

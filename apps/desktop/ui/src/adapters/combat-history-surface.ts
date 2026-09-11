@@ -730,6 +730,7 @@ export function mountCombatHistorySurface(
   let targetActorId: string | null = null;
   let detailActorId: string | null = null;
   let hiddenGraphActors = new Set<string>();
+  let showHostileGraphEvents = true;
   let graphMetric: GraphMetric = "damage";
   let settings = DEFAULT_COMBAT_METER_SETTINGS;
   let browserQuery = "";
@@ -841,6 +842,7 @@ export function mountCombatHistorySurface(
     targetActorId = null;
     detailActorId = null;
     hiddenGraphActors = new Set();
+    showHostileGraphEvents = true;
     detail = await loadDetail(entry.session_id);
     if (alive) render();
   };
@@ -2277,6 +2279,28 @@ export function mountCombatHistorySurface(
       });
       legend.append(control);
     }
+    if ((view.hostile_casts?.length ?? 0) > 0) {
+      const control = button("", "combat-history-series-toggle");
+      control.dataset.hidden = String(!showHostileGraphEvents);
+      control.dataset.actorKind = "hostile";
+      control.style.setProperty("--series-color", "var(--amber)");
+      control.setAttribute("aria-pressed", String(showHostileGraphEvents));
+      control.setAttribute(
+        "aria-label",
+        ui.t(showHostileGraphEvents
+          ? "ui.combat_history.graph.hide_hostile_aria"
+          : "ui.combat_history.graph.show_hostile_aria"),
+      );
+      control.append(
+        element("span", "combat-history-series-swatch"),
+        element("strong", "", ui.t("ui.combat_history.graph.hostile_mechanics")),
+      );
+      control.addEventListener("click", () => {
+        showHostileGraphEvents = !showHostileGraphEvents;
+        render();
+      });
+      legend.append(control);
+    }
     gallery.append(legend);
     const definitions = graphDefinitions(ui);
     const definition = definitions.find(
@@ -2296,6 +2320,7 @@ export function mountCombatHistorySurface(
         },
         ui,
         view,
+        showHostileGraphEvents,
       ),
     );
     return gallery;
@@ -3321,6 +3346,7 @@ export function renderMetricGraph(
   selectMetric: (metric: GraphMetric) => void,
   localizer: UiLocalizer,
   historyView?: CombatHistoryView,
+  showHostileEvents = true,
 ): HTMLElement {
   const card = element("section", "combat-history-metric-graph");
   const durationSeconds = Math.max(1, Math.ceil(elapsedMicros / 1_000_000));
@@ -3343,7 +3369,7 @@ export function renderMetricGraph(
   const visibleSeries = allSeries.filter(
     (entry) => !hiddenActorIds.has(entry.actor.actor_id),
   );
-  const hasHostileCasts = (historyView?.hostile_casts?.length ?? 0) > 0;
+  const hasHostileCasts = showHostileEvents && (historyView?.hostile_casts?.length ?? 0) > 0;
   const scaleMaximum = graphScaleMaximum(
     allSeries.map((entry) => entry.values),
   );
@@ -3391,6 +3417,7 @@ export function renderMetricGraph(
     elapsedMicros,
     localizer,
     historyView,
+    showHostileEvents,
   );
   if (eventLanes) card.append(eventLanes);
   const stats = element("div", "combat-history-graph-stats");
@@ -3425,11 +3452,14 @@ function recordedEventLanes(
   durationMicros: number,
   localizer: UiLocalizer,
   historyView?: CombatHistoryView,
+  showHostileEvents = true,
 ): HTMLElement | null {
   const playerLanes = series.filter(({ actor }) => graphActorKind(actor) === "player" && (
     (actor.skill_events?.length ?? 0) > 0 || (actor.death_events?.length ?? 0) > 0 ||
     (actor.status_events?.length ?? 0) > 0 || actor.death_seconds.length > 0));
-  const hostileLanes = groupHostileCastsBySource(historyView?.hostile_casts ?? []);
+  const hostileLanes = showHostileEvents
+    ? groupHostileCastsBySource(historyView?.hostile_casts ?? [])
+    : [];
   if (hostileLanes.length === 0 && playerLanes.length === 0) return null;
   const width = 1_120, left = 78, right = 24, laneHeight = 38;
   const plotWidth = width - left - right;

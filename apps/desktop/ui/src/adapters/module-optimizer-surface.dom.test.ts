@@ -20,7 +20,14 @@ describe("desktop module optimizer surface", () => {
       catalog_revision: "reviewed-catalog",
       scoring_revision: "reviewed-scoring",
       client_builds: ["24252055"],
-      attributes: [],
+      attributes: [{
+        id: 1110,
+        name: "Module effect 1110",
+        official_name: null,
+        icon: null,
+        thresholds: [1],
+        fight_values: [1],
+      }],
       link_power: [0],
       combination_sizes: [4, 5],
       default_max_solutions: 5,
@@ -83,6 +90,10 @@ describe("desktop module optimizer surface", () => {
     expect(summary?.hidden).toBe(false);
     expect(summary?.querySelector(".module-score-summary")?.textContent).toBe("Score 0");
     expect(summary?.querySelectorAll(".module-effect-chip")).toHaveLength(0);
+    expect(container.querySelector(".module-attribute-identity strong")?.textContent)
+      .toBe("Strength Boost");
+    expect(container.querySelector(".module-minimum-input")?.getAttribute("aria-label"))
+      .toBe("Minimum Strength Boost Link");
 
     mounted.dispose();
   });
