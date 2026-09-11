@@ -33,8 +33,26 @@ the game protocol below is proven from a controlled capture.
   not evidence that the reported action did not occur.
 - Submission `.rlog` files contain canonical events, not packet/link headers or
   unknown route bodies. They cannot recover an undecoded marker request.
-- No private PCAP/PCAPNG or selective research journal for these runs is
-  present under the local RLogs data root.
+- A private Mech Facility M1 capture is now present for Global Steam build
+  `24687926` with the exact reviewed protocol-pack digest. It spans 299.586
+  seconds (3,852 complete Ethernet frames; no truncated, backward-timestamp,
+  or missing-timestamp frames). The user's six placement acknowledgements fall
+  at approximately +168, +194, +216, +235, +259, and +284 seconds, so all six
+  actions are inside the retained PCAPNG.
+- The exact-build nested protocol journal proves that the captured World
+  connection stopped producing routed client calls at approximately +79
+  seconds, before the first placement acknowledgement. The other retained
+  connection continues through the end of capture but carries only gateway/team
+  notifications and echo traffic during the placement interval. Consequently,
+  this solo-M1 capture contains no decoded outbound placement request to replay.
+  It remains useful negative evidence and must not be described as an empty or
+  missing capture.
+- The marker journal auditor inspected 6 `SyncNearEntities`, 170
+  `SyncNearDeltaInfo`, and 39 `SyncToMeDeltaInfo` packets and found zero typed
+  `SeqPassiveSkillInfo` marker lifecycles. One pre-placement entity snapshot
+  contains untyped integer collisions covering marker numbers 1..6 below an
+  attribute field path; because they precede all six actions and do not occupy
+  the reviewed passive-skill field, they are rejected as marker proof.
 - The canonical `MapEvent` model has add/update/remove shapes, but the current
   BPSR decoder has no producer for it. It is not evidence that the game exposes
   party-visible actor markers.
