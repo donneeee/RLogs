@@ -275,6 +275,14 @@ export function mountMechanicsMapOverlay(
   const root = element("main", "overlay-canvas-runtime");
   root.dataset.locked = String(preferences.locked);
   root.dataset.mode = preferences.locked ? "passive" : "edit";
+  const editorBar = element("header", "overlay-canvas-editor-bar");
+  editorBar.setAttribute("aria-label", localizer.t("ui.mechanics_map.canvas_editor.aria"));
+  const editorIdentity = element("div", "overlay-canvas-editor-identity");
+  editorIdentity.append(
+    text("strong", localizer.t("ui.mechanics_map.canvas_editor.label")),
+    text("span", localizer.t("ui.mechanics_map.canvas_editor.mode")),
+  );
+  const editorActions = element("div", "overlay-canvas-editor-actions");
   const panel = element("section", "mechanics-map-overlay-runtime");
   panel.dataset.locked = String(preferences.locked);
   panel.dataset.expanded = String(preferences.expanded);
@@ -332,12 +340,15 @@ export function mountMechanicsMapOverlay(
   const expand = button(preferences.expanded ? "Window" : "Full map", preferences.expanded, () => {
     setExpanded(!preferences.expanded);
   });
-  const lock = button(preferences.locked ? "Unlock" : "Lock", preferences.locked, () => {
+  const lock = button(localizer.t(preferences.locked
+    ? "ui.mechanics_map.canvas_editor.unlock"
+    : "ui.mechanics_map.canvas_editor.lock"), preferences.locked, () => {
     void setLocked(!requestedLocked);
   });
-  const done = button("Done", false, () => { void exitEditing(); });
-  done.title = "Exit editing and keep overlays visible";
-  actions.append(rotate, monsters, dim, contrast, fit, center, markerPresets, expand, lock, done);
+  lock.title = localizer.t("ui.mechanics_map.canvas_editor.lock_help");
+  const done = button(localizer.t("ui.mechanics_map.canvas_editor.done"), false, () => { void exitEditing(); });
+  done.title = localizer.t("ui.mechanics_map.canvas_editor.done_help");
+  actions.append(rotate, monsters, dim, contrast, fit, center, markerPresets, expand);
   toolbar.append(identity, actions);
 
   const viewport = element("section", "mechanics-map-overlay-viewport");
@@ -446,8 +457,9 @@ export function mountMechanicsMapOverlay(
     moduleVisibilityButton(localizer.t("ui.mechanics_map.objectives.toggle"), "showObjectives", objectivesPanel),
     moduleVisibilityButton("Alerts", "showAlerts", alertsPanel),
   ];
-  actions.prepend(...moduleToggles);
-  root.append(panel, playerPanel, actionsPanel, partyPanel, targetPanel, objectivesPanel, alertsPanel, automarkerPanel);
+  editorActions.append(...moduleToggles, lock, done);
+  editorBar.append(editorIdentity, editorActions);
+  root.append(editorBar, panel, playerPanel, actionsPanel, partyPanel, targetPanel, objectivesPanel, alertsPanel, automarkerPanel);
   container.replaceChildren(root);
   applyModuleGeometry();
 
@@ -1462,7 +1474,9 @@ export function mountMechanicsMapOverlay(
     root.dataset.locked = String(value);
     root.dataset.mode = value ? "passive" : "edit";
     panel.dataset.locked = String(value);
-    lock.textContent = value ? "Unlock" : "Lock";
+    lock.textContent = localizer.t(value
+      ? "ui.mechanics_map.canvas_editor.unlock"
+      : "ui.mechanics_map.canvas_editor.lock");
     lock.dataset.active = String(value);
   }
 

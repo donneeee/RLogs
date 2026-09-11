@@ -89,7 +89,16 @@ function catalog(sceneId: number, familyId: string, name: string): AutomarkerPre
 const localizer: UiLocalizer = {
   locale: "en-US",
   loadedLocales: ["en-US"],
-  t: (key) => key,
+  t: (key) => ({
+    "ui.mechanics_map.canvas_editor.aria": "Canvas layout controls",
+    "ui.mechanics_map.canvas_editor.label": "Canvas layout",
+    "ui.mechanics_map.canvas_editor.mode": "EDIT MODE",
+    "ui.mechanics_map.canvas_editor.lock": "Lock",
+    "ui.mechanics_map.canvas_editor.unlock": "Unlock",
+    "ui.mechanics_map.canvas_editor.lock_help": "Lock the canvas and return overlays to click-through mode",
+    "ui.mechanics_map.canvas_editor.done": "Done",
+    "ui.mechanics_map.canvas_editor.done_help": "Exit editing and keep overlays visible",
+  })[key] ?? key,
   formatNumber: (value) => String(value),
 };
 
@@ -187,6 +196,8 @@ describe("mounted Mechanics Map automarker request ordering", () => {
 
     const root = container.querySelector<HTMLElement>(".overlay-canvas-runtime")!;
     const map = container.querySelector<HTMLElement>(".mechanics-map-overlay-runtime")!;
+    const editorBar = container.querySelector<HTMLElement>(".overlay-canvas-editor-bar")!;
+    const mapActions = map.querySelector<HTMLElement>(".mechanics-map-overlay-actions")!;
     const player = container.querySelector<HTMLElement>(".player-frame-overlay-runtime")!;
     const modules = moduleContracts.map((contract) => ({
       ...contract,
@@ -195,6 +206,18 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     const resize = container.querySelector<HTMLElement>(".mechanics-map-overlay-resize")!;
     expect(root.dataset.locked).toBe("false");
     expect(root.dataset.mode).toBe("edit");
+    expect(editorBar.parentElement).toBe(root);
+    expect(getComputedStyle(editorBar).display).toBe("flex");
+    expect(["transparent", "rgba(0, 0, 0, 0)"]).not.toContain(
+      getComputedStyle(editorBar).backgroundColor,
+    );
+    const mapControlLabels = [...mapActions.querySelectorAll("button")].map((button) => button.textContent);
+    for (const canvasControl of ["Done", "Lock", "Unlock", "Player", "Actions", "Party", "Target", "Objectives", "Alerts"]) {
+      expect(mapControlLabels, canvasControl).not.toContain(canvasControl);
+    }
+    expect(editorBar.textContent).toContain("Canvas layout");
+    expect(editorBar.textContent).toContain("Done");
+    expect(editorBar.textContent).toContain("Lock");
     expect(["transparent", "rgba(0, 0, 0, 0)"]).not.toContain(
       getComputedStyle(root).backgroundColor,
     );
@@ -228,6 +251,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     expect(hide).not.toHaveBeenCalled();
     expect(root.dataset.locked).toBe("true");
     expect(root.dataset.mode).toBe("passive");
+    expect(getComputedStyle(editorBar).display).toBe("none");
     expect(map.dataset.locked).toBe("true");
     expect(resize.isConnected).toBe(true);
     expect(map.isConnected).toBe(true);
@@ -289,6 +313,10 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     interactivityHandler?.(true);
     await vi.waitFor(() => expect(root.dataset.locked).toBe("false"));
     expect(root.dataset.mode).toBe("edit");
+    map.hidden = true;
+    expect(getComputedStyle(editorBar).display).toBe("flex");
+    expect(editorBar.querySelector("button:last-child")?.textContent).toBe("Done");
+    map.hidden = false;
     await vi.waitFor(() => expect(saveLayout).toHaveBeenCalled());
     await flushPromises();
     setInteractive.mockClear(); saveLayout.mockClear(); hide.mockClear();

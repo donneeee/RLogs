@@ -5724,6 +5724,45 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
 :root[data-surface="overlay-canvas"] .overlay-canvas-runtime[data-mode="edit"] {
   background: rgba(2, 7, 12, 0.58) !important;
 }
+.overlay-canvas-editor-bar {
+  position: fixed;
+  z-index: 2000;
+  top: 12px;
+  left: 50%;
+  display: none;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: min(920px, calc(100vw - 24px));
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgb(92 228 212 / 58%);
+  border-radius: 10px;
+  color: #eef6fb;
+  background: rgb(7 19 31 / 96%);
+  box-shadow: 0 10px 34px rgb(0 0 0 / 48%), 0 0 0 1px rgb(92 228 212 / 8%) inset;
+  transform: translateX(-50%);
+  user-select: none;
+}
+.overlay-canvas-runtime[data-mode="edit"] .overlay-canvas-editor-bar { display: flex; }
+.overlay-canvas-editor-identity { display: flex; flex: none; align-items: baseline; gap: 8px; }
+.overlay-canvas-editor-identity strong { font: 800 12px/1 system-ui; }
+.overlay-canvas-editor-identity span { color: #5ce4d4; font: 900 8px/1 system-ui; letter-spacing: .14em; }
+.overlay-canvas-editor-actions { display: flex; min-width: 0; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.overlay-canvas-editor-actions button {
+  min-height: 27px;
+  padding: 4px 8px;
+  border: 1px solid rgb(92 228 212 / 28%);
+  border-radius: 6px;
+  color: #b9cada;
+  background: rgb(16 32 49 / 92%);
+  font: 750 9px/1 system-ui;
+  cursor: pointer;
+}
+.overlay-canvas-editor-actions button:hover,
+.overlay-canvas-editor-actions button[data-active="true"] { border-color: rgb(92 228 212 / 72%); color: #fff; background: rgb(31 69 82 / 96%); }
+.overlay-canvas-editor-actions button:last-child { border-color: rgb(92 228 212 / 68%); color: #07131f; background: #5ce4d4; }
 .overlay-canvas-runtime[data-mode="edit"] .mechanics-map-overlay-runtime,
 .overlay-canvas-runtime[data-mode="edit"] .player-frame-overlay-runtime,
 .overlay-canvas-runtime[data-mode="edit"] .action-controls-overlay-runtime,
