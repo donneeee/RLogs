@@ -213,6 +213,11 @@
     "ui.combat_history.graph.aria": "{title}, {rate} by character over {duration}. Focus the chart and use the arrow keys to inspect exact seconds.",
     "ui.combat_history.graph.run_time": "Run time",
     "ui.combat_history.graph.inspect_help": "Hover the chart, or focus it and use the arrow keys, to inspect exact values.",
-    "ui.combat_history.graph.inspect_value": "{actor} {value} {rate}"
+    "ui.combat_history.graph.inspect_value": "{actor} {value} {rate}",
+    "ui.combat_history.graph.recorded_events": "Recorded events",
+    "ui.combat_history.graph.recorded_events_aria": "Exact recorded skill starts and deaths by player",
+    "ui.combat_history.graph.ability_fallback": "Ability {id}",
+    "ui.combat_history.graph.skill_event": "{actor} used {ability} at {time}",
+    "ui.combat_history.graph.skill_event_cluster": "{actor}: {count} recorded skill starts from {start} to {end} ({abilities})"
   }
 }

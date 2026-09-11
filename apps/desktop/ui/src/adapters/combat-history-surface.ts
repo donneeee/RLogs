@@ -3333,7 +3333,8 @@ export function renderMetricGraph(
     )
     .filter((entry) =>
       entry.peak > 0 || (targetActorId === null &&
-        ((entry.actor.death_events?.length ?? 0) > 0 || entry.actor.death_seconds.length > 0)),
+        ((entry.actor.death_events?.length ?? 0) > 0 || entry.actor.death_seconds.length > 0 ||
+          (entry.actor.skill_events?.length ?? 0) > 0)),
     );
   const visibleSeries = allSeries.filter(
     (entry) => !hiddenActorIds.has(entry.actor.actor_id),
@@ -3379,6 +3380,8 @@ export function renderMetricGraph(
       localizer,
     ),
   );
+  const eventLanes = recordedEventLanes(visibleSeries, durationSeconds, elapsedMicros, localizer);
+  if (eventLanes) card.append(eventLanes);
   const stats = element("div", "combat-history-graph-stats");
   for (const entry of visibleSeries) {
     const item = element("div", "");
@@ -3403,6 +3406,123 @@ export function renderMetricGraph(
   }
   card.append(stats);
   return card;
+}
+
+function recordedEventLanes(
+  series: readonly ActorGraphSeries[],
+  durationSeconds: number,
+  durationMicros: number,
+  localizer: UiLocalizer,
+): HTMLElement | null {
+  const lanes = series.filter(({ actor }) => graphActorKind(actor) === "player" && (
+    (actor.skill_events?.length ?? 0) > 0 || (actor.death_events?.length ?? 0) > 0 ||
+    actor.death_seconds.length > 0));
+  if (lanes.length === 0) return null;
+  const width = 1_120, left = 78, right = 24, laneHeight = 38;
+  const plotWidth = width - left - right;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.classList.add("combat-history-event-lanes");
+  svg.setAttribute("viewBox", `0 0 ${width} ${lanes.length * laneHeight}`);
+  svg.setAttribute("role", "group");
+  svg.setAttribute("aria-label", localizer.t("ui.combat_history.graph.recorded_events_aria"));
+  const deathMarkers: SVGGElement[] = [];
+  const xFor = (micros: number) => left +
+    (Math.min(durationSeconds, Math.max(0, micros / 1_000_000)) / durationSeconds) * plotWidth;
+  lanes.forEach(({ actor, color }, laneIndex) => {
+    const y = laneIndex * laneHeight + laneHeight / 2;
+    const row = svgNode("g", "combat-history-event-lane", {});
+    row.style.setProperty("--series-color", color);
+    row.append(
+      svgNode("line", "combat-history-event-lane-line", { x1: left, x2: width - right, y1: y, y2: y }),
+      svgNode("circle", "combat-history-event-lane-swatch", { cx: 10, cy: y, r: 3 }),
+      svgText(18, y + 4, compactEventLaneLabel(actorLabel(actor)), "combat-history-event-lane-label", "start"),
+    );
+    for (const cluster of clusterHistorySkillEvents(actor.skill_events ?? [], xFor)) {
+      const first = cluster.events[0]!;
+      const abilityNames = [...new Set(cluster.events.map((event) => {
+        const ability = actor.abilities.find((candidate) => candidate.ability_id === event.ability_id);
+        return ability?.presentation_name?.trim() ||
+          localizer.t("ui.combat_history.graph.ability_fallback", { id: event.ability_id });
+      }))];
+      const summary = cluster.events.length === 1
+        ? localizer.t("ui.combat_history.graph.skill_event", {
+          actor: actorLabel(actor), ability: abilityNames[0]!, time: formatExactGraphTime(first.at_micros),
+        })
+        : localizer.t("ui.combat_history.graph.skill_event_cluster", {
+          actor: actorLabel(actor), count: localizer.formatNumber(cluster.events.length),
+          start: formatExactGraphTime(first.at_micros),
+          end: formatExactGraphTime(cluster.events.at(-1)!.at_micros),
+          abilities: abilityNames.join(", "),
+        });
+      const marker = svgNode("g", "combat-history-skill-event", {
+        transform: `translate(${cluster.x.toFixed(2)} ${y.toFixed(2)})`,
+        role: "img",
+        tabindex: 0,
+        "aria-label": summary,
+        "data-event-count": cluster.events.length,
+      });
+      marker.style.setProperty("--series-color", color);
+      marker.append(
+        svgNode("circle", "combat-history-skill-event-hitbox", { cx: 0, cy: 0, r: 12 }),
+        svgNode("path", "combat-history-skill-event-glyph", { d: "M1-7L-4 1H0L-1 7L5-2H1Z" }),
+        svgTitle(summary),
+      );
+      if (cluster.events.length > 1) {
+        marker.append(
+          svgNode("circle", "combat-history-skill-event-badge", { cx: 8, cy: -8, r: 7 }),
+          svgText(8, -5, String(cluster.events.length), "combat-history-skill-event-badge-text", "middle"),
+        );
+      }
+      row.append(marker);
+    }
+    const deaths = (actor.death_events?.length ?? 0) > 0
+      ? actor.death_events.map((death) => ({ death, precision: "exact_microsecond" as const }))
+      : actor.death_seconds.map((second) => ({
+        death: { at_micros: second * 1_000_000, cause: null } satisfies HistoryDeathEvent,
+        precision: "one_second_bucket" as const,
+      }));
+    for (const { death, precision } of deaths) {
+      const marker = historyDeathMarker(
+        xFor(death.at_micros), y,
+        historyDeathSummary(actorLabel(actor), death, precision, durationMicros),
+        color, false,
+      );
+      deathMarkers.push(marker);
+      row.append(marker);
+    }
+    svg.append(row);
+  });
+  const frame = element(
+    "section",
+    "combat-history-event-lanes-frame",
+    element("strong", "combat-history-event-lanes-title", localizer.t("ui.combat_history.graph.recorded_events")),
+    svg,
+  );
+  const summary = element("div", "combat-history-death-summary");
+  summary.id = `combat-history-event-death-summary-${historyDeathSummarySequence++}`;
+  summary.setAttribute("role", "tooltip");
+  summary.hidden = true;
+  wireHistoryDeathSummaries(deathMarkers, summary);
+  frame.append(summary);
+  return frame;
+}
+
+function clusterHistorySkillEvents(
+  events: readonly HistoryActorSummary["skill_events"][number][],
+  xFor: (micros: number) => number,
+): Array<{ x: number; events: HistoryActorSummary["skill_events"] }> {
+  const clusters = new Map<number, HistoryActorSummary["skill_events"]>();
+  for (const event of events) {
+    const pixelBucket = Math.round(xFor(event.at_micros) / 6);
+    const cluster = clusters.get(pixelBucket) ?? [];
+    cluster.push(event);
+    clusters.set(pixelBucket, cluster);
+  }
+  return [...clusters.entries()].map(([bucket, clustered]) => ({ x: bucket * 6, events: clustered }));
+}
+
+function compactEventLaneLabel(label: string): string {
+  return label.length > 9 ? `${label.slice(0, 8)}…` : label;
 }
 
 function renderGraphMetricToggle(
@@ -3717,8 +3837,9 @@ export function historyDeathMarker(
   lineY: number,
   summary: string,
   participantColor: string | null = null,
+  clampToGraph = true,
 ): SVGGElement {
-  const y = Math.min(268, Math.max(16, lineY));
+  const y = clampToGraph ? Math.min(268, Math.max(16, lineY)) : lineY;
   const group = svgNode("g", "combat-history-death-marker", {
     transform: `translate(${x.toFixed(2)} ${y.toFixed(2)})`,
     role: "img",

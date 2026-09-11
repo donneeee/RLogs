@@ -212,6 +212,7 @@ export interface HistoryActorSummary {
   deaths: number;
   death_seconds: number[];
   death_events: HistoryDeathEvent[];
+  skill_events: HistorySkillEvent[];
   dps: number;
   encounter_dps: number;
   hps: number;
@@ -281,6 +282,11 @@ export interface HistoryDeathCause {
 export interface HistoryDeathEvent {
   at_micros: number;
   cause: HistoryDeathCause | null;
+}
+
+export interface HistorySkillEvent {
+  at_micros: number;
+  ability_id: string;
 }
 
 export interface HistoryLoadoutSlot {
@@ -574,6 +580,7 @@ export function parseCombatHistorySnapshot(value: unknown): CombatHistorySnapsho
           parsedActor.death_seconds = [];
         }
         normalizeHistoryDeathEvents(parsedActor, parsed.elapsed_micros as number);
+        normalizeHistorySkillEvents(parsedActor, parsed.elapsed_micros as number);
         if (parsedActor.character_id === undefined) {
           parsedActor.character_id = null;
         }
@@ -834,6 +841,22 @@ function normalizeHistoryDeathEvents(actor: Record<string, unknown>, elapsedMicr
     }
   });
   if (invalidExactTimestamp) actor.death_events = [];
+}
+
+function normalizeHistorySkillEvents(actor: Record<string, unknown>, elapsedMicros: number): void {
+  if (actor.skill_events === undefined) actor.skill_events = [];
+  const events = array(actor.skill_events, "actor skill events", 100_000);
+  let previousMicros = -1;
+  let valid = true;
+  events.forEach((value, index) => {
+    const event = record(value, `actor skill event ${index}`);
+    counter(event.at_micros, `actor skill event ${index} timestamp`);
+    text(event.ability_id, `actor skill event ${index} ability ID`);
+    if ((event.at_micros as number) > elapsedMicros ||
+        (event.at_micros as number) < previousMicros) valid = false;
+    previousMicros = event.at_micros as number;
+  });
+  if (!valid) actor.skill_events = [];
 }
 
 function isValidHistoryDeathCause(value: unknown, deathMicros: number): value is HistoryDeathCause {

@@ -79,6 +79,8 @@ describe("Combat History death presentation", () => {
       actor_kind: "player",
       death_events: [death()],
       death_seconds: [],
+      skill_events: [{ at_micros: 1_250_000, ability_id: "2233" }],
+      abilities: [{ ability_id: "2233", presentation_name: "Powerdraw" }],
       series: [{ second: 0, damage: 100, effective_healing: 0, damage_taken: 0 }],
       targets: [],
     } as unknown as HistoryActorSummary;
@@ -98,10 +100,47 @@ describe("Combat History death presentation", () => {
     expect((visible.querySelector(".combat-history-death-marker") as SVGElement).style
       .getPropertyValue("--death-marker-color")).toBe("#35c2ff");
     expect(visible.querySelector(".combat-history-death-summary")?.getAttribute("role")).toBe("tooltip");
+    expect(visible.querySelector(".combat-history-event-lanes")).not.toBeNull();
+    expect(visible.querySelector(".combat-history-skill-event")?.getAttribute("aria-label"))
+      .toContain("Alice used Powerdraw at 0:01.250");
+    expect((visible.querySelector(".combat-history-skill-event") as SVGElement).style
+      .getPropertyValue("--series-color")).toBe("#35c2ff");
+    expect(visible.querySelector("[data-timeline-play]")).toBeNull();
 
     const hidden = render(new Set([actor.actor_id]));
     expect(hidden.querySelector(".combat-history-character-line")).toBeNull();
     expect(hidden.querySelector(".combat-history-death-marker")).toBeNull();
+    expect(hidden.querySelector(".combat-history-event-lanes")).toBeNull();
+  });
+
+  it("clusters dense exact skill starts truthfully and keeps legacy deaths bucketed", async () => {
+    const ui = await loadUiLocalizer("en-US");
+    const actor = {
+      actor_id: "alice", display_name: "Alice", actor_kind: "player",
+      death_events: [], death_seconds: [3],
+      skill_events: [
+        { at_micros: 1_250_000, ability_id: "2233" },
+        { at_micros: 1_255_000, ability_id: "2233" },
+      ],
+      abilities: [{ ability_id: "2233", presentation_name: "Powerdraw" }],
+      series: [{ second: 0, damage: 100, effective_healing: 0, damage_taken: 0 }],
+      targets: [],
+    } as unknown as HistoryActorSummary;
+    const rendered = renderMetricGraph(
+      [actor],
+      { metric: "damage", title: "Damage", rateLabel: "DPS", description: "Damage rate" },
+      3_500_000, new Set(), new Map([[actor.actor_id, "#35c2ff"]]), null, () => undefined, ui,
+    );
+
+    const skills = rendered.querySelectorAll<SVGGElement>(".combat-history-skill-event");
+    expect(skills).toHaveLength(1);
+    expect(skills[0]!.dataset.eventCount).toBe("2");
+    expect(skills[0]!.getAttribute("aria-label")).toContain("2 recorded skill starts");
+    expect(skills[0]!.querySelector(".combat-history-skill-event-badge-text")?.textContent).toBe("2");
+    const deaths = rendered.querySelectorAll<SVGGElement>(".combat-history-event-lanes .combat-history-death-marker");
+    expect(deaths).toHaveLength(1);
+    expect(deaths[0]!.getAttribute("aria-label"))
+      .toContain("death observed in the 0:03.000–0:03.500 one-second bucket");
   });
 
   it("shows the same cause summary on pointer hover and keyboard focus", () => {

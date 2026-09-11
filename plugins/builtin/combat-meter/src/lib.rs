@@ -298,6 +298,10 @@ pub struct HistoryActorSummary {
     /// UUIDs intentionally remain confined to the private history artifact.
     #[serde(default)]
     pub death_events: Vec<HistoryDeathEvent>,
+    /// Exact player cast-start observations projected onto this view's elapsed
+    /// clock. These are recorded events, never reconstructed from cast totals.
+    #[serde(default)]
+    pub skill_events: Vec<HistorySkillEvent>,
     /// Damage divided by the selected elapsed time.
     pub dps: f64,
     /// Damage divided by selected active-combat time. Downtime never lowers it.
@@ -332,6 +336,12 @@ pub struct HistoryDeathEvent {
     pub at_micros: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cause: Option<HistoryDeathCause>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistorySkillEvent {
+    pub at_micros: u64,
+    pub ability_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1184,6 +1194,7 @@ struct HistoryValueAccumulator {
     deaths: u64,
     death_seconds: Vec<u32>,
     death_events: Vec<HistoryDeathEvent>,
+    skill_events: Vec<HistorySkillEvent>,
     rdps_damage: Option<i64>,
     rdps_contribution_given: Option<i64>,
     rdps_contribution_received: Option<i64>,
@@ -3952,14 +3963,15 @@ impl CombatTimelinePlugin {
                 CombatFactKind::Cast => {
                     let source = values.entry(fact.source_actor_id).or_default();
                     source.casts = source.casts.saturating_add(1);
-                    let ability = source
-                        .abilities
-                        .entry(
-                            fact.breakdown_ability_id
-                                .or(fact.ability_id)
-                                .unwrap_or_default(),
-                        )
-                        .or_default();
+                    let ability_id = fact
+                        .breakdown_ability_id
+                        .or(fact.ability_id)
+                        .unwrap_or_default();
+                    source.skill_events.push(HistorySkillEvent {
+                        at_micros: offset_micros,
+                        ability_id: ability_id.to_string(),
+                    });
+                    let ability = source.abilities.entry(ability_id).or_default();
                     ability.casts = ability.casts.saturating_add(1);
                 }
                 CombatFactKind::Damage {
@@ -4508,6 +4520,7 @@ impl CombatTimelinePlugin {
             deaths: value.deaths,
             death_seconds: value.death_seconds,
             death_events: value.death_events,
+            skill_events: value.skill_events,
             dps: rate_per_second(value.damage, elapsed_seconds),
             encounter_dps: rate_per_second(value.damage, active_seconds),
             hps: rate_per_second(value.healing, elapsed_seconds),
@@ -5671,6 +5684,30 @@ mod tests {
                 .count(),
             1
         );
+        let recorded = plugin.build_history_view(&HistoryViewSpec {
+            id: "recorded-casts".into(),
+            label: "Recorded casts".into(),
+            kind: "selected".into(),
+            segment_indices: vec![0],
+            intervals: vec![(0, 1_500_000)],
+            active_intervals: Vec::new(),
+            series_origin_micros: 0,
+            elapsed_micros: 1_500_000,
+            active_combat_micros: 1_500_000,
+            compress_intervals: false,
+        });
+        let recorded_actor = recorded
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
+        assert_eq!(
+            recorded_actor.skill_events,
+            vec![HistorySkillEvent {
+                at_micros: 1_000_000,
+                ability_id: "2233".into(),
+            }]
+        );
 
         for sequence in 0..2_u64 {
             let damage = factory
@@ -6717,7 +6754,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_history_actor_without_death_events_deserializes_empty() {
+    fn legacy_history_actor_without_recorded_events_deserializes_empty() {
         let mut plugin = CombatTimelinePlugin::new();
         push_death_test_life(&mut plugin, 3_000_000, (9, 900));
         let history = death_history_view(&plugin);
@@ -6728,10 +6765,12 @@ mod tests {
             .unwrap();
         let mut legacy = serde_json::to_value(actor).unwrap();
         legacy.as_object_mut().unwrap().remove("death_events");
+        legacy.as_object_mut().unwrap().remove("skill_events");
 
         let restored: HistoryActorSummary = serde_json::from_value(legacy).unwrap();
         assert_eq!(restored.death_seconds, vec![3]);
         assert!(restored.death_events.is_empty());
+        assert!(restored.skill_events.is_empty());
     }
 
     #[test]

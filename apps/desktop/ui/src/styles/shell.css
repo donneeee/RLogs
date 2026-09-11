@@ -8165,6 +8165,76 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
   opacity: 0.94;
 }
 
+.combat-history-event-lanes-frame {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+}
+
+.combat-history-event-lanes-title {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.combat-history-event-lanes {
+  display: block;
+  width: 100%;
+  min-width: 680px;
+  overflow: visible;
+}
+
+.combat-history-event-lane-line {
+  stroke: color-mix(in srgb, var(--series-color) 38%, var(--line));
+  stroke-width: 1;
+}
+
+.combat-history-event-lane-swatch {
+  fill: var(--series-color);
+}
+
+.combat-history-event-lane-label {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+.combat-history-skill-event-hitbox {
+  fill: transparent;
+  stroke: none;
+  pointer-events: all;
+}
+
+.combat-history-skill-event-glyph {
+  fill: var(--series-color);
+  stroke: var(--surface-raised);
+  stroke-width: .7;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 2px rgb(3 16 20 / 88%));
+}
+
+.combat-history-skill-event:focus-visible .combat-history-skill-event-hitbox {
+  fill: color-mix(in srgb, var(--series-color) 16%, transparent);
+  stroke: var(--series-color);
+  stroke-width: 2;
+}
+
+.combat-history-skill-event-badge {
+  fill: var(--surface-raised);
+  stroke: var(--series-color);
+  stroke-width: 1;
+}
+
+.combat-history-skill-event-badge-text {
+  fill: var(--text);
+  font-size: 8px;
+  font-weight: 800;
+  pointer-events: none;
+}
+
 .combat-history-death-marker-hitbox {
   fill: transparent;
   stroke: none;

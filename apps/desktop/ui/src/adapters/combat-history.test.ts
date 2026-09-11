@@ -26,6 +26,7 @@ describe("combat history contracts", () => {
           actor_id: "1", entity_uuid: "101", actor_kind: "player",
           display_name: "Alice", presentation_name: "Alice",
           death_seconds: [3], targets: [], series: [], abilities: [], effects: [],
+          skill_events: [{ at_micros: 1_250_000, ability_id: "2233" }],
           death_events: [{
             at_micros: 3_000_000,
             cause: {
@@ -56,6 +57,20 @@ describe("combat history contracts", () => {
         }],
       }],
     }],
+  });
+
+  it("accepts only ordered in-view exact skill starts and defaults legacy history", () => {
+    expect(parseCombatHistorySnapshot(deathHistory()).runs[0]?.views[0]?.actors[0]?.skill_events)
+      .toEqual([{ at_micros: 1_250_000, ability_id: "2233" }]);
+
+    const legacy = deathHistory();
+    delete (legacy.runs[0]!.views[0]!.actors[0] as { skill_events?: unknown }).skill_events;
+    expect(parseCombatHistorySnapshot(legacy).runs[0]?.views[0]?.actors[0]?.skill_events).toEqual([]);
+
+    const outsideView = deathHistory();
+    outsideView.runs[0]!.views[0]!.actors[0]!.skill_events[0]!.at_micros = 5_000_001;
+    expect(parseCombatHistorySnapshot(outsideView).runs[0]?.views[0]?.actors[0]?.skill_events)
+      .toEqual([]);
   });
 
   it("accepts bounded exact death replay and defaults legacy events", () => {

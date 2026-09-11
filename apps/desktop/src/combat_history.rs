@@ -702,6 +702,10 @@ pub(crate) fn merge_rdps_projection(
                 actor.rdps_contribution_received = projected_actor.rdps_contribution_received;
                 actor.rdps_incomplete =
                     projected_actor.rdps_incomplete || legacy_terminal_delta != 0;
+                // Exact cast starts are ordinary replay evidence. Older schema-1
+                // artifacts deserialize without them, so replay may enrich the
+                // retained actor without deriving timestamps from cast totals.
+                actor.skill_events.clone_from(&projected_actor.skill_events);
                 actor.rdps = actor.rdps_damage.map(|damage| {
                     if view.elapsed_micros == 0 {
                         0.0
@@ -946,6 +950,10 @@ fn validate_ordinary_actor_compatible(
         (
             saved.critical_hits >= projected.critical_hits,
             "critical_hits",
+        ),
+        (
+            saved.observed_cast_events >= projected.skill_events.len() as u64,
+            "recorded skill events",
         ),
     ] {
         if !compatible {
