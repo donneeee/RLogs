@@ -3,11 +3,14 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-const SCHEMA_VERSION: u16 = 1;
+const SCHEMA_VERSION: u16 = 2;
+const LEGACY_SCHEMA_VERSION: u16 = 1;
 const MAX_SETTINGS_BYTES: u64 = 64 * 1024;
 const MAX_SHORTCUT_BYTES: usize = 96;
+const DEFAULT_OVERLAY_CANVAS_SHORTCUT: &str = "ScrollLock";
 
 pub const COMBAT_OVERLAY_TOGGLE_ACTION_ID: &str = "app.rlogs.combat-overlay.toggle-visibility";
+pub const OVERLAY_CANVAS_TOGGLE_ACTION_ID: &str = "app.rlogs.overlay-canvas.toggle-visibility";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,12 +21,20 @@ pub struct HotkeyActionDefinition {
     pub category: &'static str,
 }
 
-pub const HOTKEY_ACTIONS: &[HotkeyActionDefinition] = &[HotkeyActionDefinition {
-    action_id: COMBAT_OVERLAY_TOGGLE_ACTION_ID,
-    label: "Show/hide Combat Overlay",
-    description: "Toggle the live Combat Overlay while another application has focus.",
-    category: "Combat Overlay",
-}];
+pub const HOTKEY_ACTIONS: &[HotkeyActionDefinition] = &[
+    HotkeyActionDefinition {
+        action_id: OVERLAY_CANVAS_TOGGLE_ACTION_ID,
+        label: "Show/hide shared overlays",
+        description: "Toggle the shared Overlay canvas while another application has focus.",
+        category: "Overlay",
+    },
+    HotkeyActionDefinition {
+        action_id: COMBAT_OVERLAY_TOGGLE_ACTION_ID,
+        label: "Show/hide Combat Overlay",
+        description: "Toggle the live Combat Overlay while another application has focus.",
+        category: "Combat Overlay",
+    },
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -36,7 +47,10 @@ impl Default for HotkeySettings {
     fn default() -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
-            bindings: BTreeMap::new(),
+            bindings: BTreeMap::from([(
+                OVERLAY_CANVAS_TOGGLE_ACTION_ID.to_owned(),
+                DEFAULT_OVERLAY_CANVAS_SHORTCUT.to_owned(),
+            )]),
         }
     }
 }
@@ -72,7 +86,10 @@ pub struct HotkeySettingsStore {
 impl HotkeySettingsStore {
     pub fn open(path: impl Into<PathBuf>) -> Result<Self, String> {
         let path = path.into();
-        let settings = load(&path)?;
+        let (settings, migrated) = load(&path)?;
+        if migrated {
+            write(&path, &settings)?;
+        }
         Ok(Self { path, settings })
     }
 
@@ -154,11 +171,12 @@ fn assign_binding(
     displaced
 }
 
-fn load(path: &Path) -> Result<HotkeySettings, String> {
+fn load(path: &Path) -> Result<(HotkeySettings, bool), String> {
+    recover_interrupted_write(path)?;
     let metadata = match std::fs::metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(HotkeySettings::default());
+            return Ok((HotkeySettings::default(), false));
         }
         Err(error) => return Err(format!("could not inspect Hotkey settings: {error}")),
     };
@@ -167,10 +185,45 @@ fn load(path: &Path) -> Result<HotkeySettings, String> {
     }
     let bytes =
         std::fs::read(path).map_err(|error| format!("could not read Hotkey settings: {error}"))?;
-    let settings: HotkeySettings = serde_json::from_slice(&bytes)
+    let mut value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("Hotkey settings are invalid: {error}"))?;
+    let migrated = value
+        .get("schemaVersion")
+        .and_then(serde_json::Value::as_u64)
+        == Some(u64::from(LEGACY_SCHEMA_VERSION));
+    if migrated {
+        migrate_v1(&mut value)?;
+    }
+    let settings: HotkeySettings = serde_json::from_value(value)
         .map_err(|error| format!("Hotkey settings are invalid: {error}"))?;
     validate(&settings)?;
-    Ok(settings)
+    Ok((settings, migrated))
+}
+
+fn migrate_v1(value: &mut serde_json::Value) -> Result<(), String> {
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| "Hotkey settings must be an object".to_owned())?;
+    let bindings = object
+        .get_mut("bindings")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| "Hotkey settings bindings must be an object".to_owned())?;
+    let shortcut_is_owned = bindings.values().any(|shortcut| {
+        shortcut
+            .as_str()
+            .is_some_and(|shortcut| shortcut.eq_ignore_ascii_case(DEFAULT_OVERLAY_CANVAS_SHORTCUT))
+    });
+    if !shortcut_is_owned {
+        bindings.insert(
+            OVERLAY_CANVAS_TOGGLE_ACTION_ID.to_owned(),
+            serde_json::Value::String(DEFAULT_OVERLAY_CANVAS_SHORTCUT.to_owned()),
+        );
+    }
+    object.insert(
+        "schemaVersion".to_owned(),
+        serde_json::Value::from(SCHEMA_VERSION),
+    );
+    Ok(())
 }
 
 fn validate(settings: &HotkeySettings) -> Result<(), String> {
@@ -248,7 +301,101 @@ fn write(path: &Path, settings: &HotkeySettings) -> Result<(), String> {
     let mut bytes = serde_json::to_vec_pretty(settings)
         .map_err(|error| format!("could not encode Hotkey settings: {error}"))?;
     bytes.push(b'\n');
-    std::fs::write(path, bytes).map_err(|error| format!("could not write Hotkey settings: {error}"))
+    if bytes.len() as u64 > MAX_SETTINGS_BYTES {
+        return Err("Hotkey settings exceed the 64 KiB safety limit".into());
+    }
+    let temporary = sibling_path(path, "tmp");
+    let backup = sibling_path(path, "backup");
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(&temporary)
+        .map_err(|error| format!("could not create temporary Hotkey settings: {error}"))?;
+    use std::io::Write as _;
+    file.write_all(&bytes)
+        .and_then(|()| file.sync_all())
+        .map_err(|error| format!("could not flush temporary Hotkey settings: {error}"))?;
+    drop(file);
+    if path.exists() {
+        if backup.exists() {
+            std::fs::remove_file(&backup).map_err(|error| {
+                format!("could not remove stale Hotkey settings backup: {error}")
+            })?;
+        }
+        durable_rename(path, &backup)
+            .map_err(|error| format!("could not stage Hotkey settings backup: {error}"))?;
+    }
+    if let Err(error) = durable_rename(&temporary, path) {
+        if backup.exists() {
+            let _ = durable_rename(&backup, path);
+        }
+        let _ = std::fs::remove_file(&temporary);
+        return Err(format!("could not replace Hotkey settings: {error}"));
+    }
+    Ok(())
+}
+
+fn recover_interrupted_write(path: &Path) -> Result<(), String> {
+    let temporary = sibling_path(path, "tmp");
+    let backup = sibling_path(path, "backup");
+    if !path.exists() && backup.exists() {
+        durable_rename(&backup, path)
+            .map_err(|error| format!("could not recover Hotkey settings backup: {error}"))?;
+    }
+    if temporary.exists() {
+        std::fs::remove_file(&temporary).map_err(|error| {
+            format!("could not remove stale Hotkey settings temporary file: {error}")
+        })?;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn durable_rename(from: &Path, to: &Path) -> Result<(), std::io::Error> {
+    use std::os::windows::ffi::OsStrExt as _;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+    };
+    let from = from
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    let to = to
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    // SAFETY: Both paths are NUL-terminated and remain valid throughout the
+    // synchronous Win32 call.
+    if unsafe {
+        MoveFileExW(
+            from.as_ptr(),
+            to.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    } == 0
+    {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(not(windows))]
+fn durable_rename(from: &Path, to: &Path) -> Result<(), std::io::Error> {
+    std::fs::rename(from, to)?;
+    let parent = to
+        .parent()
+        .ok_or_else(|| std::io::Error::other("Hotkey settings path has no parent"))?;
+    std::fs::File::open(parent).and_then(|directory| directory.sync_all())
+}
+
+fn sibling_path(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(format!(".{suffix}"));
+    PathBuf::from(name)
 }
 
 #[cfg(test)]
@@ -262,12 +409,37 @@ mod tests {
         ))
     }
 
+    fn cleanup(path: &Path) {
+        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(sibling_path(path, "tmp"));
+        let _ = std::fs::remove_file(sibling_path(path, "backup"));
+    }
+
     #[test]
-    fn defaults_empty_and_assignments_round_trip() {
+    fn new_stores_default_the_shared_overlay_to_scroll_lock() {
+        let path = test_path("new-default");
+        cleanup(&path);
+        let store = HotkeySettingsStore::open(&path).unwrap();
+        let settings = store.snapshot();
+        assert_eq!(settings.schema_version, 2);
+        assert_eq!(settings.actions, HOTKEY_ACTIONS);
+        assert_eq!(
+            settings.bindings.get(OVERLAY_CANVAS_TOGGLE_ACTION_ID),
+            Some(&DEFAULT_OVERLAY_CANVAS_SHORTCUT.to_owned())
+        );
+        assert!(
+            !settings
+                .bindings
+                .contains_key(COMBAT_OVERLAY_TOGGLE_ACTION_ID)
+        );
+        cleanup(&path);
+    }
+
+    #[test]
+    fn assignments_round_trip_without_losing_the_default() {
         let path = test_path("round-trip");
-        let _ = std::fs::remove_file(&path);
+        cleanup(&path);
         let mut store = HotkeySettingsStore::open(&path).unwrap();
-        assert!(store.snapshot().bindings.is_empty());
         store
             .assign(HotkeyAssignmentRequest {
                 action_id: COMBAT_OVERLAY_TOGGLE_ACTION_ID.into(),
@@ -282,7 +454,116 @@ mod tests {
                 .get(COMBAT_OVERLAY_TOGGLE_ACTION_ID),
             Some(&"Ctrl+Shift+O".to_owned())
         );
-        let _ = std::fs::remove_file(path);
+        assert_eq!(
+            HotkeySettingsStore::open(&path)
+                .unwrap()
+                .snapshot()
+                .bindings
+                .get(OVERLAY_CANVAS_TOGGLE_ACTION_ID),
+            Some(&DEFAULT_OVERLAY_CANVAS_SHORTCUT.to_owned())
+        );
+        cleanup(&path);
+    }
+
+    #[test]
+    fn schema_one_migration_adds_and_persists_the_new_default() {
+        let path = test_path("migrate-default");
+        cleanup(&path);
+        std::fs::write(&path, br#"{"schemaVersion":1,"bindings":{}}"#).unwrap();
+
+        let settings = HotkeySettingsStore::open(&path).unwrap().snapshot();
+        assert_eq!(settings.schema_version, 2);
+        assert_eq!(
+            settings.bindings.get(OVERLAY_CANVAS_TOGGLE_ACTION_ID),
+            Some(&DEFAULT_OVERLAY_CANVAS_SHORTCUT.to_owned())
+        );
+        let persisted: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(persisted["schemaVersion"], 2);
+        assert_eq!(
+            persisted["bindings"][OVERLAY_CANVAS_TOGGLE_ACTION_ID],
+            DEFAULT_OVERLAY_CANVAS_SHORTCUT
+        );
+        cleanup(&path);
+    }
+
+    #[test]
+    fn schema_one_migration_preserves_an_existing_scroll_lock_owner() {
+        let path = test_path("migrate-collision");
+        cleanup(&path);
+        std::fs::write(
+            &path,
+            format!(
+                "{{\"schemaVersion\":1,\"bindings\":{{\"{COMBAT_OVERLAY_TOGGLE_ACTION_ID}\":\"scrolllock\"}}}}"
+            ),
+        )
+        .unwrap();
+
+        let settings = HotkeySettingsStore::open(&path).unwrap().snapshot();
+        assert_eq!(settings.schema_version, 2);
+        assert_eq!(
+            settings.bindings.get(COMBAT_OVERLAY_TOGGLE_ACTION_ID),
+            Some(&"scrolllock".to_owned())
+        );
+        assert!(
+            !settings
+                .bindings
+                .contains_key(OVERLAY_CANVAS_TOGGLE_ACTION_ID)
+        );
+        cleanup(&path);
+    }
+
+    #[test]
+    fn clearing_the_schema_two_default_survives_reopen() {
+        let path = test_path("clear-default");
+        cleanup(&path);
+        let mut store = HotkeySettingsStore::open(&path).unwrap();
+        store
+            .assign(HotkeyAssignmentRequest {
+                action_id: OVERLAY_CANVAS_TOGGLE_ACTION_ID.into(),
+                shortcut: None,
+            })
+            .unwrap();
+
+        let reopened = HotkeySettingsStore::open(&path).unwrap().snapshot();
+        assert_eq!(reopened.schema_version, 2);
+        assert!(
+            !reopened
+                .bindings
+                .contains_key(OVERLAY_CANVAS_TOGGLE_ACTION_ID)
+        );
+        cleanup(&path);
+    }
+
+    #[test]
+    fn assigning_the_default_to_another_action_displaces_the_canvas_action() {
+        let path = test_path("assign-conflict");
+        cleanup(&path);
+        let mut store = HotkeySettingsStore::open(&path).unwrap();
+        let result = store
+            .assign(HotkeyAssignmentRequest {
+                action_id: COMBAT_OVERLAY_TOGGLE_ACTION_ID.into(),
+                shortcut: Some("scrolllock".into()),
+            })
+            .unwrap();
+        assert_eq!(
+            result.displaced_action_id.as_deref(),
+            Some(OVERLAY_CANVAS_TOGGLE_ACTION_ID)
+        );
+        assert!(
+            !result
+                .settings
+                .bindings
+                .contains_key(OVERLAY_CANVAS_TOGGLE_ACTION_ID)
+        );
+        assert_eq!(
+            result
+                .settings
+                .bindings
+                .get(COMBAT_OVERLAY_TOGGLE_ACTION_ID),
+            Some(&"scrolllock".to_owned())
+        );
+        cleanup(&path);
     }
 
     #[test]
@@ -303,7 +584,7 @@ mod tests {
     #[test]
     fn clearing_and_invalid_unmodified_letters_are_handled() {
         let path = test_path("clear");
-        let _ = std::fs::remove_file(&path);
+        cleanup(&path);
         let mut store = HotkeySettingsStore::open(&path).unwrap();
         assert!(
             store
@@ -325,7 +606,13 @@ mod tests {
                 shortcut: None,
             })
             .unwrap();
-        assert!(store.snapshot().bindings.is_empty());
-        let _ = std::fs::remove_file(path);
+        assert_eq!(
+            store
+                .snapshot()
+                .bindings
+                .get(OVERLAY_CANVAS_TOGGLE_ACTION_ID),
+            Some(&DEFAULT_OVERLAY_CANVAS_SHORTCUT.to_owned())
+        );
+        cleanup(&path);
     }
 }

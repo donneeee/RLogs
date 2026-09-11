@@ -47,7 +47,7 @@ use core_settings::{CoreSettings, CoreSettingsStore};
 use hotkey_settings::HotkeySettingsStore;
 pub use hotkey_settings::{
     COMBAT_OVERLAY_TOGGLE_ACTION_ID, HotkeyAssignmentRequest, HotkeyAssignmentResult,
-    HotkeySettingsView,
+    HotkeySettingsView, OVERLAY_CANVAS_TOGGLE_ACTION_ID,
 };
 use layout_settings::{LayoutSettings, LayoutSettingsStore};
 use mechanics_map::{
@@ -422,6 +422,16 @@ impl EmbeddedLocalHost {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .set_canvas_enabled(enabled)
+            .map(|settings| settings.revision)
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn set_overlay_canvas_passive_enabled(&self) -> Result<u64, String> {
+        self.controller
+            .overlay_layout_settings
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_canvas_passive_enabled()
             .map(|settings| settings.revision)
             .map_err(|error| error.to_string())
     }

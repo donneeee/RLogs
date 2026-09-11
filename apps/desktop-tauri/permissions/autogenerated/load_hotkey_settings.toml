@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-load-hotkey-settings"
+description = "Enables the load_hotkey_settings command without any pre-configured scope."
+commands.allow = ["load_hotkey_settings"]
+
+[[permission]]
+identifier = "deny-load-hotkey-settings"
+description = "Denies the load_hotkey_settings command without any pre-configured scope."
+commands.deny = ["load_hotkey_settings"]

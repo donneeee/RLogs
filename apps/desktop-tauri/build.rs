@@ -32,6 +32,7 @@ fn main() {
             "combat_overlay_ready",
             "combat_overlay_heartbeat",
             "combat_overlay_health",
+            "load_hotkey_settings",
             "assign_hotkey",
         ]),
     ))

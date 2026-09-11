@@ -153,6 +153,34 @@ impl OverlayLayoutSettingsStore {
         settings.canvas_enabled = enabled;
         self.update(settings)
     }
+
+    /// Enables the shared canvas in passive play mode in one durable update.
+    ///
+    /// A native hotkey bypasses the editor's save-before-show path, so the
+    /// host must commit both facts together: the canvas is enabled and the
+    /// selected setup is locked. This prevents editor chrome from being
+    /// restored inside a click-through fullscreen window.
+    pub fn set_canvas_passive_enabled(
+        &mut self,
+    ) -> Result<OverlayLayoutSettings, OverlayLayoutUpdateError> {
+        let already_passive = self.settings.canvas_enabled
+            && self
+                .settings
+                .setups
+                .get(&self.settings.selected_setup_id)
+                .is_some_and(|setup| setup.locked);
+        if already_passive {
+            return Ok(self.snapshot());
+        }
+        let mut settings = self.snapshot();
+        settings.canvas_enabled = true;
+        let selected = settings.selected_setup_id.clone();
+        let setup = settings.setups.get_mut(&selected).ok_or_else(|| {
+            OverlayLayoutUpdateError::Validation("selected overlay setup is missing".into())
+        })?;
+        setup.locked = true;
+        self.update(settings)
+    }
 }
 
 fn normalize_and_validate(settings: &mut OverlayLayoutSettings) -> Result<(), String> {
@@ -508,6 +536,31 @@ mod tests {
                 .snapshot()
                 .canvas_enabled
         );
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(sibling_path(&path, "backup"));
+    }
+
+    #[test]
+    fn passive_enablement_atomically_locks_the_selected_setup() {
+        let path = std::env::temp_dir().join(format!(
+            "rlogs-overlay-passive-visibility-{}-{}.json",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut store = OverlayLayoutSettingsStore::open(&path).unwrap();
+        let enabled = store.set_canvas_passive_enabled().unwrap();
+        assert!(enabled.canvas_enabled);
+        assert!(enabled.setups[&enabled.selected_setup_id].locked);
+        assert_eq!(enabled.revision, 1);
+        assert_eq!(store.set_canvas_passive_enabled().unwrap().revision, 1);
+        drop(store);
+
+        let reopened = OverlayLayoutSettingsStore::open(&path).unwrap().snapshot();
+        assert!(reopened.canvas_enabled);
+        assert!(reopened.setups[&reopened.selected_setup_id].locked);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(sibling_path(&path, "backup"));
     }

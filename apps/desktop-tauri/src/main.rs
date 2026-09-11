@@ -44,7 +44,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 use rlogs_desktop_host::{
     COMBAT_OVERLAY_TOGGLE_ACTION_ID, EmbeddedLocalHost, HotkeyAssignmentRequest,
-    HotkeyAssignmentResult, LiveCombatActivityObserver, start_embedded_local_host_with_version,
+    HotkeyAssignmentResult, HotkeySettingsView, LiveCombatActivityObserver,
+    OVERLAY_CANVAS_TOGGLE_ACTION_ID, start_embedded_local_host_with_version,
 };
 use serde::Serialize;
 use tauri::{
@@ -329,7 +330,26 @@ fn unix_millis() -> u64 {
 struct HotkeyRuntimeState {
     actions_by_shortcut_id: Mutex<BTreeMap<u32, String>>,
     registered_bindings: Mutex<BTreeMap<String, String>>,
+    registration_errors: Mutex<BTreeMap<String, String>>,
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeHotkeySettingsView {
+    #[serde(flatten)]
+    settings: HotkeySettingsView,
+    registration_errors: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HotkeyInstallPolicy {
+    Atomic,
+    BestEffort,
+}
+
+type ParsedHotkey = (String, String, Shortcut);
+type HotkeyRegistrationResult =
+    Result<(Vec<ParsedHotkey>, BTreeMap<String, String>), (String, String)>;
 
 #[tauri::command]
 fn show_combat_overlay(
@@ -402,12 +422,7 @@ fn show_overlay_canvas(
     host: tauri::State<'_, EmbeddedLocalHost>,
 ) -> Result<(), String> {
     serialize_overlay_canvas_lifecycle(&state, || {
-        prepare_overlay_canvas(&app, &state, &host)?;
-        state
-            .force_edit_until_acknowledged
-            .store(false, Ordering::Release);
-        queue_overlay_canvas_interactivity(&state, false);
-        reveal_overlay_canvas_if_ready_locked(&app, &state, &focus_state)
+        show_overlay_canvas_locked(&app, &state, &focus_state, &host, false)
     })
 }
 
@@ -419,21 +434,36 @@ fn show_overlay_canvas_editable(
     host: tauri::State<'_, EmbeddedLocalHost>,
 ) -> Result<(), String> {
     serialize_overlay_canvas_lifecycle(&state, || {
-        prepare_overlay_canvas(&app, &state, &host)?;
-        state
-            .force_edit_until_acknowledged
-            .store(true, Ordering::Release);
-        queue_overlay_canvas_interactivity(&state, true);
-        reveal_overlay_canvas_if_ready_locked(&app, &state, &focus_state)
+        show_overlay_canvas_locked(&app, &state, &focus_state, &host, true)
     })
+}
+
+fn show_overlay_canvas_locked(
+    app: &tauri::AppHandle,
+    state: &OverlayCanvasWindowState,
+    focus_state: &OverlayFocusWindowState,
+    host: &EmbeddedLocalHost,
+    editable: bool,
+) -> Result<(), String> {
+    prepare_overlay_canvas(app, state, host, !editable)?;
+    state
+        .force_edit_until_acknowledged
+        .store(editable, Ordering::Release);
+    queue_overlay_canvas_interactivity(state, editable);
+    reveal_overlay_canvas_if_ready_locked(app, state, focus_state)
 }
 
 fn prepare_overlay_canvas(
     app: &tauri::AppHandle,
     state: &OverlayCanvasWindowState,
     host: &EmbeddedLocalHost,
+    passive: bool,
 ) -> Result<(), String> {
-    let required_revision = host.set_overlay_canvas_enabled(true)?;
+    let required_revision = if passive {
+        host.set_overlay_canvas_passive_enabled()?
+    } else {
+        host.set_overlay_canvas_enabled(true)?
+    };
     state.requested.store(true, Ordering::Release);
     if app.get_webview_window("overlay-canvas").is_none() {
         build_overlay_canvas_window(app, host)
@@ -483,19 +513,29 @@ fn hide_overlay_canvas(
     state: tauri::State<'_, OverlayCanvasWindowState>,
     host: tauri::State<'_, EmbeddedLocalHost>,
 ) -> Result<(), String> {
-    serialize_overlay_canvas_lifecycle(&state, || {
-        state.requested.store(false, Ordering::Release);
-        state
-            .force_edit_until_acknowledged
-            .store(false, Ordering::Release);
-        let persisted = host.set_overlay_canvas_enabled(false);
-        let hidden = app
-            .get_webview_window("overlay-canvas")
-            .ok_or_else(|| "Overlay Canvas is unavailable; restart rLogs".to_owned())
-            .and_then(|window| hide_combat_overlay_window(&window));
-        hidden?;
-        persisted.map(|_| ())
-    })
+    serialize_overlay_canvas_lifecycle(&state, || hide_overlay_canvas_locked(&app, &state, &host))
+}
+
+fn hide_overlay_canvas_locked(
+    app: &tauri::AppHandle,
+    state: &OverlayCanvasWindowState,
+    host: &EmbeddedLocalHost,
+) -> Result<(), String> {
+    host.set_overlay_canvas_enabled(false)?;
+    let hidden = app
+        .get_webview_window("overlay-canvas")
+        .ok_or_else(|| "Overlay Canvas is unavailable; restart rLogs".to_owned())
+        .and_then(|window| hide_combat_overlay_window(&window));
+    if let Err(error) = hidden {
+        // Keep restart state aligned with the still-requested native surface.
+        let _ = host.set_overlay_canvas_enabled(true);
+        return Err(error);
+    }
+    state.requested.store(false, Ordering::Release);
+    state
+        .force_edit_until_acknowledged
+        .store(false, Ordering::Release);
+    Ok(())
 }
 
 #[tauri::command]
@@ -672,53 +712,148 @@ fn toggle_combat_overlay(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+fn toggle_overlay_canvas(app: &tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<OverlayCanvasWindowState>();
+    let focus_state = app.state::<OverlayFocusWindowState>();
+    let host = app.state::<EmbeddedLocalHost>();
+    serialize_overlay_canvas_lifecycle(&state, || {
+        if state.requested.load(Ordering::Acquire) {
+            hide_overlay_canvas_locked(app, &state, &host)
+        } else {
+            show_overlay_canvas_locked(app, &state, &focus_state, &host, false)
+        }
+    })
+}
+
 fn install_global_hotkeys(
     app: &tauri::AppHandle,
     bindings: &BTreeMap<String, String>,
+    policy: HotkeyInstallPolicy,
 ) -> Result<(), String> {
-    let parsed = bindings
-        .iter()
-        .map(|(action_id, binding)| {
-            binding
-                .parse::<Shortcut>()
-                .map(|shortcut| (action_id.clone(), binding.clone(), shortcut))
-                .map_err(|error| format!("{binding} is not a supported global shortcut: {error}"))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
     let runtime = app.state::<HotkeyRuntimeState>();
+    let mut parsed = Vec::with_capacity(bindings.len());
+    let mut registration_errors = BTreeMap::new();
+    for (action_id, binding) in bindings {
+        match binding.parse::<Shortcut>() {
+            Ok(shortcut) => parsed.push((action_id.clone(), binding.clone(), shortcut)),
+            Err(error) => {
+                let message = format!("{binding} is not a supported global shortcut: {error}");
+                if policy == HotkeyInstallPolicy::Atomic {
+                    *runtime
+                        .registration_errors
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                        BTreeMap::from([(action_id.clone(), message.clone())]);
+                    return Err(message);
+                }
+                registration_errors.insert(action_id.clone(), message);
+            }
+        }
+    }
     let previous = runtime
         .registered_bindings
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clone();
 
-    app.global_shortcut()
-        .unregister_all()
-        .map_err(|error| format!("could not replace the registered hotkeys: {error}"))?;
-    for (_, binding, shortcut) in &parsed {
-        if let Err(error) = app.global_shortcut().register(*shortcut) {
+    if let Err(error) = app.global_shortcut().unregister_all() {
+        let message = format!("could not replace the registered hotkeys: {error}");
+        *runtime
+            .registration_errors
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = bindings
+            .keys()
+            .map(|action_id| (action_id.clone(), message.clone()))
+            .collect();
+        return Err(message);
+    }
+    let registered = register_parsed_hotkeys_with(&parsed, policy, |binding, shortcut| {
+        app.global_shortcut()
+            .register(shortcut)
+            .map_err(|error| {
+                format!(
+                    "could not register {binding}; it may already be used by another application: {error}"
+                )
+            })
+    });
+    let (active, registration_failures) = match registered {
+        Ok(result) => result,
+        Err((action_id, message)) => {
             let _ = app.global_shortcut().unregister_all();
             for old_binding in previous.values() {
                 let _ = app.global_shortcut().register(old_binding.as_str());
             }
-            return Err(format!(
-                "could not register {binding}; it may already be used by another application: {error}"
-            ));
+            *runtime
+                .registration_errors
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                BTreeMap::from([(action_id, message.clone())]);
+            return Err(message);
         }
-    }
+    };
+    registration_errors.extend(registration_failures);
 
     *runtime
         .actions_by_shortcut_id
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = parsed
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = active
         .iter()
         .map(|(action_id, _, shortcut)| (shortcut.id(), action_id.clone()))
         .collect();
     *runtime
         .registered_bindings
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = bindings.clone();
-    Ok(())
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = active
+        .iter()
+        .map(|(action_id, binding, _)| (action_id.clone(), binding.clone()))
+        .collect();
+    *runtime
+        .registration_errors
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = registration_errors.clone();
+    if registration_errors.is_empty() {
+        Ok(())
+    } else {
+        Err(registration_errors
+            .values()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("; "))
+    }
+}
+
+fn register_parsed_hotkeys_with(
+    parsed: &[ParsedHotkey],
+    policy: HotkeyInstallPolicy,
+    mut register: impl FnMut(&str, Shortcut) -> Result<(), String>,
+) -> HotkeyRegistrationResult {
+    let mut active = Vec::with_capacity(parsed.len());
+    let mut errors = BTreeMap::new();
+    for (action_id, binding, shortcut) in parsed {
+        match register(binding, *shortcut) {
+            Ok(()) => active.push((action_id.clone(), binding.clone(), *shortcut)),
+            Err(message) if policy == HotkeyInstallPolicy::BestEffort => {
+                errors.insert(action_id.clone(), message);
+            }
+            Err(message) => return Err((action_id.clone(), message)),
+        }
+    }
+    Ok((active, errors))
+}
+
+#[tauri::command]
+fn load_hotkey_settings(
+    host: tauri::State<'_, EmbeddedLocalHost>,
+    runtime: tauri::State<'_, HotkeyRuntimeState>,
+) -> RuntimeHotkeySettingsView {
+    RuntimeHotkeySettingsView {
+        settings: host.hotkey_settings(),
+        registration_errors: runtime
+            .registration_errors
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone(),
+    }
 }
 
 #[tauri::command]
@@ -729,9 +864,11 @@ fn assign_hotkey(
 ) -> Result<HotkeyAssignmentResult, String> {
     let previous = host.hotkey_settings().bindings;
     let result = host.assign_hotkey(assignment)?;
-    if let Err(error) = install_global_hotkeys(&app, &result.settings.bindings) {
+    if let Err(error) =
+        install_global_hotkeys(&app, &result.settings.bindings, HotkeyInstallPolicy::Atomic)
+    {
         host.restore_hotkey_bindings(previous.clone())?;
-        install_global_hotkeys(&app, &previous)?;
+        install_global_hotkeys(&app, &previous, HotkeyInstallPolicy::Atomic)?;
         return Err(error);
     }
     Ok(result)
@@ -1440,7 +1577,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                         .get(&shortcut.id())
                         .cloned();
                     if action_id.as_deref() == Some(COMBAT_OVERLAY_TOGGLE_ACTION_ID) {
-                        let _ = toggle_combat_overlay(app);
+                        if let Err(error) = toggle_combat_overlay(app) {
+                            eprintln!("Combat Overlay hotkey failed: {error}");
+                        }
+                    } else if action_id.as_deref() == Some(OVERLAY_CANVAS_TOGGLE_ACTION_ID) {
+                        if let Err(error) = toggle_overlay_canvas(app) {
+                            eprintln!("Overlay Canvas hotkey failed: {error}");
+                        }
                     }
                 })
                 .build(),
@@ -1482,10 +1625,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             monitor_overlay_focus_policy(app.handle().clone(), game_process_names)?;
             monitor_overlay_focus_hold(app.handle().clone())?;
             monitor_combat_overlay_renderer(app.handle().clone())?;
-            install_global_hotkeys(
+            if let Err(error) = install_global_hotkeys(
                 app.handle(),
                 &app.state::<EmbeddedLocalHost>().hotkey_settings().bindings,
-            )?;
+                HotkeyInstallPolicy::BestEffort,
+            ) {
+                // A shortcut owned by another application must not prevent
+                // rLogs from opening. The Hotkeys surface exposes the exact
+                // registration failure so the user can choose another key.
+                eprintln!("could not install configured global hotkeys: {error}");
+            }
             install_tray(app)?;
             Ok(())
         })
@@ -1509,6 +1658,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             combat_overlay_ready,
             combat_overlay_heartbeat,
             combat_overlay_health,
+            load_hotkey_settings,
             assign_hotkey
         ])
         .run(tauri::generate_context!())?;
@@ -1519,18 +1669,87 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 #[allow(clippy::items_after_test_module)]
 mod tests {
     use super::{
-        OverlayCanvasWindowState, OverlayFocusPolicyDebounce, OverlayFocusWindowState,
-        acknowledge_overlay_canvas_interactivity_state, acknowledge_overlay_canvas_layout_revision,
+        HotkeyInstallPolicy, OverlayCanvasWindowState, OverlayFocusPolicyDebounce,
+        OverlayFocusWindowState, acknowledge_overlay_canvas_interactivity_state,
+        acknowledge_overlay_canvas_layout_revision,
         apply_pending_overlay_canvas_interactivity_with, combat_overlay_damage_started,
         combat_overlay_health_status, combat_overlay_hostile_activity_started,
         combat_overlay_renderer_is_stale, combat_overlay_should_be_visible,
         is_overlay_window_label, overlay_canvas_runtime_url, overlay_canvas_should_be_visible,
         overlay_canvas_state_should_be_visible, overlay_focus_hold_from_inputs,
         queue_overlay_canvas_interactivity, queue_reported_overlay_canvas_interactivity,
-        require_overlay_canvas_layout_revision, serialize_overlay_canvas_lifecycle,
+        register_parsed_hotkeys_with, require_overlay_canvas_layout_revision,
+        serialize_overlay_canvas_lifecycle,
     };
+    use rlogs_desktop_host::{COMBAT_OVERLAY_TOGGLE_ACTION_ID, OVERLAY_CANVAS_TOGGLE_ACTION_ID};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, mpsc};
+    use tauri_plugin_global_shortcut::Shortcut;
+
+    #[test]
+    fn best_effort_hotkey_registration_keeps_unrelated_shortcuts_active() {
+        let combat = "Ctrl+Shift+O".parse::<Shortcut>().unwrap();
+        let canvas = "ScrollLock".parse::<Shortcut>().unwrap();
+        let parsed = vec![
+            (
+                COMBAT_OVERLAY_TOGGLE_ACTION_ID.to_owned(),
+                "Ctrl+Shift+O".to_owned(),
+                combat,
+            ),
+            (
+                OVERLAY_CANVAS_TOGGLE_ACTION_ID.to_owned(),
+                "ScrollLock".to_owned(),
+                canvas,
+            ),
+        ];
+
+        let (active, errors) =
+            register_parsed_hotkeys_with(&parsed, HotkeyInstallPolicy::BestEffort, |binding, _| {
+                if binding == "ScrollLock" {
+                    Err("ScrollLock is already used".to_owned())
+                } else {
+                    Ok(())
+                }
+            })
+            .unwrap();
+
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].0, COMBAT_OVERLAY_TOGGLE_ACTION_ID);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(
+            errors.get(OVERLAY_CANVAS_TOGGLE_ACTION_ID),
+            Some(&"ScrollLock is already used".to_owned())
+        );
+    }
+
+    #[test]
+    fn atomic_hotkey_registration_rejects_a_partial_install() {
+        let parsed = vec![
+            (
+                COMBAT_OVERLAY_TOGGLE_ACTION_ID.to_owned(),
+                "Ctrl+Shift+O".to_owned(),
+                "Ctrl+Shift+O".parse::<Shortcut>().unwrap(),
+            ),
+            (
+                OVERLAY_CANVAS_TOGGLE_ACTION_ID.to_owned(),
+                "ScrollLock".to_owned(),
+                "ScrollLock".parse::<Shortcut>().unwrap(),
+            ),
+        ];
+
+        let error =
+            register_parsed_hotkeys_with(&parsed, HotkeyInstallPolicy::Atomic, |binding, _| {
+                if binding == "ScrollLock" {
+                    Err("ScrollLock is already used".to_owned())
+                } else {
+                    Ok(())
+                }
+            })
+            .unwrap_err();
+
+        assert_eq!(error.0, OVERLAY_CANVAS_TOGGLE_ACTION_ID);
+        assert_eq!(error.1, "ScrollLock is already used");
+    }
 
     #[test]
     fn overlay_canvas_route_selects_the_mechanics_map_runtime() {

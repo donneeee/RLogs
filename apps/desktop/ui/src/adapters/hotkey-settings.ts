@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 
 export const COMBAT_OVERLAY_TOGGLE_ACTION_ID =
   "app.rlogs.combat-overlay.toggle-visibility";
+export const OVERLAY_CANVAS_TOGGLE_ACTION_ID =
+  "app.rlogs.overlay-canvas.toggle-visibility";
 
 export interface HotkeyActionDefinition {
   actionId: string;
@@ -11,9 +13,10 @@ export interface HotkeyActionDefinition {
 }
 
 export interface HotkeySettingsView {
-  schemaVersion: 1;
+  schemaVersion: 2;
   actions: readonly HotkeyActionDefinition[];
   bindings: Readonly<Record<string, string>>;
+  registrationErrors: Readonly<Record<string, string>>;
 }
 
 interface HotkeyAssignmentResult {
@@ -29,13 +32,17 @@ export interface MountedHotkeyBinding {
 const HOTKEY_CHANGE_EVENT = "rlogs:hotkeys-changed";
 
 export async function loadHotkeySettings(): Promise<HotkeySettingsView> {
-  return parseHotkeySettings(await apiJson<unknown>("/api/settings/hotkeys"));
+  const value = isTauriRuntime()
+    ? await invoke<unknown>("load_hotkey_settings")
+    : await apiJson<unknown>("/api/settings/hotkeys");
+  return parseHotkeySettings(value);
 }
 
 export function mountHotkeyBinding(
   actionId: string,
   options: { compact?: boolean } = {},
 ): MountedHotkeyBinding {
+  const nativeRuntime = isTauriRuntime();
   let alive = true;
   let settings: HotkeySettingsView | null = null;
   let capturing = false;
@@ -64,7 +71,9 @@ export function mountHotkeyBinding(
   controls.append(capture, clear);
   const message = document.createElement("small");
   message.className = "hotkey-binding-message";
-  root.append(copy, controls, message);
+  const registrationMessage = document.createElement("small");
+  registrationMessage.className = "hotkey-binding-message error hotkey-registration-error";
+  root.append(copy, controls, registrationMessage, message);
 
   const action = () => settings?.actions.find((candidate) => candidate.actionId === actionId);
   const render = () => {
@@ -80,6 +89,8 @@ export function mountHotkeyBinding(
     capture.disabled = settings === null || definition === undefined;
     clear.disabled = shortcut === null;
     capture.classList.toggle("is-capturing", capturing);
+    registrationMessage.textContent = settings?.registrationErrors[actionId] ?? "";
+    registrationMessage.hidden = registrationMessage.textContent === "";
   };
 
   const setMessage = (value: string, error = false) => {
@@ -94,9 +105,16 @@ export function mountHotkeyBinding(
 
   const reload = () => {
     void loadHotkeySettings().then((next) => {
-      if (alive) apply(next);
+      if (!alive) return;
+      apply(next);
+      if (!nativeRuntime) {
+        setMessage(
+          "Browser changes are saved for desktop rLogs and activate after it restarts. Native registration status is unavailable here.",
+        );
+      }
     }).catch((error: unknown) => {
       if (!alive) return;
+      render();
       setMessage(errorMessage(error), true);
     });
   };
@@ -114,11 +132,17 @@ export function mountHotkeyBinding(
         : result.settings.actions.find(
             (candidate) => candidate.actionId === result.displacedActionId,
           );
-      setMessage(displaced
-        ? `${displayShortcut(shortcut ?? "")} moved here. ${displaced.label} was cleared to prevent a conflict.`
-        : shortcut === null
-          ? "Shortcut cleared."
-          : `${displayShortcut(shortcut)} is active.`);
+      setMessage(nativeRuntime
+        ? displaced
+          ? `${displayShortcut(shortcut ?? "")} moved here. ${displaced.label} was cleared to prevent a conflict.`
+          : shortcut === null
+            ? "Shortcut cleared."
+            : `${displayShortcut(shortcut)} is active.`
+        : displaced
+          ? `${displayShortcut(shortcut ?? "")} was saved here and ${displaced.label} was cleared. Both changes take effect after desktop rLogs restarts.`
+          : shortcut === null
+            ? "Shortcut removal was saved and takes effect after desktop rLogs restarts."
+            : `${displayShortcut(shortcut)} was saved and will activate after desktop rLogs restarts.`);
       window.dispatchEvent(new CustomEvent<HotkeySettingsView>(HOTKEY_CHANGE_EVENT, {
         detail: result.settings,
       }));
@@ -169,7 +193,10 @@ export function mountHotkeyBinding(
     window.addEventListener("keydown", onKeyDown, true);
     render();
   });
-  clear.addEventListener("click", () => void assign(null));
+  clear.addEventListener("click", () => {
+    stopCapture();
+    void assign(null);
+  });
   const onChanged = (event: Event) => {
     const next = (event as CustomEvent<HotkeySettingsView>).detail;
     if (next) apply(next);
@@ -220,7 +247,7 @@ export function displayShortcut(shortcut: string): string {
 }
 
 export function parseHotkeySettings(value: unknown): HotkeySettingsView {
-  if (!isRecord(value) || value.schemaVersion !== 1 || !Array.isArray(value.actions)
+  if (!isRecord(value) || value.schemaVersion !== 2 || !Array.isArray(value.actions)
     || !isRecord(value.bindings)) {
     throw new Error("The native host returned invalid Hotkey settings.");
   }
@@ -244,7 +271,19 @@ export function parseHotkeySettings(value: unknown): HotkeySettingsView {
     }
     bindings[actionId] = shortcut;
   }
-  return { schemaVersion: 1, actions, bindings };
+  const registrationErrors: Record<string, string> = {};
+  if (value.registrationErrors !== undefined) {
+    if (!isRecord(value.registrationErrors)) {
+      throw new Error("The native host returned invalid Hotkey registration errors.");
+    }
+    for (const [actionId, error] of Object.entries(value.registrationErrors)) {
+      if (typeof error !== "string") {
+        throw new Error("The native host returned an invalid Hotkey registration error.");
+      }
+      registrationErrors[actionId] = error;
+    }
+  }
+  return { schemaVersion: 2, actions, bindings, registrationErrors };
 }
 
 async function assignHotkey(
