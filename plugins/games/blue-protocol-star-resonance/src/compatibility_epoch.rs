@@ -88,6 +88,15 @@ pub fn bpsr_runtime_authority(
     if client_build.is_empty() || !client_build.bytes().all(|byte| byte.is_ascii_digit()) {
         return Ok(None);
     }
+    let Ok(observed_build) = client_build.parse::<u64>() else {
+        return Ok(None);
+    };
+    let source_build = BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD
+        .parse::<u64>()
+        .map_err(|error| format!("invalid bundled BPSR epoch source build: {error}"))?;
+    if observed_build < source_build {
+        return Ok(None);
+    }
 
     if deployment_id == BPSR_COMPATIBILITY_EPOCH_DEPLOYMENT_ID {
         let fallback = retarget_protocol_pack(
@@ -216,6 +225,19 @@ mod tests {
             bpsr_runtime_authority("global", "24700000", steam.digest()).unwrap(),
             None,
             "a digest derived for the prior epoch/build tuple cannot cross a rollover",
+        );
+        let older = retarget_protocol_pack(
+            &pack,
+            "compatibility-fallback",
+            "global",
+            "steam",
+            "24600000",
+        )
+        .unwrap();
+        assert_eq!(
+            bpsr_runtime_authority("global", "24600000", older.digest()).unwrap(),
+            None,
+            "carry-forward authority cannot be backdated before its reviewed source",
         );
     }
 }

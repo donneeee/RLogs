@@ -5801,14 +5801,23 @@ fn reviewed_map_build_for_client(
     if manifest.builds.contains_key(client_build) {
         return Some(client_build.to_owned());
     }
-    let observed = client_build.parse::<u64>().ok()?;
+    // Asset extraction may copy the one explicit epoch source into a
+    // build-scoped local cache. This does not grant presentation authority:
+    // the mechanics-map projector separately requires deployment + build +
+    // derived protocol-pack digest through `bpsr_runtime_authority` before it
+    // exposes the map transform. Never infer a source by choosing a nearby
+    // numeric manifest key.
+    let observed_build = client_build.parse::<u64>().ok()?;
+    let epoch_source_build = rlogs_game_bpsr::BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD
+        .parse::<u64>()
+        .ok()?;
+    if observed_build < epoch_source_build {
+        return None;
+    }
     manifest
         .builds
-        .keys()
-        .filter_map(|build| build.parse::<u64>().ok().map(|numeric| (numeric, build)))
-        .filter(|(numeric, _)| *numeric <= observed)
-        .max_by_key(|(numeric, _)| *numeric)
-        .map(|(_, build)| build.clone())
+        .contains_key(rlogs_game_bpsr::BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD)
+        .then(|| rlogs_game_bpsr::BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD.to_owned())
 }
 
 fn automatic_local_map_retry_delay(failed_attempts: usize) -> Duration {
@@ -13741,16 +13750,12 @@ fn bpsr_status_effect_presentations(
     protocol_pack_digest: &str,
     locale: &str,
 ) -> Result<Vec<HistoryRdpsEffectPresentation>, String> {
-    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)? {
-        return Ok(Vec::new());
-    }
+    let semantic_authorized =
+        bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)?;
     let mut presentations = Vec::new();
     for effect_id in effect_ids {
-        let Some(status) = status_effect_presentation(effect_id)? else {
-            continue;
-        };
         // Do not promote a technical/catalog name to localized UI copy. When
-        // the exact-build locale has no reviewed display row, the consumer
+        // the locale has no reviewed display row, the consumer
         // deliberately falls back to the numeric effect identity.
         let Some(display) = status_effect_display_presentation_for_identity(
             deployment_id,
@@ -13762,12 +13767,23 @@ fn bpsr_status_effect_presentations(
         else {
             continue;
         };
+        // Stable-ID display copy carries across runtime identities. Mechanical
+        // status metadata remains exact-authority data: without that authority
+        // expose only the generic status kind and no catalog icon.
+        let status = semantic_authorized
+            .then(|| status_effect_presentation(effect_id))
+            .transpose()?
+            .flatten();
         presentations.push(HistoryRdpsEffectPresentation {
             effect_id: effect_id.to_string(),
             presentation_name: display.name.to_owned(),
-            presentation_kind: status.kind.clone(),
+            presentation_kind: status
+                .map(|presentation| presentation.kind.clone())
+                .unwrap_or_else(|| "status-effect".into()),
             presentation_resolution: display.resolution.to_owned(),
-            icon_asset_path: bpsr_game_asset_path(status.icon.clone()),
+            icon_asset_path: bpsr_game_asset_path(
+                status.and_then(|presentation| presentation.icon.clone()),
+            ),
         });
     }
     Ok(presentations)
@@ -18541,6 +18557,80 @@ mod tests {
     }
 
     #[test]
+    fn history_status_display_labels_survive_unsupported_runtime_identities() {
+        for (deployment_id, client_build, protocol_pack_digest) in [
+            ("", "", ""),
+            ("global", "24687926", "sha256:wrong-pack"),
+            ("global", "24699999", BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST),
+        ] {
+            let presentations = bpsr_status_effect_presentations(
+                BTreeSet::from([2_203_031, 9_999_999_999]),
+                deployment_id,
+                client_build,
+                protocol_pack_digest,
+                "en-US",
+            )
+            .unwrap();
+
+            assert_eq!(presentations.len(), 1);
+            assert_eq!(presentations[0].effect_id, "2203031");
+            assert_eq!(presentations[0].presentation_name, "Wounding Curse");
+            assert!(!presentations[0].presentation_resolution.is_empty());
+            assert_eq!(presentations[0].presentation_kind, "status-effect");
+            assert_eq!(presentations[0].icon_asset_path, None);
+        }
+    }
+
+    #[test]
+    fn history_status_display_labels_survive_a_compatible_future_build() {
+        let compatible = rlogs_game_bpsr::LiveProtocolPackSelection {
+            path: Path::new(env!("CARGO_MANIFEST_DIR")).join(
+                "../../plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24687926/pack.json",
+            ),
+            build_id: "24699999".into(),
+            pack_build_id: rlogs_game_bpsr::BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD.into(),
+            deployment_id: "global".into(),
+            channel: "steam".into(),
+            kind: LiveProtocolPackKind::CompatibilityFallback,
+        }
+        .load_pack()
+        .unwrap();
+        let presentations = bpsr_status_effect_presentations(
+            BTreeSet::from([2_203_031]),
+            "global",
+            "24699999",
+            compatible.digest(),
+            "en-US",
+        )
+        .unwrap();
+
+        assert_eq!(presentations.len(), 1);
+        assert_eq!(presentations[0].presentation_name, "Wounding Curse");
+        assert!(!presentations[0].presentation_resolution.is_empty());
+    }
+
+    #[test]
+    fn rdps_effect_presentation_stays_withheld_without_semantic_authority() {
+        for (deployment_id, client_build, protocol_pack_digest) in [
+            ("", "", ""),
+            ("global", "24687926", "sha256:wrong-pack"),
+            ("global", "24699999", BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST),
+        ] {
+            assert!(
+                bpsr_rdps_effect_presentations(
+                    BTreeSet::from([31_602]),
+                    deployment_id,
+                    client_build,
+                    protocol_pack_digest,
+                    "en-US",
+                )
+                .unwrap()
+                .is_empty()
+            );
+        }
+    }
+
+    #[test]
     fn live_overlay_ability_rows_share_exact_build_action_presentation() {
         // Representative packet-observed actions from different class/spec
         // families. The game catalog owns their actual names; this regression
@@ -20591,7 +20681,7 @@ kind = "content"
     }
 
     #[test]
-    fn local_map_refresh_selects_the_latest_compatible_numeric_review() {
+    fn local_map_refresh_uses_only_the_explicit_epoch_source() {
         let manifest = ReviewedMapAssetManifest {
             schema_version: 1,
             builds: BTreeMap::from([
@@ -20623,7 +20713,7 @@ kind = "content"
     }
 
     #[test]
-    fn map_assets_select_the_latest_reviewed_numeric_build_without_crossing_forward() {
+    fn map_asset_staging_never_selects_a_nearby_numeric_manifest_build() {
         let manifest = ReviewedMapAssetManifest {
             schema_version: 1,
             builds: BTreeMap::from([
@@ -20640,6 +20730,18 @@ kind = "content"
         assert_eq!(
             reviewed_map_build_for_client(&manifest, "24690000").as_deref(),
             Some("24687926")
+        );
+        let manifest_without_epoch_source = ReviewedMapAssetManifest {
+            schema_version: 1,
+            builds: BTreeMap::from([
+                ("24600000".to_owned(), vec![]),
+                ("24680000".to_owned(), vec![]),
+                ("24700000".to_owned(), vec![]),
+            ]),
+        };
+        assert_eq!(
+            reviewed_map_build_for_client(&manifest_without_epoch_source, "24690000"),
+            None,
         );
         assert_eq!(reviewed_map_build_for_client(&manifest, "24599999"), None);
         assert_eq!(

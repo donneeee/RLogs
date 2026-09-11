@@ -1350,21 +1350,10 @@ impl MechanicsMapProjector {
             scene_id: self.scene_id,
             map_id: self.map_id,
             scene_name: self.scene_id.and_then(|scene_id| {
-                self.runtime_identity
-                    .as_ref()
-                    .filter(|identity| reviewed_mechanics_identity(Some(identity)))
-                    .and_then(|identity| {
-                        rlogs_game_bpsr::localized_scene_name_for_identity(
-                            &identity.deployment_id,
-                            &identity.client_build,
-                            &identity.protocol_pack_digest,
-                            i64::from(scene_id),
-                            "en-US",
-                        )
-                        .ok()
-                        .flatten()
-                        .map(str::to_owned)
-                    })
+                rlogs_game_bpsr::localized_scene_name(i64::from(scene_id), "en-US")
+                    .ok()
+                    .flatten()
+                    .map(str::to_owned)
             }),
             map_model: if absolute_map.is_some() {
                 "absolute_scene_map"
@@ -1608,51 +1597,26 @@ impl MechanicsMapProjector {
     }
 
     fn localized_monster_display_name(&self, monster_id: i64) -> Option<String> {
-        self.runtime_identity
-            .as_ref()
-            .filter(|identity| reviewed_mechanics_identity(Some(identity)))
-            .and_then(|identity| {
-                rlogs_game_bpsr::localized_monster_name_for_identity(
-                    &identity.deployment_id,
-                    &identity.client_build,
-                    &identity.protocol_pack_digest,
-                    monster_id,
-                    "en-US",
-                )
-                .ok()
-                .flatten()
-                .map(str::to_owned)
-            })
-    }
-
-    fn localized_action_display_name(&self, ability_id: i64) -> Option<String> {
-        self.runtime_identity.as_ref().and_then(|identity| {
-            rlogs_game_bpsr::localized_combat_action_name_for_identity(
-                &identity.deployment_id,
-                &identity.client_build,
-                &identity.protocol_pack_digest,
-                ability_id,
-                "en-US",
-            )
+        // Static ID labels are presentation-only. Boss and mechanic
+        // classification remain on the exact runtime-identity boundary.
+        rlogs_game_bpsr::localized_monster_name_for_identity("", "", "", monster_id, "en-US")
             .ok()
             .flatten()
             .map(str::to_owned)
-        })
+    }
+
+    fn localized_action_display_name(&self, ability_id: i64) -> Option<String> {
+        rlogs_game_bpsr::localized_combat_action_name(ability_id, "en-US")
+            .ok()
+            .flatten()
+            .map(str::to_owned)
     }
 
     fn localized_status_display_name(&self, effect_id: i64) -> Option<String> {
-        self.runtime_identity.as_ref().and_then(|identity| {
-            rlogs_game_bpsr::status_effect_display_presentation_for_identity(
-                &identity.deployment_id,
-                &identity.client_build,
-                &identity.protocol_pack_digest,
-                effect_id,
-                "en-US",
-            )
+        rlogs_game_bpsr::status_effect_display_presentation(effect_id, "en-US")
             .ok()
             .flatten()
             .map(|presentation| presentation.name.to_owned())
-        })
     }
 
     fn enforce_bounds(&mut self) {
@@ -2076,6 +2040,23 @@ fn reviewed_mechanics_identity(identity: Option<&MechanicsRuntimeIdentity>) -> b
     })
 }
 
+/// Selects the reviewed source manifest for display-only game-map assets.
+/// The derived protocol-pack digest proves compatibility; a numeric build
+/// label by itself never grants access to a reviewed transform.
+fn reviewed_map_presentation_build(
+    identity: Option<&MechanicsRuntimeIdentity>,
+) -> Option<&'static str> {
+    let identity = identity?;
+    rlogs_game_bpsr::bpsr_runtime_authority(
+        &identity.deployment_id,
+        &identity.client_build,
+        &identity.protocol_pack_digest,
+    )
+    .ok()
+    .flatten()?;
+    Some(rlogs_game_bpsr::BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD)
+}
+
 fn raid_arena_spec(
     identity: Option<&MechanicsRuntimeIdentity>,
     scene_id: Option<i32>,
@@ -2110,12 +2091,12 @@ fn scene_map_spec(
     scene_id: Option<i32>,
 ) -> Option<SceneMapSpec> {
     let scene_id = scene_id?;
-    let identity = identity.filter(|identity| reviewed_mechanics_identity(Some(identity)))?;
+    let reviewed_build = reviewed_map_presentation_build(identity)?;
     let maps = packaged_scene_maps();
-    // Coordinates are authoritative mechanic projection data. A future build
-    // must have an explicit reviewed manifest entry; numeric proximity is not
-    // evidence that its world transform is unchanged.
-    let entries = maps.builds.get(identity.client_build.as_str());
+    // These coordinates project raw packet positions onto a display-only game
+    // map. Mechanic/status/cast interpretation remains on the independent,
+    // exact-build `reviewed_mechanics_identity` boundary.
+    let entries = maps.builds.get(reviewed_build);
     let entry = entries?
         .iter()
         .find(|entry| entry.scene_ids.contains(&scene_id))?;
@@ -2394,6 +2375,25 @@ mod tests {
         MechanicsRuntimeIdentity::from(&reviewed_region())
     }
 
+    fn compatible_identity(client_build: &str) -> MechanicsRuntimeIdentity {
+        let selection = rlogs_game_bpsr::LiveProtocolPackSelection {
+            path: std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(
+                "../../plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24687926/pack.json",
+            ),
+            build_id: client_build.to_owned(),
+            pack_build_id: rlogs_game_bpsr::BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD.into(),
+            deployment_id: "global".into(),
+            channel: "steam".into(),
+            kind: rlogs_game_bpsr::LiveProtocolPackKind::CompatibilityFallback,
+        };
+        let pack = selection.load_pack().expect("derived compatibility pack");
+        MechanicsRuntimeIdentity {
+            deployment_id: "global".into(),
+            client_build: client_build.to_owned(),
+            protocol_pack_digest: pack.digest().to_owned(),
+        }
+    }
+
     #[test]
     fn mechanics_authority_matches_the_bundled_current_protocol_pack() {
         let pack = rlogs_game_bpsr::ProtocolPack::from_json(include_bytes!(
@@ -2514,7 +2514,10 @@ mod tests {
             projector.snapshot().client_build.as_deref(),
             Some("24687927")
         );
-        assert_eq!(projector.snapshot().scene_name, None);
+        assert_eq!(
+            projector.snapshot().scene_name.as_deref(),
+            Some("Chaotic - Sea-Ringed Reef")
+        );
     }
 
     #[test]
@@ -3057,17 +3060,48 @@ mod tests {
     }
 
     #[test]
-    fn map_monster_localization_requires_the_exact_source_build() {
+    fn stable_map_labels_do_not_require_runtime_identity() {
         let mut projector = MechanicsMapProjector::default();
-        projector.reset("session", "24687926");
-        projector.runtime_identity = Some(reviewed_identity());
+        projector.scene_id = Some(6_565);
+        assert_eq!(
+            projector.snapshot().scene_name.as_deref(),
+            Some("Chaotic - Sea-Ringed Reef")
+        );
+        assert_eq!(
+            projector.localized_monster_display_name(33_701).as_deref(),
+            Some("Tina - Void Reverie")
+        );
+        assert_eq!(
+            projector.localized_action_display_name(2_233).as_deref(),
+            Some("Powerdraw")
+        );
+        assert_eq!(
+            projector.localized_status_display_name(55_228).as_deref(),
+            Some("Luminary Bolt Vulnerability")
+        );
+
+        projector.runtime_identity = Some(MechanicsRuntimeIdentity {
+            deployment_id: "cn".into(),
+            client_build: "99999999".into(),
+            protocol_pack_digest: "sha256:wrong".into(),
+        });
+        assert_eq!(
+            projector.snapshot().scene_name.as_deref(),
+            Some("Chaotic - Sea-Ringed Reef")
+        );
         assert_eq!(
             projector.localized_monster_display_name(33_701).as_deref(),
             Some("Tina - Void Reverie")
         );
 
-        projector.reset("session", "24687927");
-        assert_eq!(projector.localized_monster_display_name(33_701), None);
+        assert_eq!(
+            projector.localized_monster_display_name(9_999_999_999),
+            None
+        );
+        assert_eq!(projector.localized_action_display_name(9_999_999_999), None);
+        assert_eq!(projector.localized_status_display_name(9_999_999_999), None);
+        projector.scene_id = Some(20_043);
+        assert_eq!(projector.snapshot().scene_name, None);
     }
 
     #[test]
@@ -3867,19 +3901,80 @@ mod tests {
     }
 
     #[test]
-    fn full_scene_map_does_not_guess_coordinates_for_an_unreviewed_identity() {
-        let mut future = reviewed_identity();
-        future.client_build = "24687927".into();
-        assert!(scene_map_spec(Some(&future), Some(6513)).is_none());
+    fn full_scene_map_requires_exact_or_digest_verified_epoch_authority() {
+        assert!(scene_map_spec(Some(&reviewed_identity()), Some(6513)).is_some());
 
-        let mut wrong_pack = reviewed_identity();
+        let compatible = compatible_identity("24699999");
+        assert!(scene_map_spec(Some(&compatible), Some(6513)).is_some());
+
+        let mut wrong_pack = compatible.clone();
         wrong_pack.protocol_pack_digest =
             "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".into();
         assert!(scene_map_spec(Some(&wrong_pack), Some(6513)).is_none());
 
-        let mut wrong_deployment = reviewed_identity();
+        let mut wrong_deployment = compatible;
         wrong_deployment.deployment_id = "cn".into();
         assert!(scene_map_spec(Some(&wrong_deployment), Some(6513)).is_none());
+
+        let too_old = compatible_identity("24600000");
+        assert!(scene_map_spec(Some(&too_old), Some(6513)).is_none());
+    }
+
+    #[test]
+    fn compatibility_epoch_exposes_the_real_map_without_reviewed_mechanics() {
+        let identity = compatible_identity("24699999");
+        assert!(!reviewed_mechanics_identity(Some(&identity)));
+
+        let mut projector = MechanicsMapProjector {
+            session_id: Some("session".into()),
+            runtime_identity: Some(identity.clone()),
+            client_build: Some(identity.client_build.clone()),
+            scene_id: Some(6_615),
+            last_observed_micros: Some(1_000),
+            ..Default::default()
+        };
+        let target = entity(7, 70);
+        let mut status = envelope(
+            1,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 1,
+                time: EventTime {
+                    observed_micros: 1_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance::wire(1, 1, 1),
+                kind: TimelineEventKind::Status(StatusEvent {
+                    source: None,
+                    target,
+                    effect: StatusEffectId(884_609),
+                    instance_id: Some(StatusEffectInstanceId(1)),
+                    origin: None,
+                    state: StatusState::Applied,
+                    stacks: Some(1),
+                    duration_millis: Some(10_000),
+                    level: None,
+                    part_id: None,
+                    count: None,
+                    created_at_millis: None,
+                }),
+            }),
+        );
+        status.region.identity.deployment_id = identity.deployment_id;
+        status.region.client_build = identity.client_build;
+        status.region.protocol_pack_digest = identity.protocol_pack_digest;
+        projector.observe(&status);
+
+        let snapshot = projector.snapshot();
+        assert_eq!(snapshot.map_model, "absolute_scene_map");
+        assert_eq!(
+            snapshot.background_asset_url.as_deref(),
+            Some("/local-game-assets/24699999/scene-6615-wasteland-court.png")
+        );
+        assert!(snapshot.mechanics.is_empty());
+        assert!(snapshot.player.is_none());
+        assert!(snapshot.target.is_none());
+        assert!(snapshot.action_controls.is_empty());
+        assert!(snapshot.resources.is_empty());
     }
 
     #[test]
