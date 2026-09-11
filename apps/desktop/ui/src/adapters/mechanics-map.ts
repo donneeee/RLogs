@@ -482,11 +482,7 @@ export function projectMechanicsMapEntities(
   });
 }
 
-/**
- * Project only already-reviewed Void Towering Ruin identities. These are
- * fixed-size map glyphs at packet-observed actor positions: no range, blast
- * radius, safe area, or portal geometry is inferred here.
- */
+/** Project only an active, reviewed mechanic trigger at its observed target. */
 export function projectVoidTowerMapAnnotations(
   value: MechanicsMapSnapshot,
 ): VoidTowerMapAnnotation[] {
@@ -499,17 +495,6 @@ export function projectVoidTowerMapAnnotations(
   ) return [];
 
   const annotations: VoidTowerMapAnnotation[] = [];
-  for (const entity of value.entities) {
-    if (
-      entity.stale ||
-      (entity.mechanic_role !== "correct_portal" && entity.mechanic_role !== "other_portal")
-    ) continue;
-    const point = projectMechanicsMapPoint(value, entity.x, entity.z, false);
-    if (point?.visible) {
-      annotations.push({ ...point, kind: entity.mechanic_role, actorId: entity.actor_id });
-    }
-  }
-
   const stickyTargets = new Set<number>();
   for (const signal of value.mechanics) {
     if (signal.mechanic_kind !== "sticky_bomb" || stickyTargets.has(signal.target_actor_id)) continue;

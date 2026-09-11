@@ -10,12 +10,10 @@ import {
   mechanicSignalRemainingMillis,
   projectCoralMatrixBeam,
   projectCoralPizzaRegions,
-  projectCoralWaveRegion,
   projectCursedTombChargeRegion,
   projectMechanicsMapEntities,
   projectMechanicsMapPoint,
   projectRaidFloorRegions,
-  projectTinaPizzaRegion,
   projectVoidTowerMapAnnotations,
   targetDebuffRemainingMillis,
   zoomMechanicsMapAt,
@@ -758,9 +756,8 @@ export function mountMechanicsMapOverlay(
         ? localizer.t("ui.mechanics_map.status.waiting")
         : localizer.t("ui.mechanics_map.status.position_needed");
     status.dataset.state = snapshot.local_position_observed ? "live" : "waiting";
-    notice.hidden = snapshot.local_position_observed && snapshot.data_gap === null;
-    notice.textContent = snapshot.data_gap ?? localizer.t("ui.mechanics_map.notice.waiting_for_position");
     loadBackground(snapshot.background_asset_url);
+    renderMapAvailability(snapshot);
     renderPlayer(snapshot);
     renderActions(snapshot);
     renderParty(snapshot);
@@ -769,6 +766,24 @@ export function mountMechanicsMapOverlay(
     renderMechanicAlerts(snapshot);
     renderMapFooter(snapshot);
     scheduleDraw();
+  }
+
+  function renderMapAvailability(snapshot: MechanicsMapSnapshot): void {
+    const availability = mechanicsMapAssetAvailability(snapshot, imageReady);
+    if (availability === "unsupported") {
+      notice.hidden = false;
+      notice.textContent = "Map unavailable: this identified scene has no reviewed game-map asset.";
+      return;
+    }
+    if (availability === "asset_pending") {
+      notice.hidden = false;
+      notice.textContent = preparingAsset
+        ? "Map unavailable while the reviewed game-map asset is prepared."
+        : "Map unavailable: the reviewed game-map asset is not available locally.";
+      return;
+    }
+    notice.hidden = snapshot.local_position_observed && snapshot.data_gap === null;
+    notice.textContent = snapshot.data_gap ?? localizer.t("ui.mechanics_map.notice.waiting_for_position");
   }
 
   function renderMapFooter(snapshot: MechanicsMapSnapshot): void {
@@ -1292,7 +1307,10 @@ export function mountMechanicsMapOverlay(
       if (!alive || imageUrl !== url) return;
       image = next;
       imageReady = true;
-      if (update?.snapshot) renderMapFooter(update.snapshot);
+      if (update?.snapshot) {
+        renderMapAvailability(update.snapshot);
+        renderMapFooter(update.snapshot);
+      }
       scheduleDraw();
     };
     next.onerror = () => {
@@ -1332,6 +1350,7 @@ export function mountMechanicsMapOverlay(
     if (!context) return;
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     context.clearRect(0, 0, width, height);
+    if (mechanicsMapAssetAvailability(snapshot, imageReady) !== "ready" || image === null) return;
     context.fillStyle = "rgba(3, 9, 16, 0.94)";
     context.fillRect(0, 0, width, height);
     context.imageSmoothingEnabled = true;
@@ -1339,14 +1358,13 @@ export function mountMechanicsMapOverlay(
     context.translate(width / 2 + preferences.panX, height / 2 + preferences.panY);
     context.scale(preferences.scale, preferences.scale);
     context.translate(-width / 2, -height / 2);
-    const activeImage = imageReady ? image : null;
+    const activeImage = image;
     const content = mechanicsMapContentRect(snapshot, width, height, activeImage);
     const readability = mechanicsMapReadabilityProfile(preferences.mapDim, preferences.highContrastMechanics);
     drawBackdrop(context, snapshot, content, activeImage, readability.mapDim);
     context.save();
     context.translate(content.x, content.y);
     context.scale(content.width / width, content.height / height);
-    drawArena(context, snapshot, width, height);
     drawRegions(context, snapshot, width, height, preferences.highContrastMechanics);
     drawEntities(context, snapshot, width, height, preferences, automarkerPreview?.points ?? []);
     context.restore();
@@ -1922,15 +1940,17 @@ function drawBackdrop(
     context.globalAlpha = 1;
     context.fillStyle = `rgba(3, 11, 19, ${mapDim})`;
     context.fillRect(rect.x, rect.y, rect.width, rect.height);
-  } else {
-    const centerX = rect.x + rect.width / 2;
-    const centerY = rect.y + rect.height / 2;
-    const gradient = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, Math.max(rect.width, rect.height) * 0.7);
-    gradient.addColorStop(0, "rgba(49, 84, 96, 0.35)");
-    gradient.addColorStop(1, "rgba(5, 13, 23, 0.98)");
-    context.fillStyle = gradient;
-    context.fillRect(rect.x, rect.y, rect.width, rect.height);
   }
+}
+
+export function mechanicsMapAssetAvailability(
+  snapshot: Pick<MechanicsMapSnapshot, "map_model" | "background_asset_url">,
+  imageReady: boolean,
+): "ready" | "asset_pending" | "unsupported" {
+  if (snapshot.map_model !== "absolute_scene_map" || snapshot.background_asset_url === null) {
+    return "unsupported";
+  }
+  return imageReady ? "ready" : "asset_pending";
 }
 
 function mechanicsMapContentRect(
@@ -1948,40 +1968,6 @@ function mechanicsMapContentRect(
   );
 }
 
-function drawArena(context: CanvasRenderingContext2D, snapshot: MechanicsMapSnapshot, width: number, height: number): void {
-  context.save();
-  context.strokeStyle = "rgba(92, 228, 212, 0.35)";
-  context.lineWidth = 1;
-  if (snapshot.map_layout === "raid_ring") {
-    const center = projectMechanicsMapPoint(snapshot, 0, 0, false);
-    if (center && snapshot.map_span_x && snapshot.map_span_z) {
-      for (const radius of [11.5, 12.5, 17.5, 18.5, 30]) {
-        context.beginPath();
-        context.ellipse(center.mapX / 100 * width, center.mapY / 100 * height,
-          radius / snapshot.map_span_x * width, radius / snapshot.map_span_z * height, 0, 0, Math.PI * 2);
-        context.stroke();
-      }
-    }
-  } else if (snapshot.map_layout === "raid_grid") {
-    for (const x of [-30, -10, 10, 30]) drawWorldLine(context, snapshot, width, height, x, 22.5, x, -22.5);
-    for (const z of [-22.5, -7.5, 7.5, 22.5]) drawWorldLine(context, snapshot, width, height, -30, z, 30, z);
-  } else if (shouldDrawRadarFallbackArena(snapshot)) {
-    context.beginPath();
-    context.arc(width / 2, height / 2, Math.min(width, height) * 0.25, 0, Math.PI * 2);
-    context.stroke();
-    context.beginPath();
-    context.arc(width / 2, height / 2, Math.min(width, height) * 0.44, 0, Math.PI * 2);
-    context.stroke();
-  }
-  context.restore();
-}
-
-export function shouldDrawRadarFallbackArena(
-  snapshot: Pick<MechanicsMapSnapshot, "map_model" | "map_layout">,
-): boolean {
-  return snapshot.map_model !== "absolute_scene_map" && snapshot.map_layout === null;
-}
-
 function drawRegions(
   context: CanvasRenderingContext2D,
   snapshot: MechanicsMapSnapshot,
@@ -1995,11 +1981,6 @@ function drawRegions(
       signal.mechanic_kind === "clone_charge_right" ? "rgba(179,138,255,.38)" : "rgba(255,91,111,.38)", outline);
     const beam = projectCoralMatrixBeam(snapshot, signal);
     if (beam.length === 2) drawLine(context, beam[0]!, beam[1]!, width, height, "rgba(242,195,107,.98)", highContrast ? 5 : 3, highContrast);
-  }
-  for (const entity of snapshot.entities) {
-    drawPolygon(context, projectTinaPizzaRegion(snapshot, entity), width, height,
-      entity.mechanic_role === "pizza_fast" ? "rgba(255,157,92,.42)" : "rgba(255,91,111,.42)", outline);
-    drawPolygon(context, projectCoralWaveRegion(snapshot, entity), width, height, "rgba(92,228,212,.36)", outline);
   }
   for (const region of projectCoralPizzaRegions(snapshot)) {
     drawPolygon(context, region.points, width, height,
@@ -2254,12 +2235,6 @@ function drawOutlinedText(
   context.strokeText(value, x, y);
   context.fillStyle = fill;
   context.fillText(value, x, y);
-}
-
-function drawWorldLine(context: CanvasRenderingContext2D, snapshot: MechanicsMapSnapshot, width: number, height: number, x1: number, z1: number, x2: number, z2: number): void {
-  const start = projectMechanicsMapPoint(snapshot, x1, z1, false);
-  const end = projectMechanicsMapPoint(snapshot, x2, z2, false);
-  if (start && end) drawLine(context, start, end, width, height, "rgba(92,228,212,.35)", 1);
 }
 
 function mechanicColor(effectId: number, kind: string | null): string {

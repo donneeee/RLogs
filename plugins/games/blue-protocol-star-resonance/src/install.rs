@@ -44,17 +44,17 @@ pub enum LiveProtocolPackKind {
     Promoted,
     ResearchCandidate,
     CompatibilityFallback,
-    /// A reviewed pack is being used only to bootstrap capture for a client
-    /// whose exact build cannot yet be established locally. This is never an
-    /// exact-build claim and must remain ineligible for automatic submission.
+    /// A reviewed pack is carried forward for a launcher that exposes no
+    /// build receipt. Ordinary client builds share this compatibility epoch;
+    /// a reviewed seasonal update explicitly replaces the carried pack.
     ClientBootstrap,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LiveProtocolPackSelection {
     pub path: PathBuf,
-    /// Exact build reported by the launcher, or `unverified` when the client
-    /// exposes no trusted local build receipt.
+    /// Exact launcher build when available, otherwise the reviewed pack build
+    /// that defines the current carry-forward compatibility epoch.
     pub build_id: String,
     /// Build for which the selected on-disk pack was generated.
     pub pack_build_id: String,
@@ -126,10 +126,9 @@ impl LiveProtocolPackSelection {
 
 /// Resolves a live pack for every supported BPSR executable family.
 ///
-/// Steam supplies an authoritative local build receipt, so it retains exact
-/// selection. Other distributions can start capture from the newest available
-/// pack, but are explicitly marked as unverified until packet evidence and an
-/// exact-build pack are available. The executable name identifies only the
+/// Steam supplies an authoritative local build receipt. Other distributions
+/// carry the newest reviewed pack forward until an explicitly reviewed
+/// seasonal update replaces it. The executable name identifies only the
 /// process/distribution channel; it never decides geographic region.
 pub fn resolve_live_protocol_pack(
     plugin_root: &Path,
@@ -154,7 +153,7 @@ pub fn resolve_live_protocol_pack(
     };
     Ok(LiveProtocolPackSelection {
         path,
-        build_id: "unverified".to_owned(),
+        build_id: pack_build_id.clone(),
         pack_build_id,
         deployment_id: "unknown".to_owned(),
         channel: channel.to_owned(),
@@ -164,10 +163,9 @@ pub fn resolve_live_protocol_pack(
 
 /// Starts packet-proven BPSR traffic when no executable receipt is available.
 ///
-/// The protocol signature establishes only the game flow. Until a separate
-/// packet or installation receipt proves the deployment, channel, and exact
-/// build, this selection remains an explicit client bootstrap and therefore
-/// cannot authorize automatic submissions or exact-build calculations.
+/// The protocol signature establishes only the game flow and does not invent
+/// deployment or channel identity. Build compatibility follows the newest
+/// reviewed pack until an explicitly reviewed seasonal boundary replaces it.
 pub fn resolve_packet_detected_protocol_pack(
     plugin_root: &Path,
 ) -> Result<LiveProtocolPackSelection, LiveProtocolPackSelectionError> {
@@ -176,7 +174,7 @@ pub fn resolve_packet_detected_protocol_pack(
     };
     Ok(LiveProtocolPackSelection {
         path,
-        build_id: "unverified".to_owned(),
+        build_id: pack_build_id.clone(),
         pack_build_id,
         deployment_id: "unknown".to_owned(),
         channel: "unknown".to_owned(),
@@ -679,7 +677,7 @@ mod tests {
     }
 
     #[test]
-    fn every_non_global_client_name_bootstraps_without_claiming_a_region_or_build() {
+    fn every_non_global_client_name_carries_the_reviewed_build_without_claiming_a_region() {
         let plugin_root = Path::new(env!("CARGO_MANIFEST_DIR"));
         for (name, expected_channel) in [
             ("BPSR.exe", "standalone"),
@@ -695,13 +693,13 @@ mod tests {
             assert_eq!(selected.kind, LiveProtocolPackKind::ClientBootstrap);
             assert_eq!(selected.deployment_id, "unknown");
             assert_eq!(selected.channel, expected_channel);
-            assert_eq!(selected.build_id, "unverified");
+            assert_eq!(selected.build_id, selected.pack_build_id);
 
             let pack = selected.load_pack().unwrap();
             assert_eq!(pack.definition().target.deployment_id, "unknown");
             assert_eq!(pack.definition().target.region_id, None);
             assert_eq!(pack.definition().target.channel, expected_channel);
-            assert_eq!(pack.definition().target.build_id, "unverified");
+            assert_eq!(pack.definition().target.build_id, selected.pack_build_id);
             assert!(pack.definition().provenance.iter().any(|entry| {
                 entry.source == "provisional-client-bootstrap"
                     && entry.reference.contains("client_deployment=unknown")
@@ -745,19 +743,19 @@ mod tests {
     }
 
     #[test]
-    fn packet_detected_flow_bootstraps_without_inventing_client_identity() {
+    fn packet_detected_flow_carries_the_reviewed_build_without_inventing_region_identity() {
         let plugin_root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let selected = resolve_packet_detected_protocol_pack(plugin_root).unwrap();
         assert_eq!(selected.kind, LiveProtocolPackKind::ClientBootstrap);
         assert_eq!(selected.deployment_id, "unknown");
         assert_eq!(selected.channel, "unknown");
-        assert_eq!(selected.build_id, "unverified");
+        assert_eq!(selected.build_id, selected.pack_build_id);
 
         let pack = selected.load_pack().unwrap();
         assert_eq!(pack.definition().target.deployment_id, "unknown");
         assert_eq!(pack.definition().target.region_id, None);
         assert_eq!(pack.definition().target.channel, "unknown");
-        assert_eq!(pack.definition().target.build_id, "unverified");
+        assert_eq!(pack.definition().target.build_id, selected.pack_build_id);
     }
 
     #[test]

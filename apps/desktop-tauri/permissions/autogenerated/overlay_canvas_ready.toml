@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-overlay-canvas-ready"
+description = "Enables the overlay_canvas_ready command without any pre-configured scope."
+commands.allow = ["overlay_canvas_ready"]
+
+[[permission]]
+identifier = "deny-overlay-canvas-ready"
+description = "Denies the overlay_canvas_ready command without any pre-configured scope."
+commands.deny = ["overlay_canvas_ready"]

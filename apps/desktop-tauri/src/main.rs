@@ -284,7 +284,6 @@ fn show_combat_overlay(
         let window = app
             .get_webview_window("combat-overlay")
             .ok_or_else(|| "Combat Overlay window is unavailable; restart rLogs".to_owned())?;
-        show_combat_overlay_without_activation(&window)?;
         window
             .emit("combat-overlay-show-requested", ())
             .map_err(|error| error.to_string())?;
@@ -314,7 +313,6 @@ fn set_combat_overlay_enabled(
         return hide_combat_overlay_window(&window);
     }
     if state.ready.load(Ordering::Acquire) {
-        show_combat_overlay_without_activation(&window)?;
         window
             .emit("combat-overlay-show-requested", ())
             .map_err(|error| error.to_string())?;
@@ -499,7 +497,9 @@ fn set_combat_overlay_automatically_hidden(
         false,
         !focus_state.allows_visibility(),
     ) {
-        show_combat_overlay_without_activation(&window)?;
+        window
+            .emit("combat-overlay-show-requested", ())
+            .map_err(|error| error.to_string())?;
     }
     Ok(())
 }
@@ -540,7 +540,6 @@ fn toggle_combat_overlay(app: &tauri::AppHandle) -> Result<(), String> {
         state.requested.store(true, Ordering::Release);
         state.automatically_hidden.store(false, Ordering::Release);
         if state.ready.load(Ordering::Acquire) && focus_state.allows_visibility() {
-            show_combat_overlay_without_activation(&window)?;
             window
                 .emit("combat-overlay-show-requested", ())
                 .map_err(|error| error.to_string())?;
@@ -652,12 +651,9 @@ fn build_overlay_canvas_window(
     app: &impl tauri::Manager<tauri::Wry>,
     host: &rlogs_desktop_host::EmbeddedLocalHost,
 ) -> tauri::Result<()> {
-    let url = format!(
-        "http://{}/?surface=overlay-canvas&module=mechanics-map",
-        host.address()
-    )
-    .parse()
-    .map_err(tauri::Error::InvalidUrl)?;
+    let url = overlay_canvas_runtime_url(host.address())
+        .parse()
+        .map_err(tauri::Error::InvalidUrl)?;
     WebviewWindowBuilder::new(app, "overlay-canvas", WebviewUrl::External(url))
         .title("rLogs Overlay Canvas")
         .decorations(false)
@@ -674,6 +670,10 @@ fn build_overlay_canvas_window(
         .build()
         .map(|_| ())?;
     Ok(())
+}
+
+fn overlay_canvas_runtime_url(address: impl std::fmt::Display) -> String {
+    format!("http://{address}/?surface=overlay-canvas&module=mechanics-map")
 }
 
 #[tauri::command]
@@ -1038,10 +1038,10 @@ fn monitor_combat_overlay_activity(
                 // Do not steal focus when combat begins. Revealing the
                 // always-on-top overlay is sufficient and keeps game input in
                 // the game.
-                let _ = show_combat_overlay_without_activation(&window);
-                // The WebView root is hidden separately from its native
-                // window. Reconcile both states after waking so the native
-                // surface cannot be shown with transparent content.
+                // Ask the hidden WebView to paint the new feed first. It will
+                // explicitly acknowledge the completed frame through
+                // `show_combat_overlay_if_requested`, avoiding one stale
+                // compositor frame when combat wakes the overlay.
                 let _ = window.emit("combat-overlay-show-requested", ());
             }
         })
@@ -1112,7 +1112,6 @@ fn set_overlay_windows_hidden_by_focus(app: &tauri::AppHandle, hidden: bool) {
         false,
     ) && let Some(window) = app.get_webview_window("combat-overlay")
     {
-        let _ = show_combat_overlay_without_activation(&window);
         let _ = window.emit("combat-overlay-show-requested", ());
     }
 }
@@ -1372,10 +1371,18 @@ mod tests {
         apply_pending_overlay_canvas_interactivity_with, combat_overlay_damage_started,
         combat_overlay_health_status, combat_overlay_hostile_activity_started,
         combat_overlay_renderer_is_stale, combat_overlay_should_be_visible,
-        is_overlay_window_label, overlay_focus_hold_from_inputs,
+        is_overlay_window_label, overlay_canvas_runtime_url, overlay_focus_hold_from_inputs,
         queue_overlay_canvas_interactivity, queue_reported_overlay_canvas_interactivity,
     };
     use std::sync::atomic::Ordering;
+
+    #[test]
+    fn overlay_canvas_route_selects_the_mechanics_map_runtime() {
+        assert_eq!(
+            overlay_canvas_runtime_url("127.0.0.1:43117"),
+            "http://127.0.0.1:43117/?surface=overlay-canvas&module=mechanics-map"
+        );
+    }
 
     #[test]
     fn recreated_locked_canvas_applies_forced_edit_only_after_layout_initialization() {
@@ -1492,6 +1499,22 @@ mod tests {
         assert!(!combat_overlay_renderer_is_stale(44_999, 0, 30_000));
         assert!(combat_overlay_renderer_is_stale(60_000, 0, 30_000));
         assert!(!combat_overlay_renderer_is_stale(20_000, 19_000, 0));
+    }
+
+    #[test]
+    fn healthy_renderer_heartbeat_is_scoped_to_the_combat_window_capability() {
+        let combat_capability = include_str!("../capabilities/combat-overlay.json");
+        let main_capability = include_str!("../capabilities/default.json");
+        let heartbeat_permission =
+            include_str!("../permissions/autogenerated/combat_overlay_heartbeat.toml");
+        assert!(combat_capability.contains("allow-combat-overlay-heartbeat"));
+        assert!(!main_capability.contains("allow-combat-overlay-heartbeat"));
+        assert!(!combat_capability.contains("core:window:allow-show"));
+        assert!(heartbeat_permission.contains("commands.allow = [\"combat_overlay_heartbeat\"]"));
+        // Health is diagnostics for the main settings UI; the HUD itself does
+        // not need authority to query its native window state.
+        assert!(main_capability.contains("allow-combat-overlay-health"));
+        assert!(!combat_capability.contains("allow-combat-overlay-health"));
     }
 
     #[test]

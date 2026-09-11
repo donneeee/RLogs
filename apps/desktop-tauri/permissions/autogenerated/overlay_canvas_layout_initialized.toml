@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-overlay-canvas-layout-initialized"
+description = "Enables the overlay_canvas_layout_initialized command without any pre-configured scope."
+commands.allow = ["overlay_canvas_layout_initialized"]
+
+[[permission]]
+identifier = "deny-overlay-canvas-layout-initialized"
+description = "Denies the overlay_canvas_layout_initialized command without any pre-configured scope."
+commands.deny = ["overlay_canvas_layout_initialized"]

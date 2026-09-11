@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { UiLocalizer } from "../localization/ui-locale";
 import { automarkerResponseIsCurrent } from "./automarker-presets";
 
-import { automarkerPresetViewSnapshotKey, formatDungeonAttemptTime, formatDungeonObjectiveValue, mechanicsMapAutomarkerSnapshotKey, mechanicsMapMarkerLabel, mechanicsMapReadabilityProfile, nextMapDim, parseMechanicsMapCanvasPreferences, projectAutomarkerPreviewMarkers, shouldDrawRadarFallbackArena, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
+import { automarkerPresetViewSnapshotKey, formatDungeonAttemptTime, formatDungeonObjectiveValue, mechanicsMapAssetAvailability, mechanicsMapAutomarkerSnapshotKey, mechanicsMapMarkerLabel, mechanicsMapReadabilityProfile, nextMapDim, parseMechanicsMapCanvasPreferences, projectAutomarkerPreviewMarkers, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
 import type { MechanicsMapSnapshot } from "./mechanics-map";
 
 describe("Mechanics Map overlay canvas preferences", () => {
@@ -254,10 +254,18 @@ describe("Mechanics Map overlay canvas preferences", () => {
     expect(mechanicsMapReadabilityProfile(Number.NaN, true).mapDim).toBe(0.32);
   });
 
-  it("never draws the opaque fallback arena over a reviewed real map", () => {
-    expect(shouldDrawRadarFallbackArena({ map_model: "absolute_scene_map", map_layout: null })).toBe(false);
-    expect(shouldDrawRadarFallbackArena({ map_model: "absolute_scene_map", map_layout: "raid_ring" })).toBe(false);
-    expect(shouldDrawRadarFallbackArena({ map_model: "player_relative_radar", map_layout: null })).toBe(true);
-    expect(shouldDrawRadarFallbackArena({ map_model: "player_relative_radar", map_layout: "raid_grid" })).toBe(false);
+  it("renders live map pixels only when a reviewed game asset is loaded", () => {
+    expect(mechanicsMapAssetAvailability({
+      map_model: "absolute_scene_map", background_asset_url: "/local-game-assets/24687926/map.png",
+    }, true)).toBe("ready");
+    expect(mechanicsMapAssetAvailability({
+      map_model: "absolute_scene_map", background_asset_url: "/local-game-assets/24687926/map.png",
+    }, false)).toBe("asset_pending");
+    expect(mechanicsMapAssetAvailability({
+      map_model: "absolute_scene_map", background_asset_url: null,
+    }, true)).toBe("unsupported");
+    expect(mechanicsMapAssetAvailability({
+      map_model: "player_relative_radar", background_asset_url: null,
+    }, false)).toBe("unsupported");
   });
 });

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-show-overlay-canvas-editable"
+description = "Enables the show_overlay_canvas_editable command without any pre-configured scope."
+commands.allow = ["show_overlay_canvas_editable"]
+
+[[permission]]
+identifier = "deny-show-overlay-canvas-editable"
+description = "Denies the show_overlay_canvas_editable command without any pre-configured scope."
+commands.deny = ["show_overlay_canvas_editable"]

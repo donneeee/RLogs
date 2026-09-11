@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlay-canvas-window",
+  "description": "Native controls used only by the rLogs editable Overlay Canvas window.",
+  "windows": ["overlay-canvas"],
+  "remote": {
+    "urls": ["http://127.0.0.1:*"]
+  },
+  "permissions": [
+    "allow-hide-overlay-canvas",
+    "allow-overlay-canvas-ready",
+    "allow-overlay-canvas-layout-initialized",
+    "allow-acknowledge-overlay-canvas-interactivity",
+    "allow-set-overlay-canvas-interactive",
+    "core:default"
+  ]
+}

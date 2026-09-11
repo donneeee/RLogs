@@ -264,7 +264,7 @@ describe("Mechanics Map", () => {
     expect(Math.min(...right.map((point) => point.mapX))).toBeCloseTo(48.44444444444444);
   });
 
-  it("projects reviewed Void Tower portal roles and sticky targets without geometry", () => {
+  it("projects only an active reviewed Void Tower trigger, never static portal annotations", () => {
     const value: MechanicsMapSnapshot = {
       ...snapshot(),
       scene_id: 1151,
@@ -297,8 +297,6 @@ describe("Mechanics Map", () => {
     };
 
     expect(projectVoidTowerMapAnnotations(value)).toEqual([
-      { kind: "correct_portal", actorId: 11, mapX: 40, mapY: 40, visible: true },
-      { kind: "other_portal", actorId: 12, mapX: 70, mapY: 80, visible: true },
       { kind: "sticky_bomb_target", actorId: 13, mapX: 50, mapY: 50, visible: true },
     ]);
     expect(projectVoidTowerMapAnnotations({ ...value, client_build: "24687927" })).toEqual([]);

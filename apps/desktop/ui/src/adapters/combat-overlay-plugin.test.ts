@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyOverlayTimerPause,
+  applyOverlayExamplePresentationCatalog,
   applyOverlayRdpsSkillDetail,
   apiJson,
   availableTimerFields,
@@ -76,6 +77,35 @@ function editableSummarySettings() {
 }
 
 describe("Combat Overlay plug-in settings", () => {
+  it("enriches only known example equipment and preserves numeric unknown fallbacks", () => {
+    const actor = {
+      actor_id: "fixture", display_name: "Fixture", dps: 1, hps: 0, tps: 0, rdps: 1,
+      presentation: {
+        character_id: null, class_id: null, specialization_id: null, class_name: null,
+        specialization_name: null, class_spec_icon_asset_path: null, role: null, accent: null,
+        weapon: {
+          slot_id: null, ability_id: null, item_id: 9_999_999, tier: null, level: null,
+          level_min: null, level_max: null, badge_kind: null,
+          label: "Weapon item 9999999", icon_asset_path: null,
+        },
+        primary_imagines: [],
+      },
+    };
+    const [unchanged] = applyOverlayExamplePresentationCatalog([actor], {
+      weapons: [{
+        slot_id: null, ability_id: null, item_id: 2_000_901, tier: null, level: 140,
+        level_min: 140, level_max: 140, badge_kind: "weapon",
+        label: "Daybreak Lance - Tempest Flow", icon_asset_path: "/trusted/daybreak.png",
+      }],
+      primary_imagines: [],
+    });
+
+    expect(unchanged?.presentation?.weapon).toMatchObject({
+      label: "Weapon item 9999999",
+      icon_asset_path: null,
+    });
+  });
+
   it("explains that an armed dummy capture is waiting for its qualifying first hit", () => {
     expect(runtimeEmptyMessage({
       phase: "armed",
@@ -1032,13 +1062,17 @@ describe("Combat Overlay plug-in settings", () => {
       autoHideOutsideCombat: !settings.autoHideOutsideCombat,
       autoHideDelaySeconds: settings.autoHideDelaySeconds + 1,
       refreshIntervalMillis: 2_000,
-      backgroundMode: "transparent",
-      backgroundColor: "#ffffff",
-      backgroundOpacityPercent: 0,
-      customBackgroundRevision: 9,
     }));
     expect(key(settings, 2_000_000)).not.toBe(key(settings));
     expect(key({ ...settings, opacityPercent: 50 })).not.toBe(key(settings));
+    expect(key({ ...settings, backgroundMode: "transparent" })).not.toBe(key(settings));
+    expect(key({ ...settings, backgroundColor: "#ffffff" })).not.toBe(key(settings));
+    expect(key({ ...settings, backgroundOpacityPercent: 0 })).not.toBe(key(settings));
+    expect(key({
+      ...settings,
+      backgroundMode: "custom",
+      customBackgroundRevision: 9,
+    })).not.toBe(key(settings));
   });
 
   it("coalesces burst updates to the configured overlay refresh cadence", () => {

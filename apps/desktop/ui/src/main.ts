@@ -39,6 +39,7 @@ const isOverlayCanvasRuntime =
 if (isCombatOverlayRuntime) {
   const appWindow = getCurrentWindow();
   try {
+    await loadAndApplyThemeSettings();
     const hideOverlayWindow = (): Promise<void> => {
       // Keep the host visibility state and the physical Tauri window in sync.
       // Do not retain/await the IPC promise here. A successful hide suspends
@@ -51,7 +52,7 @@ if (isCombatOverlayRuntime) {
       );
       return Promise.resolve();
     };
-    const mounted = mountCombatOverlayRuntimeApp(root, {
+    await mountCombatOverlayRuntimeApp(root, {
       // Keep the preloaded native window alive. Hiding makes the next open
       // instant and avoids reconstructing WebView2 from a button command.
       // Route user/runtime hides through the native host so its requested
@@ -91,13 +92,10 @@ if (isCombatOverlayRuntime) {
         });
       },
     });
-    // mountCombatOverlayRuntimeApp paints its loading surface synchronously,
-    // before its first settings request. Reveal it immediately afterward.
-    // requestAnimationFrame cannot be used here: WebView2 may suspend animation
-    // frames while the native window is hidden, which would leave the overlay
-    // loaded but permanently invisible.
+    // Reveal only after the persisted layout has replaced the temporary
+    // loading surface. This avoids exposing a dark default rectangle while the
+    // transparent WebView is starting.
     await invoke("combat_overlay_ready");
-    await mounted;
   } catch (error) {
     const failure = document.createElement("main");
     failure.style.cssText = "box-sizing:border-box;width:100vw;min-height:100vh;padding:14px;color:#f2f6fb;background:#0b1522;font:12px/1.4 system-ui";

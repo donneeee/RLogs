@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-overlay-canvas-interactive"
+description = "Enables the set_overlay_canvas_interactive command without any pre-configured scope."
+commands.allow = ["set_overlay_canvas_interactive"]
+
+[[permission]]
+identifier = "deny-set-overlay-canvas-interactive"
+description = "Denies the set_overlay_canvas_interactive command without any pre-configured scope."
+commands.deny = ["set_overlay_canvas_interactive"]

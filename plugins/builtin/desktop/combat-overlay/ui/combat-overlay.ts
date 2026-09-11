@@ -186,6 +186,10 @@ export function runtimeOverlayStateKey(
     opacityPercent: settings.opacityPercent,
     barOpacityPercent: settings.barOpacityPercent,
     summaryOpacityPercent: settings.summaryOpacityPercent,
+    backgroundMode: settings.backgroundMode,
+    backgroundColor: settings.backgroundColor,
+    backgroundOpacityPercent: settings.backgroundOpacityPercent,
+    customBackgroundRevision: settings.customBackgroundRevision,
     barColorMode: settings.barColorMode,
     barColorOverrides: settings.barColorOverrides,
     numberFormats: settings.numberFormats,
@@ -611,7 +615,7 @@ export interface CombatOverlayRuntimeWindow {
   startDragging(): Promise<void>;
   startResizeDragging(direction: OverlayResizeDirection): Promise<void>;
   heartbeat(consecutiveFailures: number, lastSuccessfulUpdateUnixMillis: number): Promise<void>;
-  onShowRequested(handler: () => void): Promise<() => void>;
+  onShowRequested(handler: () => void | Promise<void>): Promise<() => void>;
   onResized(handler: (width: number, height: number) => void): Promise<() => void>;
 }
 
@@ -697,12 +701,17 @@ interface BarColorIdentityCatalog {
   specializations: readonly { id: number; label: string }[];
 }
 
+export interface OverlayExamplePresentationCatalog {
+  weapons: readonly OverlayBadgePresentation[];
+  primary_imagines: readonly OverlayBadgePresentation[];
+}
+
 const SAMPLE_ACTORS: readonly OverlayActor[] = [
   { actor_id: "3296036", display_name: "MarieRose", reported_damage: 2_918_531_400, effective_damage: 2_901_443_992, hp_damage: 2_744_993_112, shield_damage: 173_538_288, damage_taken: 7_105_200, dps: 4_864_219, edps: 5_241_801, bdps: 5_812_004, rdps_damage: 3_007_706_400, rdps: 5_012_844, rdps_contribution_given: 121_880_000, rdps_contribution_received: 32_705_000, reported_healing: 28_440_000, effective_healing: 20_521_200, overheal: 7_918_800, shielding: 8_220_000, hps: 34_202, tps: 11_842, casts: 462, hits: 3_824, critical_hits: 1_047, deaths: 1, revives: 2, abilities: sampleAbilities(1), presentation: samplePresentation("Marksman", "Falconry", 2000631, 3948, 5, 3969, 5) },
   { actor_id: "49564002", display_name: "killua", dps: 4_207_914, edps: 4_564_201, bdps: 4_921_330, rdps: 4_384_091, hps: 28_014, tps: 9_443, abilities: sampleAbilities(.84), presentation: samplePresentation("Twin Striker", "Formless", 2001503, 3948, 4, 3969, 3) },
   { actor_id: "26833907", display_name: "Wntr", dps: 2_816_310, edps: 3_010_886, bdps: 3_221_404, rdps: 3_052_771, hps: 1_284_912, tps: 13_208, abilities: sampleAbilities(.58), presentation: samplePresentation("Verdant Oracle", "Smite", 2001505, 3948, 3, 3969, 4) },
   { actor_id: "36458500", display_name: "Yatocchi", dps: 1_392_818, edps: 1_489_542, bdps: 1_623_110, rdps: 1_428_449, hps: 86_102, tps: 71_385, abilities: sampleAbilities(.3), presentation: samplePresentation("Shield Knight", "Shield", 2001508, 3948, 2, 3969, 2) },
-  { actor_id: "133943681", display_name: "Umapyoi", dps: 284_770, edps: 303_112, bdps: 318_908, rdps: 301_442, hps: 192_551, tps: 8_614, abilities: sampleAbilities(.12), presentation: samplePresentation("Beat Performer", "Concerto", 2000901, 3948, 1, 3969, 1) },
+  { actor_id: "133943681", display_name: "Umapyoi", dps: 284_770, edps: 303_112, bdps: 318_908, rdps: 301_442, hps: 192_551, tps: 8_614, abilities: sampleAbilities(.12), presentation: samplePresentation("Beat Performer", "Concerto", 2000901, 3948, 0, 3969, null) },
 ];
 
 const SAMPLE_SNAPSHOT: OverlaySnapshot = {
@@ -951,6 +960,9 @@ export function mountCombatOverlayEditorSurface(
   // still available on demand, but it may legitimately be empty between fights.
   let previewDataMode: "live" | "example" = "example";
   let previewLiveUpdate: OverlayLiveUpdate | null = null;
+  let previewExampleActors = SAMPLE_ACTORS;
+  let previewExampleSnapshot = SAMPLE_SNAPSHOT;
+  let previewExamplePresentation = SAMPLE_ENCOUNTER_PRESENTATION;
   let previewTimerSettings: OverlayGlobalTimerSettings = {
     pauseOverlayTimersOutsideCombat: true,
     overlayTimerInactivitySeconds: 3,
@@ -1063,13 +1075,13 @@ export function mountCombatOverlayEditorSurface(
     const showingLiveData = previewDataMode === "live";
     const previewActors = showingLiveData
       ? overlayActorsFromLiveUpdate(previewLiveUpdate)
-      : SAMPLE_ACTORS;
+      : previewExampleActors;
     const previewSnapshot = showingLiveData
       ? applyOverlayTimerPause(previewLiveUpdate?.snapshot ?? null, previewTimerSettings)
-      : SAMPLE_SNAPSHOT;
+      : previewExampleSnapshot;
     const previewPresentation = showingLiveData
       ? previewLiveUpdate?.encounter_presentation ?? null
-      : SAMPLE_ENCOUNTER_PRESENTATION;
+      : previewExamplePresentation;
     renderOverlayCanvas(canvas, settings, previewActors, {
       mode: "preview",
       emptyMessage: showingLiveData ? "Waiting for combat..." : "No example rows",
@@ -2008,10 +2020,11 @@ export function mountCombatOverlayEditorSurface(
         throw new Error("Open the native rLogs application to launch a live overlay window.");
       }
       if (settings === null) settings = await loadSettings();
-      if (!settings.liveOverlayEnabled) {
-        settings = await saveSettings({ ...settings, liveOverlayEnabled: true });
-        render();
-      }
+      // Opening the native surface is also an explicit request to use the
+      // layout currently visible in the designer. Persist the complete draft
+      // before asking an already-running (possibly hidden) WebView to refresh.
+      settings = await saveSettings({ ...settings, liveOverlayEnabled: true });
+      render();
       await openLiveOverlay();
       status.textContent = "Live overlay enabled. rLogs will restore it automatically on future launches.";
       status.classList.remove("error");
@@ -2021,10 +2034,31 @@ export function mountCombatOverlayEditorSurface(
     }
   });
 
-  void loadSettings()
-    .then((loaded) => {
+  void Promise.all([loadSettings(), loadOverlayExamplePresentationCatalog()])
+    .then(([loaded, catalog]) => {
       if (!alive) return;
       settings = loaded;
+      previewExampleActors = applyOverlayExamplePresentationCatalog(SAMPLE_ACTORS, catalog);
+      previewExampleSnapshot = {
+        ...SAMPLE_SNAPSHOT,
+        actors: applyOverlayExamplePresentationCatalog(SAMPLE_SNAPSHOT.actors, catalog),
+      };
+      previewExamplePresentation = {
+        ...SAMPLE_ENCOUNTER_PRESENTATION,
+        run_projection: SAMPLE_ENCOUNTER_PRESENTATION.run_projection === null
+          || SAMPLE_ENCOUNTER_PRESENTATION.run_projection === undefined
+          ? SAMPLE_ENCOUNTER_PRESENTATION.run_projection
+          : {
+              ...SAMPLE_ENCOUNTER_PRESENTATION.run_projection,
+              views: SAMPLE_ENCOUNTER_PRESENTATION.run_projection.views.map((view) => ({
+                ...view,
+                actors: applyOverlayExamplePresentationCatalog(
+                  view.actors as readonly OverlayActor[],
+                  catalog,
+                ),
+              })),
+            },
+      };
       selectedLayerId = loaded.layers[0]?.id ?? null;
       status.textContent = "Showing stable example combat so the layout is always visible. Choose Live overlay to inspect current combat data.";
       render();
@@ -2414,6 +2448,10 @@ export async function mountCombatOverlayRuntimeApp(
   let visibilityTimerKey: string | null = null;
   let resizeSaveTimer: number | null = null;
   let resizeSettingsPending = false;
+  let resizeSettingsSettled: Promise<void> = Promise.resolve();
+  let settleResizeSettings: (() => void) | null = null;
+  let resizeSettingsError: unknown = null;
+  let resizeSettingsGeneration = 0;
   let forceResetPending = false;
   let stopResizeListener: (() => void) | null = null;
   let stopShowRequestListener: (() => void) | null = null;
@@ -2459,6 +2497,13 @@ export async function mountCombatOverlayRuntimeApp(
 
   const saveResizedWindow = () => {
     if (resizeSaveTimer !== null) window.clearTimeout(resizeSaveTimer);
+    resizeSettingsGeneration += 1;
+    if (!resizeSettingsPending) {
+      resizeSettingsError = null;
+      resizeSettingsSettled = new Promise<void>((resolve) => {
+        settleResizeSettings = resolve;
+      });
+    }
     resizeSettingsPending = true;
     resizeSaveTimer = window.setTimeout(() => {
       resizeSaveTimer = null;
@@ -2466,11 +2511,14 @@ export async function mountCombatOverlayRuntimeApp(
       void saveSettings(resizedSettings).then((saved) => {
         runtimeSettings = saved;
         settingsFingerprint = JSON.stringify(saved);
-        resizeSettingsPending = false;
         render();
       }).catch((error) => {
-        resizeSettingsPending = false;
+        resizeSettingsError = error;
         reportWindowSyncFailure("saving size", error);
+      }).finally(() => {
+        resizeSettingsPending = false;
+        settleResizeSettings?.();
+        settleResizeSettings = null;
       });
     }, 450);
   };
@@ -2546,14 +2594,22 @@ export async function mountCombatOverlayRuntimeApp(
     }
   };
   syncCombatVisibility();
-  void appWindow.onShowRequested(() => {
+  void appWindow.onShowRequested(async () => {
     // The native editor button and global hotkey can reveal the preloaded
-    // window while this runtime remains alive. Reconcile that real window
-    // transition with combat auto-hide instead of trusting the stale local
-    // `automaticallyHidden` flag.
+    // window while this runtime remains alive. Native deliberately keeps the
+    // window hidden until this handler has adopted and painted saved state.
     clearVisibilityTimer();
-    setAutomaticallyHidden(false);
-    syncCombatVisibility();
+    automaticallyHidden = false;
+    try {
+      // The designer persists its complete draft immediately before this
+      // event. Do not reveal the hidden native surface until that layout has
+      // atomically replaced the prior DOM frame.
+      if (await refreshRuntimeSettingsAfterShow()) {
+        await appWindow.showIfRequested();
+      }
+    } catch (error) {
+      reportWindowSyncFailure("show refresh", error);
+    }
   }).then((unlisten) => {
     stopShowRequestListener = unlisten;
   }).catch((error) => reportWindowSyncFailure("show tracking", error));
@@ -2714,6 +2770,47 @@ export async function mountCombatOverlayRuntimeApp(
     desiredWindowHeight = desiredHeight;
     reconcileNativeWindowSize();
   };
+  async function refreshRuntimeSettingsAfterShow(): Promise<boolean> {
+    let refreshedSettings: CombatOverlaySettings;
+    let refreshedTimerSettings: OverlayGlobalTimerSettings;
+    // A live resize owns an unsaved local layout until its debounced POST
+    // finishes. Never reveal an older GET response over that dirty frame.
+    // If another resize begins while the GET is in flight, wait and refetch.
+    do {
+      while (active && resizeSettingsPending) await resizeSettingsSettled;
+      if (!active) return false;
+      if (resizeSettingsError !== null) throw resizeSettingsError;
+      const requestedAtResizeGeneration = resizeSettingsGeneration;
+      [refreshedSettings, refreshedTimerSettings] = await Promise.all([
+        loadSettings(),
+        loadGlobalTimerSettings(),
+      ]);
+      if (requestedAtResizeGeneration === resizeSettingsGeneration && !resizeSettingsPending) {
+        break;
+      }
+    } while (active);
+    if (!active) return false;
+    if (resizeSettingsError !== null) throw resizeSettingsError;
+    const alwaysOnTopChanged = refreshedSettings.alwaysOnTop !== runtimeSettings.alwaysOnTop;
+    const clickThroughChanged = refreshedSettings.clickThrough !== runtimeSettings.clickThrough;
+    runtimeSettings = refreshedSettings;
+    timerSettings = refreshedTimerSettings;
+    settingsFingerprint = JSON.stringify(refreshedSettings);
+    timerSettingsFingerprint = JSON.stringify(refreshedTimerSettings);
+    lastSettingsRefreshMillis = Date.now();
+    if (!runtimeSettings.layers.some((layer) => layer.id === activeLayerId)) {
+      activeLayerId = runtimeSettings.layers[0]?.id ?? null;
+    }
+    if (alwaysOnTopChanged) await appWindow.setAlwaysOnTop(runtimeSettings.alwaysOnTop);
+    if (clickThroughChanged) {
+      await appWindow.setIgnoreCursorEvents(
+        shouldIgnoreCombatOverlayCursor(automaticallyHidden, runtimeSettings.clickThrough),
+      );
+    }
+    render();
+    syncCombatVisibility();
+    return true;
+  }
   const requestFeedRender = () => {
     const delay = runtimeOverlayRenderDelay(
       lastRenderMillis,
@@ -3543,7 +3640,6 @@ function runtimeControlLabel(
   presentation: OverlayEncounterPresentation | null | undefined,
   selectedTimers: ReadonlyMap<string, OverlaySummaryField> | undefined,
   selectedSegments: ReadonlyMap<string, string> | undefined,
-  trainingDummy: TrainingDummyState | null | undefined,
 ): string {
   if (control.action === "cycle_segment") {
     const views = availableSegmentViews(presentation);
@@ -3557,12 +3653,9 @@ function runtimeControlLabel(
     return `${timerFieldLabel(field)} ${summaryTimerValue(field, snapshot)}`;
   }
   if (control.action === "toggle_training_dummy") {
-    if (trainingDummy?.phase === "armed") return "Dummy armed";
-    if (trainingDummy?.phase === "running") {
-      return `Dummy ${formatOptionalOverlayTime(trainingDummy.remainingMicros)}`;
-    }
-    if (trainingDummy?.phase === "finished") return "Dummy done";
-    if (trainingDummy?.phase === "invalid") return "Dummy invalid";
+    // State belongs in aria/data attributes, not the label: changing this
+    // string changed auto-width controls and shifted adjacent header content.
+    return "Dummy";
   }
   return control.label;
 }
@@ -4059,12 +4152,17 @@ function renderSummaryControl(
       presentation,
       options.selectedTimerByLayer,
       options.selectedSegmentByLayer,
-      options.trainingDummy,
     ),
     "combat-overlay-control combat-overlay-summary-control",
   );
   controlButton.dataset.buttonId = control.id;
   controlButton.dataset.buttonAction = control.action;
+  if (control.action === "toggle_training_dummy") {
+    const active = options.trainingDummy?.phase === "armed"
+      || options.trainingDummy?.phase === "running";
+    controlButton.dataset.active = String(active);
+    controlButton.setAttribute("aria-pressed", String(active));
+  }
   controlButton.title = actionLabel(control.action);
   controlButton.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -4415,13 +4513,13 @@ function samplePresentation(
   specializationName: string,
   weaponItemId: number,
   firstImagineAbilityId: number,
-  firstImagineTier: number,
+  firstImagineTier: number | null,
   secondImagineAbilityId: number,
-  secondImagineTier: number,
+  secondImagineTier: number | null,
 ): OverlayActorPresentation {
   const gameAssets = "/game-assets/blue-protocol-star-resonance/shared";
   const classSpec = sampleClassSpecPresentation(className, specializationName);
-  const imagine = (slotId: number, abilityId: number, tier: number): OverlayBadgePresentation => ({
+  const imagine = (slotId: number, abilityId: number, tier: number | null): OverlayBadgePresentation => ({
     slot_id: slotId,
     ability_id: abilityId,
     item_id: abilityId === 3948 ? 3000101 : abilityId === 3969 ? 3000121 : null,
@@ -4464,58 +4562,51 @@ function samplePresentation(
 
 function sampleWeaponPresentation(
   itemId: number,
-  gameAssets: string,
+  _gameAssets: string,
 ): OverlayBadgePresentation {
-  const entries: Record<number, {
-    label: string;
-    icon: string;
-    level: number;
-    badgeKind: string;
-  }> = {
-    2000631: {
-      label: "Ember - Gaze of the Far Sea",
-      icon: "icons/weapons/items/ch_wp_rodri_06_01.png",
-      level: 280,
-      badgeKind: "ember_far_sea",
-    },
-    2001503: {
-      label: "Ragedream Axe",
-      icon: "icons/weapons/items/ch_wp_tata02_01.png",
-      level: 250,
-      badgeKind: "weapon",
-    },
-    2001505: {
-      label: "Voidforge Ring",
-      icon: "icons/weapons/items/ch_wp_iruna_02_01.png",
-      level: 250,
-      badgeKind: "weapon",
-    },
-    2001508: {
-      label: "Oath of the Immortal Watch",
-      icon: "icons/weapons/items/ch_wp_farfara_02_01.png",
-      level: 250,
-      badgeKind: "weapon",
-    },
-    2001509: {
-      label: "Voidcall Movement",
-      icon: "icons/weapons/items/ch_wp_guitar_02_01.png",
-      level: 250,
-      badgeKind: "weapon",
-    },
-  };
-  const entry = entries[itemId];
   return {
     slot_id: null,
     ability_id: null,
     item_id: itemId,
     tier: null,
-    level: entry?.level ?? null,
+    level: null,
     level_min: null,
     level_max: null,
-    badge_kind: entry?.badgeKind ?? null,
-    label: entry?.label ?? `Weapon item ${itemId}`,
-    icon_asset_path: entry ? `${gameAssets}/${entry.icon}` : null,
+    badge_kind: null,
+    label: `Weapon item ${itemId}`,
+    icon_asset_path: null,
   };
+}
+
+export function applyOverlayExamplePresentationCatalog(
+  actors: readonly OverlayActor[],
+  catalog: OverlayExamplePresentationCatalog,
+): readonly OverlayActor[] {
+  const weapons = new Map(catalog.weapons.flatMap((badge) =>
+    badge.item_id === null ? [] : [[badge.item_id, badge] as const]));
+  const imagines = new Map(catalog.primary_imagines.flatMap((badge) =>
+    badge.ability_id === null ? [] : [[badge.ability_id, badge] as const]));
+  return actors.map((actor) => {
+    const presentation = actor.presentation;
+    if (presentation === undefined) return actor;
+    const weapon = presentation.weapon?.item_id === null
+      || presentation.weapon?.item_id === undefined
+      ? presentation.weapon
+      : weapons.get(presentation.weapon.item_id) ?? presentation.weapon;
+    const primaryImagines = presentation.primary_imagines.map((badge) => {
+      if (badge.ability_id === null) return badge;
+      const resolved = imagines.get(badge.ability_id);
+      return resolved === undefined ? badge : {
+        ...resolved,
+        slot_id: badge.slot_id,
+        tier: badge.tier,
+      };
+    });
+    return {
+      ...actor,
+      presentation: { ...presentation, weapon, primary_imagines: primaryImagines },
+    };
+  });
 }
 
 function sampleClassSpecPresentation(
@@ -5586,6 +5677,12 @@ async function loadBarColorIdentities(): Promise<readonly BarColorIdentity[]> {
     left.kind.localeCompare(right.kind) || left.label.localeCompare(right.label));
 }
 
+async function loadOverlayExamplePresentationCatalog(): Promise<OverlayExamplePresentationCatalog> {
+  return apiJson<OverlayExamplePresentationCatalog>(
+    "/api/settings/combat-overlay/example-presentations",
+  );
+}
+
 async function saveSettings(settings: CombatOverlaySettings): Promise<CombatOverlaySettings> {
   return normalizeHeaderViewGeometry(parseCombatOverlaySettings(await apiJson<unknown>("/api/settings/combat-overlay", {
     method: "POST",
@@ -6453,6 +6550,8 @@ function installStyles(): void {
     .combat-overlay-view-controls { display:flex; min-width:0; height:27px; align-self:center; align-items:center; gap:3px; padding-right:5px; border-right:1px solid #8aa0b82f; box-sizing:border-box; }
     .combat-overlay-control { display:inline-flex; min-height:23px; align-items:center; gap:4px; padding:2px 7px; border:1px solid #8aa0b82f; border-radius:5px; color:#bcd0e4; background:#0d1724; font:700 10px/1 system-ui; }
     .combat-overlay-control:hover { color:#63e5d6; border-color:#63e5d688; }
+    .combat-overlay-summary-control[data-button-action='toggle_training_dummy'][data-active='true'] { color:#f7fbff; border-color:color-mix(in srgb,var(--accent,#64dfd2) 70%,#071018); background:color-mix(in srgb,var(--accent,#64dfd2) 38%,#071018); text-shadow:0 1px 2px #000; }
+    .combat-overlay-summary-control[data-button-action='toggle_training_dummy']:focus-visible { outline:2px solid color-mix(in srgb,var(--accent,#64dfd2) 78%,white); outline-offset:2px; }
     .combat-overlay-view-control[data-active='true'] { color:#08141d; border-color:#63e5d6; background:#63e5d6; text-shadow:none; }
     .combat-overlay-view-control { position:relative; height:23px; box-sizing:border-box; }
     .combat-overlay-view-control[data-active='true'] .combat-overlay-reorder-grip { color:#17343c; }
@@ -6601,7 +6700,6 @@ function installStyles(): void {
     .combat-overlay-runtime-loading { margin:0; padding:12px; color:#9fb1c5; background:#0b1522e8; font:600 11px/1.35 system-ui; }
     .combat-overlay-canvas-runtime { overflow:hidden; border-radius:0; background:transparent; clip-path:none; }
     .combat-overlay-canvas-runtime .combat-overlay-layer { border:0; border-radius:0; background:transparent; box-shadow:none; }
-    .combat-overlay-canvas-runtime .combat-overlay-layer::before { display:none; }
     .combat-overlay-runtime-resize-handle { position:absolute; z-index:110; margin:0; padding:0; border:0; background:transparent; opacity:.35; touch-action:none; }
     .combat-overlay-runtime-resize-handle[hidden] { display:none; }
     .combat-overlay-runtime-resize-handle[data-direction='East'] { top:0; right:0; bottom:10px; width:6px; cursor:ew-resize; }

@@ -1,5 +1,5 @@
 import type { MountedSurface } from "../shell/types";
-import { projectCoralMatrixBeam, projectCoralPizzaRegions, projectCoralWaveRegion, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectRaidFloorRegions, projectTinaPizzaRegion, projectVoidTowerMapAnnotations, zoomMechanicsMapAt, type MechanicsMapUpdate } from "./mechanics-map";
+import { projectCoralMatrixBeam, projectCoralPizzaRegions, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectRaidFloorRegions, projectVoidTowerMapAnnotations, zoomMechanicsMapAt, type MechanicsMapUpdate } from "./mechanics-map";
 
 export interface MechanicsMapDependencies {
   loadSnapshot(): Promise<MechanicsMapUpdate>;
@@ -18,7 +18,6 @@ export interface LocalMapPreparationResult {
 export function mountMechanicsMapSurface(container: HTMLElement, dependencies: MechanicsMapDependencies): MountedSurface {
   let alive = true;
   let update: MechanicsMapUpdate | null = null;
-  let rotateWithPlayer = true;
   let showMonsters = true;
   let mapAssetUrl: string | null = null;
   let mapAssetState: "none" | "loading" | "ready" | "missing" = "none";
@@ -43,7 +42,11 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
   const mapHeading = el("header", "mechanics-map-heading");
   const mapTitle = text("h3", "Waiting for scene");
   const mapMeta = text("p", "No packet-observed world context yet.", "card-copy");
-  const mapCopy = el("div"); mapCopy.append(mapTitle, mapMeta);
+  const overlayStatus = text("p", "", "mechanics-map-overlay-launch-status");
+  overlayStatus.hidden = true;
+  overlayStatus.setAttribute("role", "status");
+  overlayStatus.setAttribute("aria-live", "polite");
+  const mapCopy = el("div"); mapCopy.append(mapTitle, mapMeta, overlayStatus);
   const controls = el("div", "mechanics-map-controls");
   const openOverlay = text("button", "Open overlay", "primary-button mechanics-map-open-overlay");
   openOverlay.type = "button";
@@ -68,17 +71,17 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
   const refreshMaps = text("button", "Refresh maps from game files", "quiet-button mechanics-map-refresh-assets");
   refreshMaps.type = "button";
   refreshMaps.addEventListener("click", () => { void prepareReviewedMaps(); });
-  const rotate = check("Rotate with player", true, (checked) => { rotateWithPlayer = checked; render(); });
   const monsters = check("Monsters", true, (checked) => { showMonsters = checked; render(); });
   const resetView = text("button", "Reset view", "quiet-button mechanics-map-reset-view");
   resetView.type = "button";
   resetView.addEventListener("click", resetMapView);
-  controls.append(openOverlay, refreshMaps, rotate, monsters, resetView);
+  controls.append(openOverlay, refreshMaps, monsters, resetView);
   mapHeading.append(mapCopy, controls);
   const radar = el("div", "mechanics-radar");
   radar.setAttribute("role", "img");
   radar.setAttribute("aria-label", "Live player-relative mechanics map");
   const fallback = el("div", "mechanics-radar-fallback");
+  fallback.hidden = true;
   fallback.append(el("span", "mechanics-ring ring-one"), el("span", "mechanics-ring ring-two"), el("span", "mechanics-crosshair"));
   const arena = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   arena.classList.add("mechanics-map-arena");
@@ -128,24 +131,29 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
   }
 
   function render(): void {
+    overlayStatus.hidden = preparationMessage === null;
+    overlayStatus.textContent = preparationMessage ?? "";
+    overlayStatus.dataset.state = preparationError ? "error" : "status";
     if (update === null) return;
     const snapshot = update.snapshot;
     const sceneMap = snapshot.map_model === "absolute_scene_map";
-    const projected = projectMechanicsMapEntities(snapshot, sceneMap ? false : rotateWithPlayer).filter((entity) => entity.visible && (showMonsters || !["monster", "npc", "object"].includes(entity.kind)));
+    prepareMapAsset(snapshot.background_asset_url);
+    const mapReady = sceneMap && snapshot.background_asset_url !== null && mapAssetState === "ready";
+    const projected = mapReady
+      ? projectMechanicsMapEntities(snapshot, false).filter((entity) => entity.visible && (showMonsters || !["monster", "npc", "object"].includes(entity.kind)))
+      : [];
     badge.textContent = snapshot.local_position_observed ? "LIVE" : snapshot.scene_id === null ? "WAITING" : "POSITION NEEDED";
     badge.dataset.state = snapshot.local_position_observed ? "live" : "waiting";
     mapTitle.textContent = snapshot.scene_name ?? (snapshot.scene_id === null ? "Waiting for scene" : `Scene ${snapshot.scene_id}`);
-    mapMeta.textContent = [snapshot.map_id === null ? null : `Map ${snapshot.map_id}`, snapshot.encounter_pack ?? "No reviewed encounter pack", sceneMap ? "Game scene map" : `${snapshot.world_radius}u radius`].filter(Boolean).join(" · ");
+    mapMeta.textContent = [snapshot.map_id === null ? null : `Map ${snapshot.map_id}`, snapshot.encounter_pack ?? "No reviewed encounter pack", mapReady ? "Game scene map" : "Game map unavailable"].filter(Boolean).join(" · ");
     radar.dataset.model = snapshot.map_model;
     radar.dataset.layout = snapshot.map_layout ?? "none";
-    rotate.hidden = sceneMap;
-    renderArenaLayout(arena, snapshot);
-    prepareMapAsset(snapshot.background_asset_url);
+    arena.replaceChildren();
     radar.dataset.assetState = mapAssetState;
-    plane.style.setProperty("--mechanics-map-background", mapAssetState === "ready" && mapAssetUrl !== null ? `url(${JSON.stringify(mapAssetUrl)})` : "none");
+    plane.style.setProperty("--mechanics-map-background", mapReady && mapAssetUrl !== null ? `url(${JSON.stringify(mapAssetUrl)})` : "none");
     applyMapTransform();
     regions.replaceChildren();
-    if (sceneMap) {
+    if (mapReady) {
       for (const signal of snapshot.mechanics) {
         const polygonPoints = projectCursedTombChargeRegion(snapshot, signal);
         if (polygonPoints.length >= 3) {
@@ -162,24 +170,6 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
           line.setAttribute("x2", String(beamPoints[1]!.mapX)); line.setAttribute("y2", String(beamPoints[1]!.mapY));
           line.dataset.kind = "matrix_callout";
           regions.append(line);
-        }
-      }
-      for (const entity of snapshot.entities) {
-        if (entity.stale) continue;
-        const polygonPoints = projectTinaPizzaRegion(snapshot, entity);
-        if (polygonPoints.length >= 3) {
-          const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-          polygon.setAttribute("points", polygonPoints.map((point) => `${point.mapX},${point.mapY}`).join(" "));
-          polygon.dataset.kind = entity.mechanic_role ?? "pizza";
-          regions.append(polygon);
-        }
-
-        const wavePoints = projectCoralWaveRegion(snapshot, entity);
-        if (wavePoints.length >= 3) {
-          const wave = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-          wave.setAttribute("points", wavePoints.map((point) => `${point.mapX},${point.mapY}`).join(" "));
-          wave.dataset.kind = "wave_safe";
-          regions.append(wave);
         }
       }
       for (const pizza of projectCoralPizzaRegions(snapshot)) {
@@ -215,17 +205,16 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
       point.dataset.dead = String(entity.dead);
       point.dataset.stale = String(entity.stale);
       point.dataset.mechanic = String(mechanic !== undefined);
-      if (entity.mechanic_role !== null) point.dataset.mechanicRole = entity.mechanic_role;
       point.style.left = `${entity.mapX}%`;
       point.style.top = `${entity.mapY}%`;
       if (mechanic !== undefined) point.style.setProperty("--point-color", mechanicColor(mechanic.effect_id, mechanic.mechanic_kind));
-      point.title = entity.display_name ?? mechanicRoleLabel(entity.mechanic_role) ?? (entity.monster_id === null ? entity.kind : `${entity.kind} ${entity.monster_id}`);
+      point.title = entity.display_name ?? (entity.monster_id === null ? entity.kind : `${entity.kind} ${entity.monster_id}`);
       if (entity.facing_radians !== null) point.style.setProperty("--facing", `${entity.facing_radians}rad`);
       points.append(point);
     }
     for (const marker of snapshot.markers) {
       if (marker.x === null || marker.z === null) continue;
-      const projectedMarker = projectMechanicsMapPoint(snapshot, marker.x, marker.z, sceneMap ? false : rotateWithPlayer);
+      const projectedMarker = mapReady ? projectMechanicsMapPoint(snapshot, marker.x, marker.z, false) : null;
       if (projectedMarker === null || !projectedMarker.visible) continue;
       const point = text("span", marker.marker_number === null ? (marker.marker_id === null ? "•" : String(marker.marker_id)) : String(marker.marker_number), "mechanics-map-marker");
       point.style.left = `${projectedMarker.mapX}%`;
@@ -233,7 +222,7 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
       point.title = marker.related_actor_id === null ? "Packet-observed map marker" : `Marker for actor ${marker.related_actor_id}`;
       points.append(point);
     }
-    for (const annotation of projectVoidTowerMapAnnotations(snapshot)) {
+    for (const annotation of mapReady ? projectVoidTowerMapAnnotations(snapshot) : []) {
       const point = el("span", "mechanics-map-void-annotation");
       point.append(text(
         "span",
@@ -250,10 +239,15 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
           : "Packet-observed sticky-bomb target";
       points.append(point);
     }
-    empty.hidden = snapshot.local_position_observed;
+    empty.hidden = mapReady && snapshot.local_position_observed;
+    empty.textContent = !sceneMap
+      ? "Map unavailable: this identified scene has no reviewed game-map asset."
+      : mapAssetState === "ready"
+        ? "Waiting for a local player position."
+        : "Map unavailable until the reviewed game-map asset is available locally.";
     signals.replaceChildren();
     if (snapshot.data_gap !== null) signals.append(notice("Data gap", snapshot.data_gap, "error"));
-    if (sceneMap && mapAssetState === "missing") {
+    if (sceneMap && mapAssetState !== "ready") {
       const assetNotice = notice("Game map asset", preparationMessage ?? "The exact reviewed texture is available in the installed game but has not been prepared locally. Packet positions remain available on the coordinate canvas.", preparationError ? "error" : "waiting");
       const prepare = text("button", preparingMaps ? "Preparing…" : "Prepare local maps", "quiet-button");
       prepare.type = "button";
@@ -262,6 +256,7 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
       assetNotice.append(prepare);
       signals.append(assetNotice);
     }
+    if (!sceneMap) signals.append(notice("Game map unavailable", "No reviewed game-map asset matches this exact scene and runtime identity. The map remains blank.", "waiting"));
     if (!snapshot.encounter_pack_reviewed) signals.append(notice("Encounter pack", "No reviewed pack matches this exact scene. Positions remain exact; guidance stays disabled.", "waiting"));
     else signals.append(notice(snapshot.encounter_pack ?? "Encounter pack", "Current-build effect identities are enabled. No safe-area geometry is inferred.", "live"));
     for (const signal of snapshot.mechanics) {
@@ -398,15 +393,6 @@ function mechanicColor(effectId: number, kind: string | null): string {
   };
   return colors[Math.abs(effectId)] ?? "#ff6f83";
 }
-function mechanicRoleLabel(role: MechanicsMapUpdate["snapshot"]["entities"][number]["mechanic_role"]): string | null {
-  const labels = {
-    boss: "Encounter boss", tower: "Mechanic tower", left_clone: "Left-charge clone", right_clone: "Right-charge clone",
-    correct_portal: "Correct portal", other_portal: "Other portal", pizza_slow: "Slow pizza danger sector", pizza_fast: "Fast pizza danger sector",
-    matrix_rune: "Matrix rune", ice_wave: "Ice wave", water_wave: "Water wave", ice_orb: "Ice orb", water_orb: "Water orb",
-    pinball: "Pinball", ring_inner: "Inner electromagnetic ring", ring_middle: "Middle electromagnetic ring", ring_outer: "Outer electromagnetic ring",
-  } as const;
-  return role === null ? null : labels[role];
-}
 function mechanicKindLabel(kind: string | null): string | null {
   if (kind === null) return null;
   const labels: Record<string, string> = {
@@ -438,56 +424,6 @@ function mechanicKindLabel(kind: string | null): string | null {
     pair_settle_cast: "Pair-settle cast", pair_resolve_cast: "Pair-resolve cast",
   };
   return labels[kind] ?? null;
-}
-function renderArenaLayout(arena: SVGSVGElement, snapshot: MechanicsMapUpdate["snapshot"]): void {
-  arena.replaceChildren();
-  if (snapshot.map_layout === "raid_ring") {
-    const center = projectMechanicsMapPoint(snapshot, 0, 0, false);
-    if (center === null || snapshot.map_span_x === null || snapshot.map_span_z === null) return;
-    for (const radius of [11.5, 12.5, 17.5, 18.5, 30]) {
-      const ellipse = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
-      ellipse.setAttribute("cx", String(center.mapX)); ellipse.setAttribute("cy", String(center.mapY));
-      ellipse.setAttribute("rx", String((radius / snapshot.map_span_x) * 100));
-      ellipse.setAttribute("ry", String((radius / snapshot.map_span_z) * 100));
-      arena.append(ellipse);
-    }
-    for (const [x1, z1, x2, z2] of [[-21, 21.21, 21, -21.21], [21, 21.21, -21, -21.21], [0, 0, 42.21, 0], [0, 0, -42.21, 0]] as const) {
-      const start = projectMechanicsMapPoint(snapshot, x1, z1, false);
-      const end = projectMechanicsMapPoint(snapshot, x2, z2, false);
-      if (start === null || end === null) continue;
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("x1", String(start.mapX)); line.setAttribute("y1", String(start.mapY));
-      line.setAttribute("x2", String(end.mapX)); line.setAttribute("y2", String(end.mapY));
-      arena.append(line);
-    }
-  } else if (snapshot.map_layout === "raid_grid") {
-    const topLeft = projectMechanicsMapPoint(snapshot, -30, 22.5, false);
-    const bottomRight = projectMechanicsMapPoint(snapshot, 30, -22.5, false);
-    if (topLeft === null || bottomRight === null) return;
-    const boundary = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    boundary.setAttribute("x", String(topLeft.mapX)); boundary.setAttribute("y", String(topLeft.mapY));
-    boundary.setAttribute("width", String(bottomRight.mapX - topLeft.mapX));
-    boundary.setAttribute("height", String(bottomRight.mapY - topLeft.mapY)); boundary.setAttribute("rx", "0.3");
-    arena.append(boundary);
-    for (const x of [-10, 10]) {
-      const start = projectMechanicsMapPoint(snapshot, x, 22.5, false);
-      const end = projectMechanicsMapPoint(snapshot, x, -22.5, false);
-      if (start === null || end === null) continue;
-      const vertical = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      vertical.setAttribute("x1", String(start.mapX)); vertical.setAttribute("x2", String(end.mapX));
-      vertical.setAttribute("y1", String(start.mapY)); vertical.setAttribute("y2", String(end.mapY));
-      arena.append(vertical);
-    }
-    for (const z of [-7.5, 7.5]) {
-      const start = projectMechanicsMapPoint(snapshot, -30, z, false);
-      const end = projectMechanicsMapPoint(snapshot, 30, z, false);
-      if (start === null || end === null) continue;
-      const horizontal = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      horizontal.setAttribute("x1", String(start.mapX)); horizontal.setAttribute("x2", String(end.mapX));
-      horizontal.setAttribute("y1", String(start.mapY)); horizontal.setAttribute("y2", String(end.mapY));
-      arena.append(horizontal);
-    }
-  }
 }
 function renderRaidRings(regions: SVGSVGElement, snapshot: MechanicsMapUpdate["snapshot"]): void {
   if (snapshot.map_layout !== "raid_ring") return;

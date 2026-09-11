@@ -269,6 +269,23 @@ fn provisional_research_routes(pack: &ProtocolPack) -> BTreeSet<RouteKey> {
         .map(|route| route.route)
         .collect()
 }
+
+fn validate_client_bootstrap_pack_build(
+    kind: LiveProtocolPackKind,
+    selected_build: &str,
+    current_reviewed_build: &str,
+) -> Result<(), String> {
+    if kind == LiveProtocolPackKind::ClientBootstrap && selected_build != current_reviewed_build {
+        return Err(format!(
+            "selected carry-forward pack build {selected_build} is not the current reviewed build {current_reviewed_build}"
+        ));
+    }
+    Ok(())
+}
+
+fn automatic_combat_log_submission_enabled(policy: &submission_policy::SubmissionPolicy) -> bool {
+    policy.log_uploader.enabled && policy.log_uploader.automatic_combat_logs
+}
 const MAX_CONCURRENT_LOCAL_REQUESTS: usize = 16;
 const PLUGIN_CATALOG_SCHEMA_VERSION: u16 = 2;
 const PLUGIN_ENABLEMENT_SCHEMA_VERSION: u16 = 1;
@@ -1019,6 +1036,44 @@ struct OverlayBarColorIdentityCatalog {
 struct OverlayBarColorIdentity {
     id: i32,
     label: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct OverlayExamplePresentationCatalog {
+    weapons: Vec<LiveOverlayBadgePresentation>,
+    primary_imagines: Vec<LiveOverlayBadgePresentation>,
+}
+
+fn overlay_example_presentation_catalog() -> Result<OverlayExamplePresentationCatalog, String> {
+    const WEAPON_ITEM_IDS: [i64; 5] = [2_000_631, 2_001_503, 2_001_505, 2_001_508, 2_000_901];
+    const IMAGINE_ABILITY_IDS: [i64; 2] = [3_948, 3_969];
+    let weapons = WEAPON_ITEM_IDS
+        .into_iter()
+        .filter_map(|item_id| {
+            live_overlay_weapon_badge(
+                Some(item_id),
+                None,
+                rlogs_game_bpsr::BUNDLED_RUN_RULE_DEPLOYMENT_ID,
+                rlogs_game_bpsr::BUNDLED_RUN_RULE_CLIENT_BUILD,
+                rlogs_game_bpsr::BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+            )
+        })
+        .collect();
+    let primary_imagines = IMAGINE_ABILITY_IDS
+        .into_iter()
+        .map(|ability_id| {
+            live_overlay_primary_imagine_badge(&ActorLoadoutSlot {
+                slot_id: 0,
+                ability_id: Some(ability_id),
+                item_id: None,
+                tier: None,
+            })
+        })
+        .collect();
+    Ok(OverlayExamplePresentationCatalog {
+        weapons,
+        primary_imagines,
+    })
 }
 
 fn overlay_bar_color_identity_catalog() -> Result<OverlayBarColorIdentityCatalog, String> {
@@ -6602,7 +6657,7 @@ impl RuntimeController {
                         // Packet-only monitoring remains active for an
                         // unknown executable. Upgrade once a supported client
                         // appears so its stronger local build/channel receipt
-                        // replaces the unverified bootstrap identity.
+                        // replaces the packet-detected carry-forward identity.
                         if !processes.is_empty() {
                             let _ = controller.stop_live();
                         }
@@ -8450,8 +8505,7 @@ impl RuntimeController {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .policy()
             .clone();
-        let automatic_submissions =
-            policy.log_uploader.enabled && policy.log_uploader.automatic_combat_logs;
+        let automatic_submissions = automatic_combat_log_submission_enabled(&policy);
         let default_visibility = policy.log_uploader.default_visibility;
         let profile_sync = policy.bpsr_profile_sync;
         let submission_transport = self
@@ -8597,10 +8651,15 @@ impl RuntimeController {
                 )
                 .map_err(|error| format!("protocol pack is invalid: {error}"))?;
                 let source_build = source_pack.definition().target.build_id.clone();
+                validate_client_bootstrap_pack_build(
+                    kind,
+                    &source_build,
+                    &automatic_selection.pack_build_id,
+                )?;
                 let pack = if kind == LiveProtocolPackKind::ClientBootstrap {
                     rlogs_game_bpsr::LiveProtocolPackSelection {
                         path,
-                        build_id: automatic_selection.build_id.clone(),
+                        build_id: source_build.clone(),
                         pack_build_id: source_build.clone(),
                         deployment_id: automatic_selection.deployment_id.clone(),
                         channel: automatic_selection.channel.clone(),
@@ -8652,10 +8711,16 @@ impl RuntimeController {
                 "PROVISIONAL BPSR compatibility decode using pack build {} on client build {}. History, overlay, submissions, and rDPS remain active; results may be affected by changed routes and every unresolved protocol record is retained.",
                 pack_source_build, target.build_id,
             )),
-            LiveProtocolPackKind::ClientBootstrap => Some(format!(
-                "PROVISIONAL {} client bootstrap using available pack build {} because this launcher supplied no trusted build receipt. Local capture, history, and overlay remain active, but automatic log submission is disabled until an exact client build is known. Region remains unresolved until NotifyEnterWorld.scene_ip is captured.",
-                target.channel, pack_source_build,
-            )),
+            LiveProtocolPackKind::ClientBootstrap => {
+                let client_label = if target.channel == "unknown" {
+                    "Packet-detected BPSR".to_owned()
+                } else {
+                    format!("{} BPSR", target.channel)
+                };
+                Some(format!(
+                    "{client_label} is using reviewed pack build {pack_source_build} under the current carry-forward compatibility policy. Ordinary builds remain enabled until a reviewed seasonal update replaces this pack. Region resolves automatically from NotifyEnterWorld.scene_ip when it is observed.",
+                ))
+            }
         };
         let research_routes = provisional_pack.then(|| provisional_research_routes(&pack));
         let region_id = if pack_kind == LiveProtocolPackKind::ClientBootstrap {
@@ -8930,9 +8995,7 @@ impl RuntimeController {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .policy()
             .clone();
-        let automatic_submissions = policy.log_uploader.enabled
-            && policy.log_uploader.automatic_combat_logs
-            && pack_kind != LiveProtocolPackKind::ClientBootstrap;
+        let automatic_submissions = automatic_combat_log_submission_enabled(&policy);
         let default_visibility = policy.log_uploader.default_visibility;
         let profile_sync = policy.bpsr_profile_sync;
         let submission_transport = self
@@ -14723,6 +14786,12 @@ fn handle_connection(
                 Err(error) => write_api_error(&mut stream, 500, error)?,
             }
         }
+        ("GET", "/api/settings/combat-overlay/example-presentations") => {
+            match overlay_example_presentation_catalog() {
+                Ok(catalog) => write_json(&mut stream, 200, &catalog)?,
+                Err(error) => write_api_error(&mut stream, 500, error)?,
+            }
+        }
         ("POST", "/api/settings/combat-overlay") => {
             let settings: CombatOverlaySettings = match serde_json::from_slice(&request.body) {
                 Ok(settings) => settings,
@@ -15473,6 +15542,44 @@ mod tests {
     use rlogs_network::IpEndpoint;
 
     #[test]
+    fn client_bootstrap_accepts_only_the_current_reviewed_carry_forward_pack() {
+        assert!(
+            validate_client_bootstrap_pack_build(
+                LiveProtocolPackKind::ClientBootstrap,
+                "24687926",
+                "24687926",
+            )
+            .is_ok()
+        );
+        let error = validate_client_bootstrap_pack_build(
+            LiveProtocolPackKind::ClientBootstrap,
+            "24568685",
+            "24687926",
+        )
+        .unwrap_err();
+        assert!(error.contains("selected carry-forward pack build 24568685"));
+        assert!(error.contains("current reviewed build 24687926"));
+        assert!(
+            validate_client_bootstrap_pack_build(
+                LiveProtocolPackKind::ResearchCandidate,
+                "24568685",
+                "24687926",
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn automatic_submission_authorization_does_not_depend_on_pack_selection_kind() {
+        let mut policy = submission_policy::SubmissionPolicy::default();
+        assert!(!automatic_combat_log_submission_enabled(&policy));
+        policy.log_uploader.enabled = true;
+        assert!(automatic_combat_log_submission_enabled(&policy));
+        policy.log_uploader.automatic_combat_logs = false;
+        assert!(!automatic_combat_log_submission_enabled(&policy));
+    }
+
+    #[test]
     fn automarker_family_isolates_tina_master_without_binding_its_m_tier() {
         let identities = bundled_scene_run_identities().unwrap();
         let master = identities.get(&1_633).unwrap();
@@ -16169,6 +16276,35 @@ mod tests {
         assert_eq!(
             live_overlay_primary_imagine_badge(&observed_runtime_tier).tier,
             Some(5)
+        );
+    }
+
+    #[test]
+    fn overlay_example_presentations_use_the_live_trusted_catalog() {
+        let catalog = overlay_example_presentation_catalog().unwrap();
+        assert_eq!(catalog.weapons.len(), 5);
+        assert!(catalog.weapons.iter().all(|badge| {
+            badge.icon_asset_path.is_some() && !badge.label.starts_with("Weapon item ")
+        }));
+        let weapon = catalog
+            .weapons
+            .iter()
+            .find(|badge| badge.item_id == Some(2_000_901))
+            .unwrap();
+        assert_eq!(weapon.label, "Daybreak Lance - Tempest Flow");
+        assert!(
+            weapon
+                .icon_asset_path
+                .as_deref()
+                .is_some_and(|path| path.ends_with("ch_wp_tina_02_01.png"))
+        );
+        assert!(!weapon.label.contains("2000901"));
+        assert_eq!(catalog.primary_imagines.len(), 2);
+        assert!(
+            catalog
+                .primary_imagines
+                .iter()
+                .all(|badge| { badge.icon_asset_path.is_some() && badge.tier.is_none() })
         );
     }
 
