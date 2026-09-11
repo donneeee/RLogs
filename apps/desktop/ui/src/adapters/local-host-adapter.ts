@@ -1887,7 +1887,7 @@ function mountNetworkSettingsSurface(container: HTMLElement): MountedSurface {
   root.className = "plugin-surface network-settings-surface";
   const heading = actionCard(
     "Native capture adapter",
-    "rLogs automatically uses the BPSR-matched network device while the game is running. Save a device here only to pin or override that automatic choice.",
+    "rLogs automatically uses the BPSR-matched network device while the game is running. Save a device here only to pin or override that automatic choice. ExitLag may require Packet redirection method > Legacy - NDIS; after changing it, use Restart monitoring.",
   );
   const form = document.createElement("form");
   form.className = "content-card submission-policy-form";

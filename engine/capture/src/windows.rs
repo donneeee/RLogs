@@ -1427,7 +1427,10 @@ fn parse_adapter_table(buffer: &[usize]) -> Result<Vec<WindowsCaptureAdapter>, C
         unicast_addresses.dedup();
         // SAFETY: fields point to NUL-terminated strings owned by the adapter
         // result buffer.
-        let adapter_name = unsafe { narrow_string(adapter.AdapterName) };
+        let adapter_name = npcap_capture_adapter_name(
+            unsafe { narrow_string(adapter.AdapterName) },
+            adapter.IfType,
+        );
         // SAFETY: same lifetime guarantee as AdapterName.
         let friendly_name = unsafe { wide_string(adapter.FriendlyName) };
         // SAFETY: same lifetime guarantee as AdapterName.
@@ -1462,6 +1465,17 @@ fn parse_adapter_table(buffer: &[usize]) -> Result<Vec<WindowsCaptureAdapter>, C
             .then_with(|| left.friendly_name.cmp(&right.friendly_name))
     });
     Ok(adapters)
+}
+
+fn npcap_capture_adapter_name(adapter_name: String, interface_type: u32) -> String {
+    // GetAdaptersAddresses reports Windows' dummy "Loopback Pseudo-Interface"
+    // identifier, which Npcap cannot open. Npcap exposes all loopback traffic
+    // through this stable synthetic device instead.
+    if interface_type == IF_TYPE_SOFTWARE_LOOPBACK {
+        NPCAP_LOOPBACK_ADAPTER_NAME.to_owned()
+    } else {
+        adapter_name
+    }
 }
 
 fn ensure_record_in_buffer<T>(
@@ -2314,6 +2328,43 @@ mod tests {
             plan.iter()
                 .all(|candidate| candidate.adapter_name != "{WINDOWS-LOOPBACK}")
         );
+    }
+
+    #[test]
+    fn ip_helper_loopback_name_is_replaced_with_the_real_npcap_device() {
+        assert_eq!(
+            npcap_capture_adapter_name(
+                "{WINDOWS-DUMMY-LOOPBACK}".into(),
+                IF_TYPE_SOFTWARE_LOOPBACK,
+            ),
+            NPCAP_LOOPBACK_ADAPTER_NAME,
+        );
+        assert_eq!(
+            npcap_capture_adapter_name("{ETHERNET}".into(), 6),
+            "{ETHERNET}",
+        );
+    }
+
+    #[test]
+    fn explicit_npcap_loopback_is_available_before_a_game_socket_exists() {
+        let mut windows_loopback = adapter(NPCAP_LOOPBACK_ADAPTER_NAME, 1, 1, [127, 0, 0, 1]);
+        windows_loopback.interface_type = IF_TYPE_SOFTWARE_LOOPBACK;
+        windows_loopback.has_gateway = false;
+        let physical = adapter("{ETHERNET}", 8, 10, [192, 0, 2, 10]);
+
+        let plan = plan_windows_capture_candidates(
+            &[windows_loopback, physical],
+            &[],
+            Some(NPCAP_LOOPBACK_ADAPTER_NAME),
+            &FixtureRoutes::default(),
+        );
+
+        assert_eq!(plan[0].adapter_name, NPCAP_LOOPBACK_ADAPTER_NAME);
+        assert_eq!(
+            plan[0].sources,
+            vec![WindowsCaptureCandidateSource::ExplicitPrimary],
+        );
+        assert_eq!(plan[1].adapter_name, "{ETHERNET}");
     }
 
     #[test]

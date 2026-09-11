@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  NPCAP_LOOPBACK_DEVICE,
   type CaptureEnvironment,
   selectCaptureInterface,
 } from "./capture-interface";
@@ -73,6 +74,33 @@ describe("capture interface selection", () => {
       selectCaptureInterface({ ...routeOnly, capture_interfaces: devices }, "11"),
     ).toMatchObject({
       device: { value: "11" },
+      source: "saved",
+      replacedSavedDevice: false,
+    });
+  });
+
+  it("preserves an explicit Npcap loopback choice across direct-route refreshes", () => {
+    const withLoopback: CaptureEnvironment = {
+      ...environment,
+      capture_interfaces: [
+        ...environment.capture_interfaces,
+        {
+          value: NPCAP_LOOPBACK_DEVICE,
+          label: "Npcap Loopback [active, virtual]",
+          friendly_name: "Npcap Loopback",
+          description: "Adapter for loopback capture",
+          mac_address: null,
+          is_up: true,
+          is_virtual: true,
+          recommendation: null,
+        },
+      ],
+    };
+
+    expect(
+      selectCaptureInterface(withLoopback, NPCAP_LOOPBACK_DEVICE),
+    ).toMatchObject({
+      device: { value: NPCAP_LOOPBACK_DEVICE },
       source: "saved",
       replacedSavedDevice: false,
     });

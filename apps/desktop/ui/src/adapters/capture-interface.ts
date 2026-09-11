@@ -22,10 +22,17 @@ export interface CaptureInterfaceSelection {
   replacedSavedDevice: boolean;
 }
 
+export const NPCAP_LOOPBACK_DEVICE = "\\Device\\NPF_Loopback";
+
+function isNpcapLoopbackDevice(value: string | null): boolean {
+  return value?.trim().toLowerCase() === NPCAP_LOOPBACK_DEVICE.toLowerCase();
+}
+
 /**
- * A direct game-socket match is authoritative. A manually saved, active
- * adapter wins over the weaker system-route fallback. Missing/disconnected
- * saved devices are never selected silently.
+ * A direct game-socket match is authoritative unless the user explicitly
+ * selected Npcap loopback for local-routing compatibility. Any other manually
+ * saved, active adapter wins over the weaker system-route fallback.
+ * Missing/disconnected saved devices are never selected silently.
  */
 export function selectCaptureInterface(
   environment: CaptureEnvironment,
@@ -44,6 +51,17 @@ export function selectCaptureInterface(
       (environment.recommended_capture_source === "game_traffic" &&
         recommended !== undefined &&
         saved.value !== recommended.value));
+
+  // The Npcap loopback device is a deliberate compatibility override. Unlike
+  // an old numeric dumpcap index, it must not be replaced after a refresh just
+  // because a physical game route is also visible.
+  if (savedIsUsable && isNpcapLoopbackDevice(savedValue)) {
+    return {
+      device: saved,
+      source: "saved",
+      replacedSavedDevice: false,
+    };
+  }
 
   if (
     environment.recommended_capture_source === "game_traffic" &&

@@ -74,8 +74,8 @@ use rlogs_bpsr_module_optimizer::{
 use rlogs_capture::{BoundedCaptureIngress, OfflineCapture};
 #[cfg(windows)]
 use rlogs_capture::{
-    DumpcapLiveConfig, SignatureFlowCaptureConfig, WindowsCaptureAdapter,
-    WindowsCaptureAdapterRecommendationSource, WindowsLiveCaptureStopHandle,
+    DumpcapLiveConfig, NPCAP_LOOPBACK_ADAPTER_NAME, SignatureFlowCaptureConfig,
+    WindowsCaptureAdapter, WindowsCaptureAdapterRecommendationSource, WindowsLiveCaptureStopHandle,
     WindowsSignatureLiveCapture, npcap_device_name, npcap_diagnostic,
     recommend_windows_capture_adapter, windows_capture_adapters,
 };
@@ -12853,6 +12853,23 @@ fn select_runtime_capture_interface(
             .map(|interface| (interface, *source))
     });
 
+    // Loopback is an intentional compatibility override, not a stale numeric
+    // dumpcap index. Keep it selected even when a direct physical game route
+    // is also visible.
+    #[cfg(windows)]
+    if saved_value.is_some_and(is_npcap_loopback_device)
+        && let Some(saved) = interfaces
+            .iter()
+            .find(|interface| {
+                interface
+                    .value
+                    .eq_ignore_ascii_case(NPCAP_LOOPBACK_ADAPTER_NAME)
+            })
+            .filter(usable)
+    {
+        return Some(saved.value.clone());
+    }
+
     // A process-socket match is stronger than a manually saved dumpcap index:
     // those numeric indices can change after installation or adapter changes.
     if let Some((interface, "game_traffic")) = recommended {
@@ -12882,6 +12899,13 @@ fn select_runtime_capture_interface(
         })
         .or_else(|| interfaces.first())
         .map(|interface| interface.value.clone())
+}
+
+#[cfg(windows)]
+fn is_npcap_loopback_device(value: &str) -> bool {
+    value
+        .trim()
+        .eq_ignore_ascii_case(NPCAP_LOOPBACK_ADAPTER_NAME)
 }
 
 fn default_dumpcap_path() -> Option<PathBuf> {
@@ -16637,6 +16661,30 @@ mod tests {
         );
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn saved_npcap_loopback_override_survives_a_direct_game_match() {
+        let interfaces = vec![
+            capture_interface_fixture("8", true, false),
+            capture_interface_fixture(NPCAP_LOOPBACK_ADAPTER_NAME, true, true),
+        ];
+        let recommendation = (
+            "8".into(),
+            "game_traffic",
+            "Ethernet carries BPSR traffic.".into(),
+        );
+
+        assert_eq!(
+            select_runtime_capture_interface(
+                Some(NPCAP_LOOPBACK_ADAPTER_NAME),
+                &interfaces,
+                Some(&recommendation),
+            )
+            .as_deref(),
+            Some(NPCAP_LOOPBACK_ADAPTER_NAME),
+        );
+    }
+
     #[test]
     fn active_saved_interface_wins_over_a_route_only_fallback() {
         let interfaces = vec![
@@ -16680,6 +16728,31 @@ mod tests {
                 .value
                 .to_ascii_lowercase()
                 .contains(r"\device\npf_")
+        }));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_discovery_exposes_the_real_npcap_loopback_device() {
+        let interfaces = discover_runtime_capture_interfaces(None);
+        let loopback = interfaces
+            .iter()
+            .find(|interface| {
+                interface
+                    .value
+                    .eq_ignore_ascii_case(NPCAP_LOOPBACK_ADAPTER_NAME)
+            })
+            .expect("Windows IP Helper discovery should expose Npcap loopback");
+
+        assert_eq!(loopback.is_virtual, Some(true));
+        assert!(interfaces.iter().all(|interface| {
+            !interface
+                .friendly_name
+                .as_deref()
+                .is_some_and(|name| name.contains("Loopback Pseudo-Interface"))
+                || interface
+                    .value
+                    .eq_ignore_ascii_case(NPCAP_LOOPBACK_ADAPTER_NAME)
         }));
     }
 
