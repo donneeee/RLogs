@@ -1533,6 +1533,20 @@ impl OverlayFocusPolicyDebounce {
     }
 }
 
+fn overlay_focus_policy_should_hide(
+    enabled: bool,
+    trusted_process_is_foreground: bool,
+    canvas_interactive: bool,
+) -> bool {
+    // An editable canvas is itself a legitimate foreground surface. On
+    // Windows the focused WebView2 child can be reported as the foreground
+    // process instead of the rLogs host process. Treating that helper process
+    // as an ordinary focus miss makes the debounce physically hide the canvas
+    // in the middle of a pointer drag. Scope the exemption to the native input
+    // mode instead of globally trusting every msedgewebview2.exe process.
+    enabled && !trusted_process_is_foreground && !canvas_interactive
+}
+
 fn monitor_overlay_focus_policy(
     app: tauri::AppHandle,
     game_process_names: Vec<String>,
@@ -1546,7 +1560,15 @@ fn monitor_overlay_focus_policy(
                     .state::<EmbeddedLocalHost>()
                     .core_settings()
                     .hide_overlays_when_unfocused;
-                let hidden = enabled && !game_or_rlogs_is_foreground(&game_process_names);
+                let canvas_interactive = app
+                    .state::<OverlayCanvasWindowState>()
+                    .interactive
+                    .load(Ordering::Acquire);
+                let hidden = overlay_focus_policy_should_hide(
+                    enabled,
+                    game_or_rlogs_is_foreground(&game_process_names),
+                    canvas_interactive,
+                );
                 if let Some(stable_hidden) = debounce.observe(hidden) {
                     set_overlay_windows_hidden_by_focus(&app, stable_hidden);
                 }
@@ -1724,9 +1746,9 @@ mod tests {
         combat_overlay_renderer_is_stale, combat_overlay_should_be_visible,
         is_overlay_window_label, overlay_canvas_runtime_url, overlay_canvas_should_be_visible,
         overlay_canvas_state_should_be_visible, overlay_focus_hold_from_inputs,
-        queue_overlay_canvas_interactivity, queue_reported_overlay_canvas_interactivity,
-        register_parsed_hotkeys_with, require_overlay_canvas_layout_revision,
-        serialize_overlay_canvas_lifecycle,
+        overlay_focus_policy_should_hide, queue_overlay_canvas_interactivity,
+        queue_reported_overlay_canvas_interactivity, register_parsed_hotkeys_with,
+        require_overlay_canvas_layout_revision, serialize_overlay_canvas_lifecycle,
     };
     use rlogs_desktop_host::{COMBAT_OVERLAY_TOGGLE_ACTION_ID, OVERLAY_CANVAS_TOGGLE_ACTION_ID};
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -2389,6 +2411,29 @@ mod tests {
         assert_eq!(debounce.observe(true), Some(true));
         assert_eq!(debounce.observe(false), None);
         assert_eq!(debounce.observe(false), Some(false));
+    }
+
+    #[test]
+    fn focus_policy_keeps_an_interactive_canvas_visible_without_trusting_webview2_globally() {
+        assert!(!overlay_focus_policy_should_hide(true, false, true));
+        assert!(overlay_focus_policy_should_hide(true, false, false));
+        assert!(!overlay_focus_policy_should_hide(true, true, false));
+        assert!(!overlay_focus_policy_should_hide(false, false, false));
+    }
+
+    #[test]
+    fn focus_policy_resumes_normal_hiding_after_canvas_editing_ends() {
+        let mut debounce = OverlayFocusPolicyDebounce::default();
+        for _ in 0..8 {
+            assert_eq!(
+                debounce.observe(overlay_focus_policy_should_hide(true, false, true)),
+                None,
+            );
+        }
+        assert_eq!(debounce.observe(true), None);
+        assert_eq!(debounce.observe(true), None);
+        assert_eq!(debounce.observe(true), None);
+        assert_eq!(debounce.observe(true), Some(true));
     }
 }
 
