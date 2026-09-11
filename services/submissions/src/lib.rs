@@ -10945,6 +10945,7 @@ mod tests {
             hostile_casts: Vec::new(),
             damage_influences: Vec::new(),
             rdps_effect_presentations: Vec::new(),
+            status_effect_presentations: Vec::new(),
         }
     }
 
