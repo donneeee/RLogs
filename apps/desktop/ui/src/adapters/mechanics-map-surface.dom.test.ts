@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { mountMechanicsMapSurface } from "./mechanics-map-surface";
 import type { MechanicsMapUpdate } from "./mechanics-map";
+import { loadUiLocalizer } from "../localization/ui-locale";
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -54,7 +55,7 @@ describe("Mechanics Map overlay launch", () => {
       waitForSnapshot: () => new Promise(() => undefined),
       prepareLocalMaps: vi.fn(),
       openOverlay,
-    });
+    }, await loadUiLocalizer("en-US"));
 
     container.querySelector<HTMLButtonElement>(".mechanics-map-open-overlay")!.click();
     expect(container.querySelector("[role=status]")?.textContent).toBe("Opening the map overlay…");
@@ -77,7 +78,7 @@ describe("Mechanics Map overlay launch", () => {
       waitForSnapshot: () => new Promise(() => undefined),
       prepareLocalMaps: vi.fn(),
       openOverlay,
-    });
+    }, await loadUiLocalizer("en-US"));
     const button = container.querySelector<HTMLButtonElement>(".mechanics-map-open-overlay")!;
 
     button.click();
@@ -112,7 +113,7 @@ describe("Mechanics Map overlay launch", () => {
       },
       prepareLocalMaps: vi.fn(),
       openOverlay: vi.fn(),
-    });
+    }, await loadUiLocalizer("en-US"));
     await vi.waitFor(() => expect(images).toHaveLength(1));
     images[0]!.onload?.();
     await vi.waitFor(() => {
@@ -150,7 +151,7 @@ describe("Mechanics Map overlay launch", () => {
       waitForSnapshot: () => new Promise(() => undefined),
       prepareLocalMaps: vi.fn(),
       openOverlay: vi.fn(),
-    });
+    }, await loadUiLocalizer("en-US"));
 
     await vi.waitFor(() => expect(images).toHaveLength(1));
     images[0]!.onload?.();

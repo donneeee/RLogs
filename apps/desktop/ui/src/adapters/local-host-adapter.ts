@@ -726,7 +726,7 @@ function createLocalHostAdapter(localizer: UiLocalizer): DesktopHostAdapter {
             async openOverlay() {
               await openEditableOverlayCanvas(invoke);
             },
-          });
+          }, localizer);
         case `builtin://${OVERLAY_PLUGIN_ID}/automarkers`:
           return mountAutomarkerPresetsSurface(container, {
             async loadPresets() {

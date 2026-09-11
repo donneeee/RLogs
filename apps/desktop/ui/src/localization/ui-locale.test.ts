@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
 import { loadUiLocalizer, localeFallbackChain, parseUiMessageShard, type UiMessageLoaders } from "./ui-locale";
+import { REVIEWED_MECHANIC_KINDS } from "../adapters/mechanics-map-surface";
 
 function shard(locale: string, messages: Record<string, string>): { default: unknown } {
   return { default: { schema_version: 1, locale, namespace: "ui.test", messages } };
@@ -47,11 +48,19 @@ describe("desktop UI locale packages", () => {
   });
 
   it("keeps every migrated Mechanics Map key present in the shipped English package", async () => {
-    const source = readFileSync(new URL("../adapters/mechanics-map-overlay.ts", import.meta.url), "utf8");
-    const keys = new Set(source.match(/ui\.mechanics_map\.[a-z0-9_.]+/g) ?? []);
+    const source = [
+      "../adapters/mechanics-map-overlay.ts",
+      "../adapters/mechanics-map-surface.ts",
+    ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8")).join("\n");
+    const keys = new Set((source.match(/ui\.mechanics_map\.[a-z0-9_.]+/g) ?? [])
+      .filter((key) => !key.endsWith(".")));
     const localizer = await loadUiLocalizer("en-US");
     expect(keys.size).toBeGreaterThan(0);
     for (const key of keys) expect(localizer.t(key), key).not.toBe(key);
+    for (const kind of REVIEWED_MECHANIC_KINDS) {
+      const key = `ui.mechanics_map.mechanic.${kind}`;
+      expect(localizer.t(key), key).not.toBe(key);
+    }
   });
 
   it("loads the shipped combat history browser and graph inspection shard", async () => {
@@ -98,11 +107,14 @@ describe("desktop UI locale packages", () => {
       "ui.combat_history.graph.gallery_description",
       "ui.combat_history.graph.damage_title",
       "ui.combat_history.graph.damage_description",
+      "ui.combat_history.graph.rdps_title",
+      "ui.combat_history.graph.rdps_description",
       "ui.combat_history.graph.healing_title",
       "ui.combat_history.graph.healing_description",
       "ui.combat_history.graph.damage_taken_title",
       "ui.combat_history.graph.damage_taken_description",
       "ui.combat_history.graph.dps",
+      "ui.combat_history.graph.rdps",
       "ui.combat_history.graph.hps",
       "ui.combat_history.graph.tps",
       "ui.combat_history.graph.metric_aria",
