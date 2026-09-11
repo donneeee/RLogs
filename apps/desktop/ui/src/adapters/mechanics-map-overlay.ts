@@ -853,7 +853,7 @@ export function mountMechanicsMapOverlay(
 
   function renderMechanicAlerts(snapshot: MechanicsMapSnapshot): void {
     stopAlertsTimer();
-    alertsBody.replaceChildren();
+    const nextBody = alertsBody.cloneNode(false) as HTMLElement;
     const signals = snapshot.mechanics
       .filter((signal) => signal.mechanic_kind !== null)
       .slice(-8)
@@ -861,12 +861,16 @@ export function mountMechanicsMapOverlay(
     alertsStatus.textContent = signals.length === 0 ? "WAITING" : `${signals.length} OBSERVED`;
     alertsStatus.dataset.state = signals.length === 0 ? "waiting" : "live";
     if (signals.length === 0) {
-      alertsBody.append(text("p", "Waiting for reviewed packet mechanic signals…", "mechanic-alerts-overlay-empty"));
+      nextBody.append(text("p", "Waiting for reviewed packet mechanic signals…", "mechanic-alerts-overlay-empty"));
+      reconcileChildren(alertsBody, nextBody);
       return;
     }
     alertsRenderedAtMillis = performance.now();
     for (const signal of signals) {
       const row = element("article", "mechanic-alerts-overlay-row");
+      row.dataset.renderKey = signal.instance_id === null
+        ? `mechanic:${signal.effect_id}:${signal.target_actor_id}:observed:${signal.applied_at_micros}`
+        : `mechanic:${signal.effect_id}:${signal.target_actor_id}:instance:${signal.instance_id}`;
       row.dataset.effectId = String(signal.effect_id);
       row.dataset.durationMillis = signal.duration_millis === null ? "" : String(signal.duration_millis);
       row.dataset.appliedAtMicros = String(signal.applied_at_micros);
@@ -885,8 +889,9 @@ export function mountMechanicsMapOverlay(
       }
       detail.append(text("b", "OBSERVED", "mechanic-alerts-overlay-time"));
       row.append(identity, detail);
-      alertsBody.append(row);
+      nextBody.append(row);
     }
+    reconcileChildren(alertsBody, nextBody);
     updateAlertTimers();
     if (signals.some((signal) => mechanicSignalRemainingMillis(signal, snapshot.last_observed_micros, 0) !== null)) {
       alertsTimer = window.setInterval(updateAlertTimers, 100);
@@ -913,12 +918,13 @@ export function mountMechanicsMapOverlay(
   function renderDungeonObjectives(snapshot: MechanicsMapSnapshot): void {
     stopObjectivesTimer();
     const dungeon = snapshot.dungeon;
-    objectivesBody.replaceChildren();
+    const nextBody = objectivesBody.cloneNode(false) as HTMLElement;
     if (dungeon === null) {
       objectivesTitle.textContent = localizer.t("ui.mechanics_map.objectives.title");
       objectivesStatus.textContent = localizer.t("ui.mechanics_map.status.waiting");
       objectivesStatus.dataset.state = "waiting";
-      objectivesBody.append(text("p", localizer.t("ui.mechanics_map.objectives.waiting"), "dungeon-objectives-overlay-empty"));
+      nextBody.append(text("p", localizer.t("ui.mechanics_map.objectives.waiting"), "dungeon-objectives-overlay-empty"));
+      reconcileChildren(objectivesBody, nextBody);
       return;
     }
     objectivesTitle.textContent = snapshot.scene_name ??
@@ -936,7 +942,7 @@ export function mountMechanicsMapOverlay(
       dungeon.dungeon_id === null ? null : localizer.t("ui.mechanics_map.objectives.dungeon", { id: dungeon.dungeon_id }),
       dungeon.difficulty_id === null ? null : localizer.t("ui.mechanics_map.objectives.difficulty", { id: dungeon.difficulty_id }),
     ].filter((value): value is string => value !== null).join(" · ");
-    if (metadata) objectivesBody.append(text("small", metadata, "dungeon-objectives-overlay-meta"));
+    if (metadata) nextBody.append(text("small", metadata, "dungeon-objectives-overlay-meta"));
     if (dungeon.attempt_number > 0) {
       const attempt = element("div", "dungeon-objectives-overlay-attempt");
       const label = text("span", localizer.t("ui.mechanics_map.objectives.attempt", {
@@ -947,24 +953,28 @@ export function mountMechanicsMapOverlay(
         ? "ui.mechanics_map.objectives.retry"
         : "ui.mechanics_map.objectives.retries", { count: localizer.formatNumber(dungeon.retry_count) }));
       attempt.append(label, timer, retries);
-      objectivesBody.append(attempt);
+      nextBody.append(attempt);
       objectivesRenderedAtMillis = performance.now();
       const updateAttemptTimer = () => {
         const localElapsedMillis = dungeon.attempt_running
           ? Math.max(0, performance.now() - objectivesRenderedAtMillis)
           : 0;
-        timer.textContent = formatDungeonAttemptTime(
+        const activeTimer = objectivesBody.querySelector<HTMLElement>(".dungeon-objectives-overlay-attempt b");
+        if (activeTimer === null) return;
+        activeTimer.textContent = formatDungeonAttemptTime(
           dungeon.attempt_elapsed_micros + Math.round(localElapsedMillis * 1_000),
         );
       };
       if (dungeon.attempt_running) objectivesTimer = window.setInterval(updateAttemptTimer, 100);
     }
     if (dungeon.objectives.length === 0) {
-      objectivesBody.append(text("p", localizer.t("ui.mechanics_map.objectives.empty"), "dungeon-objectives-overlay-empty"));
+      nextBody.append(text("p", localizer.t("ui.mechanics_map.objectives.empty"), "dungeon-objectives-overlay-empty"));
+      reconcileChildren(objectivesBody, nextBody);
       return;
     }
     for (const objective of dungeon.objectives) {
       const row = element("article", "dungeon-objectives-overlay-row");
+      row.dataset.renderKey = `objective:${objective.objective_id}`;
       row.dataset.complete = String(objective.complete === true);
       row.dataset.catalogResolution = objective.catalog_resolution;
       row.title = [
@@ -992,23 +1002,26 @@ export function mountMechanicsMapOverlay(
         progress.value = Math.max(0, Math.min(objective.value, objective.required_count));
         row.append(progress);
       }
-      objectivesBody.append(row);
+      nextBody.append(row);
     }
+    reconcileChildren(objectivesBody, nextBody);
   }
 
   function renderActions(snapshot: MechanicsMapSnapshot): void {
     stopActionsTimer();
-    actionsBody.replaceChildren();
+    const nextBody = actionsBody.cloneNode(false) as HTMLElement;
     actionsStatus.textContent = snapshot.action_controls.length === 0
       ? "WAITING"
       : `${snapshot.action_controls.length} OBSERVED`;
     actionsStatus.dataset.state = snapshot.action_controls.length === 0 ? "waiting" : "live";
     if (snapshot.action_controls.length === 0) {
-      actionsBody.append(text("p", "Waiting for packet-observed cooldown state…", "action-controls-overlay-empty"));
+      nextBody.append(text("p", "Waiting for packet-observed cooldown state…", "action-controls-overlay-empty"));
+      reconcileChildren(actionsBody, nextBody);
       return;
     }
     for (const control of snapshot.action_controls) {
       const entry = element("span", "action-controls-overlay-entry");
+      entry.dataset.renderKey = `action:${control.skill_level_id}`;
       entry.dataset.remainingMillis = control.remaining_millis === null ? "" : String(control.remaining_millis);
       entry.dataset.durationMillis = control.duration_millis === null ? "" : String(control.duration_millis);
       entry.title = `${control.presentation_name ?? `Skill ${control.skill_level_id}`}\nPacket SkillLevel ID: ${control.skill_level_id}`;
@@ -1029,8 +1042,9 @@ export function mountMechanicsMapOverlay(
       }
       const label = text("small", control.presentation_name ?? `Skill ${control.skill_level_id}`, "action-controls-overlay-label");
       entry.append(icon, label);
-      actionsBody.append(entry);
+      nextBody.append(entry);
     }
+    reconcileChildren(actionsBody, nextBody);
     actionsRenderedAtMillis = performance.now();
     updateActionTimers();
     if (snapshot.action_controls.some((control) => (control.remaining_millis ?? 0) > 0)) {
@@ -1076,15 +1090,17 @@ export function mountMechanicsMapOverlay(
   }
 
   function renderParty(snapshot: MechanicsMapSnapshot): void {
-    partyBody.replaceChildren();
+    const nextBody = partyBody.cloneNode(false) as HTMLElement;
     partyStatus.textContent = snapshot.party.length === 0 ? "WAITING" : `${snapshot.party.length} JOINED`;
     partyStatus.dataset.state = snapshot.party.length === 0 ? "waiting" : "live";
     if (snapshot.party.length === 0) {
-      partyBody.append(text("p", "Waiting for rostered party actors…", "party-frame-overlay-empty"));
+      nextBody.append(text("p", "Waiting for rostered party actors…", "party-frame-overlay-empty"));
+      reconcileChildren(partyBody, nextBody);
       return;
     }
     for (const member of snapshot.party) {
       const row = element("article", "party-frame-overlay-member");
+      row.dataset.renderKey = `party:${member.actor_id}`;
       row.dataset.dead = String(member.dead);
       row.dataset.stale = String(member.stale);
       const identity = element("div", "party-frame-overlay-identity");
@@ -1108,19 +1124,22 @@ export function mountMechanicsMapOverlay(
         shield.append(shieldFill);
         row.append(shield);
       }
-      partyBody.append(row);
+      nextBody.append(row);
     }
+    reconcileChildren(partyBody, nextBody);
   }
 
   function renderPlayer(snapshot: MechanicsMapSnapshot): void {
     stopPlayerTimer();
     const player = snapshot.player;
+    const nextBody = playerBody.cloneNode(false) as HTMLElement;
     playerPanel.dataset.stale = String(player?.stale ?? false);
     if (player === null) {
       playerTitle.textContent = "Player";
       playerStatus.textContent = "WAITING";
       playerStatus.dataset.state = "waiting";
-      playerBody.replaceChildren(text("p", "Waiting for packet-observed player vitals…", "player-frame-overlay-empty"));
+      nextBody.append(text("p", "Waiting for packet-observed player vitals…", "player-frame-overlay-empty"));
+      reconcileChildren(playerBody, nextBody);
       return;
     }
     playerTitle.textContent = player.display_name ?? `Player ${player.actor_id}`;
@@ -1154,6 +1173,7 @@ export function mountMechanicsMapOverlay(
     statuses.setAttribute("aria-label", "Player status effects");
     for (const effect of player.statuses) {
       const entry = element("span", "player-frame-overlay-status-entry");
+      entry.dataset.renderKey = `status:${effect.instance_id ?? `${effect.effect_id}:${effect.source_actor_id ?? "unknown"}:${effect.applied_at_micros}`}`;
       const item = element("span", "player-frame-overlay-status");
       const effectName = effect.presentation_name ?? `Effect ${effect.effect_id}`;
       const sourceName = effect.source_display_name ??
@@ -1180,6 +1200,7 @@ export function mountMechanicsMapOverlay(
     resources.setAttribute("aria-label", "Packet-observed class resources");
     for (const resource of snapshot.resources) {
       const resourceRow = element("section", "player-resource-overlay-row");
+      resourceRow.dataset.renderKey = `resource:${resource.kind}:${resource.current_id}:${resource.max_id}`;
       resourceRow.dataset.kind = resource.kind;
       const resourceIdentity = element("div", "player-resource-overlay-identity");
       resourceIdentity.append(
@@ -1195,7 +1216,8 @@ export function mountMechanicsMapOverlay(
       resources.append(resourceRow);
     }
     resources.hidden = snapshot.resources.length === 0;
-    playerBody.replaceChildren(identity, vitals, statuses, resources);
+    nextBody.append(identity, vitals, statuses, resources);
+    reconcileChildren(playerBody, nextBody);
     playerRenderedAtMillis = performance.now();
     updatePlayerTimers();
     if (player.statuses.some((effect) => effect.remaining_millis !== null)) {
@@ -1224,11 +1246,13 @@ export function mountMechanicsMapOverlay(
   function renderTarget(snapshot: MechanicsMapSnapshot): void {
     stopTargetTimer();
     const target = snapshot.target;
+    const nextBody = targetBody.cloneNode(false) as HTMLElement;
     targetPanel.dataset.stale = String(target?.stale ?? false);
     if (target === null) {
       targetStatus.textContent = "NO TARGET";
       targetStatus.dataset.state = "waiting";
-      targetBody.replaceChildren(text("p", "Select a target in game.", "target-frame-overlay-empty"));
+      nextBody.append(text("p", "Select a target in game.", "target-frame-overlay-empty"));
+      reconcileChildren(targetBody, nextBody);
       return;
     }
     targetStatus.textContent = target.dead ? "DEFEATED" : target.stale ? "STALE" : "LIVE";
@@ -1263,6 +1287,7 @@ export function mountMechanicsMapOverlay(
     debuffs.setAttribute("aria-label", "Target debuffs");
     for (const effect of target.debuffs) {
       const entry = element("span", "target-frame-overlay-debuff-entry");
+      entry.dataset.renderKey = `debuff:${effect.instance_id ?? `${effect.effect_id}:${effect.source_actor_id ?? "unknown"}:${effect.applied_at_micros}`}`;
       entry.dataset.localOwned = String(effect.owned_by_local_player);
       const item = element("span", "target-frame-overlay-debuff");
       const effectName = effect.presentation_name ?? `Effect ${effect.effect_id}`;
@@ -1298,7 +1323,8 @@ export function mountMechanicsMapOverlay(
     const noDebuffs = text("span", "No packet-classified debuffs", "target-frame-overlay-no-debuffs");
     noDebuffs.hidden = target.debuffs.length > 0;
     debuffs.append(noDebuffs);
-    targetBody.replaceChildren(identity, vitals, debuffs);
+    nextBody.append(identity, vitals, debuffs);
+    reconcileChildren(targetBody, nextBody);
     targetRenderedAtMillis = performance.now();
     updateTargetTimers();
     if (target.debuffs.some((effect) => effect.remaining_millis !== null)) {
@@ -2421,6 +2447,68 @@ function text<K extends keyof HTMLElementTagNameMap>(tag: K, value: string, clas
   const node = element(tag, className);
   node.textContent = value;
   return node;
+}
+
+/**
+ * Applies a freshly rendered DOM shape without discarding nodes that still
+ * represent the same runtime item. Keeping those nodes connected avoids
+ * restarting CSS transitions, image decoding, and assistive-technology focus
+ * on every live-feed revision.
+ */
+function reconcileChildren(currentParent: Element, nextParent: Element): void {
+  const currentChildren = Array.from(currentParent.childNodes);
+  const keyed = new Map<string, Node[]>();
+  for (const child of currentChildren) {
+    const key = renderKey(child);
+    if (key !== null) keyed.set(key, [...keyed.get(key) ?? [], child]);
+  }
+  const used = new Set<Node>();
+  let cursor = currentParent.firstChild;
+  for (const desired of Array.from(nextParent.childNodes)) {
+    const key = renderKey(desired);
+    let actual = key === null ? null : keyed.get(key)?.shift() ?? null;
+    if (actual !== null && !compatibleNode(actual, desired)) actual = null;
+    if (actual === null && cursor !== null && !used.has(cursor) && renderKey(cursor) === null && compatibleNode(cursor, desired)) {
+      actual = cursor;
+    }
+    if (actual === null) {
+      actual = desired.cloneNode(true);
+      currentParent.insertBefore(actual, cursor);
+    } else {
+      if (actual !== cursor) currentParent.insertBefore(actual, cursor);
+      synchronizeNode(actual, desired);
+    }
+    used.add(actual);
+    cursor = actual.nextSibling;
+  }
+  for (const child of currentChildren) {
+    if (!used.has(child) && child.parentNode === currentParent) child.remove();
+  }
+}
+
+function synchronizeNode(current: Node, desired: Node): void {
+  if (current.nodeType === Node.TEXT_NODE && desired.nodeType === Node.TEXT_NODE) {
+    if (current.nodeValue !== desired.nodeValue) current.nodeValue = desired.nodeValue;
+    return;
+  }
+  if (!(current instanceof Element) || !(desired instanceof Element)) return;
+  for (const attribute of Array.from(current.attributes)) {
+    if (!desired.hasAttribute(attribute.name)) current.removeAttribute(attribute.name);
+  }
+  for (const attribute of Array.from(desired.attributes)) {
+    if (current.getAttribute(attribute.name) !== attribute.value) current.setAttribute(attribute.name, attribute.value);
+  }
+  reconcileChildren(current, desired);
+}
+
+function compatibleNode(current: Node, desired: Node): boolean {
+  if (current.nodeType !== desired.nodeType) return false;
+  if (!(current instanceof Element) || !(desired instanceof Element)) return true;
+  return current.tagName === desired.tagName && current.className === desired.className;
+}
+
+function renderKey(node: Node): string | null {
+  return node instanceof HTMLElement ? node.dataset.renderKey ?? null : null;
 }
 
 function record(value: unknown): value is Record<string, unknown> {

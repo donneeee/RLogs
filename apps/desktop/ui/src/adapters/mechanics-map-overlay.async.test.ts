@@ -58,6 +58,55 @@ function snapshot(sceneId: number, revision: number): MechanicsMapUpdate {
   return { schema_version: 14, revision, snapshot: value };
 }
 
+function populatedSnapshot(revision: number, currentHp: number): MechanicsMapUpdate {
+  const update = snapshot(1_633, revision);
+  const effect = {
+    effect_id: 77, instance_id: 770, presentation_name: "Steady effect", icon_asset_path: null,
+    source_actor_id: 10, source_display_name: "Tester", owned_by_local_player: true, stacks: 1,
+    duration_millis: 10_000, remaining_millis: 8_000, applied_at_micros: 1_000_000,
+  };
+  update.snapshot.last_observed_micros = 1_000_000;
+  update.snapshot.player = {
+    actor_id: 10, entity_uuid: 100, display_name: "Tester", current_hp: currentHp, max_hp: 1_000,
+    hp_percent: currentHp / 10, current_shield: null, max_shield: null, shield_percent: null,
+    dead: false, stale: false, statuses: [effect],
+  };
+  update.snapshot.party = [{ ...update.snapshot.player, actor_id: 11, entity_uuid: 110, display_name: "Ally", statuses: [] }];
+  update.snapshot.action_controls = [{
+    skill_level_id: 501, presentation_ability_id: 50, presentation_name: "Pulse", icon_asset_path: null,
+    duration_millis: 10_000, remaining_millis: 7_000, cooldown_type: 1, charge_count: 2,
+    observed_at_micros: 1_000_000,
+  }];
+  update.snapshot.resources = [{
+    kind: "bar", label: "Energy", current_id: 1, max_id: 2, current: currentHp / 10, max: 100,
+    percent: currentHp / 10,
+  }];
+  update.snapshot.target = {
+    actor_id: 20, entity_uuid: 200, display_name: "Target", monster_id: 2, current_hp: currentHp * 2,
+    max_hp: 2_000, hp_percent: currentHp / 10, current_shield: null, max_shield: null,
+    shield_percent: null, breaking_stage: null, dead: false, stale: false, debuffs: [effect],
+  };
+  update.snapshot.dungeon = {
+    dungeon_id: 1_633, instance_id: "run", difficulty_id: 1, state: "started", flow_phase: "started",
+    flow_state_id: 1, result_id: null, attempt_number: 1, retry_count: 0, encounter_state: "started",
+    attempt_elapsed_micros: revision * 1_000_000, attempt_running: true, objectives: [{
+      objective_id: 9, objective_map_key: 9, value: revision, complete: false, presentation_name: "Objective",
+      required_count: 10, catalog_resolution: "resolved_current_build", activity_target_key: null,
+      scene_event_keys: [],
+    }],
+  };
+    update.snapshot.mechanics = [{
+      effect_id: 88, mechanic_kind: "safe_zone", presentation_name: "Safe zone", instance_id: 880,
+      target_actor_id: 10, source_actor_id: 20, stacks: 1, duration_millis: 10_000,
+      origin_x: null, origin_z: null, facing_radians: null, applied_at_micros: 1_000_000,
+    }, {
+      effect_id: 88, mechanic_kind: "safe_zone", presentation_name: "Safe zone", instance_id: 880,
+      target_actor_id: 11, source_actor_id: 20, stacks: 1, duration_millis: 10_000,
+      origin_x: null, origin_z: null, facing_radians: null, applied_at_micros: 1_000_000,
+    }];
+  return update;
+}
+
 function catalog(sceneId: number, familyId: string, name: string): AutomarkerPresetView {
   return {
     schemaVersion: 3,
@@ -96,7 +145,7 @@ const localizer: UiLocalizer = {
     "ui.mechanics_map.canvas_editor.lock": "Lock",
     "ui.mechanics_map.canvas_editor.unlock": "Unlock",
     "ui.mechanics_map.canvas_editor.lock_help": "Lock the canvas and return overlays to click-through mode",
-    "ui.mechanics_map.canvas_editor.hide": "Hide overlays",
+    "ui.mechanics_map.canvas_editor.hide": "Hide",
     "ui.mechanics_map.canvas_editor.hide_help": "Hide all overlays; restore them from Show overlays in the main app or press Scroll Lock",
     "ui.mechanics_map.canvas_editor.done": "Done",
     "ui.mechanics_map.canvas_editor.done_help": "Exit editing and keep overlays visible",
@@ -139,6 +188,64 @@ afterEach(() => {
 });
 
 describe("mounted Mechanics Map automarker request ordering", () => {
+  it("updates changed live values in place and replaces only changed runtime identities", async () => {
+    const second = deferred<MechanicsMapUpdate>();
+    const third = deferred<MechanicsMapUpdate>();
+    let waitCount = 0;
+    const container = document.createElement("div");
+    document.body.append(container);
+    const mounted = mountMechanicsMapOverlay(container, {
+      loadSnapshot: async () => populatedSnapshot(1, 900),
+      waitForSnapshot: () => waitCount++ === 0 ? second.promise : waitCount === 2 ? third.promise : new Promise(() => undefined),
+      prepareLocalMaps: async () => undefined,
+      setInteractive: async () => undefined,
+      onInteractivity: async () => () => undefined,
+      onFocusHeld: async () => () => undefined,
+      loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
+      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadLayout: async () => layout(),
+      saveLayout: async (value) => value,
+    }, localizer);
+    await flushPromises();
+
+    const selectors = [
+      ".mechanics-map-overlay-canvas", ".player-frame-overlay-identity", ".player-frame-overlay-status-entry", ".player-resource-overlay-row",
+      ".party-frame-overlay-member", ".action-controls-overlay-entry", ".target-frame-overlay-identity",
+      ".target-frame-overlay-debuff-entry", ".dungeon-objectives-overlay-attempt",
+      ".dungeon-objectives-overlay-row", ".mechanic-alerts-overlay-row",
+    ] as const;
+    const initialNodes = new Map(selectors.map((selector) => [selector, container.querySelector(selector)!]));
+    const initialAction = initialNodes.get(".action-controls-overlay-entry")!;
+    const initialMechanics = [...container.querySelectorAll(".mechanic-alerts-overlay-row")];
+    expect(initialMechanics).toHaveLength(2);
+
+    const refreshed = populatedSnapshot(2, 700);
+    refreshed.snapshot.mechanics = refreshed.snapshot.mechanics.map((mechanic) => ({
+      ...mechanic,
+      applied_at_micros: 2_000_000,
+    }));
+    second.resolve(refreshed);
+    await flushPromises();
+    for (const selector of selectors) expect(container.querySelector(selector), selector).toBe(initialNodes.get(selector));
+    expect([...container.querySelectorAll(".mechanic-alerts-overlay-row")]).toEqual(initialMechanics);
+    expect(container.querySelector(".player-frame-overlay-identity span")?.textContent).toBe("700 / 1000");
+    expect((container.querySelector(".player-frame-overlay-health span") as HTMLElement).style.width).toBe("70%");
+    expect(container.querySelector(".target-frame-overlay-identity span")?.textContent).toBe("1400 / 2000");
+    expect(container.querySelector(".dungeon-objectives-overlay-row > b")?.textContent).toBe("2 / 10");
+
+    const structurallyChanged = populatedSnapshot(3, 600);
+    structurallyChanged.snapshot.action_controls = [{
+      ...structurallyChanged.snapshot.action_controls[0]!, skill_level_id: 777, presentation_name: "Replacement",
+    }];
+    third.resolve(structurallyChanged);
+    await flushPromises();
+    expect(container.querySelector(".action-controls-overlay-entry")).not.toBe(initialAction);
+    expect(initialAction.isConnected).toBe(false);
+    expect(container.querySelector(".action-controls-overlay-label")?.textContent).toBe("Replacement");
+    expect(container.querySelector(".party-frame-overlay-member")).toBe(initialNodes.get(".party-frame-overlay-member"));
+    mounted.dispose();
+  });
+
   it("exits edit mode on Escape without hiding widgets or consuming editor input Escape", async () => {
     document.documentElement.dataset.surface = "overlay-canvas";
     document.documentElement.dataset.background = "aurora";
@@ -214,12 +321,12 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       getComputedStyle(editorBar).backgroundColor,
     );
     const mapControlLabels = [...mapActions.querySelectorAll("button")].map((button) => button.textContent);
-    for (const canvasControl of ["Done", "Hide overlays", "Lock", "Unlock", "Player", "Actions", "Party", "Target", "Objectives", "Alerts"]) {
+    for (const canvasControl of ["Done", "Hide", "Lock", "Unlock", "Player", "Actions", "Party", "Target", "Objectives", "Alerts"]) {
       expect(mapControlLabels, canvasControl).not.toContain(canvasControl);
     }
     expect(editorBar.textContent).toContain("Canvas layout");
     expect(editorBar.textContent).toContain("Done");
-    expect(editorBar.textContent).toContain("Hide overlays");
+    expect(editorBar.textContent).toContain("Hide");
     expect(editorBar.textContent).toContain("Lock");
     expect(["transparent", "rgba(0, 0, 0, 0)"]).not.toContain(
       getComputedStyle(root).backgroundColor,
@@ -324,7 +431,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     await flushPromises();
     setInteractive.mockClear(); saveLayout.mockClear(); hideOverlay.mockClear();
     const hideControl = [...editorBar.querySelectorAll("button")]
-      .find((button) => button.textContent === "Hide overlays") as HTMLButtonElement;
+      .find((button) => button.textContent === "Hide") as HTMLButtonElement;
     const layoutBeforeHide = structuredClone(shared);
     hideControl.click();
     await flushPromises();
