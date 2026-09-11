@@ -3469,6 +3469,11 @@ function recordedEventLanes(
   svg.setAttribute("role", "group");
   svg.setAttribute("aria-label", localizer.t("ui.combat_history.graph.recorded_events_aria"));
   const deathMarkers: SVGGElement[] = [];
+  const skillClusterDisclosures: Array<{
+    marker: SVGGElement;
+    actor: string;
+    eventLabels: string[];
+  }> = [];
   const xFor = (micros: number) => left +
     (Math.min(durationSeconds, Math.max(0, micros / 1_000_000)) / durationSeconds) * plotWidth;
   hostileLanes.forEach(({ sourceActorId, casts }, laneIndex) => {
@@ -3633,10 +3638,24 @@ function recordedEventLanes(
       }
       marker.append(svgTitle(summary));
       if (cluster.events.length > 1) {
+        const eventLabels = cluster.events.map((event) => {
+          const ability = actor.abilities.find((candidate) => candidate.ability_id === event.ability_id);
+          const abilityName = ability?.presentation_name?.trim() ||
+            localizer.t("ui.combat_history.graph.ability_fallback", { id: event.ability_id });
+          return localizer.t("ui.combat_history.graph.skill_event", {
+            actor: actorLabel(actor), ability: abilityName, time: formatExactGraphTime(event.at_micros),
+          });
+        });
+        marker.setAttribute("role", "button");
+        marker.setAttribute("aria-expanded", "false");
+        marker.setAttribute("aria-label", localizer.t("ui.combat_history.graph.skill_cluster_disclosure", {
+          summary,
+        }));
         marker.append(
           svgNode("circle", "combat-history-skill-event-badge", { cx: 8, cy: -8, r: 7 }),
           svgText(8, -5, String(cluster.events.length), "combat-history-skill-event-badge-text", "middle"),
         );
+        skillClusterDisclosures.push({ marker, actor: actorLabel(actor), eventLabels });
       }
       row.append(marker);
     }
@@ -3663,6 +3682,76 @@ function recordedEventLanes(
     element("strong", "combat-history-event-lanes-title", localizer.t("ui.combat_history.graph.recorded_events")),
     svg,
   );
+  if (skillClusterDisclosures.length > 0) {
+    const disclosure = element("section", "combat-history-skill-disclosure");
+    disclosure.id = `combat-history-skill-disclosure-${historySkillDisclosureSequence++}`;
+    disclosure.hidden = true;
+    let activeMarker: SVGGElement | null = null;
+    const close = () => {
+      disclosure.hidden = true;
+      disclosure.replaceChildren();
+      if (activeMarker) {
+        activeMarker.setAttribute("aria-expanded", "false");
+        activeMarker.classList.remove("is-disclosed", "is-event-selected");
+        delete activeMarker.dataset.selectedSkillEvent;
+      }
+      activeMarker = null;
+    };
+    for (const cluster of skillClusterDisclosures) {
+      cluster.marker.setAttribute("aria-controls", disclosure.id);
+      const open = () => {
+        close();
+        cluster.marker.setAttribute("aria-expanded", "true");
+        cluster.marker.classList.add("is-disclosed");
+        activeMarker = cluster.marker;
+        const heading = element("strong", "", localizer.t(
+          "ui.combat_history.graph.skill_disclosure_title", { actor: cluster.actor },
+        ));
+        const list = document.createElement("ol");
+        const selected = element("output", "combat-history-skill-disclosure-selected");
+        selected.setAttribute("aria-live", "polite");
+        cluster.eventLabels.forEach((label, eventIndex) => {
+          const item = document.createElement("li");
+          const eventButton = button(label, "");
+          eventButton.dataset.skillDisclosureEvent = String(eventIndex);
+          eventButton.setAttribute("aria-pressed", "false");
+          eventButton.addEventListener("click", () => {
+            list.querySelectorAll<HTMLButtonElement>("button").forEach((candidate) =>
+              candidate.setAttribute("aria-pressed", String(candidate === eventButton)));
+            cluster.marker.dataset.selectedSkillEvent = String(eventIndex);
+            cluster.marker.classList.add("is-event-selected");
+            selected.textContent = label;
+          });
+          item.append(eventButton);
+          list.append(item);
+        });
+        disclosure.replaceChildren(heading, list, selected);
+        disclosure.hidden = false;
+      };
+      cluster.marker.addEventListener("click", () => {
+        if (cluster.marker.getAttribute("aria-expanded") === "true") close();
+        else open();
+      });
+      cluster.marker.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && cluster.marker.getAttribute("aria-expanded") === "true") {
+          event.preventDefault();
+          close();
+        } else if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          if (cluster.marker.getAttribute("aria-expanded") === "true") close();
+          else open();
+        }
+      });
+    }
+    disclosure.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || disclosure.hidden) return;
+      event.preventDefault();
+      const marker = activeMarker;
+      close();
+      marker?.focus();
+    });
+    frame.append(disclosure);
+  }
   const summary = element("div", "combat-history-death-summary");
   summary.id = `combat-history-event-death-summary-${historyDeathSummarySequence++}`;
   summary.setAttribute("role", "tooltip");
@@ -4098,6 +4187,7 @@ export function historyTargetLabel(target: HistoryTargetIdentity): string {
 }
 
 let historyDeathSummarySequence = 0;
+let historySkillDisclosureSequence = 0;
 
 export function historyDeathMarker(
   x: number,

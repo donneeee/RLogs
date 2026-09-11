@@ -111,6 +111,8 @@ describe("desktop UI locale packages", () => {
       "ui.combat_history.graph.status_effect_fallback",
       "ui.combat_history.graph.status_span_removed",
       "ui.combat_history.graph.status_span_consumed",
+      "ui.combat_history.graph.skill_cluster_disclosure",
+      "ui.combat_history.graph.skill_disclosure_title",
     ]) {
       expect(localizer.t(key), key).not.toBe(key);
     }

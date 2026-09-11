@@ -222,6 +222,8 @@
     "ui.combat_history.graph.ability_fallback": "Ability {id}",
     "ui.combat_history.graph.skill_event": "{actor} used {ability} at {time}",
     "ui.combat_history.graph.skill_event_cluster": "{actor}: {count} recorded skill starts from {start} to {end} ({abilities})",
+    "ui.combat_history.graph.skill_cluster_disclosure": "{summary}. Activate to inspect every exact skill use.",
+    "ui.combat_history.graph.skill_disclosure_title": "{actor} exact skill uses",
     "ui.combat_history.graph.status_effect_fallback": "Unlocalized combat effect #{id}",
     "ui.combat_history.graph.status_span_removed": "{actor}: {effect} applied at {start} and removed at {end}",
     "ui.combat_history.graph.status_span_consumed": "{actor}: {effect} applied at {start} and consumed at {end}",

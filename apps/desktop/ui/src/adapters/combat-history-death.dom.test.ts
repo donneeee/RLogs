@@ -142,34 +142,70 @@ describe("Combat History death presentation", () => {
     expect(hidden.querySelector(".combat-history-event-lanes")).toBeNull();
   });
 
-  it("clusters dense exact skill starts truthfully and keeps legacy deaths bucketed", async () => {
+  it("discloses every dense exact skill start by keyboard and keeps player visibility coupled", async () => {
     const ui = await loadUiLocalizer("en-US");
     const actor = {
       actor_id: "alice", display_name: "Alice", actor_kind: "player",
       death_events: [], death_seconds: [3],
       skill_events: [
         { at_micros: 1_250_000, ability_id: "2233" },
-        { at_micros: 1_255_000, ability_id: "2233" },
+        { at_micros: 1_255_000, ability_id: "9999" },
       ],
       abilities: [{ ability_id: "2233", presentation_name: "Powerdraw" }],
       series: [{ second: 0, damage: 100, effective_healing: 0, damage_taken: 0 }],
       targets: [],
     } as unknown as HistoryActorSummary;
-    const rendered = renderMetricGraph(
+    const render = (hidden: ReadonlySet<string>) => renderMetricGraph(
       [actor],
       { metric: "damage", title: "Damage", rateLabel: "DPS", description: "Damage rate" },
-      3_500_000, new Set(), new Map([[actor.actor_id, "#35c2ff"]]), null, () => undefined, ui,
+      3_500_000, hidden, new Map([[actor.actor_id, "#35c2ff"]]), null, () => undefined, ui,
     );
+    const rendered = render(new Set());
+    document.body.append(rendered);
 
     const skills = rendered.querySelectorAll<SVGGElement>(".combat-history-skill-event");
     expect(skills).toHaveLength(1);
     expect(skills[0]!.dataset.eventCount).toBe("2");
     expect(skills[0]!.getAttribute("aria-label")).toContain("2 recorded skill starts");
+    expect(skills[0]!.getAttribute("role")).toBe("button");
+    expect(skills[0]!.getAttribute("aria-expanded")).toBe("false");
     expect(skills[0]!.querySelector(".combat-history-skill-event-badge-text")?.textContent).toBe("2");
+    const disclosure = rendered.querySelector<HTMLElement>(".combat-history-skill-disclosure")!;
+    expect(disclosure.hidden).toBe(true);
+    expect(skills[0]!.getAttribute("aria-controls")).toBe(disclosure.id);
+
+    skills[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(skills[0]!.getAttribute("aria-expanded")).toBe("true");
+    expect(disclosure.hidden).toBe(false);
+    const exactEvents = [...disclosure.querySelectorAll<HTMLButtonElement>("button")];
+    expect(exactEvents).toHaveLength(2);
+    expect(exactEvents[0]!.textContent).toBe("Alice used Powerdraw at 0:01.250");
+    expect(exactEvents[1]!.textContent).toBe("Alice used Ability 9999 at 0:01.255");
+    exactEvents[1]!.focus();
+    expect(document.activeElement).toBe(exactEvents[1]);
+    exactEvents[1]!.click();
+    expect(exactEvents[0]!.getAttribute("aria-pressed")).toBe("false");
+    expect(exactEvents[1]!.getAttribute("aria-pressed")).toBe("true");
+    expect(skills[0]!.classList.contains("is-event-selected")).toBe(true);
+    expect(skills[0]!.dataset.selectedSkillEvent).toBe("1");
+    expect(disclosure.querySelector("output")?.textContent)
+      .toBe("Alice used Ability 9999 at 0:01.255");
+    expect(rendered.querySelector("[data-timeline-play]")).toBeNull();
+
+    exactEvents[1]!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(disclosure.hidden).toBe(true);
+    expect(skills[0]!.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(skills[0]);
+
     const deaths = rendered.querySelectorAll<SVGGElement>(".combat-history-event-lanes .combat-history-death-marker");
     expect(deaths).toHaveLength(1);
     expect(deaths[0]!.getAttribute("aria-label"))
       .toContain("death observed in the 0:03.000–0:03.500 one-second bucket");
+
+    const hidden = render(new Set([actor.actor_id]));
+    expect(hidden.querySelector(".combat-history-skill-event")).toBeNull();
+    expect(hidden.querySelector(".combat-history-skill-disclosure")).toBeNull();
+    rendered.remove();
   });
 
   it("keeps a neutral glyph for mixed-ability clusters instead of showing a misleading icon", async () => {
