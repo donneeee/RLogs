@@ -6,9 +6,11 @@ param(
     [Parameter(Mandatory = $true)][string]$Interface,
     [Parameter(Mandatory = $true)][ValidatePattern('^[A-Za-z0-9._-]{1,128}$')][string]$GameBuild,
     [Parameter(Mandatory = $true)][string]$GameExecutablePath,
-    [Parameter(Mandatory = $true)][string]$BuildFileManifestPath,
+    [string]$BuildFileManifestPath,
+    [string]$DistributionSnapshotPath,
     [Parameter(Mandatory = $true)][string]$ProtocolPackPath,
     [Parameter(Mandatory = $true)][ValidatePattern('^sha256:[0-9a-f]{64}$')][string]$ProtocolPackDigest,
+    [ValidatePattern('^[A-Za-z0-9._-]{1,128}$')][string]$ProtocolPackSourceBuild,
     [Parameter(Mandatory = $true)][ValidateRange(1, [int]::MaxValue)][int]$SceneId,
     [Parameter(Mandatory = $true)][ValidateLength(1, 256)][string]$SceneName,
     [Parameter(Mandatory = $true)][string]$ActionPlanPath,
@@ -20,6 +22,7 @@ param(
     [ValidateRange(10, 60)][int]$PostEngagementSeconds = 10,
     [string]$DumpcapPath = 'C:\Program Files\Wireshark\dumpcap.exe',
     [string]$TsharkPath = 'C:\Program Files\Wireshark\tshark.exe',
+    [switch]$RawCaptureWithUnverifiedProtocolCarryForward,
     [switch]$TestOnlyAllowIdentityFixture,
     [switch]$DryRun
 )
@@ -122,19 +125,33 @@ $sessionPartial = "$sessionPath.partial"
 $allArtifactPaths = @($capturePath,$connectionsPartial,$connectionsPath,$transportsPartial,$transportsPath,$actionsPartial,$actionsPath)
 
 $resolvedExecutable = Require-File $GameExecutablePath 'Game executable'
-$resolvedBuildManifest = Require-File $BuildFileManifestPath 'Reviewed build/file manifest'
+$resolvedBuildManifest = $null
+$resolvedDistributionSnapshot = $null
+if ($RawCaptureWithUnverifiedProtocolCarryForward) {
+    $resolvedDistributionSnapshot = Require-File $DistributionSnapshotPath 'Reviewed Steam distribution snapshot'
+    if ([string]::IsNullOrWhiteSpace($ProtocolPackSourceBuild)) { throw 'Raw carry-forward capture requires ProtocolPackSourceBuild.' }
+    if (-not [string]::IsNullOrWhiteSpace($BuildFileManifestPath)) { throw 'Raw carry-forward capture uses DistributionSnapshotPath, not BuildFileManifestPath.' }
+} else {
+    $resolvedBuildManifest = Require-File $BuildFileManifestPath 'Reviewed build/file manifest'
+    if (-not [string]::IsNullOrWhiteSpace($DistributionSnapshotPath) -or -not [string]::IsNullOrWhiteSpace($ProtocolPackSourceBuild)) { throw 'DistributionSnapshotPath and ProtocolPackSourceBuild require RawCaptureWithUnverifiedProtocolCarryForward.' }
+}
 $resolvedPack = Require-File $ProtocolPackPath 'Protocol pack'
 $resolvedPlan = Require-File $ActionPlanPath 'Marker action plan'
 $initialExecutableHash = Get-Sha256 $resolvedExecutable
 $initialPackHash = Get-Sha256 $resolvedPack
 $initialPlanHash = Get-Sha256 $resolvedPlan
-$initialBuildManifestHash = Get-Sha256 $resolvedBuildManifest
+$initialBuildManifestHash = if ($null -ne $resolvedBuildManifest) { Get-Sha256 $resolvedBuildManifest } else { $null }
+$initialDistributionSnapshotHash = if ($null -ne $resolvedDistributionSnapshot) { Get-Sha256 $resolvedDistributionSnapshot } else { $null }
 $pack = Get-Content -LiteralPath $resolvedPack -Raw | ConvertFrom-Json
 $plan = Get-Content -LiteralPath $resolvedPlan -Raw | ConvertFrom-Json
-$buildManifest = Get-Content -LiteralPath $resolvedBuildManifest -Raw | ConvertFrom-Json
+$buildManifest = if ($null -ne $resolvedBuildManifest) { Get-Content -LiteralPath $resolvedBuildManifest -Raw | ConvertFrom-Json } else { $null }
+$distributionSnapshot = if ($null -ne $resolvedDistributionSnapshot) { Get-Content -LiteralPath $resolvedDistributionSnapshot -Raw | ConvertFrom-Json } else { $null }
 $planSnapshot = $plan | ConvertTo-Json -Compress -Depth 100 | ConvertFrom-Json
 
-if ($pack.target.build_id -ne $GameBuild) { throw "Protocol pack targets build $($pack.target.build_id), not declared build $GameBuild." }
+if ($RawCaptureWithUnverifiedProtocolCarryForward) {
+    if ($pack.target.build_id -ne $ProtocolPackSourceBuild) { throw "Protocol pack targets source build $($pack.target.build_id), not declared source build $ProtocolPackSourceBuild." }
+    if ($ProtocolPackSourceBuild -eq $GameBuild) { throw 'Raw carry-forward capture requires a prior protocol-pack source build distinct from the captured game build.' }
+} elseif ($pack.target.build_id -ne $GameBuild) { throw "Protocol pack targets build $($pack.target.build_id), not declared build $GameBuild." }
 if ($pack.target.deployment_id -ne 'global' -or $pack.target.channel -ne 'steam') { throw 'Marker capture requires an exact global/steam protocol pack.' }
 $computedProtocolPackDigest = Get-ProtocolPackDigest $pack
 if ($computedProtocolPackDigest -cne $ProtocolPackDigest) { throw "Protocol pack digest mismatch: selected pack computes to $computedProtocolPackDigest." }
@@ -142,23 +159,48 @@ if ($computedProtocolPackDigest -cne $ProtocolPackDigest) { throw "Protocol pack
 $isTestFixture = $false
 if ($TestOnlyAllowIdentityFixture) {
     if (-not $DryRun) { throw 'Test-only identity fixtures are allowed only in dry-run mode.' }
-    $isTestFixture = $buildManifest.authority.test_only -eq $true -and $buildManifest.game -eq 'capture-harness-test-fixture'
+    $identityFixture = if ($RawCaptureWithUnverifiedProtocolCarryForward) { $distributionSnapshot } else { $buildManifest }
+    $isTestFixture = $identityFixture.authority.test_only -eq $true -and $identityFixture.game -eq 'capture-harness-test-fixture'
     if (-not $isTestFixture) { throw 'Test-only identity fixture lacks explicit test authority.' }
+} elseif ($RawCaptureWithUnverifiedProtocolCarryForward) {
+    $reviewedSnapshotPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\..\plugins\games\blue-protocol-star-resonance\research\game-file-inventory\global\steam-$GameBuild\steam-distribution-snapshot.v1.json"))
+    if (-not $resolvedDistributionSnapshot.Equals($reviewedSnapshotPath, [System.StringComparison]::OrdinalIgnoreCase)) { throw "Production raw capture requires the repository-reviewed Steam distribution snapshot: $reviewedSnapshotPath" }
+    if ($distributionSnapshot.schemaVersion -ne 1 -or $distributionSnapshot.game -ne 'blue-protocol-star-resonance' -or $distributionSnapshot.deployment -ne 'global' -or $distributionSnapshot.channel -ne 'steam' -or $distributionSnapshot.app.buildId -ne $GameBuild -or $distributionSnapshot.app.targetBuildId -ne $GameBuild) { throw 'Reviewed Steam distribution snapshot does not match the declared global/steam game build.' }
+    if ($distributionSnapshot.authority.steamAppManifest -ne 'installed-distribution-identity' -or @($distributionSnapshot.installedDepots).Count -lt 1) { throw 'Steam distribution snapshot is not authoritative installed-distribution identity.' }
 } else {
     $reviewedManifestPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\..\plugins\games\blue-protocol-star-resonance\research\game-file-inventory\global\steam-$GameBuild\installed-client-file-manifest.v1.json"))
     if (-not $resolvedBuildManifest.Equals($reviewedManifestPath, [System.StringComparison]::OrdinalIgnoreCase)) { throw "Production capture requires the repository-reviewed build/file manifest: $reviewedManifestPath" }
     if ($buildManifest.schemaVersion -ne 1 -or $buildManifest.game -ne 'blue-protocol-star-resonance' -or $buildManifest.deployment -ne 'global' -or $buildManifest.channel -ne 'steam' -or $buildManifest.gameBuild -ne $GameBuild) { throw 'Reviewed build/file manifest does not match the declared global/steam game build.' }
     if ($buildManifest.coverage.complete -ne $true -or $buildManifest.authority.localPhysicalSha256 -ne 'installed-file-content-proof') { throw 'Build/file manifest is not authoritative, complete installed-file content proof.' }
 }
-$executableName = [System.IO.Path]::GetFileName($resolvedExecutable)
-$manifestExecutable = @($buildManifest.files | Where-Object {[System.IO.Path]::GetFileName(([string]$_.relativePath).Replace('/', '\')) -eq $executableName -and $_.sha256 -eq $initialExecutableHash})
-if ($manifestExecutable.Count -ne 1) { throw 'Game executable hash is not uniquely authorized by the reviewed build/file manifest.' }
-if ([long]$manifestExecutable[0].bytes -ne (Get-Item -LiteralPath $resolvedExecutable).Length) { throw 'Game executable byte length does not match the reviewed build/file manifest.' }
+$manifestExecutable = @()
+if (-not $RawCaptureWithUnverifiedProtocolCarryForward) {
+    $executableName = [System.IO.Path]::GetFileName($resolvedExecutable)
+    $manifestExecutable = @($buildManifest.files | Where-Object {[System.IO.Path]::GetFileName(([string]$_.relativePath).Replace('/', '\')) -eq $executableName -and $_.sha256 -eq $initialExecutableHash})
+    if ($manifestExecutable.Count -ne 1) { throw 'Game executable hash is not uniquely authorized by the reviewed build/file manifest.' }
+    if ([long]$manifestExecutable[0].bytes -ne (Get-Item -LiteralPath $resolvedExecutable).Length) { throw 'Game executable byte length does not match the reviewed build/file manifest.' }
+}
 
 if ($planSnapshot.schema_version -ne 1) { throw 'Marker action plan schema_version must be 1.' }
 if ($planSnapshot.scene_id -ne $SceneId -or $planSnapshot.scene_name -ne $SceneName) { throw 'Marker action plan scene identity does not match the declared capture scene.' }
-if ([string]::IsNullOrWhiteSpace([string]$planSnapshot.initiating_character.character_id)) { throw 'Marker action plan requires initiating_character.character_id.' }
-if ([string]::IsNullOrWhiteSpace([string]$planSnapshot.initiating_character.entity_uuid)) { throw 'Marker action plan requires initiating_character.entity_uuid.' }
+$characterIdKnownProperty = $planSnapshot.initiating_character.PSObject.Properties['character_id_known_before_capture']
+$characterIdKnown = $null -eq $characterIdKnownProperty -or $characterIdKnownProperty.Value -eq $true
+if ($characterIdKnown) {
+    if ([string]::IsNullOrWhiteSpace([string]$planSnapshot.initiating_character.character_id)) { throw 'Marker action plan requires initiating_character.character_id when character_id_known_before_capture is true or omitted.' }
+} else {
+    if ($characterIdKnownProperty.Value -ne $false) { throw 'initiating_character.character_id_known_before_capture must be boolean.' }
+    if ($null -ne $planSnapshot.initiating_character.PSObject.Properties['character_id']) { throw 'Marker action plan must omit initiating_character.character_id when it is not known before capture.' }
+    if ([string]::IsNullOrWhiteSpace([string]$planSnapshot.initiating_character.character_id_acquisition_note)) { throw 'Marker action plan requires initiating_character.character_id_acquisition_note when the character ID is not known before capture.' }
+}
+$entityUuidKnownProperty = $planSnapshot.initiating_character.PSObject.Properties['entity_uuid_known_before_capture']
+$entityUuidKnown = $null -eq $entityUuidKnownProperty -or $entityUuidKnownProperty.Value -eq $true
+if ($entityUuidKnown) {
+    if ([string]::IsNullOrWhiteSpace([string]$planSnapshot.initiating_character.entity_uuid)) { throw 'Marker action plan requires initiating_character.entity_uuid when entity_uuid_known_before_capture is true or omitted.' }
+} else {
+    if ($entityUuidKnownProperty.Value -ne $false) { throw 'initiating_character.entity_uuid_known_before_capture must be boolean.' }
+    if ($null -ne $planSnapshot.initiating_character.PSObject.Properties['entity_uuid']) { throw 'Marker action plan must omit initiating_character.entity_uuid when it is not known before capture.' }
+    if ([string]::IsNullOrWhiteSpace([string]$planSnapshot.initiating_character.entity_uuid_acquisition_note)) { throw 'Marker action plan requires initiating_character.entity_uuid_acquisition_note when the instance entity UUID is not known before capture.' }
+}
 $plannedActions = @($planSnapshot.actions)
 if ($plannedActions.Count -lt 1 -or $plannedActions.Count -gt 6) { throw 'Marker action plan must contain 1 through 6 actions.' }
 $plannedActionCount = $plannedActions.Count
@@ -170,7 +212,17 @@ for ($index = 0; $index -lt $plannedActionCount; $index++) {
     if ($action.marker_identity.slot_number -ne $expectedMarker) { throw "Marker $expectedMarker identity must bind slot_number $expectedMarker." }
     if ([string]::IsNullOrWhiteSpace([string]$action.marker_identity.icon_id) -and [string]::IsNullOrWhiteSpace([string]$action.marker_identity.icon_name)) { throw "Marker $expectedMarker identity requires icon_id or icon_name." }
     if ($action.target.kind -eq 'ground') {
-        foreach ($axis in @('x','y','z')) { if (-not (Test-FiniteNumber $action.target.coordinates.$axis)) { throw "Ground target for marker $expectedMarker requires finite x/y/z coordinates." } }
+        $coordinatesKnownProperty = $action.target.PSObject.Properties['coordinates_known_before_capture']
+        $coordinatesProperty = $action.target.PSObject.Properties['coordinates']
+        $coordinatesKnown = $null -eq $coordinatesKnownProperty -or $coordinatesKnownProperty.Value -eq $true
+        if ($coordinatesKnown) {
+            if ($null -eq $coordinatesProperty) { throw "Ground target for marker $expectedMarker requires finite x/y/z coordinates when coordinates_known_before_capture is true or omitted." }
+            foreach ($axis in @('x','y','z')) { if (-not (Test-FiniteNumber $coordinatesProperty.Value.$axis)) { throw "Ground target for marker $expectedMarker requires finite x/y/z coordinates when coordinates_known_before_capture is true or omitted." } }
+        } else {
+            if ($coordinatesKnownProperty.Value -ne $false) { throw "Ground target for marker $expectedMarker coordinates_known_before_capture must be boolean." }
+            if ([string]::IsNullOrWhiteSpace([string]$action.target.placement_description)) { throw "Ground target for marker $expectedMarker requires placement_description when coordinates are not known before capture." }
+            if ($null -ne $coordinatesProperty) { throw "Ground target for marker $expectedMarker must omit coordinates when coordinates are not known before capture." }
+        }
     } elseif ($action.target.kind -eq 'actor') {
         if ([string]::IsNullOrWhiteSpace([string]$action.target.target_id)) { throw "Actor target for marker $expectedMarker requires target_id." }
     } else { throw "Marker $expectedMarker target kind must be ground or actor." }
@@ -183,7 +235,8 @@ $captureLauncher = Join-Path $PSScriptRoot 'capture-client-host.ps1'
 $captureArguments = @('-NoProfile','-NonInteractive','-File',$captureLauncher,'-OutputDirectory',$outputRoot,'-CaptureId',$CaptureId,'-ClientIp',$ClientIp,'-Interface',$Interface,'-DurationSeconds',[string]$DurationSeconds,'-CapturePurpose','marker-audit','-TransportMode','all-ip','-DumpcapPath',$DumpcapPath,'-TsharkPath',$TsharkPath)
 $hostExecutable = (Get-Process -Id $PID).Path
 $captureCommandLine = (($captureArguments | ForEach-Object { ConvertTo-WindowsCommandLineArgument ([string]$_) }) -join ' ')
-$identity = [ordered]@{game_build=$GameBuild;executable_path=$resolvedExecutable;executable_version=[System.Diagnostics.FileVersionInfo]::GetVersionInfo($resolvedExecutable).FileVersion;executable_bytes=(Get-Item -LiteralPath $resolvedExecutable).Length;executable_sha256=$initialExecutableHash;build_file_manifest_path=$resolvedBuildManifest;build_file_manifest_sha256=$initialBuildManifestHash;build_file_manifest_entry=$manifestExecutable[0];protocol_pack_path=$resolvedPack;protocol_pack_id=$pack.pack_id;protocol_pack_target=$pack.target;protocol_pack_file_sha256=$initialPackHash;protocol_pack_digest=$ProtocolPackDigest;test_only_identity_fixture=$isTestFixture}
+$protocolAuthority = if ($RawCaptureWithUnverifiedProtocolCarryForward) { [ordered]@{kind='unverified-carry-forward-decoder-hypothesis';source_build=$ProtocolPackSourceBuild;captured_build=$GameBuild;exact_for_captured_build=$false;runtime_authority=$false} } else { [ordered]@{kind='exact-build-protocol-pack';source_build=$GameBuild;captured_build=$GameBuild;exact_for_captured_build=$true;runtime_authority=$true} }
+$identity = [ordered]@{game_build=$GameBuild;identity_mode=$(if ($RawCaptureWithUnverifiedProtocolCarryForward) {'raw-capture-unverified-protocol-carry-forward'} else {'exact-build'});executable_path=$resolvedExecutable;executable_version=[System.Diagnostics.FileVersionInfo]::GetVersionInfo($resolvedExecutable).FileVersion;executable_bytes=(Get-Item -LiteralPath $resolvedExecutable).Length;executable_sha256=$initialExecutableHash;build_file_manifest_path=$resolvedBuildManifest;build_file_manifest_sha256=$initialBuildManifestHash;build_file_manifest_entry=$(if ($manifestExecutable.Count -eq 1) {$manifestExecutable[0]} else {$null});distribution_snapshot_path=$resolvedDistributionSnapshot;distribution_snapshot_sha256=$initialDistributionSnapshotHash;protocol_pack_path=$resolvedPack;protocol_pack_id=$pack.pack_id;protocol_pack_target=$pack.target;protocol_pack_file_sha256=$initialPackHash;protocol_pack_digest=$ProtocolPackDigest;protocol_pack_authority=$protocolAuthority;test_only_identity_fixture=$isTestFixture}
 
 if ($DryRun) {
     [ordered]@{schema_version=2;capture_purpose='marker-audit';starts_before_placement=$true;capture_filter="host $ClientIp";transport_mode='all-ip';capture_scope='explicit-client-ipv4-superset-including-process-owned-flow-changes';scene=[ordered]@{id=$SceneId;name=$SceneName};initiating_character=$planSnapshot.initiating_character;identity=$identity;action_plan=[ordered]@{path=$resolvedPlan;sha256=$initialPlanHash;snapshot=$planSnapshot};planned_marker_order=@($plannedActions|ForEach-Object{$_.marker_number});duration_seconds=$DurationSeconds;pre_placement_idle_seconds=$PrePlacementIdleSeconds;marker_spacing_seconds=$MarkerSpacingSeconds;response_window_seconds=$ResponseWindowSeconds;post_placement_idle_seconds=$PostPlacementIdleSeconds;post_engagement_seconds=$PostEngagementSeconds;capture_path=$capturePath;connections_path=$connectionsPath;transports_path=$transportsPath;actions_path=$actionsPath;session_path=$sessionPath;capture_command=[ordered]@{executable=$hostExecutable;arguments=$captureArguments;windows_command_line=$captureCommandLine}} | ConvertTo-Json -Depth 100
@@ -250,7 +303,10 @@ try {
     $captureProcess.WaitForExit()
     if ($captureProcess.ExitCode -ne 0) { throw "Capture launcher exited with code $($captureProcess.ExitCode)." }
 
-    foreach ($pair in @(@($resolvedExecutable,$initialExecutableHash),@($resolvedPack,$initialPackHash),@($resolvedPlan,$initialPlanHash),@($resolvedBuildManifest,$initialBuildManifestHash))) { if ((Get-Sha256 $pair[0]) -cne $pair[1]) { throw "Capture input changed after start: $($pair[0])" } }
+    $frozenInputs = @(@($resolvedExecutable,$initialExecutableHash),@($resolvedPack,$initialPackHash),@($resolvedPlan,$initialPlanHash))
+    if ($null -ne $resolvedBuildManifest) { $frozenInputs += ,@($resolvedBuildManifest,$initialBuildManifestHash) }
+    if ($null -ne $resolvedDistributionSnapshot) { $frozenInputs += ,@($resolvedDistributionSnapshot,$initialDistributionSnapshotHash) }
+    foreach ($pair in $frozenInputs) { if ((Get-Sha256 $pair[0]) -cne $pair[1]) { throw "Capture input changed after start: $($pair[0])" } }
     $reparsedPlan = Get-Content -LiteralPath $resolvedPlan -Raw | ConvertFrom-Json | ConvertTo-Json -Compress -Depth 100
     $snapshotJson = $planSnapshot | ConvertTo-Json -Compress -Depth 100
     if ($reparsedPlan -cne $snapshotJson) { throw 'Parsed marker action plan changed after capture start.' }
@@ -294,7 +350,7 @@ try {
         $flowWindows += [ordered]@{marker_number=$index + 1;placement_start_epoch_seconds=$startEpoch;placement_completed_epoch_seconds=$actionEndEpoch;response_window_end_epoch_seconds=$endEpoch;ordered_bidirectional_flows=$matchedFlows}
     }
 
-    foreach ($pair in @(@($resolvedExecutable,$initialExecutableHash),@($resolvedPack,$initialPackHash),@($resolvedPlan,$initialPlanHash),@($resolvedBuildManifest,$initialBuildManifestHash))) { if ((Get-Sha256 $pair[0]) -cne $pair[1]) { throw "Capture input changed before final manifest: $($pair[0])" } }
+    foreach ($pair in $frozenInputs) { if ((Get-Sha256 $pair[0]) -cne $pair[1]) { throw "Capture input changed before final manifest: $($pair[0])" } }
     if ((Get-Content -LiteralPath $resolvedPlan -Raw | ConvertFrom-Json | ConvertTo-Json -Compress -Depth 100) -cne $snapshotJson) { throw 'Parsed marker action plan changed before final manifest.' }
     $partialActions.status = 'complete'
     $partialActions.action_flow_windows = $flowWindows

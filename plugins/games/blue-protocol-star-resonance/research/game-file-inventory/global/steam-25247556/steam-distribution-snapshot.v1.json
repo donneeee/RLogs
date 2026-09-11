@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "tools/bpsr-steam-patch-gate.mjs",
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "app": {
+    "appId": "3681810",
+    "name": "Blue Protocol: Star Resonance",
+    "buildId": "25247556",
+    "targetBuildId": "25247556",
+    "lastUpdatedUnix": null,
+    "updateResult": "0",
+    "stateFlags": "4"
+  },
+  "installedDepots": [
+    {
+      "depotId": "3681812",
+      "manifestId": "7180571405598795233",
+      "sizeBytes": 42057758070
+    }
+  ],
+  "steamDbHint": {
+    "authority": "routing-only-unofficial-third-party",
+    "changeNumber": null,
+    "observedBuildId": null,
+    "lastRecordUpdate": null,
+    "sourceUrl": "https://steamdb.info/app/3681810/"
+  },
+  "authority": {
+    "steamDb": "early-change-notification-only",
+    "steamAppManifest": "installed-distribution-identity",
+    "sentinelHashes": "installed-file-change-routing",
+    "extractedSemanticRows": "mechanics-and-attribution-proof",
+    "packetReplay": "runtime-behavior-proof"
+  },
+  "privacy": {
+    "absoluteInstallPathsStored": false,
+    "steamOwnerIdStored": false,
+    "accountDataStored": false
+  },
+  "sentinels": [
+    {
+      "id": "native-code",
+      "relativePath": "bpsr/GameAssembly.dll",
+      "routesTo": "protocol-and-native-schema",
+      "present": true,
+      "usable": true,
+      "bytes": 218074672,
+      "sha256": "4a079aec0a3e51a8023aa86bbd152e12068907b65b9aafb355d20bb6d6c41fe3"
+    },
+    {
+      "id": "il2cpp-metadata",
+      "relativePath": "bpsr/BPSR_STEAM_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "routesTo": "protocol-and-native-schema",
+      "present": true,
+      "usable": false,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "id": "package-index",
+      "relativePath": "bpsr/files.meta3",
+      "routesTo": "game-data-content",
+      "present": true,
+      "usable": true,
+      "bytes": 98943,
+      "sha256": "6a6c76928519f4dccc6b4d5653af6d6771a9f893eb45e6dfc1d87e785b34b6df"
+    },
+    {
+      "id": "unity-bootstrap",
+      "relativePath": "bpsr/BPSR_STEAM_Data/globalgamemanagers",
+      "routesTo": "unity-runtime-metadata",
+      "present": true,
+      "usable": true,
+      "bytes": 913572,
+      "sha256": "9b9539bf7f70f13d3cef3a5f06de29ce1272ff2e50d451b724ab4a823bf29e47"
+    },
+    {
+      "id": "unity-resources",
+      "relativePath": "bpsr/BPSR_STEAM_Data/resources.assets",
+      "routesTo": "presentation-or-embedded-resources",
+      "present": true,
+      "usable": true,
+      "bytes": 5973748,
+      "sha256": "83c9d53f385e5b0eae711af4855c02216ff3224bcf303bcc96bc3f01a21f256d"
+    }
+  ],
+  "routingFingerprintSha256": "236bd858949ed41d66ab172415f0497d500e3911fefd6ed00ae965333fe67b7b"
+}

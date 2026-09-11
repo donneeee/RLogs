@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "tools/bpsr-steam-patch-gate.mjs",
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "baselineBuildId": "24687926",
+  "candidateBuildId": "25247556",
+  "buildChanged": true,
+  "depotChanges": [
+    {
+      "depotId": "3681812",
+      "baseline": {
+        "depotId": "3681812",
+        "manifestId": "6121914903992649526",
+        "sizeBytes": 41914914585
+      },
+      "candidate": {
+        "depotId": "3681812",
+        "manifestId": "7180571405598795233",
+        "sizeBytes": 42057758070
+      }
+    }
+  ],
+  "sentinelChanges": [
+    {
+      "id": "native-code",
+      "routesTo": "protocol-and-native-schema",
+      "baselineSha256": "4ba9e3f194bfd1769e57e3f12d192208e4d34db04374636738dfc9d5525495a4",
+      "candidateSha256": "4a079aec0a3e51a8023aa86bbd152e12068907b65b9aafb355d20bb6d6c41fe3"
+    },
+    {
+      "id": "package-index",
+      "routesTo": "game-data-content",
+      "baselineSha256": "aa36e4b15d17cdca5e4e5950f5287a213b5e3fb1bb8b40bbff8921c6610c6aef",
+      "candidateSha256": "6a6c76928519f4dccc6b4d5653af6d6771a9f893eb45e6dfc1d87e785b34b6df"
+    },
+    {
+      "id": "unity-bootstrap",
+      "routesTo": "unity-runtime-metadata",
+      "baselineSha256": "a13e02ad7a219a8ff334bf3d450c7ba60f5bb29b47d486d67ff83aeefd27ee75",
+      "candidateSha256": "9b9539bf7f70f13d3cef3a5f06de29ce1272ff2e50d451b724ab4a823bf29e47"
+    },
+    {
+      "id": "unity-resources",
+      "routesTo": "presentation-or-embedded-resources",
+      "baselineSha256": "afb865e47ee97a523c0b33af3ad4060b15853a0549e61ca6f8dfdc712ab92c56",
+      "candidateSha256": "83c9d53f385e5b0eae711af4855c02216ff3224bcf303bcc96bc3f01a21f256d"
+    }
+  ],
+  "routes": [
+    "game-data-content",
+    "presentation-or-embedded-resources",
+    "protocol-and-native-schema",
+    "unity-runtime-metadata"
+  ],
+  "verdict": "installed-change-run-routed-extraction",
+  "requiredActions": [
+    "rerun-il2cpp-and-protobuf-schema-extraction",
+    "audit-versioned-protocol-pack-and-decoder-migration",
+    "extract-game-tables-once",
+    "run-seasonal-domain-semantic-diff",
+    "regenerate-only-changed-domain-derived-ledgers",
+    "audit-unity-runtime-and-scene-bootstrap-metadata",
+    "refresh-localization-and-icon-reference-assets",
+    "do-not-reset-proven-rdps-rules-whose-exact-inputs-are-unchanged"
+  ],
+  "policy": {
+    "steamDbNeverMechanicsAuthority": true,
+    "depotManifestNeverMechanicsAuthority": true,
+    "noRuntimeRuleAutoPromotion": true,
+    "semanticRowDiffRequiredAfterExtraction": true,
+    "packetReplayRequiredForBehaviorChanges": true
+  }
+}

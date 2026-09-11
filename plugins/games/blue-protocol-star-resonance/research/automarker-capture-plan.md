@@ -1,8 +1,17 @@
 # Native automarker protocol capture plan
 
-Status: **unresolved for global Steam build 24687926**. RLogs may preview a
+Status: **unresolved for global Steam builds 24687926 and 25247556**. RLogs may preview a
 reviewed assignment, but it must not claim or attempt native placement until
 the game protocol below is proven from a controlled capture.
+
+Steam build `25247556` was installed on 2026-09-11. Its exact distribution
+snapshot and executable hash may authorize a raw evidence capture. The
+`24687926` protocol pack may be attached only as an explicitly unverified
+carry-forward decoder hypothesis; it is not exact-build or runtime authority
+for `25247556`. Use `-RawCaptureWithUnverifiedProtocolCarryForward`,
+`-DistributionSnapshotPath`, and `-ProtocolPackSourceBuild 24687926` for that
+mode. Raw packet evidence remains valid even if the older decoder rejects the
+new stream.
 
 ## Evidence already available
 
@@ -125,7 +134,11 @@ windows, and interactively timestamps the visible result of one through six
 sequential markers beginning with marker `1`.
 It also fails if the capture ends before its post-engagement state window.
 It requires a schema-1 action plan with the exact scene, initiating character,
-expected action, marker/icon identity, and a ground coordinate for every marker.
+expected action, marker/icon identity, and either a known ground coordinate or
+an explicit placement description when the coordinate must be learned from the
+packet. Character and instance entity identifiers may likewise be marked
+unknown before capture with acquisition notes when they must be resolved from
+the authenticated or dungeon-entry state retained by the capture.
 It also requires the installed game executable, the
 repository-reviewed complete installed-file manifest for that exact build that
 authorizes its hash and byte length,
@@ -163,8 +176,9 @@ Example action plan (keep real actor identifiers and coordinates private):
 
 1. Capture the client that can successfully place markers through the normal
    game UI. No separate leader-identity capture is required. Start already
-   authenticated and inside the chosen dungeon, and record its exact name,
-   difficulty, and scene ID.
+   authenticated but **before entering the chosen dungeon**, so the dungeon
+   World connection and any transport migration begin inside the capture.
+   Record the dungeon's exact name, difficulty, and scene ID after entry.
 2. Record 10-15 seconds of idle traffic before the first placement. Note the
    exact installed build, scene ID, character and current actor/entity
    identities, and a synchronized wall-clock time.

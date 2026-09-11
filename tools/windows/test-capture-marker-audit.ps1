@@ -48,6 +48,69 @@ try {
     $singleMarkerDryRun = & $launcher @singleMarkerCommon | ConvertFrom-Json
     if (($singleMarkerDryRun.planned_marker_order -join ',') -ne '1') { throw 'Single-marker proof plan was not accepted.' }
 
+    $unknownCoordinatePlanPath = Join-Path $fixtureRoot 'unknown-coordinate-plan.json'
+    $unknownCoordinateAction = [ordered]@{marker_number=1;marker_identity=[ordered]@{slot_number=1;icon_id='marker-1';icon_name='Marker 1'};expected_action='place marker 1';target=[ordered]@{kind='ground';coordinates_known_before_capture=$false;placement_description='Place marker 1 at the visible center of the boss arena.'}}
+    $unknownCoordinatePlan = [ordered]@{schema_version=1;scene_id=1633;scene_name='Tina M1';initiating_character=$plan.initiating_character;actions=@($unknownCoordinateAction)}
+    [System.IO.File]::WriteAllText($unknownCoordinatePlanPath, ($unknownCoordinatePlan|ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
+    $unknownCoordinateCommon = $common.Clone()
+    $unknownCoordinateCommon.ActionPlanPath = $unknownCoordinatePlanPath
+    $unknownCoordinateDryRun = & $launcher @unknownCoordinateCommon | ConvertFrom-Json
+    if ($unknownCoordinateDryRun.action_plan.snapshot.actions[0].target.coordinates_known_before_capture -ne $false -or $unknownCoordinateDryRun.action_plan.snapshot.actions[0].target.placement_description -notlike 'Place marker 1*') { throw 'Unknown pre-capture ground coordinate was not retained as an explicit described placement.' }
+
+    $unknownEntityPlanPath = Join-Path $fixtureRoot 'unknown-entity-plan.json'
+    $unknownEntityCharacter = [ordered]@{character_id='test-character';entity_uuid_known_before_capture=$false;entity_uuid_acquisition_note='Resolve the instance entity UUID from the captured dungeon-entry state.'}
+    $unknownEntityPlan = [ordered]@{schema_version=1;scene_id=1633;scene_name='Tina M1';initiating_character=$unknownEntityCharacter;actions=@($unknownCoordinateAction)}
+    [System.IO.File]::WriteAllText($unknownEntityPlanPath, ($unknownEntityPlan|ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
+    $unknownEntityCommon = $common.Clone()
+    $unknownEntityCommon.ActionPlanPath = $unknownEntityPlanPath
+    $unknownEntityDryRun = & $launcher @unknownEntityCommon | ConvertFrom-Json
+    if ($unknownEntityDryRun.initiating_character.entity_uuid_known_before_capture -ne $false -or $unknownEntityDryRun.initiating_character.entity_uuid_acquisition_note -notlike 'Resolve the instance*') { throw 'Unknown pre-entry entity UUID was not retained with its acquisition note.' }
+
+    $unknownCharacterPlanPath = Join-Path $fixtureRoot 'unknown-character-plan.json'
+    $unknownCharacter = [ordered]@{character_id_known_before_capture=$false;character_id_acquisition_note='Resolve the stable character ID from captured authenticated state.';entity_uuid_known_before_capture=$false;entity_uuid_acquisition_note='Resolve the instance entity UUID from captured dungeon-entry state.'}
+    $unknownCharacterPlan = [ordered]@{schema_version=1;scene_id=1633;scene_name='Tina M1';initiating_character=$unknownCharacter;actions=@($unknownCoordinateAction)}
+    [System.IO.File]::WriteAllText($unknownCharacterPlanPath, ($unknownCharacterPlan|ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
+    $unknownCharacterCommon = $common.Clone()
+    $unknownCharacterCommon.ActionPlanPath = $unknownCharacterPlanPath
+    $unknownCharacterDryRun = & $launcher @unknownCharacterCommon | ConvertFrom-Json
+    if ($unknownCharacterDryRun.initiating_character.character_id_known_before_capture -ne $false -or $unknownCharacterDryRun.initiating_character.character_id_acquisition_note -notlike 'Resolve the stable*') { throw 'Unknown character ID was not retained with its acquisition note.' }
+
+    $rawSnapshotPath = Join-Path $fixtureRoot 'test-only-distribution-snapshot.json'
+    $rawSnapshot = [ordered]@{schemaVersion=1;game='capture-harness-test-fixture';authority=[ordered]@{test_only=$true};app=[ordered]@{buildId='25247556';targetBuildId='25247556'};installedDepots=@([ordered]@{depotId='3681812';manifestId='test';sizeBytes=1})}
+    [System.IO.File]::WriteAllText($rawSnapshotPath, ($rawSnapshot|ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
+    $rawCommon = $unknownCoordinateCommon.Clone()
+    [void]$rawCommon.Remove('BuildFileManifestPath')
+    $rawCommon.GameBuild = '25247556'
+    $rawCommon.DistributionSnapshotPath = $rawSnapshotPath
+    $rawCommon.ProtocolPackSourceBuild = '24687926'
+    $rawCommon.RawCaptureWithUnverifiedProtocolCarryForward = $true
+    $rawDryRun = & $launcher @rawCommon | ConvertFrom-Json
+    if ($rawDryRun.identity.identity_mode -ne 'raw-capture-unverified-protocol-carry-forward') { throw 'Raw capture identity mode was not retained.' }
+    if ($rawDryRun.identity.protocol_pack_authority.kind -ne 'unverified-carry-forward-decoder-hypothesis' -or $rawDryRun.identity.protocol_pack_authority.source_build -ne '24687926' -or $rawDryRun.identity.protocol_pack_authority.captured_build -ne '25247556' -or $rawDryRun.identity.protocol_pack_authority.exact_for_captured_build -ne $false -or $rawDryRun.identity.protocol_pack_authority.runtime_authority -ne $false) { throw 'Prior-build decoder hypothesis gained exact or runtime authority.' }
+    if ($rawDryRun.identity.distribution_snapshot_sha256 -ne (Get-TestSha256 $rawSnapshotPath) -or $null -ne $rawDryRun.identity.build_file_manifest_path) { throw 'Raw capture did not bind only the exact distribution snapshot.' }
+
+    $rawMissingSource = $rawCommon.Clone()
+    [void]$rawMissingSource.Remove('ProtocolPackSourceBuild')
+    $rawMissingSourceRejected = $false
+    try { & $launcher @rawMissingSource | Out-Null } catch { $rawMissingSourceRejected = $_.Exception.Message -like 'Raw carry-forward capture requires ProtocolPackSourceBuild*' }
+    if (-not $rawMissingSourceRejected) { throw 'Raw capture accepted a protocol pack without an explicit prior source build.' }
+
+    $rawSameBuild = $rawCommon.Clone()
+    $rawSameBuild.GameBuild = '24687926'
+    $rawSameBuildRejected = $false
+    try { & $launcher @rawSameBuild | Out-Null } catch { $rawSameBuildRejected = $_.Exception.Message -like 'Raw carry-forward capture requires a prior protocol-pack source build distinct*' }
+    if (-not $rawSameBuildRejected) { throw 'Raw capture mislabeled an exact-build pack as prior-build carry-forward.' }
+
+    $unknownWithoutDescriptionPath = Join-Path $fixtureRoot 'unknown-without-description-plan.json'
+    $unknownWithoutDescriptionPlan = Get-Content -LiteralPath $unknownCoordinatePlanPath -Raw | ConvertFrom-Json
+    $unknownWithoutDescriptionPlan.actions[0].target.placement_description = ''
+    [System.IO.File]::WriteAllText($unknownWithoutDescriptionPath, ($unknownWithoutDescriptionPlan|ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
+    $unknownWithoutDescriptionCommon = $common.Clone()
+    $unknownWithoutDescriptionCommon.ActionPlanPath = $unknownWithoutDescriptionPath
+    $unknownWithoutDescriptionRejected = $false
+    try { & $launcher @unknownWithoutDescriptionCommon | Out-Null } catch { $unknownWithoutDescriptionRejected = $_.Exception.Message -like 'Ground target for marker 1 requires placement_description*' }
+    if (-not $unknownWithoutDescriptionRejected) { throw 'Unknown pre-capture coordinate without a placement description was accepted.' }
+
     $emptyPlanPath = Join-Path $fixtureRoot 'empty-plan.json'
     [System.IO.File]::WriteAllText($emptyPlanPath, ([ordered]@{schema_version=1;scene_id=1633;scene_name='Tina M1';initiating_character=$plan.initiating_character;actions=@()}|ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
     $emptyPlanCommon = $common.Clone()
