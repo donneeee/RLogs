@@ -148,6 +148,30 @@ staging and inspect the retained receipts. Directly editing the `reports` pointe
 is not a supported rollback. Forward publication remains paused until that
 staging exercise is recorded.
 
+The transaction layer has a reproducible, production-isolated rehearsal under
+`services/submissions/cloudflare-verifier`. Run
+`npm run test:backfill-rehearsal` after `npm ci --ignore-scripts`. The command
+first rejects any rehearsal configuration that names the production D1 or R2
+resources, then creates a new system-temporary Wrangler persistence directory,
+applies the authoritative backend migrations with `wrangler d1 migrations apply
+--local`, and starts the dedicated local-only Worker configuration. That Worker
+validates a synthetic schema-17/projection-12/timeline-8 candidate with the
+production backfill validator, executes the real guarded forward publication
+against Miniflare D1 and R2, inserts an exact pending rollback request, and lets
+the real scheduled rollback consumer claim and restore it. Its JSON receipt
+records the forward and restored pointers, catalog and membership restoration,
+both reconciliation wake groups, retained content-addressed object digests,
+projection-version count, foreign-key check, and a SHA-256 over the receipt
+payload. The verifier test suite executes this rehearsal in CI.
+
+This isolated receipt exercises the real D1 batch and R2 object semantics but
+does not replay a retained production artifact or start the hosted verifier
+container. It therefore advances the rollback transaction gate without
+releasing the compile-time publication pause and does not replace the final
+canary using an isolated deployed staging verifier. No production credential is
+read, no remote Wrangler command is issued, and the ephemeral state is removed
+after every run.
+
 The repository workflow `.github/workflows/deploy-cloudflare.yml` is the
 production deployment path. It tests and deploys the private Worker first,
 deploys the Pages gateway second, and then runs

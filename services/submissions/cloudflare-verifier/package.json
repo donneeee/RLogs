@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
+    "test:backfill-rehearsal": "node tools/run-backfill-rollout-rehearsal.mjs",
     "deploy": "wrangler deploy"
   },
   "dependencies": {

@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rlogs-backfill-rehearsal-isolated",
+  "main": "tools/backfill-rollout-rehearsal-worker.js",
+  "compatibility_date": "2026-09-04",
+  "workers_dev": false,
+  "d1_databases": [
+    {
+      "binding": "RLOGS_DB",
+      "database_name": "rlogs-backfill-rehearsal-isolated",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "../cloudflare-backend/migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "RLOGS_ARTIFACTS",
+      "bucket_name": "rlogs-backfill-rehearsal-isolated"
+    }
+  ]
+}
