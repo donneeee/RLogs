@@ -3061,8 +3061,10 @@ mod tests {
 
     #[test]
     fn stable_map_labels_do_not_require_runtime_identity() {
-        let mut projector = MechanicsMapProjector::default();
-        projector.scene_id = Some(6_565);
+        let mut projector = MechanicsMapProjector {
+            scene_id: Some(6_565),
+            ..Default::default()
+        };
         assert_eq!(
             projector.snapshot().scene_name.as_deref(),
             Some("Chaotic - Sea-Ringed Reef")
