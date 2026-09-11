@@ -1458,10 +1458,17 @@ export function mountCombatHistorySurface(
     const trueTime = run.views.find((candidate) => candidate.id === "true_time");
 
     const summary = element("section", "content-card combat-history-run-summary");
+    const contextKicker = element("span", "run-report-kicker", detail.region_id);
+    if (run.scene_id !== null) {
+      contextKicker.dataset.sceneId = String(run.scene_id);
+      contextKicker.title = ui.t("ui.combat_history.identity.scene_evidence", {
+        scene: ui.formatNumber(run.scene_id),
+      });
+    }
     summary.append(
       element("div", "combat-history-title",
         element("div", "",
-          element("span", "run-report-kicker", `${detail.region_id} · Scene ${run.scene_id ?? "?"}`),
+          contextKicker,
           element("h2", "", activityLabel(run)),
           element("p", "", runStatusLabel(run, run.terminal_state)),
         ),
@@ -2259,6 +2266,7 @@ export function mountCombatHistorySurface(
       const hidden = hiddenGraphActors.has(actor.actor_id);
       control.dataset.hidden = String(hidden);
       control.dataset.actorKind = graphActorKind(actor);
+      control.setAttribute("aria-pressed", String(!hidden));
       control.style.setProperty(
         "--series-color",
         actorColors.get(actor.actor_id) ?? graphColor(index),

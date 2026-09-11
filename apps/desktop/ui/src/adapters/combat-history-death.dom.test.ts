@@ -1,13 +1,20 @@
 // @vitest-environment happy-dom
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 
 import { loadUiLocalizer } from "../localization/ui-locale";
-import type { CombatHistoryView, HistoryActorSummary, HistoryDeathEvent } from "./combat-history";
+import type {
+  CombatHistoryCatalog,
+  CombatHistorySnapshot,
+  CombatHistoryView,
+  HistoryActorSummary,
+  HistoryDeathEvent,
+} from "./combat-history";
 import {
   historyDeathMarker,
   historyDeathSummary,
+  mountCombatHistorySurface,
   renderMetricGraph,
   wireHistoryDeathSummaries,
 } from "./combat-history-surface";
@@ -140,6 +147,121 @@ describe("Combat History death presentation", () => {
     expect(hidden.querySelector(".combat-history-death-marker")).toBeNull();
     expect(hidden.querySelector(".combat-history-status-span")).toBeNull();
     expect(hidden.querySelector(".combat-history-event-lanes")).toBeNull();
+  });
+
+  it("uses the real legend toggle to hide and restore both the graph trace and player event lane", async () => {
+    const ui = await loadUiLocalizer("en-US");
+    const actor = {
+      actor_id: "alice", entity_uuid: "101", monster_id: null, character_id: "501",
+      display_name: "Alice", actor_kind: "player", presentation_name: "Alice",
+      presentation_kind: "player", class_id: null, specialization_id: null,
+      presentation_class_name: null, presentation_specialization_name: null,
+      icon_asset_path: null, presentation_role: null, presentation_accent: null,
+      level: null, ability_score: null, weapon_item_id: null, weapon_breakthrough_count: null,
+      weapon_icon_asset_path: null, weapon_presentation_name: null, weapon_level: null,
+      weapon_level_min: null, weapon_level_max: null, weapon_badge_kind: null,
+      seasonal_score: null, primary_loadout: [], auxiliary_loadout: [],
+      damage: 100, effective_damage: 100, damage_taken: 0, healing: 0,
+      effective_healing: 0, shielding: 0, hits: 1, critical_hits: 0, deaths: 1,
+      death_seconds: [], death_events: [death()],
+      skill_events: [{ at_micros: 1_250_000, ability_id: "2233" }],
+      status_events: [], dps: 25, encounter_dps: 25, hps: 0, tps: 0,
+      rdps: null, rdps_damage: null, rdps_contribution_given: null,
+      rdps_contribution_received: null, rdps_incomplete: true, apm: null,
+      observed_cast_events: 1,
+      abilities: [{
+        ability_id: "2233", presentation_name: "Powerdraw", presentation_kind: "skill",
+        presentation_resolution: "localized-action", icon_asset_path: null,
+        presentation_recount_group_id: null, presentation_recount_group_name: null,
+        damage: 100, effective_damage: 100, damage_taken: 0, healing: 0,
+        effective_healing: 0, shielding: 0, hits: 1, critical_hits: 0, casts: 1,
+        targets: [], effects: [],
+      }],
+      targets: [], effects: [],
+      series: [{ second: 0, damage: 100, effective_healing: 0, damage_taken: 0 }],
+    } as unknown as HistoryActorSummary;
+    const view = {
+      id: "all", label: "Entire run", kind: "run", segment_indices: [0],
+      elapsed_micros: 4_000_000, active_combat_micros: 4_000_000,
+      rate_clock: [], rate_clock_complete: false, actors: [actor], targets: [], hostile_casts: [],
+      damage_influences: [], rdps_effect_presentations: [], status_effect_presentations: [],
+    } as CombatHistoryView;
+    const snapshot = {
+      schema_version: 1, session_id: "session-1", deployment_id: "global", region_id: "global",
+      world_id: null, client_build: "24687926", protocol_pack_digest: "pack",
+      rdps_formula_identity: null,
+      runs: [{
+        run_index: 0, activity_id: "scene.1", activity_family_id: null, scene_id: 1,
+        presentation_scene_name: "Test Run", instance_id: "instance-1", difficulty_family: null,
+        difficulty_tier: null, terminal_state: "completed", entered_micros: 0,
+        started_micros: 0, first_combat_micros: 0, ended_micros: 4_000_000,
+        load_time_micros: 0, precombat_time_micros: 0, total_run_time_micros: 4_000_000,
+        game_time_micros: 4_000_000, true_time_micros: 4_000_000, retry_count: 0,
+        boss_retry_count: 0, wipe_count: 0, cleared_encounter_count: 1,
+        last_encounter_terminal_state: "completed", rdps_status: "unavailable",
+        apm_status: "unavailable", views: [view],
+      }],
+    } as CombatHistorySnapshot;
+    const catalog = {
+      schema_version: 1,
+      entries: [{
+        history_id: "history-1", is_favorite: false, session_id: "session-1", run_index: 0,
+        captured_unix_millis: 1, activity_id: "scene.1", activity_family_id: null,
+        scene_id: 1, presentation_scene_name: "Test Run", difficulty_family: null,
+        difficulty_tier: null, terminal_state: "completed", game_time_micros: 4_000_000,
+        total_run_time_micros: 4_000_000, active_combat_micros: 4_000_000, player_count: 1,
+        deployment_id: "global", client_build: "24687926", protocol_pack_digest: "pack",
+        region_id: "global", world_id: null, team_damage: 100, team_dps: 25,
+        team_encounter_dps: 25, true_time_micros: 4_000_000, retry_count: 0,
+        boss_retry_count: 0, wipe_count: 0, cleared_encounter_count: 1,
+        last_encounter_terminal_state: "completed", participants: [actor],
+      }],
+    } as unknown as CombatHistoryCatalog;
+    vi.stubGlobal("Option", function Option(text = "", value = "") {
+      const option = document.createElement("option");
+      option.text = text;
+      option.value = value;
+      return option;
+    });
+    const container = document.createElement("main");
+    document.body.append(container);
+    const mounted = mountCombatHistorySurface(container, async () => catalog, async () => snapshot, ui);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      container.querySelector<HTMLElement>(".combat-history-run-button")!.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      let toggle = container.querySelector<HTMLButtonElement>(".combat-history-series-toggle")!;
+      expect(toggle, container.textContent ?? "").not.toBeNull();
+      const contextKicker = container.querySelector<HTMLElement>(".run-report-kicker")!;
+      expect(contextKicker.textContent).toBe("global");
+      expect(contextKicker.title).toBe("Scene ID 1");
+      expect(contextKicker.dataset.sceneId).toBe("1");
+      expect(toggle.getAttribute("aria-pressed")).toBe("true");
+      expect(container.querySelector(".combat-history-character-line")).not.toBeNull();
+      expect(container.querySelector(".combat-history-player-event-lane")).not.toBeNull();
+      expect(container.querySelector(".combat-history-skill-event")).not.toBeNull();
+      expect(container.querySelector(".combat-history-death-marker")).not.toBeNull();
+      expect(container.querySelector("[data-timeline-play]")).toBeNull();
+
+      toggle.click();
+      toggle = container.querySelector<HTMLButtonElement>(".combat-history-series-toggle")!;
+      expect(toggle.getAttribute("aria-pressed")).toBe("false");
+      expect(container.querySelector(".combat-history-character-line")).toBeNull();
+      expect(container.querySelector(".combat-history-player-event-lane")).toBeNull();
+      expect(container.querySelector(".combat-history-skill-event")).toBeNull();
+      expect(container.querySelector(".combat-history-death-marker")).toBeNull();
+
+      toggle.click();
+      toggle = container.querySelector<HTMLButtonElement>(".combat-history-series-toggle")!;
+      expect(toggle.getAttribute("aria-pressed")).toBe("true");
+      expect(container.querySelector(".combat-history-character-line")).not.toBeNull();
+      expect(container.querySelector(".combat-history-player-event-lane")).not.toBeNull();
+    } finally {
+      mounted.dispose();
+      container.remove();
+      vi.unstubAllGlobals();
+    }
   });
 
   it("keeps the participant event lane when the selected metric has no trace", async () => {
