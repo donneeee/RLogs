@@ -160,6 +160,7 @@ struct OverlayCanvasWindowState {
     applied_layout_revision: AtomicU64,
     requested: AtomicBool,
     pending_interactive: AtomicU8,
+    interactive: AtomicBool,
     force_edit_until_acknowledged: AtomicBool,
     lifecycle: Mutex<()>,
 }
@@ -177,6 +178,7 @@ impl OverlayCanvasWindowState {
             } else {
                 INTERACTIVITY_ENABLED
             }),
+            interactive: AtomicBool::new(false),
             force_edit_until_acknowledged: AtomicBool::new(false),
             lifecycle: Mutex::new(()),
         }
@@ -587,6 +589,9 @@ fn reveal_overlay_canvas_if_ready_locked(
         .get_webview_window("overlay-canvas")
         .ok_or_else(|| "Overlay Canvas is unavailable; restart rLogs".to_owned())?;
     show_combat_overlay_without_activation(&window)?;
+    if state.interactive.load(Ordering::Acquire) {
+        window.set_focus().map_err(|error| error.to_string())?;
+    }
     window
         .emit("overlay-canvas-show-requested", ())
         .map_err(|error| error.to_string())
@@ -598,10 +603,12 @@ fn set_overlay_canvas_interactive(
     state: tauri::State<'_, OverlayCanvasWindowState>,
     interactive: bool,
 ) -> Result<(), String> {
-    if !queue_reported_overlay_canvas_interactivity(&state, interactive) {
-        return Ok(());
-    }
-    apply_pending_overlay_canvas_interactivity(&app, &state)
+    serialize_overlay_canvas_lifecycle(&state, || {
+        if !queue_reported_overlay_canvas_interactivity(&state, interactive) {
+            return Ok(());
+        }
+        apply_pending_overlay_canvas_interactivity(&app, &state)
+    })
 }
 
 fn apply_pending_overlay_canvas_interactivity(
@@ -612,13 +619,53 @@ fn apply_pending_overlay_canvas_interactivity(
         let window = app
             .get_webview_window("overlay-canvas")
             .ok_or_else(|| "Overlay Canvas is unavailable; restart rLogs".to_owned())?;
-        window
-            .set_ignore_cursor_events(!interactive)
-            .map_err(|error| error.to_string())?;
-        window
-            .emit("overlay-canvas-interactivity", interactive)
-            .map_err(|error| error.to_string())
+        let previous = state.interactive.load(Ordering::Acquire);
+        apply_overlay_canvas_input_mode_with(
+            previous,
+            interactive,
+            |focusable| {
+                window
+                    .set_focusable(focusable)
+                    .map_err(|error| error.to_string())
+            },
+            |ignore| {
+                window
+                    .set_ignore_cursor_events(ignore)
+                    .map_err(|error| error.to_string())
+            },
+            |value| {
+                window
+                    .emit("overlay-canvas-interactivity", value)
+                    .map_err(|error| error.to_string())
+            },
+        )?;
+        state.interactive.store(interactive, Ordering::Release);
+        Ok(())
     })
+}
+
+fn apply_overlay_canvas_input_mode_with(
+    previous: bool,
+    interactive: bool,
+    mut set_focusable: impl FnMut(bool) -> Result<(), String>,
+    mut set_ignore_cursor_events: impl FnMut(bool) -> Result<(), String>,
+    emit: impl FnOnce(bool) -> Result<(), String>,
+) -> Result<(), String> {
+    let result = if interactive {
+        set_focusable(true)
+            .and_then(|()| set_ignore_cursor_events(false))
+            .and_then(|()| emit(true))
+    } else {
+        set_ignore_cursor_events(true)
+            .and_then(|()| set_focusable(false))
+            .and_then(|()| emit(false))
+    };
+    if let Err(error) = result {
+        let _ = set_focusable(previous);
+        let _ = set_ignore_cursor_events(!previous);
+        return Err(error);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1671,7 +1718,7 @@ mod tests {
     use super::{
         HotkeyInstallPolicy, OverlayCanvasWindowState, OverlayFocusPolicyDebounce,
         OverlayFocusWindowState, acknowledge_overlay_canvas_interactivity_state,
-        acknowledge_overlay_canvas_layout_revision,
+        acknowledge_overlay_canvas_layout_revision, apply_overlay_canvas_input_mode_with,
         apply_pending_overlay_canvas_interactivity_with, combat_overlay_damage_started,
         combat_overlay_health_status, combat_overlay_hostile_activity_started,
         combat_overlay_renderer_is_stale, combat_overlay_should_be_visible,
@@ -1981,6 +2028,109 @@ mod tests {
         assert!(state.requested.load(Ordering::Acquire));
         assert!(durable.load(Ordering::Acquire));
         assert!(visible.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn serialized_interactivity_requests_apply_the_newest_state_last() {
+        let state = Arc::new(OverlayCanvasWindowState::default());
+        state.ready.store(true, Ordering::Release);
+        state.layout_initialized.store(true, Ordering::Release);
+        let applied = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+
+        let edit_state = Arc::clone(&state);
+        let edit_applied = Arc::clone(&applied);
+        let edit = std::thread::spawn(move || {
+            serialize_overlay_canvas_lifecycle(&edit_state, || {
+                queue_overlay_canvas_interactivity(&edit_state, true);
+                entered_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+                apply_pending_overlay_canvas_interactivity_with(&edit_state, |interactive| {
+                    edit_applied.lock().unwrap().push(interactive);
+                    Ok(())
+                })
+                .unwrap();
+            });
+        });
+        entered_rx.recv().unwrap();
+
+        let passive_state = Arc::clone(&state);
+        let passive_applied = Arc::clone(&applied);
+        let passive = std::thread::spawn(move || {
+            serialize_overlay_canvas_lifecycle(&passive_state, || {
+                queue_overlay_canvas_interactivity(&passive_state, false);
+                apply_pending_overlay_canvas_interactivity_with(&passive_state, |interactive| {
+                    passive_applied.lock().unwrap().push(interactive);
+                    Ok(())
+                })
+                .unwrap();
+            });
+        });
+
+        release_tx.send(()).unwrap();
+        edit.join().unwrap();
+        passive.join().unwrap();
+        assert_eq!(*applied.lock().unwrap(), [true, false]);
+    }
+
+    #[test]
+    fn editor_input_mode_enables_focus_before_pointer_input() {
+        let events = std::cell::RefCell::new(Vec::new());
+        apply_overlay_canvas_input_mode_with(
+            false,
+            true,
+            |value| {
+                events.borrow_mut().push(format!("focus:{value}"));
+                Ok(())
+            },
+            |value| {
+                events.borrow_mut().push(format!("ignore:{value}"));
+                Ok(())
+            },
+            |value| {
+                events.borrow_mut().push(format!("emit:{value}"));
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            events.into_inner(),
+            ["focus:true", "ignore:false", "emit:true"]
+        );
+    }
+
+    #[test]
+    fn failed_input_mode_transition_rolls_focus_and_pointer_routing_back() {
+        let events = std::cell::RefCell::new(Vec::new());
+        let error = apply_overlay_canvas_input_mode_with(
+            false,
+            true,
+            |value| {
+                events.borrow_mut().push(format!("focus:{value}"));
+                Ok(())
+            },
+            |value| {
+                events.borrow_mut().push(format!("ignore:{value}"));
+                Ok(())
+            },
+            |value| {
+                events.borrow_mut().push(format!("emit:{value}"));
+                Err("event delivery failed".to_owned())
+            },
+        )
+        .unwrap_err();
+        assert_eq!(error, "event delivery failed");
+        assert_eq!(
+            events.into_inner(),
+            [
+                "focus:true",
+                "ignore:false",
+                "emit:true",
+                "focus:false",
+                "ignore:true"
+            ]
+        );
     }
 
     #[test]

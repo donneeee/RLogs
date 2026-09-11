@@ -137,6 +137,8 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     styles.textContent = readFileSync("src/styles/shell.css", "utf8");
     document.head.append(styles);
     const shared = layout();
+    shared.setups.default!.modules.map!.opacity = 0.43;
+    shared.setups.default!.modules.player!.opacity = 0.61;
     const hide = vi.fn(async () => undefined);
     const acknowledgeInteractivity = vi.fn(async () => undefined);
     const setInteractive = vi.fn(async () => undefined);
@@ -174,6 +176,14 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     const player = container.querySelector<HTMLElement>(".player-frame-overlay-runtime")!;
     const resize = container.querySelector<HTMLElement>(".mechanics-map-overlay-resize")!;
     expect(root.dataset.locked).toBe("false");
+    expect(["transparent", "rgba(0, 0, 0, 0)"]).not.toContain(
+      getComputedStyle(root).backgroundColor,
+    );
+    expect(["transparent", "rgba(0, 0, 0, 0)"]).not.toContain(
+      getComputedStyle(map).backgroundColor,
+    );
+    expect(map.style.opacity).toBe("0.43");
+    expect(player.style.opacity).toBe("0.61");
 
     const select = container.querySelector("select")!;
     const editorEscape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
@@ -204,13 +214,20 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       expect(["", "none"]).toContain(computed.boxShadow);
       expect(["", "none"]).toContain(computed.backdropFilter);
     }
-    expect(["transparent", "rgba(0, 0, 0, 0)"]).not.toContain(
-      getComputedStyle(map).backgroundColor,
-    );
+    for (const module of container.querySelectorAll<HTMLElement>(
+      ".mechanics-map-overlay-runtime, .player-frame-overlay-runtime, .action-controls-overlay-runtime, .party-frame-overlay-runtime, .target-frame-overlay-runtime, .dungeon-objectives-overlay-runtime, .mechanic-alerts-overlay-runtime",
+    )) {
+      const computed = getComputedStyle(module);
+      expect(["", "transparent", "rgba(0, 0, 0, 0)"]).toContain(computed.backgroundColor);
+      expect(["", "0px"]).toContain(computed.borderWidth);
+      expect(["", "none"]).toContain(computed.boxShadow);
+    }
+    expect(map.style.opacity).toBe("0.43");
+    expect(player.style.opacity).toBe("0.61");
     await vi.waitFor(() => expect(saveLayout).toHaveBeenCalled());
     const saved = saveLayout.mock.calls[0]![0];
     expect(saved.setups.default!.locked).toBe(true);
-    expect(saved.setups.default!.modules).toEqual(layout().setups.default!.modules);
+    expect(saved.setups.default!.modules).toEqual(shared.setups.default!.modules);
 
     interactivityHandler?.(true);
     await vi.waitFor(() => expect(root.dataset.locked).toBe("false"));
