@@ -191,7 +191,7 @@ async function migrationPauseFixture(dryRun) {
   return { artifactReads, result, writes };
 }
 
-test("the v7 publication pause rejects a publishing batch before replay", async () => {
+test("the current-tuple publication pause rejects a publishing batch before replay", async () => {
   const { artifactReads, result, writes } = await migrationPauseFixture(0);
   assert.deepEqual(result, {
     claimed: true, rejected: true, permanent: true, code: PROJECTION_BACKFILL_PAUSE_CODE,
@@ -204,7 +204,7 @@ test("the v7 publication pause rejects a publishing batch before replay", async 
     values.includes(PROJECTION_BACKFILL_PAUSE_DETAIL)), true);
 });
 
-test("a bounded dry-run records eligibility while v7 publication remains paused", async () => {
+test("a bounded dry-run records eligibility while current-tuple publication remains paused", async () => {
   const { artifactReads, result, writes } = await migrationPauseFixture(1);
   assert.deepEqual(result, { claimed: true, completed: true, inspected: 1 });
   assert.equal(artifactReads, 1);
@@ -273,8 +273,10 @@ test("operator workflow removes enqueue controls while manual deploy and the pau
   assert.match(workflow, /npx wrangler deploy --var "VERIFIER_RELEASE:/u);
   assert.doesNotMatch(workflow, /projection_backfill|BACKFILL_MODE|projection_backfill_batches/u);
   assert.ok(workflow.indexOf("npm run db:migrate:remote") < workflow.indexOf("VERIFIER_RELEASE:${{ github.sha }}"));
-  assert.match(worker, /PROJECTION_BACKFILL_PAUSE_CODE = "migration_paused_v7"/u);
-  assert.match(worker, /schema 17 \/ projection 11 \/ timeline 7/u);
+  assert.equal(PROJECTION_BACKFILL_PAUSE_CODE, "migration_paused_v8");
+  assert.match(PROJECTION_BACKFILL_PAUSE_DETAIL, /schema 17 \/ projection 12 \/ timeline 8/u);
+  assert.match(worker, /BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION/u);
+  assert.doesNotMatch(worker, /projection 11|timeline 7/u);
   assert.match(worker, /state='rejected',[\s\S]+failure_code=\?2,[\s\S]+return \{[\s\S]+permanent: true/u);
   assert.match(worker, /INSERT INTO report_projection_versions/u);
   assert.match(worker, /UPDATE reports SET run_group_id=\?6,[\s\S]+DELETE FROM report_runs/u);

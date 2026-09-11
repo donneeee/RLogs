@@ -1,6 +1,7 @@
 -- Preserve the immutable schema-15 backfill audit while admitting an explicit
--- schema-17 request. The verifier pins projection revision 11 and timeline
--- schema 7; publishing remains paused until an operator intentionally enables it.
+-- schema-17 request. The verifier independently pins the exact current
+-- projection/timeline tuple; publishing remains paused until an operator
+-- intentionally enables it.
 --
 -- All three tables are rebuilt as one deferred-FK unit because batches are
 -- referenced by jobs and jobs are referenced by projection versions. Replacing

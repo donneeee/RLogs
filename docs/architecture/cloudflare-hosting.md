@@ -89,9 +89,10 @@ Backend production deployment is blocked unless all of the following are true:
 
 Schema-12 public replay reports are upgraded only by an operator-created,
 bounded projection-backfill batch. The accepted destination is the exact current
-public tuple: report schema 17, projection revision 11, and combat timeline
-schema 7. Timeline 7 carries the exact player skill-use lane plus bounded,
-exactly observed hostile cast starts without inferred boss or action labels.
+public tuple: report schema 17, projection revision 12, and combat timeline
+schema 8. Timeline 8 carries exact player skill-use and complete status-lifecycle
+lanes plus bounded, exactly observed hostile cast starts without inferred boss
+or action labels.
 Migration `0009_projection_backfill_schema17.sql` admits that report-schema target
 without deleting the earlier schema-15 audit rows. Deploying the migration or
 Worker does not enqueue, discover, or replay a report: the Worker-side pause is
@@ -111,16 +112,16 @@ than replaying blindly.
 
 Run-group reconciliation is regenerated for the union of the prior and new run
 group IDs after a successful report publication. The hosted reconciler accepts
-only schema-17/revision-11 source projections, so a group that is partway through
+only schema-17/revision-12 source projections, so a group that is partway through
 the upgrade cannot publish a mixed reconciliation. The reconciliation publish
 transaction also guards the complete source set and every source pointer. Public
 reads repeat those source and cardinality checks, making the previous pointer
 invisible as soon as its source set is stale; after the last member is upgraded,
-the final wake-up can publish the timeline-7 reconciliation.
+the final wake-up can publish the timeline-8 reconciliation.
 
-Changing an older immutable schema-17 revision-9 or revision-10 report from
+Changing an older immutable schema-17 revision-9, revision-10, or revision-11 report from
 unlisted to public remains supported, but that visibility change does not wake
-the revision-11 reconciliation flow. Only an exact current revision-11
+the revision-12 reconciliation flow. Only an exact current revision-12
 projection schedules those current run-group jobs.
 
 Before advancing a pointer, the forward transaction now seals the prior

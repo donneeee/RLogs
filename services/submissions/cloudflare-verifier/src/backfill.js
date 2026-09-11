@@ -1,5 +1,6 @@
 import {
-  BACKFILL_SOURCE_SCHEMA_VERSION, BACKFILL_TARGET_SCHEMA_VERSION,
+  BACKFILL_SOURCE_SCHEMA_VERSION, BACKFILL_TARGET_PROJECTION_REVISION,
+  BACKFILL_TARGET_SCHEMA_VERSION, BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION,
   catalogEntry, compatibleProfileName, isSchema12BackfillCandidate,
   runOneShotVerifier, sameChunkCommitments, validateBackfillOutput,
 } from "./core.js";
@@ -10,9 +11,12 @@ const DIGEST = /^[a-f0-9]{64}$/;
 const LEASE_MILLIS = 15 * 60 * 1000;
 const MAX_REPORT_RUNS = 64;
 const MAX_REPORT_MEMBERSHIPS = 128;
-export const PROJECTION_BACKFILL_PAUSE_CODE = "migration_paused_v7";
+export const PROJECTION_BACKFILL_PAUSE_CODE =
+  `migration_paused_v${BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION}`;
 export const PROJECTION_BACKFILL_PAUSE_DETAIL =
-  "projection publication is staged for schema 17 / projection 11 / timeline 7 but remains paused pending an explicit operator rollout";
+  `projection publication is staged for schema ${BACKFILL_TARGET_SCHEMA_VERSION} / ` +
+  `projection ${BACKFILL_TARGET_PROJECTION_REVISION} / timeline ${BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION} ` +
+  "but remains paused pending an explicit operator rollout";
 export const PROJECTION_BACKFILL_MIGRATION_PAUSED = true;
 
 async function first(env, sql, ...values) {

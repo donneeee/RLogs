@@ -43,8 +43,10 @@ function exactSkillTimeline({
     contributing_report_ids: reportIds,
     duration_micros: 2_000_000,
     participant_tracks: [
-      { actor_id: "actor-1", omitted_skill_uses: 0 },
-      { actor_id: "actor-2", omitted_skill_uses: 1 },
+      { actor_id: "actor-1", canonical_participant_index: 0, series_point_count: 1,
+        omitted_skill_uses: 0 },
+      { actor_id: "actor-2", canonical_participant_index: 1, series_point_count: 2,
+        omitted_skill_uses: 1 },
     ],
     clock_anchor: {
       at_micros: 0,
@@ -67,7 +69,7 @@ function exactSkillTimeline({
       }],
       omitted_evidence: 0,
     }],
-    omitted: { skill_uses: 1 },
+    omitted: { skill_uses: 1, participant_tracks: 0, series_points: 0 },
   };
 }
 
@@ -310,6 +312,23 @@ test("historical backfill is pinned to the exact current public timeline tuple",
   assert.equal(BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION, 8);
 });
 
+test("hosted verifier rollout tuple matches the Rust projection producer", async () => {
+  const rust = await readFile(new URL("../../src/lib.rs", import.meta.url), "utf8");
+  const rustConstant = (name) => {
+    const match = rust.match(new RegExp(`pub const ${name}: u16 = (\\d+);`, "u"));
+    assert.ok(match, `missing Rust projection constant ${name}`);
+    return Number(match[1]);
+  };
+
+  assert.equal(BACKFILL_TARGET_SCHEMA_VERSION, rustConstant("PUBLIC_PARSE_SCHEMA_VERSION"));
+  assert.equal(BACKFILL_TARGET_PROJECTION_REVISION,
+    rustConstant("PUBLIC_PARSE_PROJECTION_REVISION"));
+  assert.equal(BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION,
+    rustConstant("PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION"));
+  assert.equal(STATUS_SPAN_RECONCILIATION_SCHEMA_VERSION,
+    rustConstant("PUBLIC_RECONCILIATION_SCHEMA_VERSION"));
+});
+
 test("backfill output can add schema fields but cannot change identity, owner, visibility, or evidence", () => {
   const submitter = "usr_fixture";
   const row = {
@@ -511,7 +530,24 @@ test("completed reconciliation requires replay-authored status, conservation, an
     attribution_replay_completed: true,
     complete_local_vantage_coverage: true,
     rdps_status: "partial_packet_proven_rules",
-    reconciled_participants: [{ actor_id: "1", rdps_incomplete: false }],
+    reconciled_participants: [
+      {
+        actor_id: "actor-1", damage: 60, rdps_damage: 70,
+        contribution_given: 10, contribution_received: 0, rdps_incomplete: false,
+        series: [{ second: 0, damage: 60, effective_healing: 0, damage_taken: 0,
+          rdps_damage: 70, rdps_contribution_given: 10, rdps_contribution_received: 0 }],
+      },
+      {
+        actor_id: "actor-2", damage: 40, rdps_damage: 30,
+        contribution_given: 0, contribution_received: 10, rdps_incomplete: false,
+        series: [
+          { second: 0, damage: 30, effective_healing: 0, damage_taken: 0,
+            rdps_damage: 20, rdps_contribution_given: 0, rdps_contribution_received: 10 },
+          { second: 1, damage: 10, effective_healing: 0, damage_taken: 0,
+            rdps_damage: 10, rdps_contribution_given: 0, rdps_contribution_received: 0 },
+        ],
+      },
+    ],
     conservation: {
       raw_damage: 100,
       rdps_damage: 100,
@@ -529,10 +565,32 @@ test("completed reconciliation requires replay-authored status, conservation, an
         { second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 500_000 },
         { second: 1, edps_elapsed_micros: 2_000_000, adps_elapsed_micros: 1_500_000 },
       ],
-      omitted: { rate_clock_points: 0 },
+      participant_tracks: [
+        { actor_id: "actor-1", canonical_participant_index: 0, series_point_count: 1 },
+        { actor_id: "actor-2", canonical_participant_index: 1, series_point_count: 2 },
+      ],
+      omitted: { rate_clock_points: 0, participant_tracks: 0, series_points: 0 },
     },
   };
   assert.equal(validateReconciliationOutput(output, "run_exact", sources), true);
+  const wrongPlayerTrack = structuredClone(output);
+  wrongPlayerTrack.timeline.participant_tracks[0].canonical_participant_index = 1;
+  assert.equal(validateReconciliationOutput(wrongPlayerTrack, "run_exact", sources), false);
+  const forgedParticipantTotal = structuredClone(output);
+  forgedParticipantTotal.reconciled_participants[0].rdps_damage += 1;
+  assert.equal(validateReconciliationOutput(forgedParticipantTotal, "run_exact", sources), false);
+  const duplicateRangeBucket = structuredClone(output);
+  duplicateRangeBucket.reconciled_participants[0].series.push(
+    structuredClone(duplicateRangeBucket.reconciled_participants[0].series[0]),
+  );
+  assert.equal(validateReconciliationOutput(duplicateRangeBucket, "run_exact", sources), false);
+  const nonconservedRangeBuckets = structuredClone(output);
+  const recipientSeries = nonconservedRangeBuckets.reconciled_participants[1].series;
+  recipientSeries[0].rdps_damage = 30;
+  recipientSeries[0].rdps_contribution_received = 0;
+  recipientSeries[1].rdps_damage = 0;
+  recipientSeries[1].rdps_contribution_received = 10;
+  assert.equal(validateReconciliationOutput(nonconservedRangeBuckets, "run_exact", sources), false);
   const incompleteCoverageClaimingExact = {
     ...output,
     complete_local_vantage_coverage: false,
@@ -540,7 +598,9 @@ test("completed reconciliation requires replay-authored status, conservation, an
   assert.equal(validateReconciliationOutput(incompleteCoverageClaimingExact, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({
     ...incompleteCoverageClaimingExact,
-    reconciled_participants: [{ ...output.reconciled_participants[0], rdps_incomplete: true }],
+    reconciled_participants: output.reconciled_participants.map((participant) => ({
+      ...participant, rdps_incomplete: true,
+    })),
   }, "run_exact", sources), true);
   assert.equal(validateReconciliationOutput({
     ...output,

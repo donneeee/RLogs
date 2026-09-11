@@ -345,6 +345,8 @@ export const RECONCILIATION_SCHEMA_VERSION = 19;
 export const UPCOMING_RECONCILIATION_SCHEMA_VERSION = 20;
 export const STATUS_SPAN_RECONCILIATION_SCHEMA_VERSION = 21;
 const MAXIMUM_TIMELINE_RATE_CLOCK_POINTS = 262_144;
+const MAXIMUM_TIMELINE_PARTICIPANTS = 256;
+const MAXIMUM_TIMELINE_SERIES_POINTS = 262_144;
 
 function validConservedReplay(value) {
   return Number.isSafeInteger(value?.raw_damage) && Number.isSafeInteger(value?.rdps_damage) &&
@@ -381,6 +383,113 @@ function validReplayRateClock(timeline) {
     }
     return valid;
   });
+}
+
+function checkedSafeSum(values) {
+  let total = 0;
+  for (const value of values) {
+    if (!Number.isSafeInteger(value)) return null;
+    total += value;
+    if (!Number.isSafeInteger(total)) return null;
+  }
+  return total;
+}
+
+// Range graphs resolve each timeline track back into reconciled_participants.
+// Validate that indirection and the complete sparse bucket ledger together so
+// a conserved encounter total cannot conceal duplicated buckets, a player
+// mapping swap, or provider/recipient transfers that change with a toggle.
+function validReconciledRangeProjection(participants, timeline, conservation) {
+  if (!Array.isArray(participants) || participants.length === 0 ||
+      !Array.isArray(timeline?.participant_tracks) ||
+      !Number.isSafeInteger(timeline?.series_bucket_micros) || timeline.series_bucket_micros <= 0 ||
+      !Number.isSafeInteger(timeline?.duration_micros) || timeline.duration_micros < 0 ||
+      !nonNegativeSafeInteger(timeline.omitted?.participant_tracks) ||
+      !nonNegativeSafeInteger(timeline.omitted?.series_points)) return false;
+
+  const actorIds = new Set();
+  const bucketTotals = new Map();
+  let rawDamage = 0;
+  let rdpsDamage = 0;
+  let contributionGiven = 0;
+  let contributionReceived = 0;
+  const expectedBuckets = Math.ceil(timeline.duration_micros / timeline.series_bucket_micros);
+
+  for (const participant of participants) {
+    if (!boundedIdentifierText(participant?.actor_id) || actorIds.has(participant.actor_id) ||
+        !nonNegativeSafeInteger(participant.damage) ||
+        !nonNegativeSafeInteger(participant.rdps_damage) ||
+        !nonNegativeSafeInteger(participant.contribution_given) ||
+        !nonNegativeSafeInteger(participant.contribution_received) ||
+        !Array.isArray(participant.series)) return false;
+    actorIds.add(participant.actor_id);
+
+    const seconds = new Set();
+    let previousSecond = -1;
+    for (const point of participant.series) {
+      if (!nonNegativeSafeInteger(point?.second) || point.second >= expectedBuckets ||
+          point.second <= previousSecond || seconds.has(point.second) ||
+          !nonNegativeSafeInteger(point.damage) ||
+          !nonNegativeSafeInteger(point.rdps_damage) ||
+          !nonNegativeSafeInteger(point.rdps_contribution_given) ||
+          !nonNegativeSafeInteger(point.rdps_contribution_received)) return false;
+      previousSecond = point.second;
+      seconds.add(point.second);
+      const bucket = bucketTotals.get(point.second) ?? [0, 0, 0, 0];
+      const next = bucket.map((total, index) => total + [
+        point.damage, point.rdps_damage,
+        point.rdps_contribution_given, point.rdps_contribution_received,
+      ][index]);
+      if (!next.every(Number.isSafeInteger)) return false;
+      bucketTotals.set(point.second, next);
+    }
+
+    const participantSums = [
+      checkedSafeSum(participant.series.map((point) => point.damage)),
+      checkedSafeSum(participant.series.map((point) => point.rdps_damage)),
+      checkedSafeSum(participant.series.map((point) => point.rdps_contribution_given)),
+      checkedSafeSum(participant.series.map((point) => point.rdps_contribution_received)),
+    ];
+    if (participantSums.some((sum) => sum === null) ||
+        participantSums[0] !== participant.damage || participantSums[1] !== participant.rdps_damage ||
+        participantSums[2] !== participant.contribution_given ||
+        participantSums[3] !== participant.contribution_received ||
+        participant.rdps_damage !== participant.damage + participant.contribution_given -
+          participant.contribution_received) return false;
+
+    rawDamage += participant.damage;
+    rdpsDamage += participant.rdps_damage;
+    contributionGiven += participant.contribution_given;
+    contributionReceived += participant.contribution_received;
+    if (![rawDamage, rdpsDamage, contributionGiven, contributionReceived].every(Number.isSafeInteger)) return false;
+  }
+
+  if ([rawDamage, rdpsDamage, contributionGiven, contributionReceived].some((total, index) =>
+    total !== [conservation.raw_damage, conservation.rdps_damage,
+      conservation.contribution_given, conservation.contribution_received][index])) return false;
+  for (const [raw, rdps, given, received] of bucketTotals.values()) {
+    if (raw !== rdps || given !== received) return false;
+  }
+
+  const keptParticipantCount = Math.min(participants.length, MAXIMUM_TIMELINE_PARTICIPANTS);
+  if (timeline.participant_tracks.length !== keptParticipantCount ||
+      timeline.omitted.participant_tracks !== participants.length - keptParticipantCount) return false;
+  let remainingSeriesPoints = MAXIMUM_TIMELINE_SERIES_POINTS;
+  let omittedSeriesPoints = 0;
+  for (let index = 0; index < participants.length; index += 1) {
+    const seriesLength = participants[index].series.length;
+    if (index < keptParticipantCount) {
+      const track = timeline.participant_tracks[index];
+      const kept = Math.min(seriesLength, remainingSeriesPoints);
+      if (track?.canonical_participant_index !== index ||
+          track.actor_id !== participants[index].actor_id || track.series_point_count !== kept) return false;
+      remainingSeriesPoints -= kept;
+      omittedSeriesPoints += seriesLength - kept;
+    } else {
+      omittedSeriesPoints += seriesLength;
+    }
+  }
+  return timeline.omitted.series_points === omittedSeriesPoints;
 }
 
 export function validateReconciliationOutput(value, runGroupId, sources) {
@@ -437,7 +546,9 @@ export function validateReconciliationOutput(value, runGroupId, sources) {
     typeof value.complete_local_vantage_coverage === "boolean" &&
     (value.complete_local_vantage_coverage || value.reconciled_participants.every((participant) =>
       participant?.rdps_incomplete === true)) &&
-    validConservedReplay(value.conservation) && validReplayRateClock(value.timeline);
+    validConservedReplay(value.conservation) &&
+    validReconciledRangeProjection(value.reconciled_participants, value.timeline, value.conservation) &&
+    validReplayRateClock(value.timeline);
 }
 
 export function reconcileCatalogEntry(entry, result, sourceCount, distinctSubmitterCount) {
