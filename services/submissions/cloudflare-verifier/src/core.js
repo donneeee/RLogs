@@ -328,6 +328,9 @@ export function validateReconciliationOutput(value, runGroupId, sources) {
   return value.status === "reconciled" && typeof value.rdps_status === "string" &&
     value.rdps_status.trim().length > 0 && value.rdps_status.length <= 4_096 &&
     Array.isArray(value.reconciled_participants) && value.reconciled_participants.length > 0 &&
+    typeof value.complete_local_vantage_coverage === "boolean" &&
+    (value.complete_local_vantage_coverage || value.reconciled_participants.every((participant) =>
+      participant?.rdps_incomplete === true)) &&
     validConservedReplay(value.conservation) && validReplayRateClock(value.timeline);
 }
 

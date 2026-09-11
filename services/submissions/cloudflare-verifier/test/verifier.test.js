@@ -398,8 +398,9 @@ test("completed reconciliation requires replay-authored status, conservation, an
       protocol_pack_digest: "sha256:pack",
     })),
     attribution_replay_completed: true,
+    complete_local_vantage_coverage: true,
     rdps_status: "partial_packet_proven_rules",
-    reconciled_participants: [{ actor_id: "1" }],
+    reconciled_participants: [{ actor_id: "1", rdps_incomplete: false }],
     conservation: {
       raw_damage: 100,
       rdps_damage: 100,
@@ -421,6 +422,15 @@ test("completed reconciliation requires replay-authored status, conservation, an
     },
   };
   assert.equal(validateReconciliationOutput(output, "run_exact", sources), true);
+  const incompleteCoverageClaimingExact = {
+    ...output,
+    complete_local_vantage_coverage: false,
+  };
+  assert.equal(validateReconciliationOutput(incompleteCoverageClaimingExact, "run_exact", sources), false);
+  assert.equal(validateReconciliationOutput({
+    ...incompleteCoverageClaimingExact,
+    reconciled_participants: [{ ...output.reconciled_participants[0], rdps_incomplete: true }],
+  }, "run_exact", sources), true);
   assert.equal(validateReconciliationOutput({
     ...output,
     schema_version: UPCOMING_RECONCILIATION_SCHEMA_VERSION,

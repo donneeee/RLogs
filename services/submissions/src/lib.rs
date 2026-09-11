@@ -6440,7 +6440,7 @@ fn apply_cross_vantage_replay_result(
     result: CrossVantageReplayResult,
 ) {
     let CrossVantageReplayResult {
-        participants,
+        mut participants,
         death_events,
         conservation,
         rdps_status,
@@ -6452,6 +6452,17 @@ fn apply_cross_vantage_replay_result(
         aligned_profile_observed_micros,
         swift_vortex_candidate_audit,
     } = result;
+
+    // Conservation proves that the transfers authored by this replay balance;
+    // it cannot prove that effects owned by a party member with no local POV
+    // were observed. Keep partial-coverage values available as known subtotals,
+    // but never publish them as complete rDPS.
+    if !reconciliation.complete_local_vantage_coverage {
+        for participant in &mut participants {
+            participant.rdps_incomplete = true;
+            participant.participant.rdps_incomplete = true;
+        }
+    }
 
     if let Some(bounds) = canonical_run_observed_bounds {
         reconciliation.timeline.duration_micros =
@@ -14362,6 +14373,37 @@ mod tests {
         );
         assert!(!provider.rdps_incomplete);
         assert!(!recipient.rdps_incomplete);
+
+        let mut partial_coverage_reconciliation = build_public_reconciliation(&group);
+        assert!(!partial_coverage_reconciliation.complete_local_vantage_coverage);
+        apply_cross_vantage_replay_result(&mut partial_coverage_reconciliation, result.clone());
+        assert!(
+            partial_coverage_reconciliation
+                .reconciled_participants
+                .iter()
+                .all(|participant| participant.rdps_incomplete
+                    && participant.participant.rdps_incomplete),
+            "balanced known subtotals must remain incomplete when party POV coverage is partial"
+        );
+        assert!(
+            partial_coverage_reconciliation
+                .conservation
+                .as_ref()
+                .is_some_and(|conservation| conservation.conserved),
+            "the coverage flag must not discard the independently-auditable conservation receipt"
+        );
+
+        let mut full_coverage_reconciliation = build_public_reconciliation(&group);
+        full_coverage_reconciliation.complete_local_vantage_coverage = true;
+        apply_cross_vantage_replay_result(&mut full_coverage_reconciliation, result.clone());
+        assert!(
+            full_coverage_reconciliation
+                .reconciled_participants
+                .iter()
+                .all(|participant| !participant.rdps_incomplete
+                    && !participant.participant.rdps_incomplete),
+            "complete POV coverage must preserve the reducer's formula-completeness result"
+        );
         let bounds = result.canonical_run_observed_bounds.unwrap();
         assert_eq!(bounds.started_micros, 5);
         assert_eq!(bounds.ended_micros, 60_000);
