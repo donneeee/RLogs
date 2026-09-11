@@ -53,6 +53,9 @@ describe("Combat History death presentation", () => {
     expect(marker.getAttribute("role")).toBe("img");
     expect(marker.getAttribute("aria-label")).toBe(summary);
     expect(marker.style.getPropertyValue("--death-marker-color")).toBe("#35c2ff");
+    expect(marker.querySelector(".combat-history-death-marker-skull")?.tagName.toLowerCase()).toBe("path");
+    expect(marker.querySelector(".combat-history-death-marker-bones")?.tagName.toLowerCase()).toBe("path");
+    expect(marker.textContent).not.toContain("☠");
     expect(marker.querySelector("title")?.textContent).toBe(summary);
   });
 
@@ -65,6 +68,7 @@ describe("Combat History death presentation", () => {
     expect(marker.querySelector(".combat-history-death-marker-hitbox")).not.toBeNull();
     expect(styles).toMatch(/\.combat-history-death-marker-hitbox\s*\{[^}]*fill:\s*transparent;[^}]*stroke:\s*none/su);
     expect(styles).toMatch(/\.combat-history-death-marker-skull\s*\{[^}]*fill:\s*var\(--death-marker-color,\s*#d8cfb4\)/su);
+    expect(styles).toMatch(/\.combat-history-death-marker-bones\s*\{[^}]*stroke:\s*var\(--death-marker-color,\s*#d8cfb4\)/su);
   });
 
   it("keeps participant color and visibility coupled to the matching graph series", async () => {

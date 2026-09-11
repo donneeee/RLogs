@@ -21,6 +21,6 @@ Build a browser package with:
 rustup target add wasm32-unknown-unknown
 cargo build --release --target wasm32-unknown-unknown \
   -p rlogs-bpsr-module-optimizer-wasm
-wasm-bindgen --target web --out-dir <site-output-directory> \
+wasm-bindgen --target web --no-typescript --out-dir <site-output-directory> \
   target/wasm32-unknown-unknown/release/rlogs_bpsr_module_optimizer_wasm.wasm
 ```

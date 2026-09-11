@@ -3729,7 +3729,12 @@ export function historyDeathMarker(
   if (participantColor !== null) group.style.setProperty("--death-marker-color", participantColor);
   group.append(
     svgNode("circle", "combat-history-death-marker-hitbox", { cx: 0, cy: 0, r: 12 }),
-    svgText(0, 5.5, "☠", "combat-history-death-marker-skull", "middle"),
+    svgNode("path", "combat-history-death-marker-bones", {
+      d: "M-7-6L7 7M7-6L-7 7",
+    }),
+    svgNode("path", "combat-history-death-marker-skull", {
+      d: "M-5-3A5 5 0 1 1 5-3C5 0 3 2 2 2V6H-2V2C-3 2-5 0-5-3Z",
+    }),
     svgTitle(summary),
   );
   return group;

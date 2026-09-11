@@ -8173,15 +8173,28 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
 
 .combat-history-death-marker-skull {
   fill: var(--death-marker-color, #d8cfb4);
-  font-family: "Segoe UI Symbol", sans-serif;
-  font-size: 15px;
-  font-weight: 700;
+  stroke: none;
+  filter: drop-shadow(0 0 2px rgb(3 16 20 / 88%));
 }
 
-.combat-history-death-marker:focus-visible .combat-history-death-marker-skull {
+.combat-history-death-marker-bones {
+  fill: none;
+  stroke: var(--death-marker-color, #d8cfb4);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 2px rgb(3 16 20 / 88%));
+}
+
+.combat-history-death-marker:focus-visible .combat-history-death-marker-skull,
+.combat-history-death-marker:focus-visible .combat-history-death-marker-bones {
   stroke: var(--death-marker-color, #d8cfb4);
   stroke-width: 0.8;
   paint-order: stroke fill;
+}
+
+.combat-history-death-marker:focus-visible .combat-history-death-marker-bones {
+  stroke-width: 3;
 }
 
 .combat-history-death-summary {
