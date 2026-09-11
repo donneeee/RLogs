@@ -1,11 +1,13 @@
 import type { MountedSurface } from "../shell/types";
 import type { UiLocalizer } from "../localization/ui-locale";
-import type { AutomarkerLoadResult, AutomarkerPoint, AutomarkerPresetView, AutomarkerPreview } from "./automarker-presets";
+import type { AutomarkerPoint, AutomarkerPresetView, AutomarkerPreview } from "./automarker-presets";
 import { AUTOMARKER_PREVIEW_STORAGE_KEY, automarkerResponseIsCurrent, publishAutomarkerPreview, readActiveAutomarkerPreview } from "./automarker-presets";
 import { activeOverlaySetup, normalizedModuleGeometry, raiseOverlayModule, type OverlayLayoutSettings, type OverlayModuleId } from "./overlay-layout";
 import { LocalHostHttpError } from "../shell/local-host-http";
 import { mountOverlayCanvasControls } from "./overlay-canvas-controls";
 import {
+  activeMechanics,
+  activeMechanicsSnapshot,
   actionControlRemainingMillis,
   fitMechanicsMapCanvasRect,
   mechanicSignalRemainingMillis,
@@ -39,7 +41,9 @@ export interface MechanicsMapOverlayDependencies {
   onLayoutRefresh?(handler: (revision: number) => void): Promise<() => void>;
   onFocusHeld(handler: (held: boolean) => void): Promise<() => void>;
   loadAutomarkerPresets(): Promise<AutomarkerPresetView>;
-  loadAutomarkerPreset(presetId: string): Promise<AutomarkerLoadResult>;
+  // Retained as an optional compatibility seam for older overlay hosts. The
+  // Mechanics Map never invokes native placement.
+  loadAutomarkerPreset?(presetId: string): Promise<unknown>;
   loadLayout(): Promise<OverlayLayoutSettings>;
   saveLayout(settings: OverlayLayoutSettings): Promise<OverlayLayoutSettings>;
 }
@@ -258,7 +262,8 @@ export function mountMechanicsMapOverlay(
   let objectivesTimer: number | null = null;
   let objectivesRenderedAtMillis = 0;
   let alertsTimer: number | null = null;
-  let alertsRenderedAtMillis = 0;
+  let mechanicsRenderedAtMillis = 0;
+  let mechanicsExpiryTimer: number | null = null;
   let automarkerView: AutomarkerPresetView | null = null;
   let automarkerSceneKey = "";
   let automarkerPreview: AutomarkerPreview | null = null;
@@ -749,6 +754,7 @@ export function mountMechanicsMapOverlay(
   function renderState(): void {
     const snapshot = update?.snapshot;
     if (!snapshot) return;
+    mechanicsRenderedAtMillis = performance.now();
     const nextAutomarkerSceneKey = mechanicsMapAutomarkerSnapshotKey(snapshot);
     if (nextAutomarkerSceneKey !== automarkerSceneKey) {
       if (automarkerSceneKey !== "") window.localStorage.removeItem(AUTOMARKER_PREVIEW_STORAGE_KEY);
@@ -776,7 +782,38 @@ export function mountMechanicsMapOverlay(
     renderDungeonObjectives(snapshot);
     renderMechanicAlerts(snapshot);
     renderMapFooter(snapshot);
+    scheduleMechanicsExpiry(snapshot);
     scheduleDraw();
+  }
+
+  function mechanicsElapsedMillis(): number {
+    return Math.max(0, performance.now() - mechanicsRenderedAtMillis);
+  }
+
+  function scheduleMechanicsExpiry(snapshot: MechanicsMapSnapshot): void {
+    if (mechanicsExpiryTimer !== null) {
+      window.clearTimeout(mechanicsExpiryTimer);
+      mechanicsExpiryTimer = null;
+    }
+    const elapsed = mechanicsElapsedMillis();
+    let nearest = Number.POSITIVE_INFINITY;
+    for (const signal of activeMechanics(snapshot, elapsed)) {
+      const remaining = mechanicSignalRemainingMillis(
+        signal,
+        snapshot.last_observed_micros,
+        elapsed,
+      );
+      if (remaining !== null && remaining > 0) nearest = Math.min(nearest, remaining);
+    }
+    if (!Number.isFinite(nearest)) return;
+    mechanicsExpiryTimer = window.setTimeout(() => {
+      mechanicsExpiryTimer = null;
+      if (!alive || update?.snapshot !== snapshot) return;
+      renderMechanicAlerts(snapshot);
+      renderMapFooter(snapshot);
+      scheduleDraw();
+      scheduleMechanicsExpiry(snapshot);
+    }, Math.max(1, Math.ceil(nearest)));
   }
 
   function renderMapAvailability(snapshot: MechanicsMapSnapshot): void {
@@ -810,7 +847,8 @@ export function mountMechanicsMapOverlay(
     mapCoordinates.textContent = local
       ? `X ${formatMechanicsMapCoordinate(local.x, localizer)} · Z ${formatMechanicsMapCoordinate(local.z, localizer)}`
       : "X — · Z —";
-    const mechanicCount = snapshot.mechanics.filter((signal) => signal.mechanic_kind !== null).length;
+    const mechanicCount = activeMechanics(snapshot, mechanicsElapsedMillis())
+      .filter((signal) => signal.mechanic_kind !== null).length;
     const objectiveCount = snapshot.dungeon?.objectives.length ?? 0;
     mapMetrics.textContent = `${formatMechanicsMapZoom(preferences.scale)}× · ${localizer.t("ui.mechanics_map.metrics.summary", {
       entities: localizer.formatNumber(snapshot.entities.length),
@@ -822,7 +860,7 @@ export function mountMechanicsMapOverlay(
   function renderMechanicAlerts(snapshot: MechanicsMapSnapshot): void {
     stopAlertsTimer();
     const nextBody = alertsBody.cloneNode(false) as HTMLElement;
-    const signals = snapshot.mechanics
+    const signals = activeMechanics(snapshot, mechanicsElapsedMillis())
       .filter((signal) => signal.mechanic_kind !== null)
       .slice(-8)
       .reverse();
@@ -833,7 +871,6 @@ export function mountMechanicsMapOverlay(
       reconcileChildren(alertsBody, nextBody);
       return;
     }
-    alertsRenderedAtMillis = performance.now();
     for (const signal of signals) {
       const row = element("article", "mechanic-alerts-overlay-row");
       row.dataset.renderKey = signal.instance_id === null
@@ -867,7 +904,7 @@ export function mountMechanicsMapOverlay(
   }
 
   function updateAlertTimers(): void {
-    const elapsed = performance.now() - alertsRenderedAtMillis;
+    const elapsed = mechanicsElapsedMillis();
     let active = false;
     for (const row of alertsBody.querySelectorAll<HTMLElement>(".mechanic-alerts-overlay-row")) {
       const remaining = mechanicSignalRemainingMillis({
@@ -1393,15 +1430,16 @@ export function mountMechanicsMapOverlay(
     context.translate(width / 2 + preferences.panX, height / 2 + preferences.panY);
     context.scale(preferences.scale, preferences.scale);
     context.translate(-width / 2, -height / 2);
+    const activeSnapshot = activeMechanicsSnapshot(snapshot, mechanicsElapsedMillis());
     const activeImage = image;
-    const content = mechanicsMapContentRect(snapshot, width, height, activeImage);
+    const content = mechanicsMapContentRect(activeSnapshot, width, height, activeImage);
     const readability = mechanicsMapReadabilityProfile(preferences.mapDim, preferences.highContrastMechanics);
-    drawBackdrop(context, snapshot, content, activeImage, readability.mapDim);
+    drawBackdrop(context, activeSnapshot, content, activeImage, readability.mapDim);
     context.save();
     context.translate(content.x, content.y);
     context.scale(content.width / width, content.height / height);
-    drawRegions(context, snapshot, width, height, preferences.highContrastMechanics);
-    drawEntities(context, snapshot, width, height, preferences, automarkerPreview?.points ?? []);
+    drawRegions(context, activeSnapshot, width, height, preferences.highContrastMechanics);
+    drawEntities(context, activeSnapshot, width, height, preferences, automarkerPreview?.points ?? []);
     context.restore();
     context.restore();
   }
@@ -1985,6 +2023,7 @@ export function mountMechanicsMapOverlay(
       canvasControls.dispose();
       if (automarkerPreviewTimer !== null) window.clearInterval(automarkerPreviewTimer);
       if (layoutPollTimer !== null) window.clearInterval(layoutPollTimer);
+      if (mechanicsExpiryTimer !== null) window.clearTimeout(mechanicsExpiryTimer);
       window.localStorage.removeItem(AUTOMARKER_PREVIEW_STORAGE_KEY);
       removeInteractivityListener?.();
       removeLayoutRefreshListener?.();

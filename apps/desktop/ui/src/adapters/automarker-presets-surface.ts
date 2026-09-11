@@ -1,8 +1,9 @@
 import type { MountedSurface } from "../shell/types";
 import type {
-  AutomarkerLoadResult,
+  AutomarkerLocalLoadResult,
   AutomarkerPoint,
   AutomarkerPresetView,
+  LoadAutomarkerPresetRequest,
   SaveAutomarkerPresetRequest,
 } from "./automarker-presets";
 import { AUTOMARKER_PREVIEW_STORAGE_KEY, automarkerResponseIsCurrent, automarkerSaveRequest, newlyCreatedPresetId, publishAutomarkerPreview } from "./automarker-presets";
@@ -10,7 +11,7 @@ import { AUTOMARKER_PREVIEW_STORAGE_KEY, automarkerResponseIsCurrent, automarker
 export interface AutomarkerPresetDependencies {
   loadPresets(): Promise<AutomarkerPresetView>;
   saveCurrent(request: SaveAutomarkerPresetRequest): Promise<AutomarkerPresetView>;
-  loadPreset(presetId: string): Promise<AutomarkerLoadResult>;
+  loadPreset(request: LoadAutomarkerPresetRequest): Promise<AutomarkerLocalLoadResult>;
   openOverlay(): Promise<void>;
 }
 
@@ -59,10 +60,11 @@ export function mountAutomarkerPresetsSurface(
   const controls = el("div", "automarker-controls");
   const save = button("Save", "primary-button");
   const saveAs = button("Save As…", "quiet-button");
-  const preview = button("Preview on map", "quiet-button");
   const load = button("Load", "primary-button");
+  const preview = button("Preview on map", "quiet-button");
+  const placeInGame = button("Place in game", "primary-button");
   const refresh = button("Refresh scene", "quiet-button");
-  controls.append(save, saveAs, preview, load, refresh);
+  controls.append(save, saveAs, load, preview, placeInGame, refresh);
   const status = text("p", "Connecting to the local marker store…", "card-copy automarker-status");
   const detail = el("div", "automarker-preset-detail");
   card.append(nameLabel, presetLabel, editor, controls, status, detail);
@@ -71,11 +73,6 @@ export function mountAutomarkerPresetsSurface(
 
   select.addEventListener("change", () => {
     selectedId = select.value || null;
-    const preset = selectedPreset();
-    if (preset !== undefined) {
-      name.value = preset.name;
-      setEditorPoints(preset.points);
-    }
     render();
   });
   addPoint.addEventListener("click", () => {
@@ -203,17 +200,37 @@ export function mountAutomarkerPresetsSurface(
   }
 
   async function requestLoad(): Promise<void> {
-    if (selectedId === null || view?.nativeLoadSupported !== true) return;
+    if (selectedId === null || view?.context === null || view === null) return;
+    const requestedPresetId = selectedId;
+    const requestedContextKey = automarkerPresetContextKey(view);
+    const requestedPreviewSessionId = view.previewSessionId;
+    const expectedContext = { ...view.context };
+    const requestGeneration = ++catalogRequestGeneration;
     busy = true;
     render();
     try {
-      const result = await dependencies.loadPreset(selectedId);
-      status.textContent = result.supported ? "Marker setup loaded." : "Native placement remains locked until its outbound protocol is verified.";
+      const result = await dependencies.loadPreset({
+        presetId: requestedPresetId,
+        expectedContext,
+      });
+      if (!alive || !automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration) ||
+          requestedContextKey !== automarkerPresetContextKey({
+            context: result.context,
+            previewSessionId: requestedPreviewSessionId,
+          }) || result.preset.presetId !== requestedPresetId) return;
+      name.value = result.preset.name;
+      setEditorPoints(result.preset.points);
+      editorDirty = false;
+      status.textContent = `Loaded ${result.preset.name} into the local editor. Nothing was sent to the game.`;
     } catch (error) {
-      status.textContent = message(error);
+      if (automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration)) {
+        status.textContent = message(error);
+      }
     } finally {
-      busy = false;
-      if (alive) render();
+      if (automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration)) {
+        busy = false;
+        if (alive) render();
+      }
     }
   }
 
@@ -242,10 +259,10 @@ export function mountAutomarkerPresetsSurface(
     saveAs.title = "Save these explicitly entered local points as a new setup";
     preview.title = "Draw these points on the local Mechanics Map only";
     refresh.disabled = busy;
-    load.disabled = busy || preset === undefined || view?.nativeLoadSupported !== true;
-    load.title = view?.nativeLoadSupported === true
-      ? "Place this setup at its saved coordinates"
-      : "Unavailable until native party-visible marker placement is protocol-verified";
+    load.disabled = busy || preset === undefined || context === null;
+    load.title = "Restore the selected saved setup into this local editor";
+    placeInGame.disabled = true;
+    placeInGame.title = `Unavailable until native party-visible marker placement is protocol-verified (${view?.nativeLoadReason ?? "native_waymark_request_unverified"})`;
     detail.replaceChildren();
     if (context !== null) {
       detail.append(text("p", `${context.activityFamilyId} · Build ${context.clientBuild} · Scene ${context.sceneId} · Map ${context.mapId}`, "card-copy"));
@@ -258,7 +275,7 @@ export function mountAutomarkerPresetsSurface(
       detail.append(list);
     }
     if (view !== null && !view.nativeLoadSupported) {
-      detail.append(text("p", "Load is visible but disabled: rLogs will not emit a guessed game packet.", "card-copy automarker-safety-note"));
+      detail.append(text("p", `Place in game is disabled (${view.nativeLoadReason}): rLogs will not emit a guessed game packet.`, "card-copy automarker-safety-note"));
     }
     if (view !== null && !view.captureSupported) {
       detail.append(text("p", "Capture current in-game markers is unavailable (native_waymark_state_unverified). Save uses only the XYZ points entered above.", "card-copy automarker-safety-note"));

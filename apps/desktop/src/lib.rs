@@ -32,7 +32,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use automarker_presets::{
-    AutomarkerLoadResult, AutomarkerPresetStore, AutomarkerPresetView, AutomarkerSceneContext,
+    AutomarkerLocalLoadResult, AutomarkerPresetStore, AutomarkerPresetView, AutomarkerSceneContext,
     LoadAutomarkerPresetRequest, SaveAutomarkerPresetRequest,
 };
 use character_identities::{
@@ -6975,10 +6975,10 @@ impl RuntimeController {
         Ok(view)
     }
 
-    fn prepare_automarker_load(
+    fn load_automarker_preset(
         &self,
         request: LoadAutomarkerPresetRequest,
-    ) -> Result<AutomarkerLoadResult, String> {
+    ) -> Result<AutomarkerLocalLoadResult, String> {
         let snapshot = self.live_mechanics_map_feed.current().snapshot;
         let context = automarker_scene_context(&snapshot, &self.automarker_scene_families).ok_or_else(|| {
             "a reviewed dungeon family plus packet-observed build, scene, and map are required before loading markers".to_owned()
@@ -6986,7 +6986,7 @@ impl RuntimeController {
         self.automarker_presets
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .prepare_load(request, context)
+            .load(request, context)
     }
 
     #[cfg(windows)]
@@ -14799,7 +14799,7 @@ fn handle_connection(
                     return Ok(());
                 }
             };
-            match controller.prepare_automarker_load(request) {
+            match controller.load_automarker_preset(request) {
                 Ok(result) => write_json(&mut stream, 200, &result)?,
                 Err(error) => write_api_error(&mut stream, 400, error)?,
             }

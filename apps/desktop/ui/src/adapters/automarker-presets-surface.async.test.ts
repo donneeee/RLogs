@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AutomarkerPresetView } from "./automarker-presets";
+import type { AutomarkerLocalLoadResult, AutomarkerPresetView } from "./automarker-presets";
 import { mountAutomarkerPresetsSurface } from "./automarker-presets-surface";
 
 interface Deferred<T> {
@@ -68,6 +68,77 @@ afterEach(() => {
 });
 
 describe("mounted automarker preset editor request ordering", () => {
+  it("loads a selected saved preset into the editor without previewing or placing it", async () => {
+    const catalog = view(6_525, "mech-facility", "Opener", 1);
+    catalog.presets = [
+      ...catalog.presets,
+      {
+        ...catalog.presets[0]!,
+        presetId: "preset-6525-00000001",
+        name: "Alternate",
+        points: [{ markerNumber: 2, x: 9, y: 8, z: 7 }],
+      },
+    ];
+    const loadPreset = vi.fn(async ({ presetId }: { presetId: string }) => ({
+      context: catalog.context!,
+      preset: catalog.presets.find((preset) => preset.presetId === presetId)!,
+    }));
+    const openOverlay = vi.fn(async () => undefined);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const mounted = mountAutomarkerPresetsSurface(container, {
+      loadPresets: async () => catalog,
+      saveCurrent: async () => { throw new Error("not used"); },
+      loadPreset,
+      openOverlay,
+    });
+    await flushPromises();
+
+    const select = container.querySelector("select")!;
+    select.value = "preset-6525-00000001";
+    select.dispatchEvent(new Event("change"));
+    expect((container.querySelector('input[data-coordinate="x"]') as HTMLInputElement).value).toBe("1");
+    [...container.querySelectorAll("button")].find((button) => button.textContent === "Load")!.click();
+    await flushPromises();
+
+    expect(loadPreset).toHaveBeenCalledWith({
+      presetId: "preset-6525-00000001",
+      expectedContext: catalog.context,
+    });
+    expect(openOverlay).not.toHaveBeenCalled();
+    expect((container.querySelector('input[data-coordinate="markerNumber"]') as HTMLInputElement).value).toBe("2");
+    expect((container.querySelector('input[data-coordinate="x"]') as HTMLInputElement).value).toBe("9");
+    expect((container.querySelector('input[placeholder="M1 opener"]') as HTMLInputElement).value).toBe("Alternate");
+    expect(container.querySelector(".automarker-status")?.textContent).toContain("Nothing was sent to the game");
+    const place = [...container.querySelectorAll("button")].find((button) => button.textContent === "Place in game")!;
+    expect(place.disabled).toBe(true);
+    mounted.dispose();
+  });
+
+  it("does not apply a local load response from a changed scene context", async () => {
+    const catalog = view(6_525, "mech-facility", "Opener", 1);
+    const pending = deferred<AutomarkerLocalLoadResult>();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const mounted = mountAutomarkerPresetsSurface(container, {
+      loadPresets: async () => catalog,
+      saveCurrent: async () => { throw new Error("not used"); },
+      loadPreset: () => pending.promise,
+      openOverlay: async () => undefined,
+    });
+    await flushPromises();
+    [...container.querySelectorAll("button")].find((button) => button.textContent === "Load")!.click();
+    pending.resolve({
+      context: { ...catalog.context!, sceneId: 1_633, mapId: 1_633, activityFamilyId: "dungeon.1633" },
+      preset: { ...catalog.presets[0]!, name: "Wrong scene", activityFamilyId: "dungeon.1633" },
+    });
+    await flushPromises();
+
+    expect((container.querySelector('input[placeholder="M1 opener"]') as HTMLInputElement).value).toBe("Opener");
+    expect((container.querySelector('input[data-coordinate="x"]') as HTMLInputElement).value).toBe("1");
+    mounted.dispose();
+  });
+
   it("does not let an older periodic refresh overwrite a newer explicit refresh", async () => {
     vi.useFakeTimers();
     const initial = deferred<AutomarkerPresetView>();
@@ -79,7 +150,7 @@ describe("mounted automarker preset editor request ordering", () => {
     const mounted = mountAutomarkerPresetsSurface(container, {
       loadPresets: () => requests.shift()!.promise,
       saveCurrent: async () => { throw new Error("not used"); },
-      loadPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadPreset: async () => { throw new Error("not used"); },
       openOverlay: async () => undefined,
     });
 
@@ -110,7 +181,7 @@ describe("mounted automarker preset editor request ordering", () => {
     const mounted = mountAutomarkerPresetsSurface(container, {
       loadPresets: () => pending.promise,
       saveCurrent: async () => { throw new Error("not used"); },
-      loadPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadPreset: async () => { throw new Error("not used"); },
       openOverlay: async () => undefined,
     });
     const status = container.querySelector(".automarker-status")!;
@@ -134,7 +205,7 @@ describe("mounted automarker preset editor request ordering", () => {
     const mounted = mountAutomarkerPresetsSurface(container, {
       loadPresets: () => requests.shift()!.promise,
       saveCurrent: async () => { throw new Error("not used"); },
-      loadPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadPreset: async () => { throw new Error("not used"); },
       openOverlay: async () => undefined,
     });
     initial.resolve(view(1_633, "dungeon.1633", "Initial master", 1));

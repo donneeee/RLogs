@@ -4,7 +4,7 @@ import {
   activeAutomarkerPreview,
   automarkerResponseIsCurrent,
   newlyCreatedPresetId,
-  parseAutomarkerLoadResult,
+  parseAutomarkerLocalLoadResult,
   parseAutomarkerPreview,
   parseAutomarkerPresetView,
   previewMatchesContext,
@@ -76,11 +76,14 @@ describe("automarker preset catalog", () => {
     expect(parseAutomarkerPresetView(value).presets).toHaveLength(1);
   });
 
-  it("accepts only the explicitly locked native load response", () => {
-    expect(parseAutomarkerLoadResult({ supported: false, reason: "native_waymark_request_unverified" })).toEqual({
-      supported: false, reason: "native_waymark_request_unverified",
-    });
-    expect(() => parseAutomarkerLoadResult({ supported: true })).toThrow();
+  it("accepts only a family-compatible local load response", () => {
+    const value = { context: view().context, preset: view().presets[0] };
+    expect(parseAutomarkerLocalLoadResult(value)).toEqual(value);
+    expect(() => parseAutomarkerLocalLoadResult({
+      context: { ...view().context, activityFamilyId: "mech-facility" },
+      preset: view().presets[0],
+    })).toThrow(/invalid local automarker preset/i);
+    expect(() => parseAutomarkerLocalLoadResult({ supported: false, reason: "native_waymark_request_unverified" })).toThrow();
   });
 
   it("distinguishes Save overwrite from Save As creation", () => {

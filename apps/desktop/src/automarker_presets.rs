@@ -101,13 +101,14 @@ pub struct SaveAutomarkerPresetRequest {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LoadAutomarkerPresetRequest {
     pub preset_id: String,
+    pub expected_context: AutomarkerSceneContext,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AutomarkerLoadResult {
-    pub supported: bool,
-    pub reason: &'static str,
+pub struct AutomarkerLocalLoadResult {
+    pub context: AutomarkerSceneContext,
+    pub preset: AutomarkerPreset,
 }
 
 #[derive(Debug)]
@@ -208,11 +209,18 @@ impl AutomarkerPresetStore {
         Ok(self.compatible(context))
     }
 
-    pub fn prepare_load(
+    pub fn load(
         &self,
         request: LoadAutomarkerPresetRequest,
         context: AutomarkerSceneContext,
-    ) -> Result<AutomarkerLoadResult, String> {
+    ) -> Result<AutomarkerLocalLoadResult, String> {
+        if request.expected_context.client_build != context.client_build
+            || request.expected_context.scene_id != context.scene_id
+            || request.expected_context.map_id != context.map_id
+            || request.expected_context.activity_family_id != context.activity_family_id
+        {
+            return Err("the live automarker context changed after the editor loaded; refresh the scene before loading".into());
+        }
         validate_id(&request.preset_id)?;
         let preset = self
             .presets
@@ -224,9 +232,9 @@ impl AutomarkerPresetStore {
                 "the selected automarker preset belongs to a different dungeon family".into(),
             );
         }
-        Ok(AutomarkerLoadResult {
-            supported: false,
-            reason: "native_waymark_request_unverified",
+        Ok(AutomarkerLocalLoadResult {
+            context,
+            preset: preset.clone(),
         })
     }
 
@@ -666,16 +674,23 @@ mod tests {
         assert_eq!(store.compatible(tina(1_633)).presets.len(), 1);
         assert!(
             store
-                .prepare_load(LoadAutomarkerPresetRequest { preset_id }, tina(1_633))
+                .load(
+                    LoadAutomarkerPresetRequest {
+                        preset_id,
+                        expected_context: tina(1_633)
+                    },
+                    tina(1_633)
+                )
                 .is_ok()
         );
         for scene_id in [1_621, 1_631, 1_632] {
             assert!(store.compatible(tina(scene_id)).presets.is_empty());
             assert!(
                 store
-                    .prepare_load(
+                    .load(
                         LoadAutomarkerPresetRequest {
                             preset_id: saved.presets[0].preset_id.clone(),
+                            expected_context: tina(scene_id),
                         },
                         tina(scene_id),
                     )
@@ -685,9 +700,10 @@ mod tests {
         assert!(store.compatible(mech()).presets.is_empty());
         assert!(
             store
-                .prepare_load(
+                .load(
                     LoadAutomarkerPresetRequest {
                         preset_id: saved.presets[0].preset_id.clone(),
+                        expected_context: mech(),
                     },
                     mech(),
                 )
@@ -721,9 +737,10 @@ mod tests {
         assert!(!view.native_load_supported);
         assert!(
             store
-                .prepare_load(
+                .load(
                     LoadAutomarkerPresetRequest {
-                        preset_id: view.presets[0].preset_id.clone()
+                        preset_id: view.presets[0].preset_id.clone(),
+                        expected_context: patched.clone(),
                     },
                     patched
                 )
@@ -759,7 +776,7 @@ mod tests {
     }
 
     #[test]
-    fn persists_exact_xyz_and_keeps_native_loading_locked() {
+    fn local_load_returns_exact_persisted_xyz_without_native_side_effects() {
         let path = temporary_path("persist");
         let mut store = open(&path);
         let saved = store
@@ -785,12 +802,18 @@ mod tests {
         assert_eq!(reopened.compatible(mech()).presets[0].points[0].z, 44.125);
         assert_eq!(
             reopened
-                .prepare_load(LoadAutomarkerPresetRequest { preset_id }, mech())
-                .unwrap(),
-            AutomarkerLoadResult {
-                supported: false,
-                reason: "native_waymark_request_unverified"
-            }
+                .load(
+                    LoadAutomarkerPresetRequest {
+                        preset_id,
+                        expected_context: mech()
+                    },
+                    mech()
+                )
+                .unwrap()
+                .preset
+                .points[0]
+                .z,
+            44.125
         );
         let _ = std::fs::remove_file(path);
     }
@@ -858,6 +881,33 @@ mod tests {
         );
         assert!(result.unwrap_err().contains("context changed"));
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn rejects_a_load_when_the_editor_context_changed_even_within_one_family() {
+        let path = temporary_path("load-context-race");
+        let mut store = open(&path);
+        let saved = store
+            .save(
+                SaveAutomarkerPresetRequest {
+                    preset_id: None,
+                    name: "Stale editor".into(),
+                    points: points(1.0),
+                    expected_context: tina(1_633),
+                },
+                tina(1_633),
+                10,
+            )
+            .unwrap();
+        let result = store.load(
+            LoadAutomarkerPresetRequest {
+                preset_id: saved.presets[0].preset_id.clone(),
+                expected_context: tina(1_633),
+            },
+            tina(1_631),
+        );
+        assert!(result.unwrap_err().contains("context changed"));
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

@@ -84,7 +84,7 @@ import { parseMechanicsMapUpdate } from "./mechanics-map";
 import { mountMechanicsMapSurface } from "./mechanics-map-surface";
 import { parseOverlayLayoutSettings } from "./overlay-layout";
 import {
-  parseAutomarkerLoadResult,
+  parseAutomarkerLocalLoadResult,
   parseAutomarkerPresetView,
 } from "./automarker-presets";
 
@@ -739,11 +739,11 @@ function createLocalHostAdapter(localizer: UiLocalizer): DesktopHostAdapter {
                 body: JSON.stringify(request),
               }));
             },
-            async loadPreset(presetId) {
-              return parseAutomarkerLoadResult(await apiJson<unknown>("/api/automarkers/presets/load", {
+            async loadPreset(request) {
+              return parseAutomarkerLocalLoadResult(await apiJson<unknown>("/api/automarkers/presets/load", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ presetId }),
+                body: JSON.stringify(request),
               }));
             },
             async openOverlay() {

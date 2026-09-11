@@ -472,6 +472,31 @@ export function mechanicSignalRemainingMillis(
   return Math.max(0, signal.duration_millis - observedAgeMillis - Math.max(0, elapsedSinceSnapshotMillis));
 }
 
+/**
+ * Returns the one time-aware mechanic view used by live presentation.
+ * Finite packet signals expire against browser elapsed time even when the
+ * packet stream is quiet; duration-less statuses remain removal-driven.
+ */
+export function activeMechanics(
+  value: Pick<MechanicsMapSnapshot, "mechanics" | "last_observed_micros">,
+  elapsedSinceSnapshotMillis: number,
+): readonly MechanicsMapSignal[] {
+  return value.mechanics.filter((signal) =>
+    mechanicSignalRemainingMillis(
+      signal,
+      value.last_observed_micros,
+      elapsedSinceSnapshotMillis,
+    ) !== 0);
+}
+
+export function activeMechanicsSnapshot(
+  value: MechanicsMapSnapshot,
+  elapsedSinceSnapshotMillis: number,
+): MechanicsMapSnapshot {
+  const mechanics = activeMechanics(value, elapsedSinceSnapshotMillis);
+  return mechanics.length === value.mechanics.length ? value : { ...value, mechanics };
+}
+
 export function projectMechanicsMapEntities(
   value: MechanicsMapSnapshot,
   rotateWithPlayer: boolean,

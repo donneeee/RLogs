@@ -146,7 +146,7 @@ Example action plan (keep real actor identifiers and coordinates private):
 ```json
 {
   "schema_version": 1,
-  "scene_id": 1633,
+  "scene_id": 6525,
   "scene_name": "Mech Facility M1",
   "initiating_character": { "character_id": "character-id", "entity_uuid": "current-entity-uuid" },
   "actions": [

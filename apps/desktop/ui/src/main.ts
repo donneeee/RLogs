@@ -15,7 +15,7 @@ import { mountCombatOverlayRuntimeApp } from "../../../../plugins/builtin/deskto
 import { mountMechanicsMapOverlay } from "./adapters/mechanics-map-overlay";
 import { parseOverlayLayoutSettings } from "./adapters/overlay-layout";
 import { parseMechanicsMapUpdate } from "./adapters/mechanics-map";
-import { parseAutomarkerLoadResult, parseAutomarkerPresetView } from "./adapters/automarker-presets";
+import { parseAutomarkerPresetView } from "./adapters/automarker-presets";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
@@ -183,13 +183,6 @@ if (isCombatOverlayRuntime) {
       },
       loadAutomarkerPresets: async () => parseAutomarkerPresetView(
         await runtimeJson("/api/automarkers/presets"),
-      ),
-      loadAutomarkerPreset: async (presetId) => parseAutomarkerLoadResult(
-        await runtimeJson("/api/automarkers/presets/load", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ presetId }),
-        }),
       ),
       loadLayout: async () => parseOverlayLayoutSettings(await runtimeJson("/api/settings/overlay-layout")),
       saveLayout: async (settings) => parseOverlayLayoutSettings(await runtimeJson("/api/settings/overlay-layout", {

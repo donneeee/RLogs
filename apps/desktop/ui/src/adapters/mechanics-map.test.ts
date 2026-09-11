@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { claimAutomaticMapPreparation } from "./mechanics-map-surface";
-import { actionControlRemainingMillis, fitMechanicsMapCanvasRect, mechanicSignalRemainingMillis, parseMechanicsMapUpdate, projectCoralMatrixBeam, projectCoralPizzaRegions, projectCoralWaveRegion, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectRaidFloorRegions, projectTinaPizzaRegion, projectVoidTowerMapAnnotations, targetDebuffRemainingMillis, zoomMechanicsMapAt, type MechanicsMapSignal, type MechanicsMapSnapshot } from "./mechanics-map";
+import { actionControlRemainingMillis, activeMechanicsSnapshot, fitMechanicsMapCanvasRect, mechanicSignalRemainingMillis, parseMechanicsMapUpdate, projectCoralMatrixBeam, projectCoralPizzaRegions, projectCoralWaveRegion, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectRaidFloorRegions, projectTinaPizzaRegion, projectVoidTowerMapAnnotations, targetDebuffRemainingMillis, zoomMechanicsMapAt, type MechanicsMapSignal, type MechanicsMapSnapshot } from "./mechanics-map";
 
 function snapshot(): MechanicsMapSnapshot {
   return {
@@ -407,5 +407,27 @@ describe("Mechanics Map", () => {
     expect(corner[0]?.points[0]?.mapX).toBeCloseTo(0);
     expect(corner[0]?.points[0]?.mapY).toBeCloseTo(36.11111111111111);
     expect(projectRaidFloorRegions({ ...base, map_layout: "raid_ring" })).toEqual([]);
+  });
+
+  it("removes expired finite mechanics from every canvas projector while preserving removal-driven signals", () => {
+    const base = {
+      ...snapshot(), scene_id: 13023, map_model: "absolute_scene_map" as const, map_layout: "raid_grid" as const,
+      map_origin_x: -30, map_origin_z: -27, map_span_x: 60, map_span_z: 54,
+      last_observed_micros: 1_000_000,
+    };
+    const finite: MechanicsMapSignal = {
+      effect_id: 829214, mechanic_kind: "phase_edge", presentation_name: null, instance_id: 1,
+      target_actor_id: 1, source_actor_id: null, stacks: null, duration_millis: 1_000,
+      origin_x: null, origin_z: null, facing_radians: null, applied_at_micros: 1_000_000,
+    };
+    const removalDriven: MechanicsMapSignal = {
+      ...finite, effect_id: 829215, mechanic_kind: "phase_corner", instance_id: 2, duration_millis: null,
+    };
+
+    const active = activeMechanicsSnapshot({ ...base, mechanics: [finite, removalDriven] }, 1_001);
+
+    expect(active.mechanics).toEqual([removalDriven]);
+    expect(projectRaidFloorRegions(active).map((region) => region.kind))
+      .toEqual(["phase_corner", "phase_corner", "phase_corner", "phase_corner"]);
   });
 });

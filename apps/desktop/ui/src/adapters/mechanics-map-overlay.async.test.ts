@@ -188,6 +188,46 @@ afterEach(() => {
 });
 
 describe("mounted Mechanics Map automarker request ordering", () => {
+  it("expires finite alerts during an unchanged long poll and preserves removal-driven mechanics", async () => {
+    vi.useFakeTimers();
+    const quiet = snapshot(1_633, 1);
+    quiet.snapshot.last_observed_micros = 1_000_000;
+    quiet.snapshot.mechanics = [{
+      effect_id: 88, mechanic_kind: "safe_zone", presentation_name: "Finite", instance_id: 1,
+      target_actor_id: 10, source_actor_id: 20, stacks: null, duration_millis: 1_000,
+      origin_x: null, origin_z: null, facing_radians: null, applied_at_micros: 1_000_000,
+    }, {
+      effect_id: 89, mechanic_kind: "safe_zone", presentation_name: "Removal driven", instance_id: 2,
+      target_actor_id: 11, source_actor_id: 20, stacks: null, duration_millis: null,
+      origin_x: null, origin_z: null, facing_radians: null, applied_at_micros: 1_000_000,
+    }];
+    const container = document.createElement("div");
+    document.body.append(container);
+    const mounted = mountMechanicsMapOverlay(container, {
+      loadSnapshot: async () => quiet,
+      waitForSnapshot: () => new Promise(() => undefined),
+      prepareLocalMaps: async () => undefined,
+      setInteractive: async () => undefined,
+      onInteractivity: async () => () => undefined,
+      onFocusHeld: async () => () => undefined,
+      loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
+      loadLayout: async () => layout(),
+      saveLayout: async (value) => value,
+    }, localizer);
+    await flushPromises();
+    expect([...container.querySelectorAll(".mechanic-alerts-overlay-row")]
+      .map((row) => row.querySelector("strong")?.textContent)).toEqual(["Removal driven", "Finite"]);
+
+    await vi.advanceTimersByTimeAsync(1_001);
+    await flushPromises();
+
+    expect([...container.querySelectorAll(".mechanic-alerts-overlay-row")]
+      .map((row) => row.querySelector("strong")?.textContent)).toEqual(["Removal driven"]);
+    expect(container.querySelector(".mechanic-alerts-overlay-toolbar span")?.textContent).toBe("1 OBSERVED");
+    mounted.dispose();
+    vi.useRealTimers();
+  });
+
   it("updates changed live values in place and replaces only changed runtime identities", async () => {
     const second = deferred<MechanicsMapUpdate>();
     const third = deferred<MechanicsMapUpdate>();

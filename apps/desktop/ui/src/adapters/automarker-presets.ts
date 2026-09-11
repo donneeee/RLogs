@@ -42,6 +42,11 @@ export interface SaveAutomarkerPresetRequest {
   expectedContext: AutomarkerSceneContext;
 }
 
+export interface LoadAutomarkerPresetRequest {
+  presetId: string;
+  expectedContext: AutomarkerSceneContext;
+}
+
 export interface AutomarkerPreview {
   schemaVersion: 1;
   context: AutomarkerSceneContext;
@@ -55,9 +60,9 @@ export interface AutomarkerPreview {
 export const AUTOMARKER_PREVIEW_STORAGE_KEY = "rlogs.automarker-preview.v1";
 export const AUTOMARKER_PREVIEW_TTL_MILLIS = 5 * 60 * 1_000;
 
-export interface AutomarkerLoadResult {
-  supported: false;
-  reason: "native_waymark_request_unverified";
+export interface AutomarkerLocalLoadResult {
+  context: AutomarkerSceneContext;
+  preset: AutomarkerPreset;
 }
 
 export function automarkerSaveRequest(
@@ -193,11 +198,12 @@ export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView 
   return view;
 }
 
-export function parseAutomarkerLoadResult(value: unknown): AutomarkerLoadResult {
-  if (!record(value) || value.supported !== false || value.reason !== "native_waymark_request_unverified") {
-    throw new Error("The local host returned an invalid automarker load result.");
+export function parseAutomarkerLocalLoadResult(value: unknown): AutomarkerLocalLoadResult {
+  if (!record(value) || !validContext(value.context) || !validPreset(value.preset) ||
+      !presetMatchesContext(value.preset, value.context)) {
+    throw new Error("The local host returned an invalid local automarker preset.");
   }
-  return value as unknown as AutomarkerLoadResult;
+  return value as unknown as AutomarkerLocalLoadResult;
 }
 
 export function presetMatchesContext(preset: AutomarkerPreset, context: AutomarkerSceneContext): boolean {
