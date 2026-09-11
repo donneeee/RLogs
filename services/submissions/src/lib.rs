@@ -13359,6 +13359,312 @@ mod tests {
         report.verification.event_count = replay.event_count;
     }
 
+    fn write_five_pov_hosted_artifact(
+        path: &Path,
+        local_index: usize,
+    ) -> (PublicParseReport, Sha256Digest) {
+        let mut region = cross_vantage_test_region();
+        region.protocol_pack_digest = BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into();
+        let local_character_id = format!("character-{}", char::from(b'a' + local_index as u8));
+        let header = rlogs_log_format::RlogHeader::new(
+            format!("five-pov-{local_index}"),
+            region.clone(),
+            "hosted-five-pov-test",
+        );
+        let mut writer = rlogs_log_format::RlogWriter::new(Vec::new(), header).unwrap();
+        let mut events = vec![
+            cross_vantage_life_wave_profile_envelope(1, 1, &local_character_id),
+            cross_vantage_attribute_envelope(2, 2, Some(2), 1_000),
+            cross_vantage_dungeon_envelope(3, 5, rlogs_events::DungeonEventKind::Started),
+            cross_vantage_timeline_envelope(
+                4,
+                10,
+                Some(10),
+                TimelineEventKind::RunBoundary {
+                    state: RunState::Entered,
+                    scene_id: Some(rlogs_events::SceneId(7152)),
+                    reason: rlogs_events::BoundaryReason::AuthoritativePacket,
+                },
+            ),
+        ];
+        for index in 0..5_u64 {
+            events.push(cross_vantage_actor_envelope(
+                5 + index,
+                20 + index,
+                22 + index,
+                222 + i64::try_from(index).unwrap(),
+                &format!("character-{}", char::from(b'a' + index as u8)),
+            ));
+        }
+        events.extend([
+            cross_vantage_monster_envelope(10, 30),
+            cross_vantage_timeline_envelope(
+                11,
+                40,
+                Some(40),
+                TimelineEventKind::CombatBoundary {
+                    state: rlogs_events::CombatState::Started,
+                    reason: rlogs_events::BoundaryReason::AuthoritativePacket,
+                },
+            ),
+            cross_vantage_timeline_envelope(
+                17,
+                2_000_000,
+                Some(2_000),
+                TimelineEventKind::CombatBoundary {
+                    state: rlogs_events::CombatState::Ended,
+                    reason: rlogs_events::BoundaryReason::AuthoritativePacket,
+                },
+            ),
+            cross_vantage_timeline_envelope(
+                18,
+                2_100_000,
+                Some(2_100),
+                TimelineEventKind::RunBoundary {
+                    state: RunState::Completed,
+                    scene_id: Some(rlogs_events::SceneId(7152)),
+                    reason: rlogs_events::BoundaryReason::Completion,
+                },
+            ),
+            cross_vantage_dungeon_envelope(
+                19,
+                2_100_005,
+                rlogs_events::DungeonEventKind::Completed,
+            ),
+        ]);
+        for index in 0..5_u64 {
+            let mut damage_envelope =
+                cross_vantage_damage_envelope(12 + index, 1_000_000 + index, 20);
+            let CanonicalEvent::Timeline(timeline) = &mut damage_envelope.event else {
+                unreachable!();
+            };
+            let TimelineEventKind::Damage(damage_event) = &mut timeline.kind else {
+                unreachable!();
+            };
+            damage_event.source = EntityRef {
+                actor_id: rlogs_events::ActorId(22 + index),
+                entity_uuid: rlogs_events::EntityUuid(222 + i64::try_from(index).unwrap()),
+            };
+            damage_event.hit_event_id = Some(1 + index as i32);
+            events.insert(11 + index as usize, damage_envelope);
+        }
+        let local_actor_id = 22 + local_index as u64;
+        let local_entity_uuid = 222 + local_index as i64;
+        let CanonicalEvent::Timeline(attributes_timeline) = &mut events[1].event else {
+            unreachable!();
+        };
+        let TimelineEventKind::EntityAttributes(attributes) = &mut attributes_timeline.kind else {
+            unreachable!();
+        };
+        attributes.actor = EntityRef {
+            actor_id: rlogs_events::ActorId(local_actor_id),
+            entity_uuid: rlogs_events::EntityUuid(local_entity_uuid),
+        };
+        let mut timeline_sequence = 0_u64;
+        for event in &mut events {
+            event.session_id = format!("five-pov-{local_index}");
+            event.region = region.clone();
+            if let CanonicalEvent::Timeline(timeline) = &mut event.event {
+                timeline_sequence += 1;
+                timeline.sequence = timeline_sequence;
+                timeline.time = event.time;
+                timeline.provenance = event.provenance.clone();
+            }
+            writer.push(event).unwrap();
+        }
+        let bytes = writer.finish().unwrap();
+        std::fs::write(path, &bytes).unwrap();
+        let artifact = build_privacy_verified_submission_artifact(
+            std::io::Cursor::new(bytes.clone()),
+            ArtifactBuildLimits::default(),
+            RlogLimits::default(),
+        )
+        .unwrap();
+        let digest = artifact.file_sha256.clone();
+        let report_id = report_id(&digest);
+        let protocol_digest = Sha256Digest::parse(
+            region
+                .protocol_pack_digest
+                .strip_prefix("sha256:")
+                .unwrap_or(&region.protocol_pack_digest)
+                .to_owned(),
+        )
+        .unwrap();
+        let privacy_digest = Sha256Digest::parse("c".repeat(64)).unwrap();
+        let manifest = UploadManifest {
+            metadata: SubmissionMetadata::new(
+                BPSR_GAME_PLUGIN_ID,
+                format!("five-pov-log-{local_index}"),
+                1,
+                format!("five-pov-{local_index}"),
+                "north-america",
+                region.client_build.clone(),
+                protocol_digest,
+                privacy_digest,
+                ReportVisibility::Public,
+            ),
+            chunks: artifact.chunks.clone(),
+            sealed_log_digest: Some(digest.clone()),
+        };
+        let report = build_public_report_from_readers(
+            std::io::Cursor::new(bytes.clone()),
+            std::io::Cursor::new(bytes),
+            &manifest,
+            &artifact,
+            &report_id,
+            1 + local_index as u64,
+            PublicSubmissionProvenance {
+                submitter_id: Some(format!("submitter-{local_index}")),
+                authentication: "device_token".into(),
+            },
+        )
+        .unwrap();
+        (report, digest)
+    }
+
+    #[test]
+    fn hosted_five_pov_reconciliation_uses_one_canonical_damage_spine() {
+        let root = tempfile::tempdir().unwrap();
+        let mut reports = Vec::new();
+        let mut paths = Vec::new();
+        for index in 0..5 {
+            let path = root.path().join(format!("pov-{index}.rlog"));
+            let (report, _) = write_five_pov_hosted_artifact(&path, index);
+            reports.push(report);
+            paths.push(path);
+        }
+        let run_group_id = reports[0].runs[0].run_group_id.clone();
+        let source_summaries = reports
+            .iter()
+            .map(|report| {
+                (
+                    report.runs[0].run_group_id.clone(),
+                    report.runs[0].participants.len(),
+                    report.runs[0]
+                        .participants
+                        .iter()
+                        .map(|participant| participant.damage)
+                        .sum::<i64>(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            reports.iter().all(|report| {
+                report.runs[0].run_group_id == run_group_id
+                    && report.runs[0].participants.len() == 5
+                    && report.runs[0]
+                        .participants
+                        .iter()
+                        .map(|participant| participant.damage)
+                        .sum::<i64>()
+                        == 100
+            }),
+            "unexpected five-POV source projections: {source_summaries:?}"
+        );
+        let artifacts = reports
+            .iter()
+            .zip(&paths)
+            .map(|(report, artifact_path)| HostedRunArtifact {
+                report,
+                run_index: 0,
+                artifact_path,
+            })
+            .collect::<Vec<_>>();
+        let expected_sources = artifacts
+            .iter()
+            .map(|artifact| {
+                (
+                    artifact.report.report_id.clone(),
+                    artifact.run_index,
+                    artifact.report.verification.artifact_sha256.clone(),
+                )
+            })
+            .collect::<BTreeSet<_>>();
+
+        let reconciliation = reconcile_hosted_run_group(&run_group_id, &artifacts).unwrap();
+
+        assert_eq!(reconciliation.reports.len(), 5);
+        assert_eq!(
+            reconciliation
+                .reports
+                .iter()
+                .map(|report| (
+                    report.report_id.clone(),
+                    report.run_index,
+                    report.artifact_sha256.clone(),
+                ))
+                .collect::<BTreeSet<_>>(),
+            expected_sources,
+            "the published manifest must retain the exact five-artifact source set"
+        );
+        assert_eq!(reconciliation.participant_character_count, 5);
+        assert_eq!(reconciliation.local_vantage_character_count, 5);
+        assert!(reconciliation.complete_local_vantage_coverage);
+        assert_eq!(
+            reconciliation.state_replay_readiness,
+            CrossVantageStateReplayReadiness::FullCoverageReady
+        );
+        assert!(reconciliation.attribution_replay_completed);
+        assert_eq!(reconciliation.reconciled_participants.len(), 5);
+        assert_eq!(
+            reconciliation
+                .characters
+                .iter()
+                .map(|character| character.character_id.clone())
+                .collect::<BTreeSet<_>>(),
+            [
+                "character-a",
+                "character-b",
+                "character-c",
+                "character-d",
+                "character-e"
+            ]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+            "all five stable player identities must survive the one-spine replay"
+        );
+        assert!(
+            reconciliation
+                .reconciled_participants
+                .iter()
+                .all(|participant| participant.participant.damage == 20),
+            "ordinary damage must remain the canonical spine's five 20-damage events"
+        );
+        let conservation = reconciliation.conservation.unwrap();
+        assert!(conservation.conserved);
+        assert_eq!(conservation.raw_damage, 100);
+        assert_eq!(conservation.rdps_damage, 100);
+        assert_eq!(
+            conservation.contribution_given,
+            conservation.contribution_received
+        );
+        assert_ne!(
+            conservation.raw_damage, 500,
+            "secondary combat totals must never be imported"
+        );
+        assert_eq!(
+            reconciliation.timeline.source,
+            PublicTimelineSource::ReconciledCanonicalSpine
+        );
+        assert_eq!(
+            reconciliation.timeline.canonical_report_id,
+            reconciliation.canonical_spine.report_id
+        );
+        assert!(reconciliation.timeline.rate_clock_complete);
+        assert!(!reconciliation.timeline.rate_clock.is_empty());
+        assert_eq!(
+            reconciliation.timeline.rate_clock.len(),
+            usize::try_from(
+                reconciliation
+                    .timeline
+                    .duration_micros
+                    .div_ceil(reconciliation.timeline.series_bucket_micros)
+            )
+            .unwrap()
+        );
+    }
+
     #[test]
     fn hosted_manifest_groups_two_exact_artifacts_without_summing_participants() {
         let root = tempfile::tempdir().unwrap();

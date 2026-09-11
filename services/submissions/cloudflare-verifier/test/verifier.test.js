@@ -510,6 +510,60 @@ test("reconciliation output must preserve the exact source set and canonical spi
   }
 });
 
+test("five-source reconciliation validation rejects every superseded source set", () => {
+  const sources = ["a", "b", "c", "d", "e"].map((value, run_index) => ({
+    report_id: `rpt_${value.repeat(32)}`,
+    run_index,
+    artifact_sha256: value.repeat(64),
+  }));
+  const output = {
+    schema_version: RECONCILIATION_SCHEMA_VERSION,
+    reconciliation_id: `rec_${"f".repeat(32)}`,
+    run_group_id: "run_five_source_exact",
+    status: "cross_vantage_evidence_available",
+    canonical_spine: sources[2],
+    reports: [...sources].reverse().map((source) => ({
+      ...source,
+      deployment_id: "global",
+      client_build: "24687926",
+      protocol_pack_digest: "sha256:pack",
+    })),
+    attribution_replay_completed: false,
+    rdps_status: null,
+    timeline: { schema_version: CURRENT_TIMELINE_SCHEMA_VERSION },
+  };
+
+  assert.equal(validateReconciliationOutput(
+    output,
+    "run_five_source_exact",
+    sources,
+  ), true);
+  assert.equal(validateReconciliationOutput(
+    output,
+    "run_five_source_exact",
+    sources.slice(0, 4),
+  ), false, "a projection for five sources must not publish after one source disappears");
+  assert.equal(validateReconciliationOutput(
+    { ...output, reports: output.reports.filter((report) => report.report_id !== sources[4].report_id) },
+    "run_five_source_exact",
+    sources,
+  ), false, "a four-source result must not publish after a fifth source appears");
+  const replacedSources = structuredClone(sources);
+  replacedSources[4].artifact_sha256 = "9".repeat(64);
+  assert.equal(validateReconciliationOutput(
+    output,
+    "run_five_source_exact",
+    replacedSources,
+  ), false, "a changed artifact digest must supersede the prior five-source projection");
+  const duplicate = structuredClone(output);
+  duplicate.reports[4] = structuredClone(duplicate.reports[3]);
+  assert.equal(validateReconciliationOutput(
+    duplicate,
+    "run_five_source_exact",
+    sources,
+  ), false, "duplicate reports must not satisfy five-source cardinality");
+});
+
 test("completed reconciliation requires replay-authored status, conservation, and an exact rate clock", () => {
   const sources = [
     { report_id: `rpt_${"a".repeat(32)}`, run_index: 0, artifact_sha256: "a".repeat(64) },
