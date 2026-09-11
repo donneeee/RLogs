@@ -123,14 +123,29 @@ unlisted to public remains supported, but that visibility change does not wake
 the revision-11 reconciliation flow. Only an exact current revision-11
 projection schedules those current run-group jobs.
 
+Before advancing a pointer, the forward transaction now seals the prior
+`report_runs` and `report_memberships` rows in a bounded, content-addressed
+private index snapshot and records that digest on the retained backfill audit job.
+Migration `0010_projection_backfill_rollbacks.sql` adds a separate operator-only
+rollback queue. Each request must name one published job, its exact expected
+candidate pointer, and its exact registered source pointer. The scheduled worker
+validates both projection-version registrations, re-hashes the retained source
+projection and index snapshot, and then restores the source pointer, catalog
+rows, and private memberships in one guarded D1 transaction. A changed pointer
+is a superseded no-op: it cannot delete or replace either index. Successful
+restoration wakes reconciliation for the union of old and candidate run groups;
+the normal reconciliation source-set guards remain authoritative. Rollback does
+not delete candidate projections, membership artifacts, snapshots, jobs, or
+receipts.
+
 The rollout sequence is: deploy and verify migrations with publication paused;
 deploy the exact verifier image; create a dry-run batch of at most 25 reports;
 inspect its immutable audit rows; then, in a separately reviewed change, release
-the publication pause and create the bounded publishing batch. Production rollback
-must restore a registered prior projection with the same guarded-pointer and
-atomic index-replacement rules as forward publication; directly editing the
-`reports` pointer is not a supported rollback. Until that inverse transaction is
-implemented and tested, the publishing pause remains required.
+the publication pause and create the bounded publishing batch. Before that
+separate release, exercise a forward publication and queued inverse rollback in
+staging and inspect the retained receipts. Directly editing the `reports` pointer
+is not a supported rollback. Forward publication remains paused until that
+staging exercise is recorded.
 
 The repository workflow `.github/workflows/deploy-cloudflare.yml` is the
 production deployment path. It tests and deploys the private Worker first,

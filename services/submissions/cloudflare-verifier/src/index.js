@@ -4,7 +4,7 @@ import {
   sameChunkCommitments, validateOutput, validateReconciliationOutput, validateTrainingOutput,
   validateWakeup,
 } from "./core.js";
-import { runProjectionBackfillBatch } from "./backfill.js";
+import { runProjectionBackfillBatch, runProjectionBackfillRollback } from "./backfill.js";
 
 // Cloudflare requires this named export whenever a Container class installs
 // outbound handlers. It keeps the R2 binding in the trusted Worker while the
@@ -516,5 +516,8 @@ export default {
     // Scheduled execution only consumes explicit operator-created requests.
     // An empty queue is a no-op; it never discovers or mutates reports on its own.
     context.waitUntil(runProjectionBackfillBatch(env, context, reconcileRunGroup));
+    // Rollback is an independent operator queue so emergency restoration is
+    // available while forward publication remains fail-closed.
+    context.waitUntil(runProjectionBackfillRollback(env, context, reconcileRunGroup));
   },
 };

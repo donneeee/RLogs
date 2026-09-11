@@ -5,7 +5,8 @@ import test from "node:test";
 
 import {
   PROJECTION_BACKFILL_PAUSE_CODE, PROJECTION_BACKFILL_PAUSE_DETAIL,
-  committedProjection, parseRetainedManifest, persistReplay, runProjectionBackfillBatch,
+  committedProjection, parseRetainedManifest, persistReplay, rollbackPublishedReplay,
+  runProjectionBackfillBatch, runProjectionBackfillRollback,
 } from "../src/backfill.js";
 
 async function digest(bytes) {
@@ -37,7 +38,7 @@ function sqliteD1(database) {
   };
 }
 
-function publicationFixture() {
+async function publicationFixture() {
   const database = new DatabaseSync(":memory:");
   database.exec(`
     CREATE TABLE reports (report_id TEXT PRIMARY KEY,upload_id TEXT,artifact_sha256 TEXT,
@@ -48,21 +49,39 @@ function publicationFixture() {
     CREATE TABLE report_memberships (report_id TEXT,game_id TEXT,character_id TEXT,
       actor_id TEXT,player_name TEXT,PRIMARY KEY(report_id,game_id,character_id));
     CREATE TABLE projection_backfill_jobs (job_id TEXT PRIMARY KEY,state TEXT,
+      report_id TEXT,upload_id TEXT,artifact_sha256 TEXT,
+      source_projection_sha256 TEXT,source_projection_object_key TEXT,
+      target_verifier_release TEXT,
       candidate_projection_sha256 TEXT,candidate_projection_object_key TEXT,
       candidate_membership_sha256 TEXT,candidate_membership_object_key TEXT,
+      source_indexes_sha256 TEXT,source_indexes_object_key TEXT,
       failure_code TEXT,failure_detail TEXT,updated_unix_millis INTEGER,completed_unix_millis INTEGER);
     CREATE TABLE report_projection_versions (report_id TEXT,projection_sha256 TEXT,
       projection_object_key TEXT UNIQUE,schema_version INTEGER,verifier_release TEXT,
       artifact_sha256 TEXT,backfill_job_id TEXT,created_unix_millis INTEGER,
       PRIMARY KEY(report_id,projection_sha256));
+    CREATE TABLE projection_backfill_rollbacks (rollback_id TEXT PRIMARY KEY,job_id TEXT,
+      expected_candidate_projection_sha256 TEXT,expected_candidate_projection_object_key TEXT,
+      target_source_projection_sha256 TEXT,target_source_projection_object_key TEXT,
+      state TEXT,lease_token TEXT,attempt_count INTEGER DEFAULT 0,failure_code TEXT,
+      failure_detail TEXT,created_unix_millis INTEGER,updated_unix_millis INTEGER,
+      completed_unix_millis INTEGER);
   `);
   const artifact = "a".repeat(64);
   const reportId = `rpt_${artifact.slice(0, 32)}`;
+  const original = {
+    schema_version: 12, report_id: reportId,
+    verification: { artifact_sha256: artifact },
+    runs: [{ run_index: 0, run_group_id: "old-group" }],
+  };
+  const originalBytes = new TextEncoder().encode(JSON.stringify(original));
+  const originalDigest = await digest(originalBytes);
   const row = {
     report_id: reportId, upload_id: `up_${artifact.slice(0, 32)}`, artifact_sha256: artifact,
-    projection_sha256: "b".repeat(64),
-    projection_object_key: `reports/${reportId}/projection-${"b".repeat(64)}.json`,
-    visibility: "public", verifier_release: "old-release", verified_unix_millis: 41,
+    projection_sha256: originalDigest,
+    projection_object_key: `reports/${reportId}/projection-${originalDigest}.json`,
+    visibility: "public", run_group_id: "old-group",
+    verifier_release: "old-release", verified_unix_millis: 41,
   };
   database.prepare("INSERT INTO reports VALUES (?,?,?,?,?,?,?,?,?)").run(
     row.report_id, row.upload_id, row.artifact_sha256, row.visibility, row.projection_sha256,
@@ -74,18 +93,28 @@ function publicationFixture() {
   database.prepare("INSERT INTO report_memberships VALUES (?,?,?,?,?)").run(
     row.report_id, "app.rlogs.game.blue-protocol-star-resonance", "old-character", "1", "Old",
   );
-  database.prepare("INSERT INTO projection_backfill_jobs (job_id,state) VALUES (?,?)")
-    .run("bfj_test", "running");
+  database.prepare(`INSERT INTO projection_backfill_jobs
+    (job_id,state,report_id,upload_id,artifact_sha256,source_projection_sha256,
+     source_projection_object_key,target_verifier_release)
+    VALUES (?,?,?,?,?,?,?,?)`).run("bfj_test", "running", row.report_id, row.upload_id,
+    row.artifact_sha256, row.projection_sha256, row.projection_object_key, "new-release");
   const objects = new Map();
+  objects.set(row.projection_object_key, originalBytes);
   const env = {
     RLOGS_DB: sqliteD1(database),
-    RLOGS_ARTIFACTS: { async put(key, value) { objects.set(key, value); } },
+    RLOGS_ARTIFACTS: {
+      async put(key, value) { objects.set(key, value); },
+      async get(key) {
+        const value = objects.get(key);
+        return value ? { async arrayBuffer() { return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength); } } : null;
+      },
+    },
   };
-  const original = { schema_version: 12, runs: [{ run_group_id: "old-group" }] };
   const result = {
     report: {
       schema_version: 15, report_id: row.report_id, created_unix_millis: 42,
       deployment_id: "global", region_id: "north-america",
+      verification: { artifact_sha256: artifact },
       submission_provenance: { submitter_id: "usr_owner" },
       runs: [{ run_index: 0, run_group_id: "new-group", terminal_state: "completed", participants: [] }],
     },
@@ -223,6 +252,8 @@ test("a malformed retained manifest is a permanent evidence failure", () => {
 test("operator workflow removes enqueue controls while manual deploy and the paused history remain", async () => {
   const migration = await readFile(new URL("../../cloudflare-backend/migrations/0008_projection_backfills.sql", import.meta.url), "utf8");
   const schema17Migration = await readFile(new URL("../../cloudflare-backend/migrations/0009_projection_backfill_schema17.sql", import.meta.url), "utf8");
+  const rollbackMigration = await readFile(new URL("../../cloudflare-backend/migrations/0010_projection_backfill_rollbacks.sql", import.meta.url), "utf8");
+  const indexWorker = await readFile(new URL("../src/index.js", import.meta.url), "utf8");
   const workflow = await readFile(new URL("../../../../.github/workflows/deploy-cloudflare.yml", import.meta.url), "utf8");
   const worker = await readFile(new URL("../src/backfill.js", import.meta.url), "utf8");
   assert.match(migration, /source_schema_version = 12/u);
@@ -232,6 +263,11 @@ test("operator workflow removes enqueue controls while manual deploy and the pau
   assert.match(schema17Migration, /target_schema_version IN \(15, 17\)/u);
   assert.match(schema17Migration, /INSERT INTO projection_backfill_batches[\s\S]+SELECT \* FROM projection_backfill_batches_schema15/u);
   assert.match(schema17Migration, /PRAGMA defer_foreign_keys = ON/u);
+  assert.match(rollbackMigration, /CREATE TABLE projection_backfill_rollbacks/u);
+  assert.match(rollbackMigration, /job_id TEXT NOT NULL UNIQUE/u);
+  assert.match(rollbackMigration, /attempt_count BETWEEN 0 AND 3/u);
+  assert.match(indexWorker, /runProjectionBackfillRollback\(env, context, reconcileRunGroup\)/u);
+  assert.doesNotMatch(indexWorker, /\/v1\/projection-backfill-rollbacks/u);
   assert.match(workflow, /github\.event_name == 'workflow_dispatch'/u);
   assert.match(workflow, /VERIFIER_RELEASE:\$\{\{ github\.sha \}\}/u);
   assert.match(workflow, /npx wrangler deploy --var "VERIFIER_RELEASE:/u);
@@ -286,8 +322,57 @@ test("schema-17 migration preserves legacy audit rows and only admits supported 
   assert.deepEqual(database.prepare("PRAGMA foreign_key_check").all(), []);
 });
 
+test("rollback migration preserves published jobs and requires exact operator pointers", async () => {
+  const legacy = await readFile(new URL("../../cloudflare-backend/migrations/0008_projection_backfills.sql", import.meta.url), "utf8");
+  const upgrade = await readFile(new URL("../../cloudflare-backend/migrations/0009_projection_backfill_schema17.sql", import.meta.url), "utf8");
+  const rollback = await readFile(new URL("../../cloudflare-backend/migrations/0010_projection_backfill_rollbacks.sql", import.meta.url), "utf8");
+  const database = new DatabaseSync(":memory:");
+  database.exec("PRAGMA foreign_keys=ON");
+  database.exec("CREATE TABLE reports (report_id TEXT PRIMARY KEY)");
+  database.exec(legacy);
+  const reportId = `rpt_${"a".repeat(32)}`;
+  const uploadId = `up_${"a".repeat(32)}`;
+  database.prepare("INSERT INTO reports VALUES (?)").run(reportId);
+  database.prepare(`INSERT INTO projection_backfill_batches
+    (batch_id,requested_by,workflow_run_url,target_verifier_release,source_schema_version,
+     target_schema_version,maximum_reports,dry_run,state,created_unix_millis,updated_unix_millis)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+    "bf_current", "operator", "https://example.invalid/run", "release-17", 12, 15, 1, 0, "completed", 1, 1,
+  );
+  database.prepare(`INSERT INTO projection_backfill_jobs
+    (job_id,batch_id,report_id,upload_id,artifact_sha256,source_projection_sha256,
+     source_projection_object_key,target_verifier_release,state,candidate_projection_sha256,
+     candidate_projection_object_key,created_unix_millis,updated_unix_millis)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    "bfj_current", "bf_current", reportId, uploadId, "a".repeat(64), "b".repeat(64),
+    `reports/${reportId}/projection-${"b".repeat(64)}.json`, "release-17", "published",
+    "c".repeat(64), `reports/${reportId}/projection-${"c".repeat(64)}.json`, 1, 1,
+  );
+  database.exec(upgrade);
+  database.exec(rollback);
+  assert.equal(database.prepare("SELECT state FROM projection_backfill_jobs WHERE job_id='bfj_current'").get().state, "published");
+  database.prepare(`INSERT INTO projection_backfill_rollbacks
+    (rollback_id,requested_by,workflow_run_url,job_id,expected_candidate_projection_sha256,
+     expected_candidate_projection_object_key,target_source_projection_sha256,
+     target_source_projection_object_key,state,created_unix_millis,updated_unix_millis)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+    `bfr_${"d".repeat(32)}`, "operator", "https://example.invalid/rollback", "bfj_current",
+    "c".repeat(64), `reports/${reportId}/projection-${"c".repeat(64)}.json`,
+    "b".repeat(64), `reports/${reportId}/projection-${"b".repeat(64)}.json`, "pending", 2, 2,
+  );
+  assert.throws(() => database.prepare(`INSERT INTO projection_backfill_rollbacks
+    (rollback_id,requested_by,workflow_run_url,job_id,expected_candidate_projection_sha256,
+     expected_candidate_projection_object_key,target_source_projection_sha256,
+     target_source_projection_object_key,state,created_unix_millis,updated_unix_millis)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+    `bfr_${"e".repeat(32)}`, "operator", "https://example.invalid/duplicate", "bfj_current",
+    "c".repeat(64), "wrong", "b".repeat(64), "wrong", "pending", 3, 3,
+  ));
+  assert.deepEqual(database.prepare("PRAGMA foreign_key_check").all(), []);
+});
+
 test("valid replay atomically advances the pointer and replaces both private indexes", async () => {
-  const fixture = publicationFixture();
+  const fixture = await publicationFixture();
   const outcome = await persistReplay(fixture.env,
     { target_verifier_release: "new-release" }, fixture.row, fixture.original,
     "bfj_test", fixture.result, { "new-character": "New" },
@@ -306,7 +391,7 @@ test("valid replay atomically advances the pointer and replaces both private ind
 });
 
 test("a lost source-pointer guard leaves the old catalog and membership intact", async () => {
-  const fixture = publicationFixture();
+  const fixture = await publicationFixture();
   fixture.database.prepare("UPDATE reports SET projection_sha256=?").run("c".repeat(64));
   const outcome = await persistReplay(fixture.env,
     { target_verifier_release: "new-release" }, fixture.row, fixture.original,
@@ -317,4 +402,114 @@ test("a lost source-pointer guard leaves the old catalog and membership intact",
     [{ character_id: "old-character" }]);
   assert.equal(fixture.database.prepare("SELECT count(*) AS count FROM report_projection_versions").get().count, 0);
   assert.equal(fixture.database.prepare("SELECT state FROM projection_backfill_jobs").get().state, "superseded");
+});
+
+async function publishedRollbackFixture() {
+  const fixture = await publicationFixture();
+  const published = await persistReplay(fixture.env,
+    { target_verifier_release: "new-release" }, fixture.row, fixture.original,
+    "bfj_test", fixture.result, { "new-character": "New" },
+    "app.rlogs.game.blue-protocol-star-resonance");
+  assert.equal(published.published, true);
+  const job = fixture.database.prepare("SELECT * FROM projection_backfill_jobs WHERE job_id='bfj_test'").get();
+  const request = {
+    rollback_id: `bfr_${"d".repeat(32)}`, job_id: "bfj_test", job_state: job.state,
+    lease_token: "lease",
+    report_id: fixture.row.report_id, upload_id: fixture.row.upload_id,
+    artifact_sha256: fixture.row.artifact_sha256,
+    source_projection_sha256: job.source_projection_sha256,
+    source_projection_object_key: job.source_projection_object_key,
+    candidate_projection_sha256: job.candidate_projection_sha256,
+    candidate_projection_object_key: job.candidate_projection_object_key,
+    source_indexes_sha256: job.source_indexes_sha256,
+    source_indexes_object_key: job.source_indexes_object_key,
+    expected_candidate_projection_sha256: job.candidate_projection_sha256,
+    expected_candidate_projection_object_key: job.candidate_projection_object_key,
+    target_source_projection_sha256: job.source_projection_sha256,
+    target_source_projection_object_key: job.source_projection_object_key,
+    target_verifier_release: "new-release",
+  };
+  fixture.database.prepare(`INSERT INTO projection_backfill_rollbacks
+    (rollback_id,job_id,expected_candidate_projection_sha256,expected_candidate_projection_object_key,
+     target_source_projection_sha256,target_source_projection_object_key,state,lease_token,
+     created_unix_millis,updated_unix_millis) VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
+    request.rollback_id, request.job_id, request.expected_candidate_projection_sha256,
+    request.expected_candidate_projection_object_key, request.target_source_projection_sha256,
+    request.target_source_projection_object_key, "running", "lease", 50, 50,
+  );
+  return { ...fixture, request };
+}
+
+test("inverse transaction restores the registered projection and exact prior indexes", async () => {
+  const fixture = await publishedRollbackFixture();
+  const objectCount = fixture.objects.size;
+  const outcome = await rollbackPublishedReplay(fixture.env, fixture.request);
+  assert.equal(outcome.restored, true);
+  assert.deepEqual(new Set(outcome.runGroupIds), new Set(["old-group", "new-group"]));
+  const report = fixture.database.prepare("SELECT * FROM reports").get();
+  assert.equal(report.projection_sha256, fixture.row.projection_sha256);
+  assert.equal(report.projection_object_key, fixture.row.projection_object_key);
+  assert.equal(report.verifier_release, "old-release");
+  assert.equal(report.run_group_id, "old-group");
+  assert.deepEqual([...fixture.database.prepare("SELECT run_group_id,catalog_entry_json FROM report_runs").all()].map((row) => ({ ...row })),
+    [{ run_group_id: "old-group", catalog_entry_json: "{}" }]);
+  assert.deepEqual([...fixture.database.prepare("SELECT character_id,player_name FROM report_memberships").all()].map((row) => ({ ...row })),
+    [{ character_id: "old-character", player_name: "Old" }]);
+  assert.equal(fixture.database.prepare("SELECT state FROM projection_backfill_rollbacks").get().state, "restored");
+  assert.equal(fixture.database.prepare("SELECT state FROM projection_backfill_jobs").get().state, "published");
+  assert.equal(fixture.database.prepare("SELECT count(*) AS count FROM report_projection_versions").get().count, 2);
+  assert.equal(fixture.objects.size, objectCount, "rollback preserves every immutable object");
+});
+
+test("rollback lost-pointer guard is a no-op for both candidate indexes", async () => {
+  const fixture = await publishedRollbackFixture();
+  fixture.database.prepare("UPDATE reports SET projection_sha256=?").run("f".repeat(64));
+  const outcome = await rollbackPublishedReplay(fixture.env, fixture.request);
+  assert.equal(outcome.restored, false);
+  assert.deepEqual([...fixture.database.prepare("SELECT run_group_id FROM report_runs").all()].map((row) => ({ ...row })),
+    [{ run_group_id: "new-group" }]);
+  assert.deepEqual([...fixture.database.prepare("SELECT character_id FROM report_memberships").all()].map((row) => ({ ...row })),
+    [{ character_id: "new-character" }]);
+  assert.equal(fixture.database.prepare("SELECT state FROM projection_backfill_rollbacks").get().state, "running");
+});
+
+test("an already-restored source pointer is also a lost-candidate no-op", async () => {
+  const fixture = await publishedRollbackFixture();
+  fixture.database.prepare("UPDATE reports SET projection_sha256=?,projection_object_key=?").run(
+    fixture.row.projection_sha256, fixture.row.projection_object_key,
+  );
+  const outcome = await rollbackPublishedReplay(fixture.env, fixture.request);
+  assert.equal(outcome.restored, false);
+  assert.deepEqual([...fixture.database.prepare("SELECT run_group_id FROM report_runs").all()].map((row) => ({ ...row })),
+    [{ run_group_id: "new-group" }], "a lost candidate guard cannot rewrite indexes");
+  assert.equal(fixture.database.prepare("SELECT state FROM projection_backfill_rollbacks").get().state, "running");
+});
+
+test("rollback refuses to restore indexes when either projection registration is missing", async () => {
+  const fixture = await publishedRollbackFixture();
+  fixture.database.prepare("DELETE FROM report_projection_versions WHERE projection_sha256=?")
+    .run(fixture.row.projection_sha256);
+  const outcome = await rollbackPublishedReplay(fixture.env, fixture.request);
+  assert.equal(outcome.restored, false);
+  assert.deepEqual([...fixture.database.prepare("SELECT run_group_id FROM report_runs").all()].map((row) => ({ ...row })),
+    [{ run_group_id: "new-group" }]);
+  assert.deepEqual([...fixture.database.prepare("SELECT character_id FROM report_memberships").all()].map((row) => ({ ...row })),
+    [{ character_id: "new-character" }]);
+});
+
+test("queued rollback wakes every prior and candidate reconciliation group only after restore", async () => {
+  const fixture = await publishedRollbackFixture();
+  fixture.database.prepare(`UPDATE projection_backfill_rollbacks
+    SET state='pending',lease_token=NULL,updated_unix_millis=60 WHERE rollback_id=?`).run(
+    fixture.request.rollback_id,
+  );
+  const wakes = [];
+  const waited = [];
+  const outcome = await runProjectionBackfillRollback(fixture.env, {
+    waitUntil(task) { waited.push(task); },
+  }, async (_env, runGroupId) => { wakes.push(runGroupId); });
+  await Promise.all(waited);
+  assert.deepEqual(outcome, { claimed: true, restored: true });
+  assert.deepEqual(new Set(wakes), new Set(["old-group", "new-group"]));
+  assert.equal(fixture.database.prepare("SELECT state FROM projection_backfill_rollbacks").get().state, "restored");
 });
