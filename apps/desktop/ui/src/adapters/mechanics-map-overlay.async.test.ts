@@ -255,6 +255,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     styles.textContent = readFileSync("src/styles/shell.css", "utf8");
     document.head.append(styles);
     const shared = layout();
+    shared.setups.default!.modules.map.visible = false;
     const moduleContracts = [
       { id: "map", selector: ".mechanics-map-overlay-runtime", opacity: 0.43, backgroundOpacity: 0.35 },
       { id: "player", selector: ".player-frame-overlay-runtime", opacity: 0.61, backgroundOpacity: 0.2 },
@@ -328,6 +329,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     expect(editorBar.textContent).toContain("Done");
     expect(editorBar.textContent).toContain("Hide");
     expect(editorBar.textContent).toContain("Lock");
+    expect(map.hidden).toBe(true);
     expect(["transparent", "rgba(0, 0, 0, 0)"]).not.toContain(
       getComputedStyle(root).backgroundColor,
     );
@@ -423,7 +425,6 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     interactivityHandler?.(true);
     await vi.waitFor(() => expect(root.dataset.locked).toBe("false"));
     expect(root.dataset.mode).toBe("edit");
-    map.hidden = true;
     expect(getComputedStyle(editorBar).display).toBe("flex");
     expect(editorBar.querySelector("button:last-child")?.textContent).toBe("Done");
     map.hidden = false;
