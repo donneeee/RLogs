@@ -1249,7 +1249,7 @@ mod tests {
     }
 
     #[test]
-    fn direct_current_build_skilltable_actions_keep_their_reviewed_english_names() {
+    fn current_build_table_relationships_keep_their_reviewed_english_names() {
         for (ability_id, expected) in [
             (1222, "Phantom Dash"),
             (1223, "Phantom Dash"),
@@ -1257,6 +1257,9 @@ mod tests {
             (1901, "Halberd's Edge"),
             (2002, "Universal Recovery Skill"),
             (2201, "Bullseye"),
+            (2202, "Bullseye"),
+            (2203, "Bullseye"),
+            (2204, "Bullseye"),
             (2209, "Luminary Bolt"),
             (2222, "Double Arrow"),
             (2224, "Lethal Shot"),
@@ -1267,6 +1270,11 @@ mod tests {
             (2332, "Passion Fury"),
             (2406, "Vanguard Strike"),
             (2453, "Sacred Blade"),
+            (21_404, "HP Recovery"),
+            (31_901, "Valor Cyclone"),
+            (2_202_112, "Overhealing"),
+            (3_003_260, "Judgment - Heal"),
+            (3_057_111, "Overhealing"),
         ] {
             let presentation = combat_action_presentation(ability_id)
                 .unwrap()
@@ -1308,7 +1316,7 @@ mod tests {
         assert_eq!(coverage["game_build"], BUILD);
         assert_eq!(
             coverage["scope"],
-            "saved-history-observed-technical-and-reviewed-observed-actions"
+            "saved-history-and-captured-public-observed-technical-and-reviewed-actions"
         );
         assert_eq!(coverage["policy"]["exact_build_required"], true);
         assert_eq!(coverage["policy"]["all_shipped_locales_required"], true);

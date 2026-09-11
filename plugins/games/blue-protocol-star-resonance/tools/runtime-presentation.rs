@@ -393,6 +393,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         )?;
 
         let skill_entries = load_localization_entries(&locale_directory.path().join("skills"))?;
+        let status_effect_entries =
+            load_localization_entries(&locale_directory.path().join("status-effects"))?;
         let combat_action_entries =
             load_localization_entries(&locale_directory.path().join("combat-actions"))?;
         let mut auxiliary_skills = Vec::with_capacity(auxiliary_keys.len());
@@ -430,6 +432,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 recount_entries.get(key)
             } else if key.starts_with("combat_action.") {
                 combat_action_entries.get(key)
+            } else if key.starts_with("status_effect.") {
+                status_effect_entries.get(key)
             } else {
                 None
             }
@@ -484,7 +488,8 @@ fn load_reviewed_combat_actions(
         for action in source.actions {
             let valid_key = action.localization_key.starts_with("skill.")
                 || action.localization_key.starts_with("recount_group.")
-                || action.localization_key.starts_with("combat_action.");
+                || action.localization_key.starts_with("combat_action.")
+                || action.localization_key.starts_with("status_effect.");
             let recount_group_id = action
                 .localization_key
                 .strip_prefix("recount_group.")

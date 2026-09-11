@@ -3,7 +3,7 @@
   "deployment_id": "global",
   "channel": "steam",
   "game_build": "24687926",
-  "scope": "saved-history-observed-technical-and-reviewed-observed-actions",
+  "scope": "saved-history-and-captured-public-observed-technical-and-reviewed-actions",
   "sources": [
     {
       "path": "observed-technical.v1.json",
@@ -12,13 +12,15 @@
     },
     {
       "path": "reviewed-observed.v1.json",
-      "sha256": "94d5a0a3e3db5c0665cdc7aa567e04263c153e559cfe59a3ee84fffa2d126cf2",
-      "action_count": 56
+      "sha256": "76e06aaa5ac24534630d3fb37de8480daeee3229dcb022812d0235f782f0fcd8",
+      "action_count": 64
     }
   ],
   "summary": {
-    "observed_action_count": 187,
-    "localized_action_count": 187,
+    "observed_action_count": 195,
+    "localized_action_count": 195,
+    "saved_history_observed_action_count": 187,
+    "captured_public_promotion_count": 8,
     "uncovered_action_ids": []
   },
   "policy": {

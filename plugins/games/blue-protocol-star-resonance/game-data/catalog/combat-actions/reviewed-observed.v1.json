@@ -449,6 +449,70 @@
       "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_kx09.png",
       "relation": "Current-build SkillTable provides the exact observed action and official Sacred Blade localization key",
       "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2202,
+      "kind": "base-skill-chain",
+      "localization_key": "skill.2201.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Current-build SkillTable places observed action 2202 in SkillLevelGroup 2201 and the exact 2201 -> 2202 -> 2203 -> 2204 basic-attack chain",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2203,
+      "kind": "base-skill-chain",
+      "localization_key": "skill.2201.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Current-build SkillTable places observed action 2203 in SkillLevelGroup 2201 and the exact 2201 -> 2202 -> 2203 -> 2204 basic-attack chain",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2204,
+      "kind": "base-skill-chain",
+      "localization_key": "skill.2201.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Current-build SkillTable places observed action 2204 in SkillLevelGroup 2201 and the exact 2201 -> 2202 -> 2203 -> 2204 basic-attack chain",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 21404,
+      "kind": "healing-effect",
+      "localization_key": "status_effect.21404.name",
+      "icon": "icons/combat/atlas/buff/buff_abnormal_green_icon.png",
+      "relation": "Current-build BuffTable gives observed effect 21404 the official localized HP Recovery identity; current-build DamageAttr rows 22140403 and 22140404 use TypeEnum 21404",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 31901,
+      "kind": "buff-proc",
+      "localization_key": "skill.1430.name",
+      "icon": null,
+      "relation": "Current-build BuffTable declares exact parent SkillId 1430 for observed effect 31901; current-build DamageAttr rows 23190103 through 23190105 use TypeEnum 31901",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2202112,
+      "kind": "healing-effect",
+      "localization_key": "status_effect.2202112.name",
+      "icon": null,
+      "relation": "Current-build BuffTable gives observed effect 2202112 the official localized Overhealing identity; current-build DamageAttr row 2220211203 uses TypeEnum 2202112",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 3003260,
+      "kind": "healing-effect",
+      "localization_key": "status_effect.3003260.name",
+      "icon": null,
+      "relation": "Current-build BuffTable gives observed effect 3003260 the official localized Judgment - Heal identity; current-build DamageAttr rows 2300326003 and 2300326004 use TypeEnum 3003260",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 3057111,
+      "kind": "healing-effect",
+      "localization_key": "status_effect.3057111.name",
+      "icon": null,
+      "relation": "Current-build BuffTable and official locale catalogs give observed effect 3057111 the Overhealing identity; current-build DamageAttr row 2305711104 uses TypeEnum 3057111",
+      "review_state": "verified-current-build"
     }
   ]
 }
