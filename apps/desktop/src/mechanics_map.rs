@@ -2414,8 +2414,10 @@ mod tests {
 
     #[test]
     fn live_status_labels_use_reviewed_presentation_and_hide_technical_names() {
-        let mut projector = MechanicsMapProjector::default();
-        projector.runtime_identity = Some(reviewed_identity());
+        let projector = MechanicsMapProjector {
+            runtime_identity: Some(reviewed_identity()),
+            ..MechanicsMapProjector::default()
+        };
 
         assert_eq!(
             projector.localized_status_display_name(55_228).as_deref(),
