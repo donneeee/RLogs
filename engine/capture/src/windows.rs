@@ -3,7 +3,11 @@ use std::{
     ffi::{CStr, c_void},
     mem::{size_of, size_of_val},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    panic::{AssertUnwindSafe, catch_unwind},
     ptr, slice,
+    sync::Once,
+    thread::{self, JoinHandle},
+    time::Duration,
 };
 
 use windows_sys::Win32::{
@@ -25,6 +29,10 @@ use windows_sys::Win32::{
 };
 
 use crate::dumpcap::DumpcapLiveCapture;
+use crate::fan_in::{
+    MultiSourceFanIn, MultiSourceFanInMetrics, MultiSourceFanInStopHandle, MultiSourceIngress,
+    MultiSourcePushError,
+};
 use crate::npcap::NpcapLiveCapture;
 use crate::{
     CaptureError, CaptureSource, CaptureSourceMetadata, CapturedFrame, DumpcapLiveConfig,
@@ -612,6 +620,7 @@ impl CaptureSource for WindowsOwnedNpcapCapture {
 #[derive(Debug, Clone)]
 pub enum WindowsLiveCaptureStopHandle {
     Npcap(NpcapLiveStopHandle),
+    NpcapFanIn(WindowsSignatureFanInStopHandle),
     Dumpcap(LiveCaptureStopHandle),
 }
 
@@ -619,6 +628,10 @@ impl WindowsLiveCaptureStopHandle {
     pub fn request_stop(&self) -> Result<(), CaptureError> {
         match self {
             Self::Npcap(handle) => {
+                handle.request_stop();
+                Ok(())
+            }
+            Self::NpcapFanIn(handle) => {
                 handle.request_stop();
                 Ok(())
             }
@@ -804,11 +817,371 @@ impl CaptureSource for WindowsSignatureDumpcapCapture {
     }
 }
 
+const WINDOWS_FAN_IN_QUEUE_FRAMES: usize = 512;
+const WINDOWS_FAN_IN_QUEUE_BYTES: usize = 16 * 1024 * 1024;
+const CAPTURE_READER_THREAD_PREFIX: &str = "rlogs-capture-reader-";
+const SANITIZED_CAPTURE_READER_PANIC: &str = "rLogs capture reader stopped unexpectedly";
+static CAPTURE_READER_PANIC_HOOK: Once = Once::new();
+
+fn install_capture_reader_panic_hook() {
+    CAPTURE_READER_PANIC_HOOK.call_once(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let is_capture_reader = thread::current()
+                .name()
+                .is_some_and(is_capture_reader_thread_name);
+            if is_capture_reader {
+                use std::io::Write as _;
+                let _ = writeln!(std::io::stderr(), "{SANITIZED_CAPTURE_READER_PANIC}");
+            } else {
+                previous(info);
+            }
+        }));
+    });
+}
+
+fn is_capture_reader_thread_name(name: &str) -> bool {
+    let Some(ordinal) = name.strip_prefix(CAPTURE_READER_THREAD_PREFIX) else {
+        return false;
+    };
+    if ordinal.is_empty()
+        || (ordinal.len() > 1 && ordinal.starts_with('0'))
+        || !ordinal.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return false;
+    }
+    ordinal
+        .parse::<usize>()
+        .is_ok_and(|value| value < MAX_WINDOWS_CAPTURE_CANDIDATES)
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct WindowsSignatureFanInDiagnostics {
+    pub planned_candidates: usize,
+    pub opened_candidates: usize,
+    pub candidate_open_failures: usize,
+    pub active_sources: usize,
+    pub completed_sources: u64,
+    pub failed_sources: u64,
+    pub accepted_frames: u64,
+    pub delivered_frames: u64,
+    pub queue_full_rejections: u64,
+    pub byte_full_rejections: u64,
+    pub oversized_frame_rejections: u64,
+    pub peak_queued_frames: usize,
+    pub peak_queued_bytes: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct WindowsSignatureFanInStopHandle {
+    fan_in: MultiSourceFanInStopHandle,
+    children: Vec<NpcapLiveStopHandle>,
+}
+
+impl WindowsSignatureFanInStopHandle {
+    pub fn request_stop(&self) {
+        request_fan_in_stop(&self.fan_in, &self.children);
+    }
+}
+
+trait FanInChildStop: Send + 'static {
+    fn request_child_stop(&self);
+}
+
+impl FanInChildStop for NpcapLiveStopHandle {
+    fn request_child_stop(&self) {
+        self.request_stop();
+    }
+}
+
+fn request_fan_in_stop<S: FanInChildStop>(fan_in: &MultiSourceFanInStopHandle, children: &[S]) {
+    // Refuse queue writes and registrations before waking native readers.
+    fan_in.request_stop();
+    for child in children {
+        child.request_child_stop();
+    }
+}
+
+/// Initial bounded Windows adapter fan-in protected by exactly one shared
+/// protocol-signature filter. Raw frames never leave this wrapper.
+#[derive(Debug)]
+pub struct WindowsSignatureFanInCapture {
+    inner: SignatureFlowCapture<MultiSourceFanIn>,
+    stop: WindowsSignatureFanInStopHandle,
+    workers: Vec<JoinHandle<()>>,
+    planned_candidates: usize,
+    opened_candidates: usize,
+    candidate_open_failures: usize,
+}
+
+trait FanInCandidateOpener {
+    type Source: CaptureSource + 'static;
+    type Stop: FanInChildStop;
+
+    fn open(
+        &mut self,
+        candidate: &WindowsCaptureCandidate,
+        duration_seconds: u32,
+    ) -> Result<(Self::Source, Self::Stop), CaptureError>;
+}
+
+struct NpcapCandidateOpener;
+
+impl FanInCandidateOpener for NpcapCandidateOpener {
+    type Source = NpcapLiveCapture;
+    type Stop = NpcapLiveStopHandle;
+
+    fn open(
+        &mut self,
+        candidate: &WindowsCaptureCandidate,
+        duration_seconds: u32,
+    ) -> Result<(Self::Source, Self::Stop), CaptureError> {
+        let source = NpcapLiveConfig::new(
+            crate::npcap_device_name(&candidate.adapter_name),
+            duration_seconds,
+        )
+        .and_then(NpcapLiveCapture::open)?;
+        let stop = source.stop_handle();
+        Ok((source, stop))
+    }
+}
+
+struct StartedFanInSources<S> {
+    stops: Vec<S>,
+    workers: Vec<JoinHandle<()>>,
+    open_failures: usize,
+    first_open_error: Option<CaptureError>,
+}
+
+fn start_fan_in_sources<O: FanInCandidateOpener>(
+    candidates: &[WindowsCaptureCandidate],
+    duration_seconds: u32,
+    filtered: &SignatureFlowCapture<MultiSourceFanIn>,
+    opener: &mut O,
+) -> Result<StartedFanInSources<O::Stop>, CaptureError> {
+    install_capture_reader_panic_hook();
+    let mut stops = Vec::new();
+    let mut workers = Vec::new();
+    let mut open_failures = 0_usize;
+    let mut first_open_error = None;
+
+    for (index, candidate) in candidates
+        .iter()
+        .take(MAX_WINDOWS_CAPTURE_CANDIDATES)
+        .enumerate()
+    {
+        let (source, stop) = match opener.open(candidate, duration_seconds) {
+            Ok(opened) => opened,
+            Err(error) => {
+                open_failures = open_failures.saturating_add(1);
+                first_open_error.get_or_insert(error);
+                continue;
+            }
+        };
+        let ingress =
+            filtered
+                .source()
+                .register_source()
+                .map_err(|error| CaptureError::Adapter {
+                    adapter: "windows-signature-fan-in".into(),
+                    message: format!("could not register a bounded Npcap candidate: {error}"),
+                })?;
+        match thread::Builder::new()
+            .name(format!("{CAPTURE_READER_THREAD_PREFIX}{index}"))
+            .spawn(move || run_fan_in_source_guarded(source, ingress))
+        {
+            Ok(worker) => {
+                stops.push(stop);
+                workers.push(worker);
+            }
+            Err(error) => {
+                open_failures = open_failures.saturating_add(1);
+                first_open_error.get_or_insert_with(|| CaptureError::Adapter {
+                    adapter: "windows-signature-fan-in".into(),
+                    message: format!("could not start an Npcap candidate reader: {error}"),
+                });
+            }
+        }
+    }
+
+    Ok(StartedFanInSources {
+        stops,
+        workers,
+        open_failures,
+        first_open_error,
+    })
+}
+
+impl WindowsSignatureFanInCapture {
+    fn open_prefix(
+        candidates: &[WindowsCaptureCandidate],
+        duration_seconds: u32,
+        signature: TcpPayloadPrefixSignature,
+        filter: SignatureFlowCaptureConfig,
+    ) -> Result<Self, CaptureError> {
+        let fan_in = MultiSourceFanIn::new(
+            MAX_WINDOWS_CAPTURE_CANDIDATES,
+            WINDOWS_FAN_IN_QUEUE_FRAMES,
+            WINDOWS_FAN_IN_QUEUE_BYTES,
+            Vec::new(),
+        )?;
+        let aggregate_stop = fan_in.stop_handle();
+        // Validate and establish the one shared privacy boundary before any
+        // candidate reader can observe a frame.
+        let inner = SignatureFlowCapture::new_prefix(fan_in, signature, filter)?;
+        let started = start_fan_in_sources(
+            candidates,
+            duration_seconds,
+            &inner,
+            &mut NpcapCandidateOpener,
+        )?;
+
+        if started.workers.is_empty() {
+            aggregate_stop.request_stop();
+            return Err(started
+                .first_open_error
+                .unwrap_or_else(|| CaptureError::Adapter {
+                    adapter: "windows-signature-fan-in".into(),
+                    message: "no Npcap capture candidate could be opened".into(),
+                }));
+        }
+        let opened_candidates = started.workers.len();
+        Ok(Self {
+            inner,
+            stop: WindowsSignatureFanInStopHandle {
+                fan_in: aggregate_stop,
+                children: started.stops,
+            },
+            workers: started.workers,
+            planned_candidates: candidates.len().min(MAX_WINDOWS_CAPTURE_CANDIDATES),
+            opened_candidates,
+            candidate_open_failures: started.open_failures,
+        })
+    }
+
+    pub fn metrics(&self) -> &SignatureFlowCaptureMetrics {
+        self.inner.metrics()
+    }
+
+    pub fn confirmed_connections(&self) -> Vec<TcpConnection> {
+        self.inner.confirmed_connections()
+    }
+
+    pub fn stop_handle(&self) -> WindowsSignatureFanInStopHandle {
+        self.stop.clone()
+    }
+
+    pub fn diagnostics(&self) -> WindowsSignatureFanInDiagnostics {
+        let metrics = self.inner.source().metrics();
+        fan_in_diagnostics(
+            self.planned_candidates,
+            self.opened_candidates,
+            self.candidate_open_failures,
+            metrics,
+        )
+    }
+
+    fn finish_workers(&mut self) {
+        for worker in self.workers.drain(..) {
+            let _ = worker.join();
+        }
+    }
+}
+
+impl CaptureSource for WindowsSignatureFanInCapture {
+    fn metadata(&self) -> &CaptureSourceMetadata {
+        self.inner.metadata()
+    }
+
+    fn next_frame(&mut self) -> Result<Option<CapturedFrame>, CaptureError> {
+        let result = self.inner.next_frame();
+        if !matches!(result, Ok(Some(_))) {
+            self.finish_workers();
+        }
+        result
+    }
+}
+
+impl Drop for WindowsSignatureFanInCapture {
+    fn drop(&mut self) {
+        self.stop.request_stop();
+        self.finish_workers();
+    }
+}
+
+fn run_fan_in_source<S: CaptureSource>(mut source: S, ingress: &mut MultiSourceIngress) {
+    loop {
+        let frame = match source.next_frame() {
+            Ok(Some(frame)) => frame,
+            Ok(None) => {
+                ingress.finish();
+                return;
+            }
+            Err(_) => {
+                ingress.fail();
+                return;
+            }
+        };
+        let mut pending = frame;
+        loop {
+            match ingress.try_push(pending) {
+                Ok(()) => break,
+                Err(MultiSourcePushError::QueueFull(frame))
+                | Err(MultiSourcePushError::QueueBytesFull(frame)) => {
+                    pending = frame;
+                    if ingress.stop_requested() {
+                        return;
+                    }
+                    thread::sleep(Duration::from_millis(1));
+                }
+                Err(MultiSourcePushError::Stopped(_)) => return,
+                Err(MultiSourcePushError::FrameTooLarge(_))
+                | Err(MultiSourcePushError::SequenceExhausted(_)) => {
+                    ingress.fail();
+                    return;
+                }
+            }
+        }
+    }
+}
+
+fn run_fan_in_source_guarded<S: CaptureSource>(source: S, mut ingress: MultiSourceIngress) {
+    if catch_unwind(AssertUnwindSafe(|| run_fan_in_source(source, &mut ingress))).is_err() {
+        // The panic payload is intentionally neither retained nor exposed: a
+        // worker panic is only a bounded, privacy-safe failed-source signal.
+        ingress.fail();
+    }
+}
+
+fn fan_in_diagnostics(
+    planned_candidates: usize,
+    opened_candidates: usize,
+    candidate_open_failures: usize,
+    metrics: MultiSourceFanInMetrics,
+) -> WindowsSignatureFanInDiagnostics {
+    WindowsSignatureFanInDiagnostics {
+        planned_candidates,
+        opened_candidates,
+        candidate_open_failures,
+        active_sources: metrics.active_sources,
+        completed_sources: metrics.completed_sources,
+        failed_sources: metrics.failed_sources,
+        accepted_frames: metrics.accepted_frames,
+        delivered_frames: metrics.delivered_frames,
+        queue_full_rejections: metrics.queue_full_rejections,
+        byte_full_rejections: metrics.byte_full_rejections,
+        oversized_frame_rejections: metrics.oversized_frame_rejections,
+        peak_queued_frames: metrics.peak_queued_frames,
+        peak_queued_bytes: metrics.peak_queued_bytes,
+    }
+}
+
 /// Packet-first Windows live capture. It opens broad TCP ingress in memory,
 /// then exposes only exact connections proven by the supplied game signature.
 #[derive(Debug)]
 pub enum WindowsSignatureLiveCapture {
     Npcap(WindowsSignatureNpcapCapture),
+    NpcapFanIn(WindowsSignatureFanInCapture),
     Dumpcap(WindowsSignatureDumpcapCapture),
 }
 
@@ -864,9 +1237,47 @@ impl WindowsSignatureLiveCapture {
         }
     }
 
+    /// Opens the initial route-aware candidate set under one shared signature
+    /// filter. Candidate discovery is point-in-time in this slice; no setting is
+    /// changed and no adapter is added after the call returns.
+    pub fn open_route_aware_prefix(
+        primary_interface: &str,
+        process_ids: &[u32],
+        duration_seconds: u32,
+        dumpcap_fallback: Option<DumpcapLiveConfig>,
+        signature: TcpPayloadPrefixSignature,
+        filter: SignatureFlowCaptureConfig,
+    ) -> Result<Self, CaptureError> {
+        let adapters = windows_capture_adapters().unwrap_or_default();
+        let candidates =
+            recommend_windows_capture_candidates(&adapters, process_ids, Some(primary_interface));
+        match WindowsSignatureFanInCapture::open_prefix(
+            &candidates,
+            duration_seconds,
+            signature,
+            filter,
+        ) {
+            Ok(capture) => Ok(Self::NpcapFanIn(capture)),
+            Err(npcap_error) => match dumpcap_fallback {
+                Some(config) => WindowsSignatureDumpcapCapture::spawn_prefix(
+                    config, signature, filter,
+                )
+                .map(Self::Dumpcap)
+                .map_err(|dumpcap_error| CaptureError::Adapter {
+                    adapter: "windows-signature-live-capture".into(),
+                    message: format!(
+                        "all bounded native Npcap candidates failed ({npcap_error}); dumpcap fallback also failed ({dumpcap_error})"
+                    ),
+                }),
+                None => Err(npcap_error),
+            },
+        }
+    }
+
     pub fn metrics(&self) -> &SignatureFlowCaptureMetrics {
         match self {
             Self::Npcap(capture) => capture.metrics(),
+            Self::NpcapFanIn(capture) => capture.metrics(),
             Self::Dumpcap(capture) => capture.metrics(),
         }
     }
@@ -874,6 +1285,7 @@ impl WindowsSignatureLiveCapture {
     pub fn confirmed_connections(&self) -> Vec<TcpConnection> {
         match self {
             Self::Npcap(capture) => capture.confirmed_connections(),
+            Self::NpcapFanIn(capture) => capture.confirmed_connections(),
             Self::Dumpcap(capture) => capture.confirmed_connections(),
         }
     }
@@ -881,6 +1293,9 @@ impl WindowsSignatureLiveCapture {
     pub fn stop_handle(&self) -> WindowsLiveCaptureStopHandle {
         match self {
             Self::Npcap(capture) => WindowsLiveCaptureStopHandle::Npcap(capture.stop_handle()),
+            Self::NpcapFanIn(capture) => {
+                WindowsLiveCaptureStopHandle::NpcapFanIn(capture.stop_handle())
+            }
             Self::Dumpcap(capture) => WindowsLiveCaptureStopHandle::Dumpcap(capture.stop_handle()),
         }
     }
@@ -890,6 +1305,7 @@ impl CaptureSource for WindowsSignatureLiveCapture {
     fn metadata(&self) -> &CaptureSourceMetadata {
         match self {
             Self::Npcap(capture) => capture.metadata(),
+            Self::NpcapFanIn(capture) => capture.metadata(),
             Self::Dumpcap(capture) => capture.metadata(),
         }
     }
@@ -897,6 +1313,7 @@ impl CaptureSource for WindowsSignatureLiveCapture {
     fn next_frame(&mut self) -> Result<Option<CapturedFrame>, CaptureError> {
         match self {
             Self::Npcap(capture) => capture.next_frame(),
+            Self::NpcapFanIn(capture) => capture.next_frame(),
             Self::Dumpcap(capture) => capture.next_frame(),
         }
     }
@@ -1239,7 +1656,24 @@ fn adapter_table_error(message: impl Into<String>) -> CaptureError {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        collections::VecDeque,
+        env,
+        process::Command,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+    };
+
+    use bytes::Bytes;
+    use etherparse::PacketBuilder;
+
     use super::*;
+    use crate::{
+        CaptureLinkType, CaptureSourceKind, TcpPayloadDirection, TcpPayloadSignatureResult,
+        TimestampNormalization,
+    };
 
     #[derive(Debug, Default)]
     struct FixtureRoutes(BTreeMap<IpAddr, u32>);
@@ -1247,6 +1681,162 @@ mod tests {
     impl WindowsRouteResolver for FixtureRoutes {
         fn interface_index(&self, destination: IpAddr) -> Option<u32> {
             self.0.get(&destination).copied()
+        }
+    }
+
+    #[derive(Debug)]
+    struct FixtureCaptureSource {
+        metadata: CaptureSourceMetadata,
+        frames: VecDeque<Result<Option<CapturedFrame>, CaptureError>>,
+        panic_on_next: bool,
+    }
+
+    impl FixtureCaptureSource {
+        fn empty() -> Self {
+            Self {
+                metadata: CaptureSourceMetadata {
+                    source_id: "fixture".into(),
+                    display_name: "fixture".into(),
+                    kind: CaptureSourceKind::Live,
+                    link_types: vec![CaptureLinkType::Ethernet],
+                    file_format: None,
+                },
+                frames: VecDeque::from([Ok(None)]),
+                panic_on_next: false,
+            }
+        }
+
+        fn failed() -> Self {
+            let mut source = Self::empty();
+            source.frames = VecDeque::from([Err(CaptureError::Adapter {
+                adapter: "fixture".into(),
+                message: "fixture read failure".into(),
+            })]);
+            source
+        }
+
+        fn panicking() -> Self {
+            let mut source = Self::empty();
+            source.panic_on_next = true;
+            source
+        }
+
+        fn matching() -> Self {
+            let mut source = Self::empty();
+            source.frames = VecDeque::from([
+                Ok(Some(tcp_frame(10_000, b"BPSR split signature"))),
+                Ok(None),
+            ]);
+            source
+        }
+    }
+
+    impl CaptureSource for FixtureCaptureSource {
+        fn metadata(&self) -> &CaptureSourceMetadata {
+            &self.metadata
+        }
+
+        fn next_frame(&mut self) -> Result<Option<CapturedFrame>, CaptureError> {
+            if self.panic_on_next {
+                self.panic_on_next = false;
+                panic!("private fixture panic payload");
+            }
+            self.frames.pop_front().unwrap_or(Ok(None))
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    struct FixtureStop(Arc<AtomicBool>);
+
+    impl FanInChildStop for FixtureStop {
+        fn request_child_stop(&self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct FixtureOpener {
+        attempts: Vec<String>,
+    }
+
+    impl FanInCandidateOpener for FixtureOpener {
+        type Source = FixtureCaptureSource;
+        type Stop = FixtureStop;
+
+        fn open(
+            &mut self,
+            candidate: &WindowsCaptureCandidate,
+            _duration_seconds: u32,
+        ) -> Result<(Self::Source, Self::Stop), CaptureError> {
+            self.attempts.push(candidate.adapter_name.clone());
+            if candidate.adapter_name.starts_with("FAIL") {
+                return Err(CaptureError::Adapter {
+                    adapter: "fixture".into(),
+                    message: "fixture open failure".into(),
+                });
+            }
+            Ok((
+                if candidate.adapter_name.starts_with("PANIC") {
+                    FixtureCaptureSource::panicking()
+                } else if candidate.adapter_name.starts_with("HEALTHY") {
+                    FixtureCaptureSource::matching()
+                } else if candidate.adapter_name.starts_with("RUNTIME-FAIL") {
+                    FixtureCaptureSource::failed()
+                } else {
+                    FixtureCaptureSource::empty()
+                },
+                FixtureStop(Arc::new(AtomicBool::new(false))),
+            ))
+        }
+    }
+
+    fn candidate(name: &str) -> WindowsCaptureCandidate {
+        WindowsCaptureCandidate {
+            adapter_name: name.into(),
+            sources: vec![WindowsCaptureCandidateSource::SystemRoute],
+            matched_game_connections: 0,
+        }
+    }
+
+    fn prefix_signature(payload: &[u8]) -> TcpPayloadSignatureResult {
+        const SIGNATURE: &[u8] = b"BPSR split signature";
+        if SIGNATURE.starts_with(payload) {
+            if payload.len() == SIGNATURE.len() {
+                TcpPayloadSignatureResult::Match(TcpPayloadDirection::ServerToClient)
+            } else {
+                TcpPayloadSignatureResult::NeedMore
+            }
+        } else if payload.starts_with(SIGNATURE) {
+            TcpPayloadSignatureResult::Match(TcpPayloadDirection::ServerToClient)
+        } else {
+            TcpPayloadSignatureResult::Reject
+        }
+    }
+
+    fn tcp_frame(tcp_sequence: u32, payload: &[u8]) -> CapturedFrame {
+        tcp_frame_for_ports(32_000, 31_000, tcp_sequence, payload)
+    }
+
+    fn tcp_frame_for_ports(
+        source_port: u16,
+        destination_port: u16,
+        tcp_sequence: u32,
+        payload: &[u8],
+    ) -> CapturedFrame {
+        let builder = PacketBuilder::ethernet2([1; 6], [2; 6])
+            .ipv4([10, 0, 0, 2], [10, 0, 0, 1], 64)
+            .tcp(source_port, destination_port, tcp_sequence, 1_024);
+        let mut bytes = Vec::with_capacity(builder.size(payload.len()));
+        builder.write(&mut bytes, payload).unwrap();
+        CapturedFrame {
+            sequence: 1,
+            observed_micros: 1,
+            source_timestamp_nanos: Some(1_000),
+            timestamp_normalization: TimestampNormalization::Exact,
+            interface_id: None,
+            link_type: CaptureLinkType::Ethernet,
+            original_length: bytes.len().try_into().unwrap(),
+            bytes: Bytes::from(bytes),
         }
     }
 
@@ -1283,6 +1873,254 @@ mod tests {
             TcpEndpoint::new(client.parse().expect("fixture IPv6 client"), 50_000),
             TcpEndpoint::new(server.parse().expect("fixture IPv6 server"), 443),
         )
+    }
+
+    #[test]
+    fn fan_in_candidate_opener_is_bounded_and_isolates_partial_open_failures() {
+        let candidates = [
+            candidate("A"),
+            candidate("FAIL-B"),
+            candidate("C"),
+            candidate("FAIL-D"),
+            candidate("NEVER-OPENED"),
+        ];
+        let fan_in = MultiSourceFanIn::new(4, 8, 4_096, Vec::new()).unwrap();
+        let filtered = SignatureFlowCapture::new_prefix(
+            fan_in,
+            prefix_signature,
+            SignatureFlowCaptureConfig::default(),
+        )
+        .unwrap();
+        let mut opener = FixtureOpener::default();
+        let started = start_fan_in_sources(&candidates, 30, &filtered, &mut opener).unwrap();
+
+        for worker in started.workers {
+            worker.join().unwrap();
+        }
+        assert_eq!(opener.attempts, ["A", "FAIL-B", "C", "FAIL-D"]);
+        assert_eq!(started.stops.len(), 2);
+        assert_eq!(started.open_failures, 2);
+        assert!(started.first_open_error.is_some());
+    }
+
+    #[test]
+    fn shared_signature_filter_can_confirm_a_prefix_split_across_adapters() {
+        const SIGNATURE: &[u8] = b"BPSR split signature";
+        let fan_in = MultiSourceFanIn::new(4, 8, 16 * 1_024, Vec::new()).unwrap();
+        let mut first = fan_in.register_source().unwrap();
+        let mut second = fan_in.register_source().unwrap();
+        let mut unmatched = fan_in.register_source().unwrap();
+        let mut filtered = SignatureFlowCapture::new_prefix(
+            fan_in,
+            prefix_signature,
+            SignatureFlowCaptureConfig::default(),
+        )
+        .unwrap();
+
+        first.try_push(tcp_frame(10_000, &SIGNATURE[..7])).unwrap();
+        second.try_push(tcp_frame(10_007, &SIGNATURE[7..])).unwrap();
+        unmatched
+            .try_push(tcp_frame_for_ports(42_000, 41_000, 20_000, b"private"))
+            .unwrap();
+        first.finish();
+        second.finish();
+        unmatched.finish();
+
+        assert!(filtered.next_frame().unwrap().is_some());
+        assert!(filtered.next_frame().unwrap().is_some());
+        assert!(filtered.next_frame().unwrap().is_none());
+        assert_eq!(filtered.metrics().emitted_frames, 2);
+        assert_eq!(filtered.metrics().unidentified_frames_discarded, 1);
+        assert_eq!(filtered.confirmed_connections().len(), 1);
+    }
+
+    #[test]
+    fn fan_in_candidate_workers_isolate_one_child_read_failure() {
+        let candidates = [candidate("RUNTIME-FAIL-A"), candidate("B")];
+        let fan_in = MultiSourceFanIn::new(4, 8, 4_096, Vec::new()).unwrap();
+        let filtered = SignatureFlowCapture::new_prefix(
+            fan_in,
+            prefix_signature,
+            SignatureFlowCaptureConfig::default(),
+        )
+        .unwrap();
+        let mut opener = FixtureOpener::default();
+        let started = start_fan_in_sources(&candidates, 30, &filtered, &mut opener).unwrap();
+
+        for worker in started.workers {
+            worker.join().unwrap();
+        }
+        let metrics = filtered.source().metrics();
+        assert_eq!(metrics.failed_sources, 1);
+        assert_eq!(metrics.completed_sources, 1);
+        assert_eq!(metrics.active_sources, 0);
+    }
+
+    #[test]
+    fn panicking_worker_is_failed_while_healthy_peer_frames_continue() {
+        let candidates = [candidate("PANIC-A"), candidate("HEALTHY-B")];
+        let fan_in = MultiSourceFanIn::new(4, 8, 4_096, Vec::new()).unwrap();
+        let mut filtered = SignatureFlowCapture::new_prefix(
+            fan_in,
+            prefix_signature,
+            SignatureFlowCaptureConfig::default(),
+        )
+        .unwrap();
+        let mut opener = FixtureOpener::default();
+        let started = start_fan_in_sources(&candidates, 30, &filtered, &mut opener).unwrap();
+
+        assert!(filtered.next_frame().unwrap().is_some());
+        assert!(filtered.next_frame().unwrap().is_none());
+        for worker in started.workers {
+            assert!(worker.join().is_ok());
+        }
+        let metrics = filtered.source().metrics();
+        assert_eq!(metrics.failed_sources, 1);
+        assert_eq!(metrics.completed_sources, 1);
+    }
+
+    #[test]
+    fn capture_reader_hook_name_scope_is_exact_and_bounded() {
+        for ordinal in 0..MAX_WINDOWS_CAPTURE_CANDIDATES {
+            assert!(is_capture_reader_thread_name(&format!(
+                "{CAPTURE_READER_THREAD_PREFIX}{ordinal}"
+            )));
+        }
+        for name in [
+            "rlogs-capture-reader-4",
+            "rlogs-capture-reader-999",
+            "rlogs-capture-reader-debug",
+            "rlogs-capture-reader-0-extra",
+            "rlogs-capture-reader-00",
+            "unrelated-fixture-thread",
+        ] {
+            assert!(!is_capture_reader_thread_name(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn capture_reader_panic_hook_sanitizes_only_capture_threads_in_subprocess() {
+        const CHILD_ENV: &str = "RLOGS_CAPTURE_PANIC_HOOK_CHILD";
+        const PRIOR_HOOK_SENTINEL: &str = "fixture prior hook reached";
+        if env::var_os(CHILD_ENV).is_some() {
+            std::panic::set_hook(Box::new(|info| {
+                use std::io::Write as _;
+                let payload = info
+                    .payload()
+                    .downcast_ref::<&str>()
+                    .copied()
+                    .or_else(|| info.payload().downcast_ref::<String>().map(String::as_str))
+                    .unwrap_or("non-string panic payload");
+                let _ = writeln!(std::io::stderr(), "{PRIOR_HOOK_SENTINEL}: {payload}");
+            }));
+            install_capture_reader_panic_hook();
+
+            let fan_in = MultiSourceFanIn::new(1, 2, 4_096, Vec::new()).unwrap();
+            let ingress = fan_in.register_source().unwrap();
+            let capture_worker = thread::Builder::new()
+                .name(format!("{CAPTURE_READER_THREAD_PREFIX}0"))
+                .spawn(move || {
+                    run_fan_in_source_guarded(FixtureCaptureSource::panicking(), ingress)
+                })
+                .unwrap();
+            assert!(capture_worker.join().is_ok());
+
+            for name in [
+                "rlogs-capture-reader-4",
+                "rlogs-capture-reader-999",
+                "rlogs-capture-reader-debug",
+                "rlogs-capture-reader-0-extra",
+                "rlogs-capture-reader-00",
+            ] {
+                let payload = format!("forwarded private panic for {name}");
+                let unrelated_worker = thread::Builder::new()
+                    .name(name.into())
+                    .spawn(move || panic!("{payload}"))
+                    .unwrap();
+                assert!(unrelated_worker.join().is_err());
+            }
+            return;
+        }
+
+        let output = Command::new(env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "windows::tests::capture_reader_panic_hook_sanitizes_only_capture_threads_in_subprocess",
+                "--nocapture",
+            ])
+            .env(CHILD_ENV, "1")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "child test failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains(SANITIZED_CAPTURE_READER_PANIC));
+        assert!(stderr.contains(PRIOR_HOOK_SENTINEL));
+        assert!(!stderr.contains("private fixture panic payload"));
+        for name in [
+            "rlogs-capture-reader-4",
+            "rlogs-capture-reader-999",
+            "rlogs-capture-reader-debug",
+            "rlogs-capture-reader-0-extra",
+            "rlogs-capture-reader-00",
+        ] {
+            assert!(stderr.contains(&format!("forwarded private panic for {name}")));
+        }
+    }
+
+    #[test]
+    fn all_panicking_workers_return_terminal_error_without_panic_details() {
+        let candidates = [candidate("PANIC-A"), candidate("PANIC-B")];
+        let fan_in = MultiSourceFanIn::new(4, 8, 4_096, Vec::new()).unwrap();
+        let mut filtered = SignatureFlowCapture::new_prefix(
+            fan_in,
+            prefix_signature,
+            SignatureFlowCaptureConfig::default(),
+        )
+        .unwrap();
+        let mut opener = FixtureOpener::default();
+        let started = start_fan_in_sources(&candidates, 30, &filtered, &mut opener).unwrap();
+
+        let error = filtered.next_frame().unwrap_err();
+        assert!(!error.to_string().contains("private fixture panic payload"));
+        assert!(filtered.next_frame().unwrap().is_none());
+        for worker in started.workers {
+            assert!(worker.join().is_ok());
+        }
+        assert_eq!(filtered.source().metrics().failed_sources, 2);
+    }
+
+    #[test]
+    fn all_failed_children_return_one_terminal_error_after_the_queue_drains() {
+        let mut fan_in = MultiSourceFanIn::new(2, 8, 4_096, Vec::new()).unwrap();
+        let mut first = fan_in.register_source().unwrap();
+        let mut second = fan_in.register_source().unwrap();
+        first.try_push(tcp_frame(10_000, b"private")).unwrap();
+        first.fail();
+        second.fail();
+
+        assert!(fan_in.next_frame().unwrap().is_some());
+        assert!(fan_in.next_frame().is_err());
+        assert!(fan_in.next_frame().unwrap().is_none());
+    }
+
+    #[test]
+    fn aggregate_stop_precedes_child_stop_and_refuses_late_sources() {
+        let fan_in = MultiSourceFanIn::new(2, 8, 4_096, Vec::new()).unwrap();
+        let aggregate_stop = fan_in.stop_handle();
+        let flags = [
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicBool::new(false)),
+        ];
+        let children = flags.iter().cloned().map(FixtureStop).collect::<Vec<_>>();
+
+        request_fan_in_stop(&aggregate_stop, &children);
+
+        assert!(fan_in.register_source().is_err());
+        assert!(flags.iter().all(|flag| flag.load(Ordering::SeqCst)));
     }
 
     #[test]

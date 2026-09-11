@@ -3,12 +3,6 @@
 mod buffered;
 #[cfg(windows)]
 mod dumpcap;
-// This private raw core is intentionally staged before its Windows wrapper;
-// keeping it unreachable outside the crate preserves the signature boundary.
-#[allow(
-    dead_code,
-    reason = "wired only through the subsequent Windows fan-in slice"
-)]
 mod fan_in;
 #[cfg(windows)]
 mod npcap;
@@ -53,7 +47,8 @@ pub use windows::{
     WindowsCaptureAdapterRecommendation, WindowsCaptureAdapterRecommendationSource,
     WindowsCaptureCandidate, WindowsCaptureCandidateSource, WindowsLiveCaptureStopHandle,
     WindowsOwnedDumpcapCapture, WindowsOwnedLiveCapture, WindowsOwnedNpcapCapture,
-    WindowsProcessSocketOwner, WindowsSignatureDumpcapCapture, WindowsSignatureLiveCapture,
+    WindowsProcessSocketOwner, WindowsSignatureDumpcapCapture, WindowsSignatureFanInCapture,
+    WindowsSignatureFanInDiagnostics, WindowsSignatureFanInStopHandle, WindowsSignatureLiveCapture,
     WindowsSignatureNpcapCapture, recommend_windows_capture_adapter,
     recommend_windows_capture_candidates, windows_capture_adapters,
 };

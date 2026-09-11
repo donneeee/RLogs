@@ -8808,8 +8808,13 @@ impl RuntimeController {
             .and_then(|path| {
                 DumpcapLiveConfig::new(path, interface, request.duration_seconds).ok()
             });
-        let capture = WindowsSignatureLiveCapture::open_prefix(
+        let capture_process_ids = (request.process_id != 0)
+            .then_some(request.process_id)
+            .into_iter()
+            .collect::<Vec<_>>();
+        let capture = WindowsSignatureLiveCapture::open_route_aware_prefix(
             interface,
+            &capture_process_ids,
             request.duration_seconds,
             dumpcap_fallback,
             classify_bpsr_tcp_prefix,
