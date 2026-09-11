@@ -13,12 +13,14 @@ import { LocalHostHttpError } from "../shell/local-host-http";
 interface Deferred<T> {
   promise: Promise<T>;
   resolve(value: T): void;
+  reject(reason?: unknown): void;
 }
 
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
 }
 
 function snapshot(sceneId: number, revision: number): MechanicsMapUpdate {
@@ -684,6 +686,122 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     expect(saveLayout).toHaveBeenCalled();
     expect(shared.setups.default!.modules.map.x).toBeCloseTo(.1);
     expect(shared.setups.default!.modules.map.zOrder).toBeGreaterThan(shared.setups.default!.modules.alerts.zOrder);
+    mounted.dispose();
+  });
+
+  it("keeps scaled drag and resize geometry inside the canvas across save acknowledgement", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1_000 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+    let shared = layout();
+    shared.setups.default!.modules.map.scale = 2;
+    const saveLayout = vi.fn(async (value: OverlayLayoutSettings) => {
+      shared = structuredClone(value); shared.revision += 1; return shared;
+    });
+    const container = document.createElement("div"); document.body.append(container);
+    const mounted = mountMechanicsMapOverlay(container, {
+      loadSnapshot: async () => snapshot(1_633, 1), waitForSnapshot: () => new Promise(() => undefined),
+      prepareLocalMaps: async () => undefined, setInteractive: async () => undefined,
+      onInteractivity: async () => () => undefined, onFocusHeld: async () => () => undefined,
+      loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
+      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadLayout: async () => shared, saveLayout,
+    }, localizer);
+    await flushPromises();
+    const map = container.querySelector<HTMLElement>(".mechanics-map-overlay-runtime")!;
+    const toolbar = map.querySelector(".mechanics-map-overlay-toolbar")!;
+    const pointer = (type: string, x: number, y: number) => {
+      const event = new MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: y }) as MouseEvent & { pointerId: number };
+      Object.defineProperty(event, "pointerId", { value: 8 }); return event;
+    };
+    toolbar.dispatchEvent(pointer("pointerdown", 10, 10));
+    toolbar.dispatchEvent(pointer("pointermove", 1_010, 810));
+    expect(map.style.left).toBe("400px");
+    expect(map.style.top).toBe("320px");
+    toolbar.dispatchEvent(pointer("pointerup", 1_010, 810));
+    await vi.waitFor(() => expect(saveLayout).toHaveBeenCalledTimes(2));
+    expect(saveLayout.mock.calls[1]![0].setups.default!.modules.map).toMatchObject({ x: .4, y: .4, width: .3, height: .3, scale: 2 });
+    await flushPromises();
+    expect(map.style.left).toBe("400px");
+    expect(map.style.top).toBe("320px");
+    const resize = map.querySelector(".mechanics-map-overlay-resize")!;
+    resize.dispatchEvent(pointer("pointerdown", 0, 0));
+    resize.dispatchEvent(pointer("pointermove", 1_000, 1_000));
+    expect(map.style.left).toBe("0px");
+    expect(map.style.top).toBe("0px");
+    expect(map.style.width).toBe("500px");
+    expect(map.style.height).toBe("400px");
+    resize.dispatchEvent(pointer("pointerup", 1_000, 1_000));
+    await vi.waitFor(() => expect(saveLayout).toHaveBeenCalledTimes(3));
+    expect(saveLayout.mock.calls[2]![0].setups.default!.modules.map).toMatchObject({ x: 0, y: 0, width: .5, height: .5, scale: 2 });
+    await flushPromises();
+    expect(map.style.left).toBe("0px");
+    expect(map.style.top).toBe("0px");
+    expect(map.style.width).toBe("500px");
+    expect(map.style.height).toBe("400px");
+    mounted.dispose();
+  });
+
+  it("converts visual resize deltas through every module's active scale", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1_000 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+    const shared = layout();
+    for (const module of Object.values(shared.setups.default!.modules)) module.scale = 2;
+    const container = document.createElement("div"); document.body.append(container);
+    const mounted = mountMechanicsMapOverlay(container, {
+      loadSnapshot: async () => snapshot(1_633, 1), waitForSnapshot: () => new Promise(() => undefined),
+      prepareLocalMaps: async () => undefined, setInteractive: async () => undefined,
+      onInteractivity: async () => () => undefined, onFocusHeld: async () => () => undefined,
+      loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
+      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadLayout: async () => shared, saveLayout: async (value) => value,
+    }, localizer);
+    await flushPromises();
+    const bindings = [
+      [".mechanics-map-overlay-runtime", ".mechanics-map-overlay-resize"],
+      [".player-frame-overlay-runtime", ".player-frame-overlay-resize"],
+      [".action-controls-overlay-runtime", ".action-controls-overlay-resize"],
+      [".party-frame-overlay-runtime", ".party-frame-overlay-resize"],
+      [".target-frame-overlay-runtime", ".target-frame-overlay-resize"],
+      [".dungeon-objectives-overlay-runtime", ".dungeon-objectives-overlay-resize"],
+      [".mechanic-alerts-overlay-runtime", ".mechanic-alerts-overlay-resize"],
+    ] as const;
+    for (const [runtimeSelector, resizeSelector] of bindings) {
+      const runtime = container.querySelector<HTMLElement>(runtimeSelector)!;
+      const resize = container.querySelector(resizeSelector)!;
+      const pointer = (type: string, x: number) => {
+        const event = new MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: 0 }) as MouseEvent & { pointerId: number };
+        Object.defineProperty(event, "pointerId", { value: 9 }); return event;
+      };
+      resize.dispatchEvent(pointer("pointerdown", 0));
+      resize.dispatchEvent(pointer("pointermove", 50));
+      expect(runtime.style.width).toBe("325px");
+      resize.dispatchEvent(pointer("pointerup", 50));
+    }
+    mounted.dispose();
+  });
+
+  it("does not freeze natural module heights while shared layout loading is deferred or rejected", async () => {
+    const pending = deferred<OverlayLayoutSettings>();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const container = document.createElement("div"); document.body.append(container);
+    const mounted = mountMechanicsMapOverlay(container, {
+      loadSnapshot: async () => snapshot(1_633, 1), waitForSnapshot: () => new Promise(() => undefined),
+      prepareLocalMaps: async () => undefined, setInteractive: async () => undefined,
+      onInteractivity: async () => () => undefined, onFocusHeld: async () => () => undefined,
+      loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
+      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadLayout: () => pending.promise, saveLayout: async (value) => value,
+    }, localizer);
+    const modules = [...container.querySelectorAll<HTMLElement>(
+      ".player-frame-overlay-runtime, .action-controls-overlay-runtime, .party-frame-overlay-runtime, " +
+      ".target-frame-overlay-runtime, .dungeon-objectives-overlay-runtime, .mechanic-alerts-overlay-runtime",
+    )];
+    expect(modules.every((module) => module.style.height === "")).toBe(true);
+    pending.reject(new Error("layout unavailable"));
+    await flushPromises();
+    expect(modules.every((module) => module.style.height === "")).toBe(true);
+    expect(consoleError).toHaveBeenCalledWith("Could not load shared overlay layout", expect.any(Error));
+    consoleError.mockRestore();
     mounted.dispose();
   });
 

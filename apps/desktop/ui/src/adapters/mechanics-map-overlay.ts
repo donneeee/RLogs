@@ -2,7 +2,7 @@ import type { MountedSurface } from "../shell/types";
 import type { UiLocalizer } from "../localization/ui-locale";
 import type { AutomarkerPoint, AutomarkerPresetView, AutomarkerPreview } from "./automarker-presets";
 import { AUTOMARKER_PREVIEW_STORAGE_KEY, automarkerResponseIsCurrent, publishAutomarkerPreview, readActiveAutomarkerPreview } from "./automarker-presets";
-import { activeOverlaySetup, normalizedModuleGeometry, raiseOverlayModule, type OverlayLayoutSettings, type OverlayModuleId } from "./overlay-layout";
+import { activeOverlaySetup, clampOverlayModulePixelGeometry, normalizedModuleGeometry, raiseOverlayModule, type OverlayLayoutSettings, type OverlayModuleId } from "./overlay-layout";
 import { LocalHostHttpError } from "../shell/local-host-http";
 import { mountOverlayCanvasControls } from "./overlay-canvas-controls";
 import {
@@ -1638,7 +1638,15 @@ export function mountMechanicsMapOverlay(
   }
 
   function setGeometry(module: ReturnType<typeof activeOverlaySetup>["modules"][OverlayModuleId], x: number, y: number, width: number, height: number): void {
-    Object.assign(module, normalizedModuleGeometry({ x, y, width, height }, window.innerWidth, window.innerHeight));
+    Object.assign(module, normalizedModuleGeometry({ x, y, width, height }, window.innerWidth, window.innerHeight, module.scale));
+  }
+
+  function moduleLayoutScale(id: OverlayModuleId): number {
+    return layoutSettings === null ? 1 : activeOverlaySetup(layoutSettings).modules[id].scale;
+  }
+
+  function unscaledPointerDelta(id: OverlayModuleId, delta: number): number {
+    return delta / moduleLayoutScale(id);
   }
 
   async function applySharedLayout(settings: OverlayLayoutSettings, acknowledge = false): Promise<void> {
@@ -1770,51 +1778,40 @@ export function mountMechanicsMapOverlay(
       panel.style.width = `${Math.max(1, window.innerWidth)}px`;
       panel.style.height = `${Math.max(1, window.innerHeight)}px`;
     } else {
-      const maximumX = Math.max(0, window.innerWidth - preferences.moduleWidth);
-      const maximumY = Math.max(0, window.innerHeight - preferences.moduleHeight);
-      preferences.moduleX = Math.min(maximumX, Math.max(0, preferences.moduleX));
-      preferences.moduleY = Math.min(maximumY, Math.max(0, preferences.moduleY));
+      const geometry = clampOverlayModulePixelGeometry(
+        { x: preferences.moduleX, y: preferences.moduleY, width: preferences.moduleWidth, height: preferences.moduleHeight },
+        window.innerWidth, window.innerHeight, moduleLayoutScale("map"),
+      );
+      preferences.moduleX = geometry.x;
+      preferences.moduleY = geometry.y;
+      preferences.moduleWidth = geometry.width;
+      preferences.moduleHeight = geometry.height;
       panel.style.left = `${preferences.moduleX}px`;
       panel.style.top = `${preferences.moduleY}px`;
-      panel.style.width = `${Math.min(window.innerWidth, preferences.moduleWidth)}px`;
-      panel.style.height = `${Math.min(window.innerHeight, preferences.moduleHeight)}px`;
+      panel.style.width = `${preferences.moduleWidth}px`;
+      panel.style.height = `${preferences.moduleHeight}px`;
     }
-    const targetWidth = Math.min(window.innerWidth, preferences.targetWidth);
-    preferences.targetX = Math.min(Math.max(0, window.innerWidth - targetWidth), Math.max(0, preferences.targetX));
-    preferences.targetY = Math.min(Math.max(0, window.innerHeight - 96), Math.max(0, preferences.targetY));
-    targetPanel.style.left = `${preferences.targetX}px`;
-    targetPanel.style.top = `${preferences.targetY}px`;
-    targetPanel.style.width = `${targetWidth}px`;
-    const playerWidth = Math.min(window.innerWidth, preferences.playerWidth);
-    preferences.playerX = Math.min(Math.max(0, window.innerWidth - playerWidth), Math.max(0, preferences.playerX));
-    preferences.playerY = Math.min(Math.max(0, window.innerHeight - 80), Math.max(0, preferences.playerY));
-    playerPanel.style.left = `${preferences.playerX}px`;
-    playerPanel.style.top = `${preferences.playerY}px`;
-    playerPanel.style.width = `${playerWidth}px`;
-    const actionsWidth = Math.min(window.innerWidth, preferences.actionsWidth);
-    preferences.actionsX = Math.min(Math.max(0, window.innerWidth - actionsWidth), Math.max(0, preferences.actionsX));
-    preferences.actionsY = Math.min(Math.max(0, window.innerHeight - 96), Math.max(0, preferences.actionsY));
-    actionsPanel.style.left = `${preferences.actionsX}px`;
-    actionsPanel.style.top = `${preferences.actionsY}px`;
-    actionsPanel.style.width = `${actionsWidth}px`;
-    const partyWidth = Math.min(window.innerWidth, preferences.partyWidth);
-    preferences.partyX = Math.min(Math.max(0, window.innerWidth - partyWidth), Math.max(0, preferences.partyX));
-    preferences.partyY = Math.min(Math.max(0, window.innerHeight - 96), Math.max(0, preferences.partyY));
-    partyPanel.style.left = `${preferences.partyX}px`;
-    partyPanel.style.top = `${preferences.partyY}px`;
-    partyPanel.style.width = `${partyWidth}px`;
-    const objectivesWidth = Math.min(window.innerWidth, preferences.objectivesWidth);
-    preferences.objectivesX = Math.min(Math.max(0, window.innerWidth - objectivesWidth), Math.max(0, preferences.objectivesX));
-    preferences.objectivesY = Math.min(Math.max(0, window.innerHeight - 96), Math.max(0, preferences.objectivesY));
-    objectivesPanel.style.left = `${preferences.objectivesX}px`;
-    objectivesPanel.style.top = `${preferences.objectivesY}px`;
-    objectivesPanel.style.width = `${objectivesWidth}px`;
-    const alertsWidth = Math.min(window.innerWidth, preferences.alertsWidth);
-    preferences.alertsX = Math.min(Math.max(0, window.innerWidth - alertsWidth), Math.max(0, preferences.alertsX));
-    preferences.alertsY = Math.min(Math.max(0, window.innerHeight - 96), Math.max(0, preferences.alertsY));
-    alertsPanel.style.left = `${preferences.alertsX}px`;
-    alertsPanel.style.top = `${preferences.alertsY}px`;
-    alertsPanel.style.width = `${alertsWidth}px`;
+    const setup = layoutSettings === null ? null : activeOverlaySetup(layoutSettings);
+    const bindings = [
+      ["target", targetPanel], ["player", playerPanel], ["actions", actionsPanel], ["party", partyPanel],
+      ["objectives", objectivesPanel], ["alerts", alertsPanel],
+    ] as const;
+    const values = preferences as unknown as Record<string, number>;
+    for (const [id, element] of bindings) {
+      const geometry = clampOverlayModulePixelGeometry({
+        x: values[`${id}X`]!,
+        y: values[`${id}Y`]!,
+        width: values[`${id}Width`]!,
+        height: element.offsetHeight || parseFloat(element.style.height) || 96,
+      }, window.innerWidth, window.innerHeight, setup?.modules[id].scale ?? 1);
+      values[`${id}X`] = geometry.x;
+      values[`${id}Y`] = geometry.y;
+      values[`${id}Width`] = geometry.width;
+      element.style.left = `${geometry.x}px`;
+      element.style.top = `${geometry.y}px`;
+      element.style.width = `${geometry.width}px`;
+      if (setup !== null) element.style.height = `${geometry.height}px`;
+    }
   }
 
   function moveModule(event: PointerEvent): void {
@@ -1833,8 +1830,8 @@ export function mountMechanicsMapOverlay(
 
   function resizeModule(event: PointerEvent): void {
     if (preferences.expanded || moduleResize?.pointerId !== event.pointerId) return;
-    preferences.moduleWidth = Math.max(260, moduleResize.width + event.clientX - moduleResize.x);
-    preferences.moduleHeight = Math.max(260, moduleResize.height + event.clientY - moduleResize.y);
+    preferences.moduleWidth = Math.max(260, moduleResize.width + unscaledPointerDelta("map", event.clientX - moduleResize.x));
+    preferences.moduleHeight = Math.max(260, moduleResize.height + unscaledPointerDelta("map", event.clientY - moduleResize.y));
     applyModuleGeometry();
   }
 
@@ -1861,7 +1858,7 @@ export function mountMechanicsMapOverlay(
 
   function resizePlayer(event: PointerEvent): void {
     if (playerResize?.pointerId !== event.pointerId) return;
-    preferences.playerWidth = Math.max(280, playerResize.width + event.clientX - playerResize.x);
+    preferences.playerWidth = Math.max(280, playerResize.width + unscaledPointerDelta("player", event.clientX - playerResize.x));
     applyModuleGeometry();
   }
 
@@ -1888,7 +1885,7 @@ export function mountMechanicsMapOverlay(
 
   function resizeActions(event: PointerEvent): void {
     if (actionsResize?.pointerId !== event.pointerId) return;
-    preferences.actionsWidth = Math.max(280, actionsResize.width + event.clientX - actionsResize.x);
+    preferences.actionsWidth = Math.max(280, actionsResize.width + unscaledPointerDelta("actions", event.clientX - actionsResize.x));
     applyModuleGeometry();
   }
 
@@ -1915,7 +1912,7 @@ export function mountMechanicsMapOverlay(
 
   function resizeParty(event: PointerEvent): void {
     if (partyResize?.pointerId !== event.pointerId) return;
-    preferences.partyWidth = Math.max(260, partyResize.width + event.clientX - partyResize.x);
+    preferences.partyWidth = Math.max(260, partyResize.width + unscaledPointerDelta("party", event.clientX - partyResize.x));
     applyModuleGeometry();
   }
 
@@ -1942,7 +1939,7 @@ export function mountMechanicsMapOverlay(
 
   function resizeTarget(event: PointerEvent): void {
     if (targetResize?.pointerId !== event.pointerId) return;
-    preferences.targetWidth = Math.max(280, targetResize.width + event.clientX - targetResize.x);
+    preferences.targetWidth = Math.max(280, targetResize.width + unscaledPointerDelta("target", event.clientX - targetResize.x));
     applyModuleGeometry();
   }
 
@@ -1969,7 +1966,7 @@ export function mountMechanicsMapOverlay(
 
   function resizeObjectives(event: PointerEvent): void {
     if (objectivesResize?.pointerId !== event.pointerId) return;
-    preferences.objectivesWidth = Math.max(280, objectivesResize.width + event.clientX - objectivesResize.x);
+    preferences.objectivesWidth = Math.max(280, objectivesResize.width + unscaledPointerDelta("objectives", event.clientX - objectivesResize.x));
     applyModuleGeometry();
   }
 
@@ -1996,7 +1993,7 @@ export function mountMechanicsMapOverlay(
 
   function resizeAlerts(event: PointerEvent): void {
     if (alertsResize?.pointerId !== event.pointerId) return;
-    preferences.alertsWidth = Math.max(260, alertsResize.width + event.clientX - alertsResize.x);
+    preferences.alertsWidth = Math.max(260, alertsResize.width + unscaledPointerDelta("alerts", event.clientX - alertsResize.x));
     applyModuleGeometry();
   }
 

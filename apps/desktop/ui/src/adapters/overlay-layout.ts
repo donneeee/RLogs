@@ -59,10 +59,32 @@ export function safeDefaultOverlayLayout(revision: number): OverlayLayoutSetting
 
 export function normalizedModuleGeometry(
   pixels: { x: number; y: number; width: number; height: number }, viewportWidth: number, viewportHeight: number,
+  scale = 1,
 ): Pick<OverlayModuleLayout, "x" | "y" | "width" | "height"> {
   const vw = Math.max(1, viewportWidth); const vh = Math.max(1, viewportHeight);
-  const width = clamp(pixels.width / vw, 0.08, 1); const height = clamp(pixels.height / vh, 0.06, 1);
-  return { x: clamp(pixels.x / vw, 0, 1 - width), y: clamp(pixels.y / vh, 0, 1 - height), width, height };
+  const moduleScale = clamp(scale, 0.5, 2);
+  const width = clamp(pixels.width / vw, 0.08, 1 / moduleScale);
+  const height = clamp(pixels.height / vh, 0.06, 1 / moduleScale);
+  return {
+    x: clamp(pixels.x / vw, 0, 1 - width * moduleScale),
+    y: clamp(pixels.y / vh, 0, 1 - height * moduleScale),
+    width,
+    height,
+  };
+}
+
+export function clampOverlayModulePixelGeometry(
+  pixels: { x: number; y: number; width: number; height: number }, viewportWidth: number, viewportHeight: number,
+  moduleScale = 1,
+): { x: number; y: number; width: number; height: number } {
+  const vw = Math.max(1, viewportWidth); const vh = Math.max(1, viewportHeight);
+  const geometry = normalizedModuleGeometry(pixels, vw, vh, moduleScale);
+  return {
+    x: geometry.x * vw,
+    y: geometry.y * vh,
+    width: geometry.width * vw,
+    height: geometry.height * vh,
+  };
 }
 
 export function clampOverlayModule(module: OverlayModuleLayout): OverlayModuleLayout {
