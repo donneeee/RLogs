@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
 import { loadUiLocalizer } from "../localization/ui-locale";
-import type { HistoryActorSummary, HistoryDeathEvent } from "./combat-history";
+import type { CombatHistoryView, HistoryActorSummary, HistoryDeathEvent } from "./combat-history";
 import {
   historyDeathMarker,
   historyDeathSummary,
@@ -176,6 +176,78 @@ describe("Combat History death presentation", () => {
     expect(rendered.querySelector(".combat-history-skill-event-glyph")).not.toBeNull();
     expect(rendered.querySelector(".combat-history-skill-event")?.getAttribute("aria-label"))
       .toContain("Powerdraw, Volley");
+  });
+
+  it("renders hostile-source cast lanes before player lanes and outside player visibility controls", async () => {
+    const ui = await loadUiLocalizer("en-US");
+    const player = {
+      actor_id: "alice", display_name: "Alice", presentation_name: "Alice", actor_kind: "player",
+      death_events: [], death_seconds: [],
+      skill_events: [{ at_micros: 1_250_000, ability_id: "100" }],
+      abilities: [{ ability_id: "100", presentation_name: "Player action" }],
+      series: [{ second: 0, damage: 100, effective_healing: 0, damage_taken: 0 }], targets: [],
+    } as unknown as HistoryActorSummary;
+    const hostile = {
+      actor_id: "9", monster_id: "33701", actor_kind: "monster",
+      display_name: "Packet creature", presentation_name: "Tina - Void Reverie",
+      abilities: [{
+        ability_id: "2233", presentation_name: "Powerdraw",
+        presentation_resolution: "reviewed-action", icon_asset_path: "/assets/2233.webp",
+      }],
+    } as unknown as HistoryActorSummary;
+    const view = {
+      actors: [player, hostile],
+      targets: [{ actor_id: "9", presentation_name: "Tina - Void Reverie" }],
+      hostile_casts: [{
+        source_actor_id: "9", hostility_evidence: "participant_outgoing_target",
+        target_actor_id: "alice", at_micros: 750_000, action_id: "2233", state: "started",
+      }],
+    } as unknown as CombatHistoryView;
+    const render = (hidden: ReadonlySet<string>) => renderMetricGraph(
+      [player],
+      { metric: "damage", title: "Damage", rateLabel: "DPS", description: "Damage rate" },
+      3_000_000, hidden, new Map([[player.actor_id, "#35c2ff"]]), null, () => undefined, ui, view,
+    );
+
+    const visible = render(new Set());
+    expect([...visible.querySelectorAll<SVGGElement>(".combat-history-event-lane")]
+      .map((lane) => lane.dataset.laneKind)).toEqual(["hostile", "player"]);
+    const hostileCast = visible.querySelector(".combat-history-hostile-cast-event");
+    expect(hostileCast?.getAttribute("aria-label"))
+      .toBe("Tina - Void Reverie began Powerdraw at 0:00.750 targeting Alice");
+    expect(hostileCast?.querySelector(".combat-history-skill-event-icon")?.getAttribute("href"))
+      .toBe("/assets/2233.webp");
+
+    const playerHidden = render(new Set([player.actor_id]));
+    expect(playerHidden.querySelector(".combat-history-player-event-lane")).toBeNull();
+    expect(playerHidden.querySelector(".combat-history-hostile-event-lane")).not.toBeNull();
+  });
+
+  it("uses neutral hostile cast labels and no icon without trusted presentation", async () => {
+    const ui = await loadUiLocalizer("en-US");
+    const view = {
+      actors: [{
+        actor_id: "9", monster_id: "33701", actor_kind: "monster",
+        display_name: "Untrusted packet name", presentation_name: "Untrusted packet name",
+        abilities: [{ ability_id: "2233", presentation_name: "Untrusted action", presentation_resolution: null }],
+      }],
+      targets: [{ actor_id: "9" }],
+      hostile_casts: [{
+        source_actor_id: "9", hostility_evidence: "participant_outgoing_target",
+        at_micros: 750_000, action_id: "2233", state: "started",
+      }],
+    } as unknown as CombatHistoryView;
+    const rendered = renderMetricGraph(
+      [],
+      { metric: "damage", title: "Damage", rateLabel: "DPS", description: "Damage rate" },
+      3_000_000, new Set(["9"]), new Map(), null, () => undefined, ui, view,
+    );
+
+    const cast = rendered.querySelector(".combat-history-hostile-cast-event");
+    expect(cast?.getAttribute("aria-label"))
+      .toBe("Hostile source 9 began Action 2233 at 0:00.750");
+    expect(cast?.querySelector(".combat-history-skill-event-icon")).toBeNull();
+    expect(cast?.querySelector(".combat-history-hostile-cast-event-glyph")).not.toBeNull();
   });
 
   it("shows the same cause summary on pointer hover and keyboard focus", async () => {

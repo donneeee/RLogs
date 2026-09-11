@@ -73,6 +73,45 @@ describe("combat history contracts", () => {
       .toEqual([]);
   });
 
+  it("accepts only bounded hostile casts from reducer-authored encounter targets", () => {
+    const exact: any = deathHistory();
+    const view = exact.runs[0].views[0];
+    view.targets.push({
+      actor_id: "9", entity_uuid: "909", monster_id: "33701",
+      display_name: null, actor_kind: "monster", presentation_name: null,
+    });
+    view.hostile_casts = [{
+      source_actor_id: "9",
+      hostility_evidence: "participant_outgoing_target",
+      target_actor_id: "1",
+      at_micros: 1_750_000,
+      action_id: "2233",
+      state: "started",
+    }];
+
+    expect(parseCombatHistorySnapshot(exact).runs[0]?.views[0]?.hostile_casts)
+      .toEqual(view.hostile_casts);
+
+    const legacy = deathHistory();
+    expect(parseCombatHistorySnapshot(legacy).runs[0]?.views[0]?.hostile_casts).toEqual([]);
+
+    const unrelated: any = structuredClone(exact);
+    unrelated.runs[0].views[0].hostile_casts[0].source_actor_id = "ambient-99";
+    expect(() => parseCombatHistorySnapshot(unrelated)).toThrow(/not an encounter target/);
+
+    const completed: any = structuredClone(exact);
+    completed.runs[0].views[0].hostile_casts[0].state = "completed";
+    expect(() => parseCombatHistorySnapshot(completed)).toThrow(/not an exact cast start/);
+
+    const friendly: any = structuredClone(exact);
+    friendly.runs[0].views[0].targets.push({
+      actor_id: "1", entity_uuid: "101", monster_id: null,
+      display_name: "Alice", actor_kind: "player", presentation_name: "Alice",
+    });
+    friendly.runs[0].views[0].hostile_casts[0].source_actor_id = "1";
+    expect(() => parseCombatHistorySnapshot(friendly)).toThrow(/cannot be a player participant/);
+  });
+
   it("accepts bounded exact death replay and defaults legacy events", () => {
     const exact = parseCombatHistorySnapshot(deathHistory());
     expect(exact.runs[0]?.views[0]?.actors[0]?.death_events[0]?.cause?.final_hit)

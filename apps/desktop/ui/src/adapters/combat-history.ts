@@ -132,6 +132,7 @@ export interface CombatHistoryView {
   active_combat_micros: number;
   actors: HistoryActorSummary[];
   targets: HistoryTargetIdentity[];
+  hostile_casts?: HistoryHostileCast[];
   damage_influences: HistoryDamageInfluenceSummary[];
   rdps_effect_presentations: HistoryRdpsEffectPresentation[];
 }
@@ -287,6 +288,16 @@ export interface HistoryDeathEvent {
 export interface HistorySkillEvent {
   at_micros: number;
   ability_id: string;
+}
+
+export interface HistoryHostileCast {
+  source_actor_id: string;
+  hostility_evidence: "participant_outgoing_target";
+  target_actor_id?: string;
+  at_micros: number;
+  action_id: string;
+  action_instance_id?: string;
+  state: "started";
 }
 
 export interface HistoryLoadoutSlot {
@@ -697,6 +708,7 @@ export function parseCombatHistorySnapshot(value: unknown): CombatHistorySnapsho
         );
       });
       enforceHistoryParticipantDeathPresentationBindings(parsedActors);
+      normalizeHistoryHostileCasts(parsed, parsed.elapsed_micros as number);
       const parsedTargets = array(parsed.targets, "view targets", 100_000);
       parsedTargets.forEach((target, targetIndex) => {
         const parsedTarget = record(
@@ -725,6 +737,19 @@ export function parseCombatHistorySnapshot(value: unknown): CombatHistorySnapsho
           parsedTarget.actor_kind !== "training_dummy"
         );
       });
+      const hostileSourceIds = new Set(
+        (parsed.targets as Array<Record<string, unknown>>).map((target) => target.actor_id),
+      );
+      for (const cast of parsed.hostile_casts as Array<Record<string, unknown>>) {
+        if (!hostileSourceIds.has(cast.source_actor_id)) {
+          throw new Error("view hostile cast source is not an encounter target");
+        }
+        const sourceActor = parsedActors.find((actor) =>
+          (actor as Record<string, unknown>).actor_id === cast.source_actor_id);
+        if ((sourceActor as Record<string, unknown> | undefined)?.actor_kind === "player") {
+          throw new Error("view hostile cast source cannot be a player participant");
+        }
+      }
       if (parsed.rdps_effect_presentations === undefined) {
         parsed.rdps_effect_presentations = [];
       }
@@ -857,6 +882,56 @@ function normalizeHistorySkillEvents(actor: Record<string, unknown>, elapsedMicr
     previousMicros = event.at_micros as number;
   });
   if (!valid) actor.skill_events = [];
+}
+
+function normalizeHistoryHostileCasts(view: Record<string, unknown>, elapsedMicros: number): void {
+  if (view.hostile_casts === undefined) view.hostile_casts = [];
+  const casts = array(view.hostile_casts, "view hostile casts", 65_536);
+  const perSource = new Map<string, number>();
+  let previous: [number, string, string, string] | null = null;
+  casts.forEach((value, index) => {
+    const cast = record(value, `view hostile cast ${index}`);
+    text(cast.source_actor_id, `view hostile cast ${index} source actor ID`);
+    if (cast.hostility_evidence !== "participant_outgoing_target") {
+      throw new Error(`view hostile cast ${index} has unsupported hostility evidence`);
+    }
+    if (cast.target_actor_id !== undefined) {
+      text(cast.target_actor_id, `view hostile cast ${index} target actor ID`);
+    }
+    counter(cast.at_micros, `view hostile cast ${index} timestamp`);
+    text(cast.action_id, `view hostile cast ${index} action ID`);
+    if (cast.action_instance_id !== undefined) {
+      text(cast.action_instance_id, `view hostile cast ${index} action instance ID`);
+    }
+    if (cast.state !== "started") {
+      throw new Error(`view hostile cast ${index} is not an exact cast start`);
+    }
+    if ((cast.at_micros as number) > elapsedMicros) {
+      throw new Error(`view hostile cast ${index} falls outside the selected view`);
+    }
+    const source = cast.source_actor_id as string;
+    const count = (perSource.get(source) ?? 0) + 1;
+    if (count > 16_384) throw new Error("view hostile casts exceed the per-source bound");
+    perSource.set(source, count);
+    const key: [number, string, string, string] = [
+      cast.at_micros as number,
+      source,
+      (cast.target_actor_id as string | undefined) ?? "",
+      cast.action_id as string,
+    ];
+    if (previous && compareHostileCastKeys(previous, key) > 0) {
+      throw new Error("view hostile casts are not canonically ordered");
+    }
+    previous = key;
+  });
+}
+
+function compareHostileCastKeys(
+  left: readonly [number, string, string, string],
+  right: readonly [number, string, string, string],
+): number {
+  return left[0] - right[0] || left[1].localeCompare(right[1]) ||
+    left[2].localeCompare(right[2]) || left[3].localeCompare(right[3]);
 }
 
 function isValidHistoryDeathCause(value: unknown, deathMicros: number): value is HistoryDeathCause {

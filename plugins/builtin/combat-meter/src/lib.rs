@@ -40,6 +40,8 @@ const MAXIMUM_RUN_ENTRY_BOUNDARIES: usize = 256;
 /// compact facts; only the ephemeral overlay relationship ledger uses this cap.
 const MAXIMUM_LIVE_RDPS_INFLUENCE_RELATIONSHIPS: usize = 4_096;
 const MAXIMUM_HISTORY_RATE_CLOCK_POINTS: usize = 86_400;
+const MAXIMUM_HISTORY_HOSTILE_CASTS: usize = 65_536;
+const MAXIMUM_HISTORY_HOSTILE_CASTS_PER_SOURCE: usize = 16_384;
 const HISTORY_SERIES_BUCKET_MICROS: u64 = 1_000_000;
 const DEATH_REPLAY_WINDOW_MICROS: u64 = 2_000_000;
 const MAXIMUM_DEATH_REPLAY_HITS: usize = 64;
@@ -134,6 +136,10 @@ pub struct CombatHistoryView {
     pub rate_clock_complete: bool,
     pub actors: Vec<HistoryActorSummary>,
     pub targets: Vec<HistoryTargetIdentity>,
+    /// Exact cast starts from reducer-authored encounter targets. Membership
+    /// proves only an encountered hostile source; it does not infer a boss.
+    #[serde(default)]
+    pub hostile_casts: Vec<HistoryHostileCast>,
     /// Compact, exact relationships projected from packet-proven damage
     /// counterfactuals. Rows are grouped by effect, provider, recipient,
     /// affected ability, and damage target so history consumers can answer
@@ -342,6 +348,25 @@ pub struct HistoryDeathEvent {
 pub struct HistorySkillEvent {
     pub at_micros: u64,
     pub ability_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryHostileCast {
+    pub source_actor_id: String,
+    pub hostility_evidence: HistoryHostilityEvidence,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_actor_id: Option<String>,
+    pub at_micros: u64,
+    pub action_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action_instance_id: Option<String>,
+    pub state: CastState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryHostilityEvidence {
+    ParticipantOutgoingTarget,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1098,7 +1123,9 @@ struct DamageProjectionContext {
 #[derive(Debug, Clone)]
 enum CombatFactKind {
     StatusReset,
-    Cast,
+    Cast {
+        action_instance_id: Option<i64>,
+    },
     Damage {
         reported: i64,
         effective: i64,
@@ -2125,7 +2152,11 @@ impl CombatTimelinePlugin {
                         .map(|target| (target.actor_id.0, target.entity_uuid.0)),
                     breakdown_ability_id: Some(cast.ability.0),
                     ability_id: Some(cast.ability.0),
-                    kind: CombatFactKind::Cast,
+                    kind: CombatFactKind::Cast {
+                        action_instance_id: cast
+                            .action_timing
+                            .map(|timing| timing.action_instance_id),
+                    },
                 });
             }
             TimelineEventKind::Damage(damage) => {
@@ -3960,7 +3991,7 @@ impl CombatTimelinePlugin {
             let second = history_series_second(offset_micros, projected_duration);
             match fact.kind {
                 CombatFactKind::StatusReset => {}
-                CombatFactKind::Cast => {
+                CombatFactKind::Cast { .. } => {
                     let source = values.entry(fact.source_actor_id).or_default();
                     source.casts = source.casts.saturating_add(1);
                     let ability_id = fact
@@ -4399,7 +4430,74 @@ impl CombatTimelinePlugin {
                     presentation_name: None,
                 })
             })
-            .collect();
+            .collect::<Vec<_>>();
+
+        let participant_actor_ids = actors
+            .iter()
+            .filter(|actor| actor.actor_kind.as_deref() == Some("player"))
+            .filter_map(|actor| actor.actor_id.parse::<u64>().ok())
+            .collect::<BTreeSet<_>>();
+        let hostile_source_actor_ids = targets
+            .iter()
+            .filter_map(|target| target.actor_id.parse::<u64>().ok())
+            .filter(|actor_id| !participant_actor_ids.contains(actor_id))
+            .collect::<BTreeSet<_>>();
+        let mut hostile_candidates =
+            BTreeMap::<(u64, u64, Option<u64>, String, Option<i64>), HistoryHostileCast>::new();
+        for fact in &self.history_facts {
+            let CombatFactKind::Cast { action_instance_id } = &fact.kind else {
+                continue;
+            };
+            if !hostile_source_actor_ids.contains(&fact.source_actor_id) {
+                continue;
+            }
+            let Some(at_micros) = history_fact_offset(
+                fact.observed_micros,
+                &spec.intervals,
+                origin_micros,
+                spec.compress_intervals,
+            ) else {
+                continue;
+            };
+            let target_actor_id = fact.target.map(|(actor_id, _)| actor_id);
+            let action_id = fact
+                .breakdown_ability_id
+                .or(fact.ability_id)
+                .unwrap_or_default()
+                .to_string();
+            let row = HistoryHostileCast {
+                source_actor_id: fact.source_actor_id.to_string(),
+                hostility_evidence: HistoryHostilityEvidence::ParticipantOutgoingTarget,
+                target_actor_id: target_actor_id.map(|actor_id| actor_id.to_string()),
+                at_micros,
+                action_id: action_id.clone(),
+                action_instance_id: action_instance_id.map(|id| id.to_string()),
+                state: CastState::Started,
+            };
+            hostile_candidates
+                .entry((
+                    at_micros,
+                    fact.source_actor_id,
+                    target_actor_id,
+                    action_id,
+                    *action_instance_id,
+                ))
+                .or_insert(row);
+        }
+        let mut kept_by_source = BTreeMap::<String, usize>::new();
+        let mut hostile_casts = Vec::new();
+        for (_, row) in hostile_candidates {
+            let kept = kept_by_source
+                .entry(row.source_actor_id.clone())
+                .or_default();
+            if *kept == MAXIMUM_HISTORY_HOSTILE_CASTS_PER_SOURCE
+                || hostile_casts.len() == MAXIMUM_HISTORY_HOSTILE_CASTS
+            {
+                continue;
+            }
+            *kept += 1;
+            hostile_casts.push(row);
+        }
 
         let (rate_clock, rate_clock_complete) = history_rate_clock(spec);
         CombatHistoryView {
@@ -4413,6 +4511,7 @@ impl CombatTimelinePlugin {
             rate_clock_complete,
             actors,
             targets,
+            hostile_casts,
             damage_influences,
             rdps_effect_presentations: Vec::new(),
         }
@@ -5680,7 +5779,7 @@ mod tests {
             plugin
                 .history_facts
                 .iter()
-                .filter(|fact| matches!(fact.kind, CombatFactKind::Cast))
+                .filter(|fact| matches!(fact.kind, CombatFactKind::Cast { .. }))
                 .count(),
             1
         );
@@ -5750,6 +5849,80 @@ mod tests {
         assert_eq!(actor.hits, 2, "one cast may land more than one hit");
         assert_eq!(actor.abilities[0].casts, 1);
         assert_eq!(actor.abilities[0].hits, 2);
+    }
+
+    #[test]
+    fn history_hostile_casts_require_exact_encounter_target_membership() {
+        let mut plugin = CombatTimelinePlugin::new();
+        plugin.actor_mut(1, 101).actor_kind = Some("player".into());
+        plugin.record_history_identity(0, 1, 1);
+        let hostile = plugin.actor_mut(9, 909);
+        hostile.actor_kind = Some("monster".into());
+        hostile.monster_id = Some(33_701);
+        plugin.record_history_identity(0, 2, 9);
+        plugin.actor_mut(10, 910).actor_kind = Some("monster".into());
+        plugin.record_history_identity(0, 3, 10);
+        plugin.actor_mut(11, 111).actor_kind = Some("player".into());
+        plugin.record_history_identity(0, 4, 11);
+        for (target_actor_id, target_entity_uuid, observed_micros, event_sequence) in
+            [(9, 909, 500_000, 5), (11, 111, 510_000, 6)]
+        {
+            plugin.push_history_fact(CombatFact {
+                observed_micros,
+                source_actor_id: 1,
+                source_entity_uuid: 101,
+                target: Some((target_actor_id, target_entity_uuid)),
+                breakdown_ability_id: Some(100),
+                ability_id: Some(100),
+                kind: CombatFactKind::Damage {
+                    reported: 100,
+                    effective: 100,
+                    critical: false,
+                    direct_source: None,
+                    packet_dead: false,
+                    event_sequence,
+                },
+            });
+        }
+        for (source_actor_id, source_entity_uuid, ability_id, observed_micros) in [
+            (9, 909, 2_233, 750_000),
+            (10, 910, 7_003, 800_000),
+            (11, 111, 8_004, 850_000),
+        ] {
+            plugin.push_history_fact(CombatFact {
+                observed_micros,
+                source_actor_id,
+                source_entity_uuid,
+                target: Some((1, 101)),
+                breakdown_ability_id: Some(ability_id),
+                ability_id: Some(ability_id),
+                kind: CombatFactKind::Cast {
+                    action_instance_id: None,
+                },
+            });
+        }
+
+        let view = plugin.build_history_view(&HistoryViewSpec {
+            id: "hostile-casts".into(),
+            label: "Hostile casts".into(),
+            kind: "selected".into(),
+            segment_indices: vec![0],
+            intervals: vec![(0, 1_000_000)],
+            active_intervals: Vec::new(),
+            series_origin_micros: 0,
+            elapsed_micros: 1_000_000,
+            active_combat_micros: 1_000_000,
+            compress_intervals: false,
+        });
+        assert!(view.targets.iter().any(|target| target.actor_id == "11"));
+        assert_eq!(view.hostile_casts.len(), 1);
+        assert_eq!(view.hostile_casts[0].source_actor_id, "9");
+        assert_eq!(view.hostile_casts[0].action_id, "2233");
+        assert_eq!(view.hostile_casts[0].target_actor_id.as_deref(), Some("1"));
+        assert_eq!(
+            view.hostile_casts[0].hostility_evidence,
+            HistoryHostilityEvidence::ParticipantOutgoingTarget,
+        );
     }
 
     use super::*;

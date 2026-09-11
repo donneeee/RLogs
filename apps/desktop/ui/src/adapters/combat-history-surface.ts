@@ -13,6 +13,7 @@ import type {
   HistoryActorSummary,
   HistoryDeathEvent,
   HistoryDeathHit,
+  HistoryHostileCast,
   HistoryTargetIdentity,
 } from "./combat-history";
 import {
@@ -2294,6 +2295,7 @@ export function mountCombatHistorySurface(
           render();
         },
         ui,
+        view,
       ),
     );
     return gallery;
@@ -3318,6 +3320,7 @@ export function renderMetricGraph(
   targetActorId: string | null,
   selectMetric: (metric: GraphMetric) => void,
   localizer: UiLocalizer,
+  historyView?: CombatHistoryView,
 ): HTMLElement {
   const card = element("section", "combat-history-metric-graph");
   const durationSeconds = Math.max(1, Math.ceil(elapsedMicros / 1_000_000));
@@ -3339,6 +3342,7 @@ export function renderMetricGraph(
   const visibleSeries = allSeries.filter(
     (entry) => !hiddenActorIds.has(entry.actor.actor_id),
   );
+  const hasHostileCasts = (historyView?.hostile_casts?.length ?? 0) > 0;
   const scaleMaximum = graphScaleMaximum(
     allSeries.map((entry) => entry.values),
   );
@@ -3350,7 +3354,7 @@ export function renderMetricGraph(
       renderGraphMetricToggle(definition.metric, selectMetric, localizer),
     ),
   );
-  if (allSeries.length === 0) {
+  if (allSeries.length === 0 && !hasHostileCasts) {
     card.append(
       element(
         "p",
@@ -3380,7 +3384,13 @@ export function renderMetricGraph(
       localizer,
     ),
   );
-  const eventLanes = recordedEventLanes(visibleSeries, durationSeconds, elapsedMicros, localizer);
+  const eventLanes = recordedEventLanes(
+    visibleSeries,
+    durationSeconds,
+    elapsedMicros,
+    localizer,
+    historyView,
+  );
   if (eventLanes) card.append(eventLanes);
   const stats = element("div", "combat-history-graph-stats");
   for (const entry of visibleSeries) {
@@ -3413,24 +3423,102 @@ function recordedEventLanes(
   durationSeconds: number,
   durationMicros: number,
   localizer: UiLocalizer,
+  historyView?: CombatHistoryView,
 ): HTMLElement | null {
-  const lanes = series.filter(({ actor }) => graphActorKind(actor) === "player" && (
+  const playerLanes = series.filter(({ actor }) => graphActorKind(actor) === "player" && (
     (actor.skill_events?.length ?? 0) > 0 || (actor.death_events?.length ?? 0) > 0 ||
     actor.death_seconds.length > 0));
-  if (lanes.length === 0) return null;
+  const hostileLanes = groupHostileCastsBySource(historyView?.hostile_casts ?? []);
+  if (hostileLanes.length === 0 && playerLanes.length === 0) return null;
   const width = 1_120, left = 78, right = 24, laneHeight = 38;
   const plotWidth = width - left - right;
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.classList.add("combat-history-event-lanes");
-  svg.setAttribute("viewBox", `0 0 ${width} ${lanes.length * laneHeight}`);
+  svg.setAttribute("viewBox", `0 0 ${width} ${(hostileLanes.length + playerLanes.length) * laneHeight}`);
   svg.setAttribute("role", "group");
   svg.setAttribute("aria-label", localizer.t("ui.combat_history.graph.recorded_events_aria"));
   const deathMarkers: SVGGElement[] = [];
   const xFor = (micros: number) => left +
     (Math.min(durationSeconds, Math.max(0, micros / 1_000_000)) / durationSeconds) * plotWidth;
-  lanes.forEach(({ actor, color }, laneIndex) => {
+  hostileLanes.forEach(({ sourceActorId, casts }, laneIndex) => {
     const y = laneIndex * laneHeight + laneHeight / 2;
-    const row = svgNode("g", "combat-history-event-lane", {});
+    const sourceActor = historyView?.actors.find((actor) => actor.actor_id === sourceActorId);
+    const source = hostileSourceLabel(sourceActorId, sourceActor, localizer);
+    const row = svgNode("g", "combat-history-event-lane combat-history-hostile-event-lane", {
+      "data-lane-kind": "hostile",
+      "data-source-actor-id": sourceActorId,
+    });
+    row.style.setProperty("--series-color", "var(--amber)");
+    row.append(
+      svgNode("line", "combat-history-event-lane-line", { x1: left, x2: width - right, y1: y, y2: y }),
+      svgNode("circle", "combat-history-event-lane-swatch", { cx: 10, cy: y, r: 3 }),
+      svgText(18, y + 4, compactEventLaneLabel(source), "combat-history-event-lane-label", "start"),
+    );
+    for (const cluster of clusterHistoryHostileCasts(casts, xFor)) {
+      const first = cluster.events[0]!;
+      const presentations = cluster.events.map((cast) =>
+        hostileActionPresentation(sourceActor, cast.action_id, localizer));
+      const actionNames = [...new Set(presentations.map((presentation) => presentation.name))];
+      const target = first.target_actor_id
+        ? localizer.t("ui.combat_history.graph.hostile_cast_target", {
+          target: hostileTargetLabel(first.target_actor_id, historyView, localizer),
+        })
+        : "";
+      const summary = cluster.events.length === 1
+        ? localizer.t("ui.combat_history.graph.hostile_cast", {
+          source, action: actionNames[0]!, time: formatExactGraphTime(first.at_micros), target,
+        })
+        : localizer.t("ui.combat_history.graph.hostile_cast_cluster", {
+          source,
+          count: localizer.formatNumber(cluster.events.length),
+          start: formatExactGraphTime(first.at_micros),
+          end: formatExactGraphTime(cluster.events.at(-1)!.at_micros),
+          actions: actionNames.join(", "),
+        });
+      const actionIds = new Set(cluster.events.map((cast) => cast.action_id));
+      const iconAssetPath = actionIds.size === 1 && presentations[0]!.trusted
+        ? presentations[0]!.iconAssetPath
+        : null;
+      const marker = svgNode("g", "combat-history-skill-event combat-history-hostile-cast-event", {
+        transform: `translate(${cluster.x.toFixed(2)} ${y.toFixed(2)})`,
+        role: "img",
+        tabindex: 0,
+        "aria-label": summary,
+        "data-event-count": cluster.events.length,
+        "data-action-id": first.action_id,
+      });
+      marker.style.setProperty("--series-color", "var(--amber)");
+      marker.append(svgNode("circle", "combat-history-skill-event-hitbox", { cx: 0, cy: 0, r: 12 }));
+      if (iconAssetPath) {
+        marker.append(
+          svgNode("circle", "combat-history-skill-event-icon-ring", { cx: 0, cy: 0, r: 9 }),
+          svgNode("image", "combat-history-skill-event-icon", {
+            href: iconAssetPath, x: -8, y: -8, width: 16, height: 16,
+            preserveAspectRatio: "xMidYMid slice",
+          }),
+        );
+      } else {
+        marker.append(svgNode("path", "combat-history-hostile-cast-event-glyph", {
+          d: "M-6-5H6V1L0 7L-6 1Z",
+        }));
+      }
+      marker.append(svgTitle(summary));
+      if (cluster.events.length > 1) {
+        marker.append(
+          svgNode("circle", "combat-history-skill-event-badge", { cx: 8, cy: -8, r: 7 }),
+          svgText(8, -5, String(cluster.events.length), "combat-history-skill-event-badge-text", "middle"),
+        );
+      }
+      row.append(marker);
+    }
+    svg.append(row);
+  });
+  playerLanes.forEach(({ actor, color }, playerLaneIndex) => {
+    const laneIndex = hostileLanes.length + playerLaneIndex;
+    const y = laneIndex * laneHeight + laneHeight / 2;
+    const row = svgNode("g", "combat-history-event-lane combat-history-player-event-lane", {
+      "data-lane-kind": "player",
+    });
     row.style.setProperty("--series-color", color);
     row.append(
       svgNode("line", "combat-history-event-lane-line", { x1: left, x2: width - right, y1: y, y2: y }),
@@ -3518,6 +3606,76 @@ function recordedEventLanes(
   wireHistoryDeathSummaries(deathMarkers, summary);
   frame.append(summary);
   return frame;
+}
+
+function groupHostileCastsBySource(
+  casts: readonly HistoryHostileCast[],
+): Array<{ sourceActorId: string; casts: HistoryHostileCast[] }> {
+  const grouped = new Map<string, HistoryHostileCast[]>();
+  for (const cast of casts) {
+    const events = grouped.get(cast.source_actor_id) ?? [];
+    events.push(cast);
+    grouped.set(cast.source_actor_id, events);
+  }
+  return [...grouped].map(([sourceActorId, events]) => ({ sourceActorId, casts: events }));
+}
+
+function clusterHistoryHostileCasts(
+  events: readonly HistoryHostileCast[],
+  xFor: (micros: number) => number,
+): Array<{ x: number; events: HistoryHostileCast[] }> {
+  const clusters = new Map<number, HistoryHostileCast[]>();
+  for (const event of events) {
+    const pixelBucket = Math.round(xFor(event.at_micros) / 6);
+    const cluster = clusters.get(pixelBucket) ?? [];
+    cluster.push(event);
+    clusters.set(pixelBucket, cluster);
+  }
+  return [...clusters.entries()].map(([bucket, clustered]) => ({ x: bucket * 6, events: clustered }));
+}
+
+function hostileSourceLabel(
+  sourceActorId: string,
+  actor: HistoryActorSummary | undefined,
+  localizer: UiLocalizer,
+): string {
+  const trustedName = actor?.monster_id && actor.presentation_name?.trim() &&
+    actor.presentation_name.trim() !== actor.display_name?.trim()
+    ? actor.presentation_name.trim()
+    : null;
+  return trustedName ?? localizer.t("ui.combat_history.graph.hostile_source_fallback", {
+    id: sourceActorId,
+  });
+}
+
+function hostileTargetLabel(
+  targetActorId: string,
+  view: CombatHistoryView | undefined,
+  localizer: UiLocalizer,
+): string {
+  const actor = view?.actors.find((candidate) => candidate.actor_id === targetActorId);
+  const trustedName = actor?.actor_kind === "player"
+    ? actor.presentation_name?.trim() || actor.display_name?.trim()
+    : null;
+  return trustedName ?? localizer.t("ui.combat_history.graph.actor_id_fallback", {
+    id: targetActorId,
+  });
+}
+
+function hostileActionPresentation(
+  sourceActor: HistoryActorSummary | undefined,
+  actionId: string,
+  localizer: UiLocalizer,
+): { name: string; iconAssetPath: string | null; trusted: boolean } {
+  const ability = sourceActor?.abilities.find((candidate) => candidate.ability_id === actionId);
+  const trusted = Boolean(ability?.presentation_name?.trim() && ability.presentation_resolution?.trim());
+  return {
+    name: trusted
+      ? ability!.presentation_name!.trim()
+      : localizer.t("ui.combat_history.graph.hostile_action_fallback", { id: actionId }),
+    iconAssetPath: trusted ? ability?.icon_asset_path?.trim() || null : null,
+    trusted,
+  };
 }
 
 function clusterHistorySkillEvents(
