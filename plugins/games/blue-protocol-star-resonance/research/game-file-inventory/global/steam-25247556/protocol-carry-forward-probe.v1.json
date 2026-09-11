@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "captured_build": "25247556",
+  "capture_started_utc": "2026-09-11T23:46:10Z",
+  "capture_duration_seconds": 8.307,
+  "capture_scope": "single-identified-live-game-flow-private-probe",
+  "capture_sha256": "c0fb4cedd7df8cd7604c67b282325e9b7ba234ab4426df08205e115c0f67026f",
+  "capture_bytes": 7703864,
+  "journal_sha256": "a3f1d063b54c41d30d0e43abba8423e19945c620d850902527a749fa3f987c07",
+  "journal_bytes": 3754697,
+  "executable": {
+    "bytes": 808496,
+    "sha256": "90537dbd0e4c9d4b3ed2af06aa8bf7ffe7219fc94bb2f6963673f7b340288588"
+  },
+  "decoder_hypothesis": {
+    "source_build": "24687926",
+    "pack_id": "global-steam-24687926-static-candidate-v8",
+    "pack_digest": "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
+    "exact_for_captured_build": false,
+    "runtime_authority": false
+  },
+  "result": {
+    "input_frames": 7913,
+    "records": 841,
+    "pack_routed_packets": 442,
+    "unrouted_packets": 399,
+    "decoder_gaps": 0,
+    "representative_routes": [
+      { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 45, "count": 96 },
+      { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 46, "count": 92 },
+      { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 6, "count": 42 },
+      { "direction": "client_to_server", "fragment": "call", "service_id": 103198054, "method_id": 249858, "count": 14 },
+      { "direction": "server_to_client", "fragment": "return", "service_id": 103198054, "method_id": 249858, "count": 14 }
+    ]
+  },
+  "verdict": "The prior-build frame grammar and many route IDs remain observationally compatible with this bounded current-build sample. This supports using the pack as a capture-analysis hypothesis only; it does not prove full route completeness, marker semantics, or permission to transmit any request.",
+  "privacy": {
+    "raw_capture_committed": false,
+    "journal_committed": false,
+    "client_address_committed": false,
+    "server_address_committed": false
+  }
+}

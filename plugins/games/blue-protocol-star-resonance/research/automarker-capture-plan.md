@@ -12,6 +12,14 @@ for `25247556`. Use `-RawCaptureWithUnverifiedProtocolCarryForward`,
 `-DistributionSnapshotPath`, and `-ProtocolPackSourceBuild 24687926` for that
 mode. Raw packet evidence remains valid even if the older decoder rejects the
 new stream.
+- A private 8.307-second live-game-flow probe from build `25247556` produced
+  841 packet records, including 442 routes recognized by the `24687926` pack,
+  with zero decoder gaps. The observed `WorldNtf` methods `6`, `45`, and `46`
+  and paired `UseSlot` calls/returns retain their earlier framing. This is
+  evidence that the older pack remains useful for capture correlation, not
+  proof of complete current-build routing or marker semantics. The bounded
+  aggregate and private-artifact hashes are recorded in
+  `steam-25247556/protocol-carry-forward-probe.v1.json`.
 
 ## Evidence already available
 
