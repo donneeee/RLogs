@@ -9,10 +9,9 @@ const MAXIMUM_QUERY_LIMIT = 250;
 const REPORT_ID_PATTERN = /^rpt_[a-f0-9]{32}$/;
 const VISIBILITIES = new Set(["public", "unlisted", "private"]);
 const CURRENT_PUBLIC_PARSE_SCHEMA_VERSION = 17;
-// Public reports are immutable. Keep the immediately preceding schema-17
-// projection eligible so a report uploaded as unlisted before the timeline-v6
-// rollout can still be promoted and reconciled later.
-const RECONCILABLE_PUBLIC_PARSE_PROJECTION_REVISIONS = new Set([9, 10]);
+// Visibility remains mutable for older immutable projections, but only the
+// exact current projection may enter the current hosted reconciliation flow.
+const RECONCILABLE_PUBLIC_PARSE_PROJECTION_REVISIONS = new Set([11]);
 
 function json(value, status = 200) {
   return Response.json(value, {

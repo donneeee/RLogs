@@ -14,11 +14,15 @@ export const UPCOMING_REPORT_PROJECTION_REVISION = 9;
 export const UPCOMING_TIMELINE_SCHEMA_VERSION = 5;
 export const EXACT_SKILL_REPORT_PROJECTION_REVISION = 10;
 export const EXACT_SKILL_TIMELINE_SCHEMA_VERSION = 6;
-// Backfill remains pinned to the legacy producer tuple. Advance all three
-// constants together only when the backfill container is intentionally upgraded.
-export const BACKFILL_TARGET_SCHEMA_VERSION = LEGACY_REPORT_SCHEMA_VERSION;
-export const BACKFILL_TARGET_PROJECTION_REVISION = LEGACY_REPORT_PROJECTION_REVISION;
-export const BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION = LEGACY_TIMELINE_SCHEMA_VERSION;
+export const HOSTILE_CAST_REPORT_PROJECTION_REVISION = 11;
+export const HOSTILE_CAST_TIMELINE_SCHEMA_VERSION = 7;
+// Historical artifacts are replayed by the same pinned verifier image that
+// produces new hosted reports. Keep this tuple exact: accepting an intermediate
+// projection would make a backfilled report unusable as a hosted reconciliation
+// source and would leave timeline-v7 data absent from the public site.
+export const BACKFILL_TARGET_SCHEMA_VERSION = UPCOMING_REPORT_SCHEMA_VERSION;
+export const BACKFILL_TARGET_PROJECTION_REVISION = HOSTILE_CAST_REPORT_PROJECTION_REVISION;
+export const BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION = HOSTILE_CAST_TIMELINE_SCHEMA_VERSION;
 
 function validReportTuple(report) {
   const timelineSchemaVersion = report?.runs?.[0]?.timeline?.schema_version;
@@ -38,10 +42,14 @@ function validReportTuple(report) {
     report?.schema_version === UPCOMING_REPORT_SCHEMA_VERSION &&
     report?.projection_revision === EXACT_SKILL_REPORT_PROJECTION_REVISION &&
     timelineSchemaVersion === EXACT_SKILL_TIMELINE_SCHEMA_VERSION
+  ) || (
+    report?.schema_version === UPCOMING_REPORT_SCHEMA_VERSION &&
+    report?.projection_revision === HOSTILE_CAST_REPORT_PROJECTION_REVISION &&
+    timelineSchemaVersion === HOSTILE_CAST_TIMELINE_SCHEMA_VERSION
   );
   return validTuple && report.runs.every((run) => {
     if (run?.timeline?.schema_version !== timelineSchemaVersion) return false;
-    return timelineSchemaVersion !== EXACT_SKILL_TIMELINE_SCHEMA_VERSION ||
+    return ![EXACT_SKILL_TIMELINE_SCHEMA_VERSION, HOSTILE_CAST_TIMELINE_SCHEMA_VERSION].includes(timelineSchemaVersion) ||
       validExactSkillTimeline(run.timeline, [report.report_id], "single_report", report.report_id);
   });
 }
@@ -49,6 +57,9 @@ function validReportTuple(report) {
 const MAXIMUM_TIMELINE_SKILL_USES = 65_536;
 const MAXIMUM_TIMELINE_SKILL_USES_PER_PARTICIPANT = 16_384;
 const MAXIMUM_TIMELINE_SKILL_USE_EVIDENCE = 8;
+const MAXIMUM_TIMELINE_HOSTILE_SOURCES = 4_096;
+const MAXIMUM_TIMELINE_HOSTILE_CASTS = 65_536;
+const MAXIMUM_TIMELINE_HOSTILE_CASTS_PER_SOURCE = 16_384;
 
 function nonNegativeSafeInteger(value) {
   return Number.isSafeInteger(value) && value >= 0;
@@ -64,7 +75,7 @@ function sameStringSet(left, right) {
 }
 
 function validExactSkillTimeline(timeline, allowedReportIds, source, canonicalReportId) {
-  if (timeline?.schema_version !== EXACT_SKILL_TIMELINE_SCHEMA_VERSION ||
+  if (![EXACT_SKILL_TIMELINE_SCHEMA_VERSION, HOSTILE_CAST_TIMELINE_SCHEMA_VERSION].includes(timeline?.schema_version) ||
       timeline.source !== source || timeline.canonical_report_id !== canonicalReportId ||
       !nonNegativeSafeInteger(timeline.duration_micros) ||
       !Array.isArray(timeline.contributing_report_ids) ||
@@ -120,6 +131,49 @@ function validExactSkillTimeline(timeline, allowedReportIds, source, canonicalRe
     !timeline.contributing_report_ids.includes(timeline.clock_anchor.source_report_id) ||
     !nonNegativeSafeInteger(timeline.clock_anchor.event_sequence)
   )) return false;
+  if (timeline.schema_version === HOSTILE_CAST_TIMELINE_SCHEMA_VERSION) {
+    if (!Array.isArray(timeline.hostile_source_actor_ids) ||
+        timeline.hostile_source_actor_ids.length > MAXIMUM_TIMELINE_HOSTILE_SOURCES ||
+        !timeline.hostile_source_actor_ids.every((actorId) => boundedIdentifierText(actorId) && !actors.has(actorId)) ||
+        new Set(timeline.hostile_source_actor_ids).size !== timeline.hostile_source_actor_ids.length ||
+        !Array.isArray(timeline.hostile_casts) || timeline.hostile_casts.length > MAXIMUM_TIMELINE_HOSTILE_CASTS ||
+        !nonNegativeSafeInteger(timeline.omitted?.hostile_casts)) return false;
+    const hostileSources = new Set(timeline.hostile_source_actor_ids);
+    const keptBySource = new Map();
+    const hostileKeys = new Set();
+    for (const cast of timeline.hostile_casts) {
+      if (!boundedIdentifierText(cast?.source_actor_id) || !hostileSources.has(cast.source_actor_id) ||
+          cast.hostility_evidence !== "participant_outgoing_target" ||
+          (cast.target_actor_id !== undefined && !boundedIdentifierText(cast.target_actor_id)) ||
+          !nonNegativeSafeInteger(cast.at_micros) || cast.at_micros > timeline.duration_micros ||
+          !boundedIdentifierText(cast.action_id) ||
+          (cast.action_instance_id !== undefined && !boundedIdentifierText(cast.action_instance_id)) ||
+          cast.state !== "started" || !Array.isArray(cast.evidence) || cast.evidence.length === 0 ||
+          cast.evidence.length > MAXIMUM_TIMELINE_SKILL_USE_EVIDENCE ||
+          !nonNegativeSafeInteger(cast.omitted_evidence)) return false;
+      const kept = (keptBySource.get(cast.source_actor_id) ?? 0) + 1;
+      if (kept > MAXIMUM_TIMELINE_HOSTILE_CASTS_PER_SOURCE) return false;
+      keptBySource.set(cast.source_actor_id, kept);
+      // A single report retains distinct target-specific wire rows. Reconciled
+      // timelines intentionally collapse target disagreements for the same cast.
+      const key = JSON.stringify([cast.at_micros, cast.source_actor_id,
+        source === "single_report" ? cast.target_actor_id ?? null : null,
+        cast.action_id, cast.action_instance_id ?? null]);
+      if (hostileKeys.has(key)) return false;
+      hostileKeys.add(key);
+      const evidenceKeys = new Set();
+      for (const evidence of cast.evidence) {
+        if (!REPORT_ID.test(evidence?.source_report_id ?? "") ||
+            !timeline.contributing_report_ids.includes(evidence.source_report_id) ||
+            !nonNegativeSafeInteger(evidence.event_sequence) ||
+            (evidence.game_time_millis !== undefined && !Number.isSafeInteger(evidence.game_time_millis)) ||
+            evidence.kind !== "exact_wire_cast_start") return false;
+        const evidenceKey = JSON.stringify([evidence.source_report_id, evidence.event_sequence, evidence.game_time_millis ?? null, evidence.kind]);
+        if (evidenceKeys.has(evidenceKey)) return false;
+        evidenceKeys.add(evidenceKey);
+      }
+    }
+  }
   return true;
 }
 
@@ -291,7 +345,8 @@ export function validateReconciliationOutput(value, runGroupId, sources) {
   ) || (
     value?.schema_version === UPCOMING_RECONCILIATION_SCHEMA_VERSION &&
     (value?.timeline?.schema_version === UPCOMING_TIMELINE_SCHEMA_VERSION ||
-      value?.timeline?.schema_version === EXACT_SKILL_TIMELINE_SCHEMA_VERSION)
+      value?.timeline?.schema_version === EXACT_SKILL_TIMELINE_SCHEMA_VERSION ||
+      value?.timeline?.schema_version === HOSTILE_CAST_TIMELINE_SCHEMA_VERSION)
   );
   if (!validTuple || value?.run_group_id !== runGroupId ||
       !RECONCILIATION_ID.test(value?.reconciliation_id ?? "") ||
@@ -311,7 +366,7 @@ export function validateReconciliationOutput(value, runGroupId, sources) {
   if (unique.size !== actual.length || !unique.has(reconciliationSourceIdentity(value.canonical_spine))) {
     return false;
   }
-  if (value.timeline?.schema_version === EXACT_SKILL_TIMELINE_SCHEMA_VERSION && !validExactSkillTimeline(
+  if ([EXACT_SKILL_TIMELINE_SCHEMA_VERSION, HOSTILE_CAST_TIMELINE_SCHEMA_VERSION].includes(value.timeline?.schema_version) && !validExactSkillTimeline(
     value.timeline,
     value.reports.map((report) => report.report_id),
     "reconciled_canonical_spine",

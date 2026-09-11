@@ -8,6 +8,7 @@ import {
   CURRENT_REPORT_PROJECTION_REVISION, CURRENT_REPORT_SCHEMA_VERSION,
   CURRENT_TIMELINE_SCHEMA_VERSION,
   EXACT_SKILL_REPORT_PROJECTION_REVISION, EXACT_SKILL_TIMELINE_SCHEMA_VERSION,
+  HOSTILE_CAST_REPORT_PROJECTION_REVISION, HOSTILE_CAST_TIMELINE_SCHEMA_VERSION,
   LEGACY_RECONCILIATION_SCHEMA_VERSION, LEGACY_REPORT_PROJECTION_REVISION,
   LEGACY_REPORT_SCHEMA_VERSION, LEGACY_TIMELINE_SCHEMA_VERSION,
   RECONCILIATION_SCHEMA_VERSION,
@@ -66,6 +67,21 @@ function exactSkillTimeline({
     }],
     omitted: { skill_uses: 1 },
   };
+}
+
+function hostileCastTimeline(options = {}) {
+  const timeline = exactSkillTimeline(options);
+  timeline.schema_version = HOSTILE_CAST_TIMELINE_SCHEMA_VERSION;
+  timeline.hostile_source_actor_ids = ["hostile-1"];
+  timeline.hostile_casts = [{
+    source_actor_id: "hostile-1", hostility_evidence: "participant_outgoing_target",
+    target_actor_id: "actor-1", at_micros: 600_000,
+    action_id: "7001", action_instance_id: "92", state: "started",
+    evidence: [{ source_report_id: timeline.canonical_report_id, event_sequence: 13,
+      game_time_millis: 1_600, kind: "exact_wire_cast_start" }], omitted_evidence: 0,
+  }];
+  timeline.omitted.hostile_casts = 0;
+  return timeline;
 }
 
 test("wake-up identities are derived from the sealed digest", () => {
@@ -192,6 +208,43 @@ test("report v17 revision 10 strictly validates exact skill timeline evidence", 
   }, wakeup), false);
 });
 
+test("report v17 revision 11 strictly validates bounded hostile cast evidence", () => {
+  const output = { schema_version: 1, report: {
+    schema_version: UPCOMING_REPORT_SCHEMA_VERSION,
+    projection_revision: HOSTILE_CAST_REPORT_PROJECTION_REVISION,
+    report_id: wakeup.expected_report_id,
+    verification: { artifact_sha256: digest },
+    runs: [{ timeline: hostileCastTimeline() }],
+  }, membership: { report_id: wakeup.expected_report_id, artifact_sha256: digest, runs: [] } };
+  assert.equal(validateOutput(output, wakeup), true);
+  const rejects = [
+    (timeline) => { delete timeline.hostile_source_actor_ids; },
+    (timeline) => { timeline.hostile_source_actor_ids = []; },
+    (timeline) => { timeline.hostile_source_actor_ids.push("hostile-1"); },
+    (timeline) => { timeline.hostile_source_actor_ids.push("actor-1"); },
+    (timeline) => { timeline.hostile_source_actor_ids = Array.from({ length: 4_097 }, (_, index) => `hostile-${index}`); },
+    (timeline) => { timeline.hostile_casts[0].source_actor_id = "actor-1"; },
+    (timeline) => { timeline.hostile_casts[0].source_actor_id = "uncommitted-hostile"; },
+    (timeline) => { timeline.hostile_casts[0].hostility_evidence = "inferred_boss"; },
+    (timeline) => { timeline.hostile_casts[0].at_micros = timeline.duration_micros + 1; },
+    (timeline) => { timeline.hostile_casts[0].state = "completed"; },
+    (timeline) => { timeline.hostile_casts[0].evidence[0].kind = "derived_damage_bucket"; },
+    (timeline) => { timeline.hostile_casts.push(structuredClone(timeline.hostile_casts[0])); },
+    (timeline) => { timeline.omitted.hostile_casts = -1; },
+  ];
+  for (const mutate of rejects) {
+    const invalid = structuredClone(output); mutate(invalid.report.runs[0].timeline);
+    assert.equal(validateOutput(invalid, wakeup), false);
+  }
+  const targetSpecific = structuredClone(output);
+  targetSpecific.report.runs[0].timeline.hostile_casts.push({
+    ...structuredClone(targetSpecific.report.runs[0].timeline.hostile_casts[0]),
+    target_actor_id: "actor-2",
+    evidence: [{ ...targetSpecific.report.runs[0].timeline.hostile_casts[0].evidence[0], event_sequence: 14 }],
+  });
+  assert.equal(validateOutput(targetSpecific, wakeup), true);
+});
+
 test("backfill eligibility is limited to current public schema-12 replay evidence", () => {
   const row = {
     report_id: wakeup.expected_report_id, artifact_sha256: digest,
@@ -205,6 +258,12 @@ test("backfill eligibility is limited to current public schema-12 replay evidenc
   assert.equal(isSchema12BackfillCandidate({ ...report, schema_version: 13 }, row), false);
   assert.equal(isSchema12BackfillCandidate({ ...report, visibility: "unlisted" }, row), false);
   assert.equal(isSchema12BackfillCandidate(report, { ...row, verification_tier: "ranked" }), false);
+});
+
+test("historical backfill is pinned to the exact current public timeline tuple", () => {
+  assert.equal(BACKFILL_TARGET_SCHEMA_VERSION, 17);
+  assert.equal(BACKFILL_TARGET_PROJECTION_REVISION, 11);
+  assert.equal(BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION, 7);
 });
 
 test("backfill output can add schema fields but cannot change identity, owner, visibility, or evidence", () => {
@@ -229,8 +288,7 @@ test("backfill output can add schema fields but cannot change identity, owner, v
       projection_revision: BACKFILL_TARGET_PROJECTION_REVISION,
       verification: { ...original.verification }, runs: [{
         run_index: 0, run_group_id: "run_fixture",
-        // Backfill replay still emits the deployed tuple until its producer bumps.
-        timeline: { schema_version: BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION },
+        timeline: hostileCastTimeline(),
       }],
     },
     membership: {
@@ -463,6 +521,26 @@ test("completed reconciliation requires replay-authored status, conservation, an
     timeline: exactTimeline,
   };
   assert.equal(validateReconciliationOutput(exactOutput, "run_exact", sources), true);
+  const hostileTimeline = {
+    ...hostileCastTimeline({ source: "reconciled_canonical_spine", reportIds: sources.map((source) => source.report_id),
+      canonicalReportId: sources[0].report_id }),
+    series_bucket_micros: exactTimeline.series_bucket_micros,
+    rate_clock_complete: true,
+    rate_clock: exactTimeline.rate_clock,
+  };
+  hostileTimeline.omitted.rate_clock_points = 0;
+  const hostileOutput = { ...exactOutput, timeline: hostileTimeline };
+  assert.equal(validateReconciliationOutput(hostileOutput, "run_exact", sources), true);
+  const duplicateTargetVariant = structuredClone(hostileOutput);
+  duplicateTargetVariant.timeline.hostile_casts.push({
+    ...structuredClone(duplicateTargetVariant.timeline.hostile_casts[0]),
+    target_actor_id: "actor-2",
+    evidence: [{ ...duplicateTargetVariant.timeline.hostile_casts[0].evidence[0], event_sequence: 14 }],
+  });
+  assert.equal(validateReconciliationOutput(duplicateTargetVariant, "run_exact", sources), false);
+  const fabricatedHostile = structuredClone(hostileOutput);
+  fabricatedHostile.timeline.hostile_casts[0].source_actor_id = "actor-1";
+  assert.equal(validateReconciliationOutput(fabricatedHostile, "run_exact", sources), false);
   const badExactEvidence = structuredClone(exactOutput);
   badExactEvidence.timeline.skill_uses[0].evidence[1].source_report_id = `rpt_${"d".repeat(32)}`;
   assert.equal(validateReconciliationOutput(badExactEvidence, "run_exact", sources), false);

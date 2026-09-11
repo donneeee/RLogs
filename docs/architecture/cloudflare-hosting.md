@@ -85,6 +85,53 @@ Backend production deployment is blocked unless all of the following are true:
   returning a process-level success response;
 - rollback preserves immutable artifacts, claims, and report receipts.
 
+### Historical projection upgrade gate
+
+Schema-12 public replay reports are upgraded only by an operator-created,
+bounded projection-backfill batch. The accepted destination is the exact current
+public tuple: report schema 17, projection revision 11, and combat timeline
+schema 7. Timeline 7 carries the exact player skill-use lane plus bounded,
+exactly observed hostile cast starts without inferred boss or action labels.
+Migration `0009_projection_backfill_schema17.sql` admits that report-schema target
+without deleting the earlier schema-15 audit rows. Deploying the migration or
+Worker does not enqueue, discover, or replay a report: the Worker-side pause is
+an independent fail-closed publication gate. Bounded `dry_run=1` batches remain
+available behind that gate: they inspect retained projection eligibility and
+write planned audit jobs, but they do not invoke replay, write candidate
+objects, advance report pointers, or wake reconciliation.
+
+Each eligible report is reconstructed from its retained, digest-checked chunks
+and replayed by the pinned verifier release. The candidate projection and
+membership objects are written under content-addressed keys before one guarded
+D1 transaction registers both the prior and candidate projection versions,
+advances the report pointer, and replaces its catalog and private membership
+indexes. If the source pointer changed, none of those index replacements can
+commit. A delivery error is resolved by rereading the candidate pointer rather
+than replaying blindly.
+
+Run-group reconciliation is regenerated for the union of the prior and new run
+group IDs after a successful report publication. The hosted reconciler accepts
+only schema-17/revision-11 source projections, so a group that is partway through
+the upgrade cannot publish a mixed reconciliation. The reconciliation publish
+transaction also guards the complete source set and every source pointer. Public
+reads repeat those source and cardinality checks, making the previous pointer
+invisible as soon as its source set is stale; after the last member is upgraded,
+the final wake-up can publish the timeline-7 reconciliation.
+
+Changing an older immutable schema-17 revision-9 or revision-10 report from
+unlisted to public remains supported, but that visibility change does not wake
+the revision-11 reconciliation flow. Only an exact current revision-11
+projection schedules those current run-group jobs.
+
+The rollout sequence is: deploy and verify migrations with publication paused;
+deploy the exact verifier image; create a dry-run batch of at most 25 reports;
+inspect its immutable audit rows; then, in a separately reviewed change, release
+the publication pause and create the bounded publishing batch. Production rollback
+must restore a registered prior projection with the same guarded-pointer and
+atomic index-replacement rules as forward publication; directly editing the
+`reports` pointer is not a supported rollback. Until that inverse transaction is
+implemented and tested, the publishing pause remains required.
+
 The repository workflow `.github/workflows/deploy-cloudflare.yml` is the
 production deployment path. It tests and deploys the private Worker first,
 deploys the Pages gateway second, and then runs

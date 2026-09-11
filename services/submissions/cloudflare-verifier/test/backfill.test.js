@@ -97,7 +97,7 @@ function publicationFixture() {
   return { database, env, row, original, result, objects };
 }
 
-test("the v5 migration pause rejects a claimed batch before replay or publication", async () => {
+async function migrationPauseFixture(dryRun) {
   const artifact = "a".repeat(64);
   const reportId = `rpt_${artifact.slice(0, 32)}`;
   const uploadId = `up_${artifact.slice(0, 32)}`;
@@ -119,7 +119,7 @@ test("the v5 migration pause rejects a claimed batch before replay or publicatio
   };
   const batch = {
     batch_id: "bf_test", target_verifier_release: "new", source_schema_version: 12,
-    target_schema_version: 15, maximum_reports: 1, dry_run: 1,
+    target_schema_version: 17, maximum_reports: 1, dry_run: dryRun,
     inspected_count: 0, lease_token: "lease", state: "running",
   };
   const writes = [];
@@ -157,8 +157,13 @@ test("the v5 migration pause rejects a claimed batch before replay or publicatio
     },
   };
   const result = await runProjectionBackfillBatch(env, {}, () => {
-    throw new Error("paused migration must not reconcile");
+    throw new Error("paused publication and dry runs must not reconcile");
   });
+  return { artifactReads, result, writes };
+}
+
+test("the v7 publication pause rejects a publishing batch before replay", async () => {
+  const { artifactReads, result, writes } = await migrationPauseFixture(0);
   assert.deepEqual(result, {
     claimed: true, rejected: true, permanent: true, code: PROJECTION_BACKFILL_PAUSE_CODE,
   });
@@ -168,6 +173,17 @@ test("the v5 migration pause rejects a claimed batch before replay or publicatio
   assert.equal(writes.some(({ sql, values }) =>
     sql.includes("state='rejected'") && values.includes(PROJECTION_BACKFILL_PAUSE_CODE) &&
     values.includes(PROJECTION_BACKFILL_PAUSE_DETAIL)), true);
+});
+
+test("a bounded dry-run records eligibility while v7 publication remains paused", async () => {
+  const { artifactReads, result, writes } = await migrationPauseFixture(1);
+  assert.deepEqual(result, { claimed: true, completed: true, inspected: 1 });
+  assert.equal(artifactReads, 1);
+  assert.equal(writes.some(({ sql, values }) =>
+    sql.includes("INSERT INTO projection_backfill_jobs") && values.includes("planned")), true);
+  assert.equal(writes.some(({ sql }) => sql.includes("UPDATE reports SET")), false);
+  assert.equal(writes.some(({ sql }) => sql.includes("state='rejected'")), false);
+  assert.equal(writes.some(({ sql }) => sql.includes("eligible_count=eligible_count+?3")), true);
 });
 
 test("projection transport failures remain retryable while immutable evidence failures are permanent", async () => {
@@ -206,18 +222,23 @@ test("a malformed retained manifest is a permanent evidence failure", () => {
 
 test("operator workflow removes enqueue controls while manual deploy and the paused history remain", async () => {
   const migration = await readFile(new URL("../../cloudflare-backend/migrations/0008_projection_backfills.sql", import.meta.url), "utf8");
+  const schema17Migration = await readFile(new URL("../../cloudflare-backend/migrations/0009_projection_backfill_schema17.sql", import.meta.url), "utf8");
   const workflow = await readFile(new URL("../../../../.github/workflows/deploy-cloudflare.yml", import.meta.url), "utf8");
   const worker = await readFile(new URL("../src/backfill.js", import.meta.url), "utf8");
   assert.match(migration, /source_schema_version = 12/u);
   assert.match(migration, /target_schema_version = 15/u);
   assert.match(migration, /maximum_reports BETWEEN 1 AND 25/u);
   assert.match(migration, /consecutive_retry_count BETWEEN 0 AND 3/u);
+  assert.match(schema17Migration, /target_schema_version IN \(15, 17\)/u);
+  assert.match(schema17Migration, /INSERT INTO projection_backfill_batches[\s\S]+SELECT \* FROM projection_backfill_batches_schema15/u);
+  assert.match(schema17Migration, /PRAGMA defer_foreign_keys = ON/u);
   assert.match(workflow, /github\.event_name == 'workflow_dispatch'/u);
   assert.match(workflow, /VERIFIER_RELEASE:\$\{\{ github\.sha \}\}/u);
   assert.match(workflow, /npx wrangler deploy --var "VERIFIER_RELEASE:/u);
   assert.doesNotMatch(workflow, /projection_backfill|BACKFILL_MODE|projection_backfill_batches/u);
   assert.ok(workflow.indexOf("npm run db:migrate:remote") < workflow.indexOf("VERIFIER_RELEASE:${{ github.sha }}"));
-  assert.match(worker, /PROJECTION_BACKFILL_PAUSE_CODE = "migration_paused_v5"/u);
+  assert.match(worker, /PROJECTION_BACKFILL_PAUSE_CODE = "migration_paused_v7"/u);
+  assert.match(worker, /schema 17 \/ projection 11 \/ timeline 7/u);
   assert.match(worker, /state='rejected',[\s\S]+failure_code=\?2,[\s\S]+return \{[\s\S]+permanent: true/u);
   assert.match(worker, /INSERT INTO report_projection_versions/u);
   assert.match(worker, /UPDATE reports SET run_group_id=\?6,[\s\S]+DELETE FROM report_runs/u);
@@ -226,6 +247,43 @@ test("operator workflow removes enqueue controls while manual deploy and the pau
   assert.match(worker, /UPDATE reports SET run_group_id=\?6,[\s\S]+projection_sha256=\?8/u);
   assert.doesNotMatch(worker, /UPDATE verification_jobs/u);
   assert.match(worker, /consecutive_retry_count \?\? 0\) >= 2/u);
+});
+
+test("schema-17 migration preserves legacy audit rows and only admits supported targets", async () => {
+  const legacy = await readFile(new URL("../../cloudflare-backend/migrations/0008_projection_backfills.sql", import.meta.url), "utf8");
+  const upgrade = await readFile(new URL("../../cloudflare-backend/migrations/0009_projection_backfill_schema17.sql", import.meta.url), "utf8");
+  const database = new DatabaseSync(":memory:");
+  database.exec("PRAGMA foreign_keys=ON");
+  database.exec("CREATE TABLE reports (report_id TEXT PRIMARY KEY)");
+  database.exec(legacy);
+  const reportId = `rpt_${"a".repeat(32)}`;
+  database.prepare("INSERT INTO reports VALUES (?)").run(reportId);
+  const insert = database.prepare(`INSERT INTO projection_backfill_batches
+    (batch_id,requested_by,workflow_run_url,target_verifier_release,source_schema_version,
+     target_schema_version,maximum_reports,dry_run,state,created_unix_millis,updated_unix_millis)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
+  insert.run("bf_legacy", "operator", "https://example.invalid/1", "release-15", 12, 15, 1, 1, "completed", 1, 1);
+  database.prepare(`INSERT INTO projection_backfill_jobs
+    (job_id,batch_id,report_id,upload_id,artifact_sha256,source_projection_sha256,
+     source_projection_object_key,target_verifier_release,state,created_unix_millis,updated_unix_millis)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+    "bfj_legacy", "bf_legacy", reportId, `up_${"a".repeat(32)}`, "a".repeat(64),
+    "b".repeat(64), `reports/${reportId}/projection-${"b".repeat(64)}.json`,
+    "release-15", "published", 1, 1,
+  );
+  database.prepare(`INSERT INTO report_projection_versions
+    (report_id,projection_sha256,projection_object_key,schema_version,verifier_release,
+     artifact_sha256,backfill_job_id,created_unix_millis) VALUES (?,?,?,?,?,?,?,?)`).run(
+    reportId, "b".repeat(64), `reports/${reportId}/projection-${"b".repeat(64)}.json`,
+    12, "release-12", "a".repeat(64), "bfj_legacy", 1,
+  );
+  database.exec(upgrade);
+  assert.equal(database.prepare("SELECT target_schema_version FROM projection_backfill_batches WHERE batch_id='bf_legacy'").get().target_schema_version, 15);
+  assert.equal(database.prepare("SELECT batch_id FROM projection_backfill_jobs WHERE job_id='bfj_legacy'").get().batch_id, "bf_legacy");
+  assert.equal(database.prepare("SELECT backfill_job_id FROM report_projection_versions").get().backfill_job_id, "bfj_legacy");
+  insert.run("bf_current", "operator", "https://example.invalid/2", "release-17", 12, 17, 25, 1, "pending", 2, 2);
+  assert.throws(() => insert.run("bf_invalid", "operator", "https://example.invalid/3", "release-16", 12, 16, 1, 1, "pending", 3, 3));
+  assert.deepEqual(database.prepare("PRAGMA foreign_key_check").all(), []);
 });
 
 test("valid replay atomically advances the pointer and replaces both private indexes", async () => {

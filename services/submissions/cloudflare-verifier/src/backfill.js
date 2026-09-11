@@ -8,9 +8,9 @@ const REPORT_ID = /^rpt_[a-f0-9]{32}$/;
 const UPLOAD_ID = /^up_[a-f0-9]{32}$/;
 const DIGEST = /^[a-f0-9]{64}$/;
 const LEASE_MILLIS = 15 * 60 * 1000;
-export const PROJECTION_BACKFILL_PAUSE_CODE = "migration_paused_v5";
+export const PROJECTION_BACKFILL_PAUSE_CODE = "migration_paused_v7";
 export const PROJECTION_BACKFILL_PAUSE_DETAIL =
-  "projection backfill is paused for the timeline-v5 rollout pending rollback-safe, run-group-aware publication";
+  "projection publication is staged for schema 17 / projection 11 / timeline 7 but remains paused pending an explicit operator rollout";
 export const PROJECTION_BACKFILL_MIGRATION_PAUSED = true;
 
 async function first(env, sql, ...values) {
@@ -284,7 +284,20 @@ async function retryBatch(env, batch, code, cause) {
 export async function runProjectionBackfillBatch(env, context, reconcileRunGroup) {
   const batch = await claimBatch(env);
   if (!batch) return { claimed: false };
-  if (PROJECTION_BACKFILL_MIGRATION_PAUSED) {
+  if (Number(batch.source_schema_version) !== BACKFILL_SOURCE_SCHEMA_VERSION ||
+      Number(batch.target_schema_version) !== BACKFILL_TARGET_SCHEMA_VERSION ||
+      Number(batch.maximum_reports) < 1 || Number(batch.maximum_reports) > 25 ||
+      ![0, 1].includes(Number(batch.dry_run))) {
+    await env.RLOGS_DB.prepare(`UPDATE projection_backfill_batches SET state='rejected',
+      failure_code='invalid_request',failure_detail='backfill request violates fixed schema or batch bounds',
+      completed_unix_millis=?2,updated_unix_millis=?2 WHERE batch_id=?1 AND lease_token=?3`)
+      .bind(batch.batch_id, Date.now(), batch.lease_token).run();
+    return { claimed: true, rejected: true };
+  }
+  // Evidence-only dry runs are safe while publication remains disabled. They
+  // retain bounded eligibility audit rows but never invoke replay, write a
+  // candidate object, advance a report pointer, or wake reconciliation.
+  if (PROJECTION_BACKFILL_MIGRATION_PAUSED && Number(batch.dry_run) !== 1) {
     const pausedAt = Date.now();
     await env.RLOGS_DB.prepare(`UPDATE projection_backfill_batches SET state='rejected',
       lease_token=NULL,failure_code=?2,failure_detail=?3,
@@ -299,15 +312,6 @@ export async function runProjectionBackfillBatch(env, context, reconcileRunGroup
       permanent: true,
       code: PROJECTION_BACKFILL_PAUSE_CODE,
     };
-  }
-  if (Number(batch.source_schema_version) !== BACKFILL_SOURCE_SCHEMA_VERSION ||
-      Number(batch.target_schema_version) !== BACKFILL_TARGET_SCHEMA_VERSION ||
-      Number(batch.maximum_reports) < 1 || Number(batch.maximum_reports) > 25) {
-    await env.RLOGS_DB.prepare(`UPDATE projection_backfill_batches SET state='rejected',
-      failure_code='invalid_request',failure_detail='backfill request violates fixed schema or batch bounds',
-      completed_unix_millis=?2,updated_unix_millis=?2 WHERE batch_id=?1 AND lease_token=?3`)
-      .bind(batch.batch_id, Date.now(), batch.lease_token).run();
-    return { claimed: true, rejected: true };
   }
   const remaining = Number(batch.maximum_reports) - Number(batch.inspected_count);
   const cursor = batch.cursor_report_id || batch.after_report_id || "";

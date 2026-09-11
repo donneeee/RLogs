@@ -463,8 +463,8 @@ test("only the uploader can change visibility and the override changes authorize
   assert.equal((await report.json()).visibility, "private");
 });
 
-for (const projectionRevision of [9, 10]) {
-  test(`promoting a schema-17 revision-${projectionRevision} hosted replay publishes and wakes each exact run group`, async () => {
+for (const projectionRevision of [9, 10, 11]) {
+  test(`promoting a schema-17 revision-${projectionRevision} hosted replay publishes and only current projections wake run groups`, async () => {
     const { auth, d1, backgroundTasks } = authFixture();
     const reportId = `rpt_${"e".repeat(32)}`;
     const report = {
@@ -505,9 +505,10 @@ for (const projectionRevision of [9, 10]) {
     assert.equal(d1[0].bindings[1], "public");
     assert.equal(d1[0].bindings[3], puts[0].key.slice(-69, -5));
     assert.equal(d1[0].bindings[4], puts[0].key);
-    assert.equal(backgroundTasks.length, 1);
+    const currentProjection = projectionRevision === 11;
+    assert.equal(backgroundTasks.length, currentProjection ? 1 : 0);
     await Promise.all(backgroundTasks);
-    assert.deepEqual(wakeups, ["run_one", "run_two"].map((runGroupId) => ({
+    assert.deepEqual(wakeups, (currentProjection ? ["run_one", "run_two"] : []).map((runGroupId) => ({
       path: `/v1/reconciliation-jobs/${runGroupId}/run`,
       body: { schema_version: 1, run_group_id: runGroupId },
     })));
@@ -520,7 +521,7 @@ test("private transitions and stale hosted projections never schedule reconcilia
     { visibility: "unlisted", schemaVersion: 14, projectionRevision: 4 },
     { visibility: "public", schemaVersion: 13, projectionRevision: 3 },
     { visibility: "public", schemaVersion: 17, projectionRevision: 8 },
-    { visibility: "public", schemaVersion: 17, projectionRevision: 11 },
+    { visibility: "public", schemaVersion: 17, projectionRevision: 12 },
   ]) {
     const { auth, backgroundTasks } = authFixture();
     const reportId = `rpt_${"f".repeat(32)}`;

@@ -81,10 +81,10 @@ use rlogs_game_bpsr::{
 use rlogs_profiles::LocalProfilePackage;
 
 pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 17;
-pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 10;
+pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 11;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 7;
 pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 20;
-pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 6;
+pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 7;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
@@ -116,6 +116,9 @@ const MAXIMUM_TIMELINE_RDPS_SPANS: usize = 65_536;
 const MAXIMUM_TIMELINE_SKILL_USES: usize = 65_536;
 const MAXIMUM_TIMELINE_SKILL_USES_PER_PARTICIPANT: usize = 16_384;
 const MAXIMUM_TIMELINE_SKILL_USE_EVIDENCE: usize = 8;
+const MAXIMUM_TIMELINE_HOSTILE_SOURCES: usize = 4_096;
+const MAXIMUM_TIMELINE_HOSTILE_CASTS: usize = 65_536;
+const MAXIMUM_TIMELINE_HOSTILE_CASTS_PER_SOURCE: usize = 16_384;
 
 #[derive(Clone)]
 pub enum SubmissionAuthentication {
@@ -282,6 +285,7 @@ struct RawLocalStateObservation {
 #[derive(Debug, Clone)]
 struct ObservedTimelineSkillUse {
     actor_id: String,
+    target_actor_id: Option<String>,
     action_id: String,
     observed_micros: u64,
     game_time_millis: Option<i64>,
@@ -3158,6 +3162,15 @@ pub struct PublicCombatTimeline {
     /// these events.
     #[serde(default)]
     pub skill_uses: Vec<PublicTimelineSkillUse>,
+    /// Bounded reducer-authored encounter-target commitment. Every hostile
+    /// cast source in timeline schema 7 must be present in this roster.
+    #[serde(default)]
+    pub hostile_source_actor_ids: Vec<String>,
+    /// Exact wire-observed cast starts whose source is in the reducer-authored
+    /// encounter target roster (an actor that received player damage/effects
+    /// in this run view). The service does not infer boss identity or names.
+    #[serde(default)]
+    pub hostile_casts: Vec<PublicTimelineHostileCast>,
     #[serde(default)]
     pub rdps_influence_spans: Vec<PublicTimelineRdpsInfluenceSpan>,
     #[serde(default)]
@@ -3255,6 +3268,29 @@ pub struct PublicTimelineSkillUse {
     pub evidence: Vec<PublicTimelineSkillUseEvidence>,
     #[serde(default)]
     pub omitted_evidence: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicTimelineHostileCast {
+    pub source_actor_id: String,
+    pub hostility_evidence: PublicTimelineHostilityEvidence,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_actor_id: Option<String>,
+    pub at_micros: u64,
+    pub action_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action_instance_id: Option<String>,
+    pub state: CastState,
+    #[serde(default)]
+    pub evidence: Vec<PublicTimelineSkillUseEvidence>,
+    #[serde(default)]
+    pub omitted_evidence: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicTimelineHostilityEvidence {
+    ParticipantOutgoingTarget,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -3389,6 +3425,8 @@ pub struct PublicTimelineOmittedCounts {
     pub loadout_markers: usize,
     #[serde(default)]
     pub skill_uses: usize,
+    #[serde(default)]
+    pub hostile_casts: usize,
     pub rdps_influence_spans: usize,
     #[serde(default)]
     pub rate_clock_points: usize,
@@ -4710,6 +4748,7 @@ where
             {
                 observed_timeline.skill_uses.push(ObservedTimelineSkillUse {
                     actor_id: cast.source.actor_id.0.to_string(),
+                    target_actor_id: cast.target.map(|target| target.actor_id.0.to_string()),
                     action_id: cast.ability.0.to_string(),
                     observed_micros: event.time.observed_micros,
                     game_time_millis: event.time.game_time_millis,
@@ -6336,6 +6375,7 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
         None,
     );
     populate_reconciled_timeline_skill_uses(&mut timeline, &sources, canonical_report_id);
+    populate_reconciled_timeline_hostile_casts(&mut timeline, &sources, canonical_report_id);
 
     let mut hasher = Sha256::new();
     hasher.update(b"rlogs-cross-vantage-reconciliation-v2\0");
@@ -7814,6 +7854,8 @@ fn public_combat_timeline(
         death_markers: Vec::new(),
         loadout_markers: Vec::new(),
         skill_uses: Vec::new(),
+        hostile_source_actor_ids: Vec::new(),
+        hostile_casts: Vec::new(),
         rdps_influence_spans: Vec::new(),
         omitted: PublicTimelineOmittedCounts::default(),
     };
@@ -7839,6 +7881,21 @@ fn public_combat_timeline(
         &observed_timeline.skill_uses,
         canonical_run_observed_bounds(analysis),
         presentation_semantics_authorized,
+    );
+    populate_timeline_hostile_casts(
+        &mut timeline,
+        report_id,
+        &view
+            .map(|view| {
+                view.targets
+                    .iter()
+                    .map(|target| target.actor_id.clone())
+                    .collect()
+            })
+            .unwrap_or_default(),
+        &run.participants,
+        &observed_timeline.skill_uses,
+        canonical_run_observed_bounds(analysis),
     );
     timeline
 }
@@ -8373,6 +8430,118 @@ fn populate_timeline_skill_uses_with_limits(
     dedupe_timeline_skill_use_rows(&mut timeline.skill_uses);
 }
 
+fn populate_timeline_hostile_casts(
+    timeline: &mut PublicCombatTimeline,
+    report_id: &str,
+    hostile_source_actor_ids: &BTreeSet<String>,
+    participants: &[PublicParticipant],
+    observations: &[ObservedTimelineSkillUse],
+    canonical_bounds: Option<CanonicalRunObservedBounds>,
+) {
+    let participant_actor_ids = participants
+        .iter()
+        .map(|row| row.actor_id.as_str())
+        .collect::<BTreeSet<_>>();
+    timeline.hostile_source_actor_ids = hostile_source_actor_ids
+        .iter()
+        .filter(|actor_id| !participant_actor_ids.contains(actor_id.as_str()))
+        .take(MAXIMUM_TIMELINE_HOSTILE_SOURCES)
+        .cloned()
+        .collect();
+    let committed_hostile_sources = timeline
+        .hostile_source_actor_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    timeline.hostile_casts.clear();
+    timeline.omitted.hostile_casts = 0;
+    let Some(bounds) = canonical_bounds else {
+        return;
+    };
+    let mut rows = BTreeMap::<
+        (u64, String, Option<String>, String, Option<i64>),
+        PublicTimelineHostileCast,
+    >::new();
+    for observation in observations {
+        if !committed_hostile_sources.contains(observation.actor_id.as_str())
+            || participant_actor_ids.contains(observation.actor_id.as_str())
+            || observation.observed_micros < bounds.started_micros
+            || observation.observed_micros > bounds.ended_micros
+        {
+            continue;
+        }
+        let at_micros = match observation.game_time_millis {
+            Some(game_time) => match timeline
+                .clock_anchor
+                .as_ref()
+                .and_then(|anchor| canonical_skill_use_at_micros(anchor, game_time))
+            {
+                Some(value) => value,
+                None => {
+                    timeline.omitted.hostile_casts =
+                        timeline.omitted.hostile_casts.saturating_add(1);
+                    continue;
+                }
+            },
+            None => observation
+                .observed_micros
+                .saturating_sub(bounds.started_micros),
+        };
+        if at_micros > bounds.ended_micros.saturating_sub(bounds.started_micros) {
+            timeline.omitted.hostile_casts = timeline.omitted.hostile_casts.saturating_add(1);
+            continue;
+        }
+        let key = (
+            at_micros,
+            observation.actor_id.clone(),
+            observation.target_actor_id.clone(),
+            observation.action_id.clone(),
+            observation.action_instance_id,
+        );
+        let row = rows
+            .entry(key)
+            .or_insert_with(|| PublicTimelineHostileCast {
+                source_actor_id: observation.actor_id.clone(),
+                hostility_evidence: PublicTimelineHostilityEvidence::ParticipantOutgoingTarget,
+                target_actor_id: observation.target_actor_id.clone(),
+                at_micros,
+                action_id: observation.action_id.clone(),
+                action_instance_id: observation.action_instance_id.map(|id| id.to_string()),
+                state: CastState::Started,
+                evidence: Vec::new(),
+                omitted_evidence: 0,
+            });
+        let evidence = PublicTimelineSkillUseEvidence {
+            source_report_id: report_id.to_owned(),
+            event_sequence: observation.event_sequence,
+            game_time_millis: observation.game_time_millis,
+            kind: PublicTimelineSkillUseEvidenceKind::ExactWireCastStart,
+        };
+        if !row.evidence.contains(&evidence) {
+            if row.evidence.len() < MAXIMUM_TIMELINE_SKILL_USE_EVIDENCE {
+                row.evidence.push(evidence);
+            } else {
+                row.omitted_evidence = row.omitted_evidence.saturating_add(1);
+            }
+        }
+    }
+    let mut kept_by_source = BTreeMap::<String, usize>::new();
+    for (_, mut row) in rows {
+        let kept = kept_by_source
+            .entry(row.source_actor_id.clone())
+            .or_default();
+        if *kept == MAXIMUM_TIMELINE_HOSTILE_CASTS_PER_SOURCE
+            || timeline.hostile_casts.len() == MAXIMUM_TIMELINE_HOSTILE_CASTS
+        {
+            timeline.omitted.hostile_casts = timeline.omitted.hostile_casts.saturating_add(1);
+            continue;
+        }
+        *kept = kept.saturating_add(1);
+        row.evidence.sort();
+        timeline.hostile_casts.push(row);
+    }
+}
+
 fn dedupe_timeline_skill_use_rows(rows: &mut Vec<PublicTimelineSkillUse>) {
     rows.sort_by(|left, right| {
         (
@@ -8630,6 +8799,186 @@ fn populate_reconciled_timeline_skill_uses(
         *participant_kept = participant_kept.saturating_add(1);
         timeline.skill_uses.push(row);
     }
+}
+
+fn populate_reconciled_timeline_hostile_casts(
+    timeline: &mut PublicCombatTimeline,
+    sources: &[ReconciliationRunSource],
+    canonical_report_id: &str,
+) {
+    let Some(canonical_source) = sources
+        .iter()
+        .find(|source| source.report_id == canonical_report_id)
+    else {
+        return;
+    };
+    let participant_actor_ids = timeline
+        .participant_tracks
+        .iter()
+        .map(|track| track.actor_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut hostile_sources = timeline
+        .hostile_source_actor_ids
+        .iter()
+        .filter(|actor_id| !participant_actor_ids.contains(actor_id.as_str()))
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    for source in sources.iter().filter(|source| {
+        source.deployment_id == canonical_source.deployment_id
+            && source.client_build == canonical_source.client_build
+            && source.protocol_pack_digest == canonical_source.protocol_pack_digest
+    }) {
+        hostile_sources.extend(source.timeline.hostile_source_actor_ids.iter().cloned());
+    }
+    timeline.hostile_source_actor_ids = hostile_sources
+        .into_iter()
+        .filter(|actor_id| !participant_actor_ids.contains(actor_id.as_str()))
+        .take(MAXIMUM_TIMELINE_HOSTILE_SOURCES)
+        .collect();
+    let committed_hostile_sources = timeline
+        .hostile_source_actor_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let anchor = timeline.clock_anchor.clone();
+    let mut candidates = std::mem::take(&mut timeline.hostile_casts);
+    for source in sources
+        .iter()
+        .filter(|source| source.report_id != canonical_report_id)
+    {
+        let compatible = source.deployment_id == canonical_source.deployment_id
+            && source.client_build == canonical_source.client_build
+            && source.protocol_pack_digest == canonical_source.protocol_pack_digest;
+        if !compatible {
+            timeline.omitted.hostile_casts = timeline
+                .omitted
+                .hostile_casts
+                .saturating_add(source.timeline.hostile_casts.len());
+            continue;
+        }
+        for row in &source.timeline.hostile_casts {
+            if !source
+                .timeline
+                .hostile_source_actor_ids
+                .contains(&row.source_actor_id)
+                || !committed_hostile_sources.contains(row.source_actor_id.as_str())
+            {
+                timeline.omitted.hostile_casts = timeline.omitted.hostile_casts.saturating_add(1);
+                continue;
+            }
+            let mut evidence = row
+                .evidence
+                .iter()
+                .filter(|item| item.source_report_id == source.report_id)
+                .cloned()
+                .collect::<Vec<_>>();
+            let game_times = evidence
+                .iter()
+                .filter_map(|item| item.game_time_millis)
+                .collect::<BTreeSet<_>>();
+            if evidence.is_empty() || game_times.len() != 1 {
+                timeline.omitted.hostile_casts = timeline.omitted.hostile_casts.saturating_add(1);
+                continue;
+            }
+            let Some(at_micros) = anchor.as_ref().and_then(|anchor| {
+                canonical_skill_use_at_micros(anchor, *game_times.first().unwrap())
+            }) else {
+                timeline.omitted.hostile_casts = timeline.omitted.hostile_casts.saturating_add(1);
+                continue;
+            };
+            if at_micros > timeline.duration_micros {
+                timeline.omitted.hostile_casts = timeline.omitted.hostile_casts.saturating_add(1);
+                continue;
+            }
+            evidence.sort();
+            candidates.push(PublicTimelineHostileCast {
+                source_actor_id: row.source_actor_id.clone(),
+                hostility_evidence: row.hostility_evidence,
+                target_actor_id: row.target_actor_id.clone(),
+                at_micros,
+                action_id: row.action_id.clone(),
+                action_instance_id: row.action_instance_id.clone(),
+                state: row.state,
+                evidence,
+                omitted_evidence: row.omitted_evidence,
+            });
+        }
+    }
+    dedupe_timeline_hostile_cast_rows(&mut candidates);
+    timeline.hostile_casts.clear();
+    let mut kept_by_source = BTreeMap::<String, usize>::new();
+    for row in candidates {
+        if !committed_hostile_sources.contains(row.source_actor_id.as_str()) {
+            timeline.omitted.hostile_casts = timeline.omitted.hostile_casts.saturating_add(1);
+            continue;
+        }
+        let kept = kept_by_source
+            .entry(row.source_actor_id.clone())
+            .or_default();
+        if *kept == MAXIMUM_TIMELINE_HOSTILE_CASTS_PER_SOURCE
+            || timeline.hostile_casts.len() == MAXIMUM_TIMELINE_HOSTILE_CASTS
+        {
+            timeline.omitted.hostile_casts = timeline.omitted.hostile_casts.saturating_add(1);
+            continue;
+        }
+        *kept = kept.saturating_add(1);
+        timeline.hostile_casts.push(row);
+    }
+}
+
+fn dedupe_timeline_hostile_cast_rows(rows: &mut Vec<PublicTimelineHostileCast>) {
+    rows.sort_by(|left, right| {
+        (
+            left.at_micros,
+            &left.source_actor_id,
+            &left.action_id,
+            &left.action_instance_id,
+        )
+            .cmp(&(
+                right.at_micros,
+                &right.source_actor_id,
+                &right.action_id,
+                &right.action_instance_id,
+            ))
+    });
+    let mut deduped: Vec<PublicTimelineHostileCast> = Vec::with_capacity(rows.len());
+    for mut row in rows.drain(..) {
+        let Some(previous) = deduped.last_mut() else {
+            deduped.push(row);
+            continue;
+        };
+        if previous.at_micros == row.at_micros
+            && previous.source_actor_id == row.source_actor_id
+            && previous.action_id == row.action_id
+            && (previous.action_instance_id == row.action_instance_id
+                || previous.action_instance_id.is_none()
+                || row.action_instance_id.is_none())
+        {
+            if previous.action_instance_id.is_none() {
+                previous.action_instance_id = row.action_instance_id.take();
+            }
+            if previous.target_actor_id != row.target_actor_id {
+                previous.target_actor_id = None;
+            }
+            for evidence in row.evidence {
+                if previous.evidence.contains(&evidence) {
+                    continue;
+                }
+                if previous.evidence.len() < MAXIMUM_TIMELINE_SKILL_USE_EVIDENCE {
+                    previous.evidence.push(evidence);
+                } else {
+                    previous.omitted_evidence = previous.omitted_evidence.saturating_add(1);
+                }
+            }
+            previous.omitted_evidence = previous
+                .omitted_evidence
+                .saturating_add(row.omitted_evidence);
+            previous.evidence.sort();
+        } else {
+            deduped.push(row);
+        }
+    }
+    *rows = deduped;
 }
 
 fn public_participant_key(participant: &PublicParticipant) -> String {
@@ -9282,6 +9631,7 @@ mod tests {
     ) -> ObservedTimelineSkillUse {
         ObservedTimelineSkillUse {
             actor_id: actor_id.into(),
+            target_actor_id: None,
             action_id: action_id.into(),
             observed_micros,
             game_time_millis: None,
@@ -9333,6 +9683,74 @@ mod tests {
         assert_eq!(timeline.skill_uses[1].actor_id, "actor-2");
         assert_eq!(timeline.skill_uses[2].at_micros, 200);
         assert_eq!(timeline.omitted.skill_uses, 0);
+    }
+
+    #[test]
+    fn public_timeline_projects_only_exact_casts_from_observed_encounter_targets() {
+        let mut self_cast = timeline_skill_observation("boss-runtime", "7001", 1_100, 10, Some(1));
+        self_cast.target_actor_id = Some("boss-runtime".into());
+        let ground_cast = timeline_skill_observation("boss-runtime", "7001", 1_100, 11, Some(1));
+        let unrelated = timeline_skill_observation("ambient-runtime", "7003", 1_300, 12, Some(3));
+        let player_cast = timeline_skill_observation("player-runtime", "7004", 1_400, 13, Some(4));
+        let mut timeline = PublicCombatTimeline::default();
+        populate_timeline_hostile_casts(
+            &mut timeline,
+            "report-a",
+            &BTreeSet::from(["boss-runtime".to_owned(), "player-runtime".to_owned()]),
+            &[timeline_participant("player-runtime")],
+            &[self_cast, ground_cast, unrelated, player_cast],
+            Some(CanonicalRunObservedBounds {
+                started_micros: 1_000,
+                ended_micros: 2_000,
+            }),
+        );
+        assert_eq!(timeline.hostile_source_actor_ids, ["boss-runtime"]);
+        assert_eq!(timeline.hostile_casts.len(), 2);
+        assert!(
+            timeline
+                .hostile_casts
+                .iter()
+                .any(|row| row.target_actor_id.as_deref() == Some("boss-runtime"))
+        );
+        assert!(
+            timeline
+                .hostile_casts
+                .iter()
+                .any(|row| row.target_actor_id.is_none())
+        );
+        assert!(
+            timeline
+                .hostile_casts
+                .iter()
+                .all(|row| row.state == CastState::Started)
+        );
+        assert_eq!(timeline.omitted.hostile_casts, 0);
+    }
+
+    #[test]
+    fn public_hostile_source_roster_is_bounded_and_excludes_participants() {
+        let mut hostile_sources = (0..=MAXIMUM_TIMELINE_HOSTILE_SOURCES)
+            .map(|index| format!("hostile-{index}"))
+            .collect::<BTreeSet<_>>();
+        hostile_sources.insert("player-runtime".into());
+        let mut timeline = PublicCombatTimeline::default();
+        populate_timeline_hostile_casts(
+            &mut timeline,
+            "report-a",
+            &hostile_sources,
+            &[timeline_participant("player-runtime")],
+            &[],
+            None,
+        );
+        assert_eq!(
+            timeline.hostile_source_actor_ids.len(),
+            MAXIMUM_TIMELINE_HOSTILE_SOURCES
+        );
+        assert!(
+            !timeline
+                .hostile_source_actor_ids
+                .contains(&"player-runtime".to_owned())
+        );
     }
 
     #[test]
@@ -9955,6 +10373,7 @@ mod tests {
             rate_clock_complete: false,
             actors: vec![actor],
             targets: Vec::new(),
+            hostile_casts: Vec::new(),
             damage_influences: Vec::new(),
             rdps_effect_presentations: Vec::new(),
         }
@@ -15132,6 +15551,57 @@ mod tests {
         );
         assert_eq!(incompatible.skill_uses.len(), 1);
         assert_eq!(incompatible.omitted.skill_uses, 3);
+    }
+
+    #[test]
+    fn reconciled_hostile_casts_align_and_merge_exact_multi_vantage_evidence() {
+        let mut report_a =
+            fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
+        let mut report_b =
+            fixture_public_report("rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "character-b", 0);
+        for report in [&mut report_a, &mut report_b] {
+            report.runs[0].timeline.duration_micros = 10_000;
+            report.runs[0].timeline.clock_anchor = Some(PublicTimelineClockAnchor {
+                at_micros: 0,
+                game_time_millis: 100,
+                source_report_id: report.report_id.clone(),
+                event_sequence: 1,
+            });
+        }
+        let hostile = |report_id: &str, sequence: u64, at_micros: u64, target: &str| {
+            PublicTimelineHostileCast {
+                source_actor_id: "boss-runtime".into(),
+                hostility_evidence: PublicTimelineHostilityEvidence::ParticipantOutgoingTarget,
+                target_actor_id: Some(target.into()),
+                at_micros,
+                action_id: "7001".into(),
+                action_instance_id: Some("9".into()),
+                state: CastState::Started,
+                evidence: vec![PublicTimelineSkillUseEvidence {
+                    source_report_id: report_id.into(),
+                    event_sequence: sequence,
+                    game_time_millis: Some(105),
+                    kind: PublicTimelineSkillUseEvidenceKind::ExactWireCastStart,
+                }],
+                omitted_evidence: 0,
+            }
+        };
+        report_a.runs[0].timeline.hostile_source_actor_ids = vec!["boss-runtime".into()];
+        report_b.runs[0].timeline.hostile_source_actor_ids = vec!["boss-runtime".into()];
+        report_a.runs[0].timeline.hostile_casts =
+            vec![hostile(&report_a.report_id, 10, 5_000, "actor-a")];
+        report_b.runs[0].timeline.hostile_casts =
+            vec![hostile(&report_b.report_id, 20, 8_000, "actor-b")];
+        let sources = vec![
+            ReconciliationRunSource::from_report(&report_a, &report_a.runs[0], None),
+            ReconciliationRunSource::from_report(&report_b, &report_b.runs[0], None),
+        ];
+        let mut timeline = report_a.runs[0].timeline.clone();
+        populate_reconciled_timeline_hostile_casts(&mut timeline, &sources, &report_a.report_id);
+        assert_eq!(timeline.hostile_casts.len(), 1);
+        assert_eq!(timeline.hostile_casts[0].at_micros, 5_000);
+        assert_eq!(timeline.hostile_casts[0].target_actor_id, None);
+        assert_eq!(timeline.hostile_casts[0].evidence.len(), 2);
     }
 
     #[test]
