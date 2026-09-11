@@ -40,6 +40,31 @@ try {
     if ($dryRun.identity.protocol_pack_digest -ne $common.ProtocolPackDigest) { throw 'Protocol digest was not retained.' }
     if ($dryRun.capture_command.windows_command_line -notmatch '"test interface with spaces"') { throw 'PS5.1-safe command-line quoting lost the spaced interface argument.' }
 
+    $singleMarkerPlanPath = Join-Path $fixtureRoot 'single-marker-plan.json'
+    $singleMarkerPlan = [ordered]@{schema_version=1;scene_id=1633;scene_name='Tina M1';initiating_character=$plan.initiating_character;actions=@($actions[0])}
+    [System.IO.File]::WriteAllText($singleMarkerPlanPath, ($singleMarkerPlan|ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
+    $singleMarkerCommon = $common.Clone()
+    $singleMarkerCommon.ActionPlanPath = $singleMarkerPlanPath
+    $singleMarkerDryRun = & $launcher @singleMarkerCommon | ConvertFrom-Json
+    if (($singleMarkerDryRun.planned_marker_order -join ',') -ne '1') { throw 'Single-marker proof plan was not accepted.' }
+
+    $emptyPlanPath = Join-Path $fixtureRoot 'empty-plan.json'
+    [System.IO.File]::WriteAllText($emptyPlanPath, ([ordered]@{schema_version=1;scene_id=1633;scene_name='Tina M1';initiating_character=$plan.initiating_character;actions=@()}|ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
+    $emptyPlanCommon = $common.Clone()
+    $emptyPlanCommon.ActionPlanPath = $emptyPlanPath
+    $emptyPlanRejected = $false
+    try { & $launcher @emptyPlanCommon | Out-Null } catch { $emptyPlanRejected = $_.Exception.Message -like 'Marker action plan must contain 1 through 6 actions*' }
+    if (-not $emptyPlanRejected) { throw 'Empty marker plan was not rejected.' }
+
+    $tooManyPlanPath = Join-Path $fixtureRoot 'too-many-plan.json'
+    $tooManyActions = @($actions) + @([ordered]@{marker_number=7;marker_identity=[ordered]@{slot_number=7;icon_id='marker-7';icon_name='Marker 7'};expected_action='place marker 7';target=[ordered]@{kind='ground';coordinates=[ordered]@{x=7.0;y=2.0;z=3.0}}})
+    [System.IO.File]::WriteAllText($tooManyPlanPath, ([ordered]@{schema_version=1;scene_id=1633;scene_name='Tina M1';initiating_character=$plan.initiating_character;actions=$tooManyActions}|ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding($false)))
+    $tooManyPlanCommon = $common.Clone()
+    $tooManyPlanCommon.ActionPlanPath = $tooManyPlanPath
+    $tooManyPlanRejected = $false
+    try { & $launcher @tooManyPlanCommon | Out-Null } catch { $tooManyPlanRejected = $_.Exception.Message -like 'Marker action plan must contain 1 through 6 actions*' }
+    if (-not $tooManyPlanRejected) { throw 'Seven-marker plan was not rejected.' }
+
     $badPlanPath = Join-Path $fixtureRoot 'bad-plan.json'
     $actions[5].marker_number = 5
     [System.IO.File]::WriteAllText($badPlanPath, ([ordered]@{schema_version=1;scene_id=1633;scene_name='Tina M1';initiating_character=$plan.initiating_character;actions=$actions}|ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding($false)))

@@ -160,8 +160,9 @@ if ($planSnapshot.scene_id -ne $SceneId -or $planSnapshot.scene_name -ne $SceneN
 if ([string]::IsNullOrWhiteSpace([string]$planSnapshot.initiating_character.character_id)) { throw 'Marker action plan requires initiating_character.character_id.' }
 if ([string]::IsNullOrWhiteSpace([string]$planSnapshot.initiating_character.entity_uuid)) { throw 'Marker action plan requires initiating_character.entity_uuid.' }
 $plannedActions = @($planSnapshot.actions)
-if ($plannedActions.Count -ne 6) { throw 'Marker action plan must contain exactly six actions.' }
-for ($index = 0; $index -lt 6; $index++) {
+if ($plannedActions.Count -lt 1 -or $plannedActions.Count -gt 6) { throw 'Marker action plan must contain 1 through 6 actions.' }
+$plannedActionCount = $plannedActions.Count
+for ($index = 0; $index -lt $plannedActionCount; $index++) {
     $action = $plannedActions[$index]
     $expectedMarker = $index + 1
     if ($action.marker_number -ne $expectedMarker) { throw "Marker action $($index + 1) must declare marker_number $expectedMarker." }
@@ -175,7 +176,7 @@ for ($index = 0; $index -lt 6; $index++) {
     } else { throw "Marker $expectedMarker target kind must be ground or actor." }
 }
 
-$minimumDuration = $PrePlacementIdleSeconds + (5 * $MarkerSpacingSeconds) + $PostPlacementIdleSeconds + $PostEngagementSeconds + 20
+$minimumDuration = $PrePlacementIdleSeconds + (($plannedActionCount - 1) * $MarkerSpacingSeconds) + $PostPlacementIdleSeconds + $PostEngagementSeconds + 20
 if ($DurationSeconds -lt $minimumDuration) { throw "DurationSeconds must be at least $minimumDuration for the requested evidence windows." }
 
 $captureLauncher = Join-Path $PSScriptRoot 'capture-client-host.ps1'
@@ -220,7 +221,7 @@ try {
     Start-Sleep -Seconds $PrePlacementIdleSeconds
 
     $recordedActions = @()
-    for ($index = 0; $index -lt 6; $index++) {
+    for ($index = 0; $index -lt $plannedActionCount; $index++) {
         if ($captureProcess.HasExited) { throw "Capture ended before marker $($index + 1) could be recorded." }
         $planned = $plannedActions[$index]
         $targetJson = $planned.target | ConvertTo-Json -Compress -Depth 20
@@ -236,7 +237,7 @@ try {
         $recordedActions += [ordered]@{marker_number=$planned.marker_number;marker_identity=$planned.marker_identity;initiating_character=$planSnapshot.initiating_character;expected_action=$planned.expected_action;intended_target=$planned.target;placement_ready_utc=$placementReady.ToString('o');placement_ready_unix_micros=ConvertTo-UnixMicros $placementReady;placement_completed_utc=$placementCompleted.ToString('o');placement_completed_unix_micros=ConvertTo-UnixMicros $placementCompleted;result_recorded_utc=$resultRecorded.ToString('o');result_recorded_unix_micros=ConvertTo-UnixMicros $resultRecorded;visible_ui_result=$visibleResult.Trim()}
         $partialActions.actions = $recordedActions
         Write-Utf8Json $actionsPartial $partialActions
-        if ($index -lt 5) { Start-Sleep -Seconds $MarkerSpacingSeconds }
+        if ($index -lt ($plannedActionCount - 1)) { Start-Sleep -Seconds $MarkerSpacingSeconds }
     }
 
     Start-Sleep -Seconds $PostPlacementIdleSeconds
@@ -253,19 +254,19 @@ try {
     $reparsedPlan = Get-Content -LiteralPath $resolvedPlan -Raw | ConvertFrom-Json | ConvertTo-Json -Compress -Depth 100
     $snapshotJson = $planSnapshot | ConvertTo-Json -Compress -Depth 100
     if ($reparsedPlan -cne $snapshotJson) { throw 'Parsed marker action plan changed after capture start.' }
-    for ($index = 0; $index -lt 6; $index++) {
+    for ($index = 0; $index -lt $plannedActionCount; $index++) {
         $current = $recordedActions[$index]
         if ($current.marker_number -ne ($index + 1) -or $current.placement_ready_unix_micros -ge $current.placement_completed_unix_micros -or $current.placement_completed_unix_micros -gt $current.result_recorded_unix_micros) { throw "Marker $($index + 1) timestamp ordering is invalid." }
-        if ($index -lt 5 -and $current.result_recorded_unix_micros -ge $recordedActions[$index + 1].placement_ready_unix_micros) { throw "Marker $($index + 1) overlaps the next placement window." }
+        if ($index -lt ($plannedActionCount - 1) -and $current.result_recorded_unix_micros -ge $recordedActions[$index + 1].placement_ready_unix_micros) { throw "Marker $($index + 1) overlaps the next placement window." }
     }
 
     $flowWindows = @()
-    for ($index = 0; $index -lt 6; $index++) {
+    for ($index = 0; $index -lt $plannedActionCount; $index++) {
         $action = $recordedActions[$index]
         $startEpoch = $action.placement_ready_unix_micros / 1000000.0
         $actionEndEpoch = $action.placement_completed_unix_micros / 1000000.0
         $endEpoch = $actionEndEpoch + $ResponseWindowSeconds
-        if ($index -lt 5) { $endEpoch = [Math]::Min($endEpoch, ($recordedActions[$index + 1].placement_ready_unix_micros / 1000000.0) - 0.000001) }
+        if ($index -lt ($plannedActionCount - 1)) { $endEpoch = [Math]::Min($endEpoch, ($recordedActions[$index + 1].placement_ready_unix_micros / 1000000.0) - 0.000001) }
         $filter = "(ip.src==$ClientIp || ip.dst==$ClientIp) && frame.time_epoch >= $($startEpoch.ToString([System.Globalization.CultureInfo]::InvariantCulture)) && frame.time_epoch <= $($endEpoch.ToString([System.Globalization.CultureInfo]::InvariantCulture))"
         $flowCounts = @{}
         & $TsharkPath -r $capturePath -Y $filter -T fields -e frame.time_epoch -e ip.src -e ip.dst -e ip.proto -e tcp.srcport -e tcp.dstport -e udp.srcport -e udp.dstport -E 'separator=|' | ForEach-Object {
@@ -299,7 +300,7 @@ try {
     $partialActions.action_flow_windows = $flowWindows
     Write-Utf8Json $actionsPath $partialActions
     $actionsHash = Get-Sha256 $actionsPath
-    $completeSession = [ordered]@{schema_version=2;status='complete';capture_id=$CaptureId;capture_purpose='marker-audit';session_started_utc=$sessionStarted.ToString('o');capture_ready_utc=$captureReady.ToString('o');boss_engagement_utc=$engagementTime.ToString('o');session_ended_utc=[DateTimeOffset]::UtcNow.ToString('o');capture_filter="host $ClientIp";capture_scope='explicit-client-ipv4-superset-including-process-owned-flow-changes';scene=[ordered]@{id=$SceneId;name=$SceneName};initiating_character=$planSnapshot.initiating_character;identity=$identity;action_plan=[ordered]@{path=$resolvedPlan;sha256=$initialPlanHash;snapshot=$planSnapshot};evidence=[ordered]@{marker_actions=[ordered]@{path=$actionsPath;sha256=$actionsHash;count=6};bidirectional_action_windows=$flowWindows};artifacts=@([ordered]@{kind='packet_capture';path=$capturePath;sha256=Get-Sha256 $capturePath},[ordered]@{kind='tcp_connection_sidecar';path=$connectionsPath;sha256=Get-Sha256 $connectionsPath},[ordered]@{kind='all_ipv4_transport_inventory';path=$transportsPath;sha256=Get-Sha256 $transportsPath})}
+    $completeSession = [ordered]@{schema_version=2;status='complete';capture_id=$CaptureId;capture_purpose='marker-audit';session_started_utc=$sessionStarted.ToString('o');capture_ready_utc=$captureReady.ToString('o');boss_engagement_utc=$engagementTime.ToString('o');session_ended_utc=[DateTimeOffset]::UtcNow.ToString('o');capture_filter="host $ClientIp";capture_scope='explicit-client-ipv4-superset-including-process-owned-flow-changes';scene=[ordered]@{id=$SceneId;name=$SceneName};initiating_character=$planSnapshot.initiating_character;identity=$identity;action_plan=[ordered]@{path=$resolvedPlan;sha256=$initialPlanHash;snapshot=$planSnapshot};evidence=[ordered]@{marker_actions=[ordered]@{path=$actionsPath;sha256=$actionsHash;count=$plannedActionCount};bidirectional_action_windows=$flowWindows};artifacts=@([ordered]@{kind='packet_capture';path=$capturePath;sha256=Get-Sha256 $capturePath},[ordered]@{kind='tcp_connection_sidecar';path=$connectionsPath;sha256=Get-Sha256 $connectionsPath},[ordered]@{kind='all_ipv4_transport_inventory';path=$transportsPath;sha256=Get-Sha256 $transportsPath})}
     Write-Utf8Json $sessionPath $completeSession
     Remove-Item -LiteralPath $sessionPartial
     Remove-Item -LiteralPath $actionsPartial

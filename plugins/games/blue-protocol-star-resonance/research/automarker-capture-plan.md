@@ -121,7 +121,8 @@ boss engagement.
 Use `tools/windows/capture-marker-audit.ps1` for this controlled sequence.
 It wraps the explicit-client capture launcher in `marker-audit`/`all-ip` mode,
 starts capture before accepting any action, enforces the idle and spacing
-windows, and interactively timestamps the visible result of markers `1..6`.
+windows, and interactively timestamps the visible result of one through six
+sequential markers beginning with marker `1`.
 It also fails if the capture ends before its post-engagement state window.
 It requires a schema-1 action plan with the exact scene, initiating character,
 expected action, marker/icon identity, and a ground coordinate for every marker.
@@ -167,10 +168,10 @@ Example action plan (keep real actor identifiers and coordinates private):
 2. Record 10-15 seconds of idle traffic before the first placement. Note the
    exact installed build, scene ID, character and current actor/entity
    identities, and a synchronized wall-clock time.
-3. Through the normal game UI, place marker 1, wait five seconds, place marker
-   2, and continue one marker at a time with the same spacing. Record whether
-   each action targets a map/ground coordinate or a party member and the local
-   UI result.
+3. Through the normal game UI, place marker 1. For a multi-marker capture, wait
+   five seconds, place marker 2, and continue sequentially with the same
+   spacing, up to marker 6. Record whether each action targets a map/ground
+   coordinate or a party member and the local UI result.
 4. Wait ten seconds after the final marker, engage the boss, and retain roughly
    the first ten seconds of combat. This brackets the placement and tests
    whether the marker state persists across engagement.
