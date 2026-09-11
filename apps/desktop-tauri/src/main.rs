@@ -2289,11 +2289,13 @@ mod tests {
     }
 
     #[test]
-    fn full_canvas_hide_is_scoped_to_the_main_editor_not_the_overlay_runtime() {
+    fn full_canvas_hide_is_scoped_to_the_main_ui_and_canvas_editor() {
         let main_capability = include_str!("../capabilities/default.json");
         let canvas_capability = include_str!("../capabilities/overlay-canvas.json");
+        let combat_capability = include_str!("../capabilities/combat-overlay.json");
         assert!(main_capability.contains("allow-hide-overlay-canvas"));
-        assert!(!canvas_capability.contains("allow-hide-overlay-canvas"));
+        assert!(canvas_capability.contains("allow-hide-overlay-canvas"));
+        assert!(!combat_capability.contains("allow-hide-overlay-canvas"));
     }
 
     #[test]

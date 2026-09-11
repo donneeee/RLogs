@@ -26,6 +26,8 @@ describe("desktop UI locale packages", () => {
       "ui.mechanics_map.canvas_editor.lock",
       "ui.mechanics_map.canvas_editor.unlock",
       "ui.mechanics_map.canvas_editor.lock_help",
+      "ui.mechanics_map.canvas_editor.hide",
+      "ui.mechanics_map.canvas_editor.hide_help",
       "ui.mechanics_map.canvas_editor.done",
       "ui.mechanics_map.canvas_editor.done_help",
       "ui.mechanics_map.status.waiting_for_scene",

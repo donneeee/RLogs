@@ -155,6 +155,7 @@ if (isCombatOverlayRuntime) {
         },
       )),
       prepareLocalMaps: async () => { await runtimeJson("/api/runtime/local-game-assets/prepare", { method: "POST" }); },
+      hideOverlay: async () => { await invoke("hide_overlay_canvas"); },
       setInteractive: async (interactive) => {
         await invoke("set_overlay_canvas_interactive", { interactive });
       },

@@ -96,6 +96,8 @@ const localizer: UiLocalizer = {
     "ui.mechanics_map.canvas_editor.lock": "Lock",
     "ui.mechanics_map.canvas_editor.unlock": "Unlock",
     "ui.mechanics_map.canvas_editor.lock_help": "Lock the canvas and return overlays to click-through mode",
+    "ui.mechanics_map.canvas_editor.hide": "Hide overlays",
+    "ui.mechanics_map.canvas_editor.hide_help": "Hide all overlays; restore them from Show overlays in the main app or press Scroll Lock",
     "ui.mechanics_map.canvas_editor.done": "Done",
     "ui.mechanics_map.canvas_editor.done_help": "Exit editing and keep overlays visible",
   })[key] ?? key,
@@ -160,7 +162,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       module!.opacity = contract.opacity;
       module!.backgroundOpacity = contract.backgroundOpacity;
     }
-    const hide = vi.fn(async () => undefined);
+    const hideOverlay = vi.fn(async () => undefined);
     const acknowledgeInteractivity = vi.fn(async () => undefined);
     const setInteractive = vi.fn(async () => undefined);
     let interactivityHandler: ((interactive: boolean) => void) | undefined;
@@ -177,7 +179,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       loadSnapshot: async () => snapshot(1_633, 1),
       waitForSnapshot: () => new Promise(() => undefined),
       prepareLocalMaps: async () => undefined,
-      ...{ hide },
+      hideOverlay,
       setInteractive,
       acknowledgeInteractivity,
       onInteractivity: async (handler) => { interactivityHandler = handler; return removeInteractivity; },
@@ -212,11 +214,12 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       getComputedStyle(editorBar).backgroundColor,
     );
     const mapControlLabels = [...mapActions.querySelectorAll("button")].map((button) => button.textContent);
-    for (const canvasControl of ["Done", "Lock", "Unlock", "Player", "Actions", "Party", "Target", "Objectives", "Alerts"]) {
+    for (const canvasControl of ["Done", "Hide overlays", "Lock", "Unlock", "Player", "Actions", "Party", "Target", "Objectives", "Alerts"]) {
       expect(mapControlLabels, canvasControl).not.toContain(canvasControl);
     }
     expect(editorBar.textContent).toContain("Canvas layout");
     expect(editorBar.textContent).toContain("Done");
+    expect(editorBar.textContent).toContain("Hide overlays");
     expect(editorBar.textContent).toContain("Lock");
     expect(["transparent", "rgba(0, 0, 0, 0)"]).not.toContain(
       getComputedStyle(root).backgroundColor,
@@ -239,7 +242,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     select.dispatchEvent(editorEscape);
     await flushPromises();
     expect(editorEscape.defaultPrevented).toBe(false);
-    expect(hide).not.toHaveBeenCalled();
+    expect(hideOverlay).not.toHaveBeenCalled();
     expect(setInteractive).not.toHaveBeenCalled();
     expect(acknowledgeInteractivity).not.toHaveBeenCalled();
 
@@ -248,7 +251,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     await vi.waitFor(() => expect(setInteractive).toHaveBeenCalledWith(false));
     expect(escape.defaultPrevented).toBe(true);
     expect(acknowledgeInteractivity).toHaveBeenCalledWith(true);
-    expect(hide).not.toHaveBeenCalled();
+    expect(hideOverlay).not.toHaveBeenCalled();
     expect(root.dataset.locked).toBe("true");
     expect(root.dataset.mode).toBe("passive");
     expect(getComputedStyle(editorBar).display).toBe("none");
@@ -319,7 +322,20 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     map.hidden = false;
     await vi.waitFor(() => expect(saveLayout).toHaveBeenCalled());
     await flushPromises();
-    setInteractive.mockClear(); saveLayout.mockClear(); hide.mockClear();
+    setInteractive.mockClear(); saveLayout.mockClear(); hideOverlay.mockClear();
+    const hideControl = [...editorBar.querySelectorAll("button")]
+      .find((button) => button.textContent === "Hide overlays") as HTMLButtonElement;
+    const layoutBeforeHide = structuredClone(shared);
+    hideControl.click();
+    await flushPromises();
+    expect(hideOverlay).toHaveBeenCalledOnce();
+    expect(setInteractive).not.toHaveBeenCalled();
+    expect(saveLayout).not.toHaveBeenCalled();
+    expect(shared).toEqual(layoutBeforeHide);
+    expect(editorBar.parentElement).toBe(root);
+    expect(editorBar.querySelector("button:last-child")?.textContent).toBe("Done");
+    for (const module of modules) expect(module.element.isConnected).toBe(true);
+    hideOverlay.mockClear();
     const done = Array.from(container.querySelectorAll("button"))
       .find((button) => button.textContent === "Done") as HTMLButtonElement;
     const doneAcknowledged = deferred<undefined>();
@@ -345,7 +361,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     expect(root.dataset.locked).toBe("true");
     expect(map.isConnected).toBe(true);
     expect(player.isConnected).toBe(true);
-    expect(hide).not.toHaveBeenCalled();
+    expect(hideOverlay).not.toHaveBeenCalled();
 
     interactivityHandler?.(true);
     await vi.waitFor(() => expect(root.dataset.locked).toBe("false"));
@@ -362,13 +378,13 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     expect(getComputedStyle(map.querySelector(".mechanics-map-overlay-toolbar")!).display).not.toBe("none");
     expect(saveLayout).not.toHaveBeenCalled();
     expect(JSON.parse(window.localStorage.getItem("rlogs.mechanics-map-overlay.canvas.v1") ?? "null").locked).toBe(false);
-    expect(hide).not.toHaveBeenCalled();
+    expect(hideOverlay).not.toHaveBeenCalled();
 
     const interactivityCallsAfterEscape = setInteractive.mock.calls.length;
     mounted.dispose();
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     await flushPromises();
-    expect(hide).not.toHaveBeenCalled();
+    expect(hideOverlay).not.toHaveBeenCalled();
     expect(setInteractive).toHaveBeenCalledTimes(interactivityCallsAfterEscape);
     expect(saveLayout).not.toHaveBeenCalled();
     expect(removeInteractivity).toHaveBeenCalledOnce();

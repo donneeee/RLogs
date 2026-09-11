@@ -30,6 +30,7 @@ export interface MechanicsMapOverlayDependencies {
   loadSnapshot(): Promise<MechanicsMapUpdate>;
   waitForSnapshot(afterRevision: number): Promise<MechanicsMapUpdate>;
   prepareLocalMaps(): Promise<void>;
+  hideOverlay?(): Promise<void>;
   setInteractive(interactive: boolean): Promise<void>;
   acknowledgeInteractivity?(interactive: boolean): Promise<void>;
   onInteractivity(handler: (interactive: boolean) => void): Promise<() => void>;
@@ -346,6 +347,10 @@ export function mountMechanicsMapOverlay(
     void setLocked(!requestedLocked);
   });
   lock.title = localizer.t("ui.mechanics_map.canvas_editor.lock_help");
+  const hide = button(localizer.t("ui.mechanics_map.canvas_editor.hide"), false, () => {
+    void dependencies.hideOverlay?.();
+  });
+  hide.title = localizer.t("ui.mechanics_map.canvas_editor.hide_help");
   const done = button(localizer.t("ui.mechanics_map.canvas_editor.done"), false, () => { void exitEditing(); });
   done.title = localizer.t("ui.mechanics_map.canvas_editor.done_help");
   actions.append(rotate, monsters, dim, contrast, fit, center, markerPresets, expand);
@@ -457,7 +462,7 @@ export function mountMechanicsMapOverlay(
     moduleVisibilityButton(localizer.t("ui.mechanics_map.objectives.toggle"), "showObjectives", objectivesPanel),
     moduleVisibilityButton("Alerts", "showAlerts", alertsPanel),
   ];
-  editorActions.append(...moduleToggles, lock, done);
+  editorActions.append(...moduleToggles, lock, hide, done);
   editorBar.append(editorIdentity, editorActions);
   root.append(editorBar, panel, playerPanel, actionsPanel, partyPanel, targetPanel, objectivesPanel, alertsPanel, automarkerPanel);
   container.replaceChildren(root);
