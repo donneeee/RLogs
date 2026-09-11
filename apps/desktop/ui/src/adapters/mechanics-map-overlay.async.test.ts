@@ -137,10 +137,20 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     styles.textContent = readFileSync("src/styles/shell.css", "utf8");
     document.head.append(styles);
     const shared = layout();
-    shared.setups.default!.modules.map!.opacity = 0.43;
-    shared.setups.default!.modules.player!.opacity = 0.61;
-    shared.setups.default!.modules.map!.backgroundOpacity = 0.35;
-    shared.setups.default!.modules.player!.backgroundOpacity = 0.2;
+    const moduleContracts = [
+      { id: "map", selector: ".mechanics-map-overlay-runtime", opacity: 0.43, backgroundOpacity: 0.35 },
+      { id: "player", selector: ".player-frame-overlay-runtime", opacity: 0.61, backgroundOpacity: 0.2 },
+      { id: "actions", selector: ".action-controls-overlay-runtime", opacity: 0.72, backgroundOpacity: 0.16 },
+      { id: "party", selector: ".party-frame-overlay-runtime", opacity: 0.83, backgroundOpacity: 0.24 },
+      { id: "target", selector: ".target-frame-overlay-runtime", opacity: 0.54, backgroundOpacity: 0.28 },
+      { id: "objectives", selector: ".dungeon-objectives-overlay-runtime", opacity: 0.66, backgroundOpacity: 0.12 },
+      { id: "alerts", selector: ".mechanic-alerts-overlay-runtime", opacity: 0.77, backgroundOpacity: 0.32 },
+    ] as const;
+    for (const contract of moduleContracts) {
+      const module = shared.setups.default!.modules[contract.id];
+      module!.opacity = contract.opacity;
+      module!.backgroundOpacity = contract.backgroundOpacity;
+    }
     const hide = vi.fn(async () => undefined);
     const acknowledgeInteractivity = vi.fn(async () => undefined);
     const setInteractive = vi.fn(async () => undefined);
@@ -178,6 +188,10 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     const root = container.querySelector<HTMLElement>(".overlay-canvas-runtime")!;
     const map = container.querySelector<HTMLElement>(".mechanics-map-overlay-runtime")!;
     const player = container.querySelector<HTMLElement>(".player-frame-overlay-runtime")!;
+    const modules = moduleContracts.map((contract) => ({
+      ...contract,
+      element: container.querySelector<HTMLElement>(contract.selector)!,
+    }));
     const resize = container.querySelector<HTMLElement>(".mechanics-map-overlay-resize")!;
     expect(root.dataset.locked).toBe("false");
     expect(root.dataset.mode).toBe("edit");
@@ -187,10 +201,15 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     expect(["transparent", "rgba(0, 0, 0, 0)"]).not.toContain(
       getComputedStyle(map).backgroundColor,
     );
-    expect(map.style.opacity).toBe("0.43");
-    expect(player.style.opacity).toBe("0.61");
-    expect(map.style.getPropertyValue("--overlay-module-background-opacity")).toBe("0.35");
-    expect(player.style.getPropertyValue("--overlay-module-background-opacity")).toBe("0.2");
+    for (const module of modules) {
+      expect(module.element.style.opacity).toBe(String(module.opacity));
+      expect(module.element.style.getPropertyValue("--overlay-module-background-opacity"))
+        .toBe(String(module.backgroundOpacity));
+      const computed = getComputedStyle(module.element);
+      expect(["transparent", "rgba(0, 0, 0, 0)"]).not.toContain(computed.backgroundColor);
+      expect(["", "0px"]).not.toContain(computed.borderWidth);
+      expect(["", "none"]).not.toContain(computed.boxShadow);
+    }
 
     const select = container.querySelector("select")!;
     const editorEscape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
@@ -223,17 +242,15 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       expect(["", "none"]).toContain(computed.boxShadow);
       expect(["", "none"]).toContain(computed.backdropFilter);
     }
-    for (const module of container.querySelectorAll<HTMLElement>(
-      ".mechanics-map-overlay-runtime, .player-frame-overlay-runtime, .action-controls-overlay-runtime, .party-frame-overlay-runtime, .target-frame-overlay-runtime, .dungeon-objectives-overlay-runtime, .mechanic-alerts-overlay-runtime",
-    )) {
-      const computed = getComputedStyle(module);
+    for (const module of modules) {
+      const computed = getComputedStyle(module.element);
       // happy-dom does not resolve a custom property used as the alpha channel;
-      // the inline variable assertions above cover configured passive backing.
-      if (module !== map && module !== player) {
-        expect(["", "transparent", "rgba(0, 0, 0, 0)"]).toContain(computed.backgroundColor);
-      }
+      // the exact inline variable assertions below cover configured passive backing.
       expect(["", "0px"]).toContain(computed.borderWidth);
       expect(["", "none"]).toContain(computed.boxShadow);
+      expect(module.element.style.opacity).toBe(String(module.opacity));
+      expect(module.element.style.getPropertyValue("--overlay-module-background-opacity"))
+        .toBe(String(module.backgroundOpacity));
     }
     const runtimeCards = [
       "party-frame-overlay-member", "dungeon-objectives-overlay-attempt",
@@ -250,8 +267,20 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       expect(["", "transparent", "rgba(0, 0, 0, 0)"]).toContain(computed.borderColor);
       expect(["", "none"]).toContain(computed.boxShadow);
     }
-    expect(map.style.opacity).toBe("0.43");
-    expect(player.style.opacity).toBe("0.61");
+    const canvas = map.querySelector<HTMLCanvasElement>(".mechanics-map-overlay-canvas")!;
+    expect(canvas.isConnected).toBe(true);
+    expect(getComputedStyle(canvas).display).toBe("block");
+    const semanticVisualClasses = [
+      "player-frame-overlay-health",
+      "action-controls-overlay-icon",
+      "party-frame-overlay-health",
+      "target-frame-overlay-health",
+    ];
+    for (const className of semanticVisualClasses) {
+      expect(styles.textContent, className).toMatch(
+        new RegExp(`\\.${className}\\s*\\{[^}]*background:`),
+      );
+    }
     await vi.waitFor(() => expect(saveLayout).toHaveBeenCalled());
     const saved = saveLayout.mock.calls[0]![0];
     expect(saved.setups.default!.locked).toBe(true);
