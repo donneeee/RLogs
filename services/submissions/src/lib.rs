@@ -81,10 +81,10 @@ use rlogs_game_bpsr::{
 use rlogs_profiles::LocalProfilePackage;
 
 pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 17;
-pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 11;
+pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 12;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 7;
-pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 20;
-pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 7;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 21;
+pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 8;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
@@ -119,6 +119,9 @@ const MAXIMUM_TIMELINE_SKILL_USE_EVIDENCE: usize = 8;
 const MAXIMUM_TIMELINE_HOSTILE_SOURCES: usize = 4_096;
 const MAXIMUM_TIMELINE_HOSTILE_CASTS: usize = 65_536;
 const MAXIMUM_TIMELINE_HOSTILE_CASTS_PER_SOURCE: usize = 16_384;
+const MAXIMUM_TIMELINE_STATUS_SPANS: usize = 65_536;
+const MAXIMUM_TIMELINE_STATUS_SPANS_PER_TARGET: usize = 16_384;
+const MAXIMUM_TIMELINE_STATUS_SPAN_EVIDENCE: usize = 8;
 
 #[derive(Clone)]
 pub enum SubmissionAuthentication {
@@ -294,6 +297,18 @@ struct ObservedTimelineSkillUse {
 }
 
 #[derive(Debug, Clone)]
+struct ObservedTimelineStatusTransition {
+    source_actor_id: Option<String>,
+    target_actor_id: String,
+    effect_id: String,
+    instance_id: i64,
+    state: StatusState,
+    observed_micros: u64,
+    game_time_millis: Option<i64>,
+    event_sequence: u64,
+}
+
+#[derive(Debug, Clone)]
 struct ObservedTimelineClockAnchor {
     observed_micros: u64,
     game_time_millis: i64,
@@ -303,6 +318,7 @@ struct ObservedTimelineClockAnchor {
 #[derive(Debug, Clone, Default)]
 struct ObservedTimelineProjection {
     skill_uses: Vec<ObservedTimelineSkillUse>,
+    status_transitions: Vec<ObservedTimelineStatusTransition>,
     clock_anchors: Vec<ObservedTimelineClockAnchor>,
 }
 
@@ -3171,6 +3187,11 @@ pub struct PublicCombatTimeline {
     /// in this run view). The service does not infer boss identity or names.
     #[serde(default)]
     pub hostile_casts: Vec<PublicTimelineHostileCast>,
+    /// Complete exact status lifecycles on public participants. Rows are
+    /// published only when wire-authored apply and terminal transitions share
+    /// one exact instance, target, and effect; clients must not infer expiry.
+    #[serde(default)]
+    pub status_spans: Vec<PublicTimelineStatusSpan>,
     #[serde(default)]
     pub rdps_influence_spans: Vec<PublicTimelineRdpsInfluenceSpan>,
     #[serde(default)]
@@ -3311,6 +3332,33 @@ pub enum PublicTimelineSkillUseEvidenceKind {
     ExactWireCastStart,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicTimelineStatusSpan {
+    pub target_actor_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_actor_id: Option<String>,
+    pub effect_id: String,
+    pub instance_id: String,
+    pub start_micros: u64,
+    pub end_micros: u64,
+    pub terminal_state: StatusState,
+    #[serde(default)]
+    pub evidence: Vec<PublicTimelineStatusSpanEvidence>,
+    #[serde(default)]
+    pub omitted_evidence: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct PublicTimelineStatusSpanEvidence {
+    pub source_report_id: String,
+    pub applied_event_sequence: u64,
+    pub terminal_event_sequence: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub applied_game_time_millis: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_game_time_millis: Option<i64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicTimelineDeathMarker {
     pub actor_id: String,
@@ -3427,6 +3475,8 @@ pub struct PublicTimelineOmittedCounts {
     pub skill_uses: usize,
     #[serde(default)]
     pub hostile_casts: usize,
+    #[serde(default)]
+    pub status_spans: usize,
     pub rdps_influence_spans: usize,
     #[serde(default)]
     pub rate_clock_points: usize,
@@ -4755,6 +4805,25 @@ where
                     event_sequence: event.sequence,
                     action_instance_id: cast.action_timing.map(|timing| timing.action_instance_id),
                 });
+            }
+            if event.provenance.confidence == EvidenceConfidence::Exact
+                && matches!(event.provenance.source, EvidenceSource::Wire { .. })
+                && let TimelineEventKind::Status(status) = &timeline.kind
+                && let Some(instance_id) = status.instance_id
+                && status.effect.0 > 0
+            {
+                observed_timeline
+                    .status_transitions
+                    .push(ObservedTimelineStatusTransition {
+                        source_actor_id: status.source.map(|source| source.actor_id.0.to_string()),
+                        target_actor_id: status.target.actor_id.0.to_string(),
+                        effect_id: status.effect.0.to_string(),
+                        instance_id: instance_id.0,
+                        state: status.state,
+                        observed_micros: event.time.observed_micros,
+                        game_time_millis: event.time.game_time_millis,
+                        event_sequence: event.sequence,
+                    });
             }
             match &timeline.kind {
                 TimelineEventKind::Status(status) if !is_stat_resonance_status(status) => {
@@ -6376,6 +6445,7 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
     );
     populate_reconciled_timeline_skill_uses(&mut timeline, &sources, canonical_report_id);
     populate_reconciled_timeline_hostile_casts(&mut timeline, &sources, canonical_report_id);
+    populate_reconciled_timeline_status_spans(&mut timeline, &sources, canonical_report_id);
 
     let mut hasher = Sha256::new();
     hasher.update(b"rlogs-cross-vantage-reconciliation-v2\0");
@@ -7856,6 +7926,7 @@ fn public_combat_timeline(
         skill_uses: Vec::new(),
         hostile_source_actor_ids: Vec::new(),
         hostile_casts: Vec::new(),
+        status_spans: Vec::new(),
         rdps_influence_spans: Vec::new(),
         omitted: PublicTimelineOmittedCounts::default(),
     };
@@ -7897,6 +7968,13 @@ fn public_combat_timeline(
         &observed_timeline.skill_uses,
         canonical_run_observed_bounds(analysis),
     );
+    populate_timeline_status_spans(
+        &mut timeline,
+        report_id,
+        &run.participants,
+        &observed_timeline.status_transitions,
+        canonical_run_observed_bounds(analysis),
+    );
     timeline
 }
 
@@ -7914,15 +7992,41 @@ fn populate_timeline_rate_clock(
     let Ok(expected_points) = usize::try_from(expected_points_u64) else {
         return;
     };
+    let Ok(completed_points) =
+        usize::try_from(timeline.duration_micros / timeline.series_bucket_micros.max(1))
+    else {
+        return;
+    };
     timeline.omitted.rate_clock_points =
         expected_points.saturating_sub(MAXIMUM_TIMELINE_SERIES_POINTS);
     if !complete
         || expected_points > MAXIMUM_TIMELINE_SERIES_POINTS
-        || points.len() > expected_points
+        // A reducer-authored complete clock must cover every complete
+        // canonical bucket. The only point the public projection may synthesize
+        // is the fractional terminal bucket, where the reducer's last exact
+        // elapsed values are intentionally carried forward. Accepting any
+        // shorter input would turn missing whole-run clock evidence into an
+        // apparently authoritative zero/plateau range on the website.
+        || (points.len() != completed_points && points.len() != expected_points)
         || points
             .iter()
             .enumerate()
-            .any(|(index, point)| point.second != index as u32)
+            .any(|(index, point)| {
+                point.second != index as u32
+                    || (index > 0
+                        && (point.edps_elapsed_micros
+                            < points[index - 1].edps_elapsed_micros
+                            || point.adps_elapsed_micros
+                                < points[index - 1].adps_elapsed_micros))
+                    || point.adps_elapsed_micros > point.edps_elapsed_micros
+                    || point.edps_elapsed_micros
+                        > timeline.duration_micros.min(
+                            u64::try_from(index)
+                                .unwrap_or(u64::MAX)
+                                .saturating_add(1)
+                                .saturating_mul(timeline.series_bucket_micros),
+                        )
+            })
     {
         return;
     }
@@ -8542,6 +8646,149 @@ fn populate_timeline_hostile_casts(
     }
 }
 
+fn populate_timeline_status_spans(
+    timeline: &mut PublicCombatTimeline,
+    report_id: &str,
+    participants: &[PublicParticipant],
+    observations: &[ObservedTimelineStatusTransition],
+    canonical_bounds: Option<CanonicalRunObservedBounds>,
+) {
+    timeline.status_spans.clear();
+    timeline.omitted.status_spans = 0;
+    let Some(bounds) = canonical_bounds else {
+        return;
+    };
+    let participant_actor_ids = participants
+        .iter()
+        .map(|participant| participant.actor_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut grouped =
+        BTreeMap::<(String, String, i64), Vec<&ObservedTimelineStatusTransition>>::new();
+    for observation in observations {
+        if !participant_actor_ids.contains(observation.target_actor_id.as_str())
+            || observation.observed_micros < bounds.started_micros
+            || observation.observed_micros > bounds.ended_micros
+        {
+            continue;
+        }
+        grouped
+            .entry((
+                observation.target_actor_id.clone(),
+                observation.effect_id.clone(),
+                observation.instance_id,
+            ))
+            .or_default()
+            .push(observation);
+    }
+
+    let mut kept_by_target = BTreeMap::<String, usize>::new();
+    for ((target_actor_id, effect_id, instance_id), mut transitions) in grouped {
+        transitions
+            .sort_by_key(|transition| (transition.observed_micros, transition.event_sequence));
+        let applied = transitions
+            .iter()
+            .copied()
+            .filter(|transition| transition.state == StatusState::Applied)
+            .collect::<Vec<_>>();
+        let terminal = transitions
+            .iter()
+            .copied()
+            .filter(|transition| {
+                matches!(
+                    transition.state,
+                    StatusState::Consumed | StatusState::Removed
+                )
+            })
+            .collect::<Vec<_>>();
+        let applied_key = applied
+            .first()
+            .map(|transition| (transition.observed_micros, transition.event_sequence));
+        let terminal_key = terminal
+            .first()
+            .map(|transition| (transition.observed_micros, transition.event_sequence));
+        if applied.len() != 1
+            || terminal.len() != 1
+            || applied_key > terminal_key
+            || transitions.iter().any(|transition| {
+                let transition_key = (transition.observed_micros, transition.event_sequence);
+                Some(transition_key) < applied_key || Some(transition_key) > terminal_key
+            })
+        {
+            timeline.omitted.status_spans = timeline.omitted.status_spans.saturating_add(1);
+            continue;
+        }
+        let align =
+            |transition: &ObservedTimelineStatusTransition| match transition.game_time_millis {
+                Some(game_time) => timeline
+                    .clock_anchor
+                    .as_ref()
+                    .and_then(|anchor| canonical_skill_use_at_micros(anchor, game_time)),
+                None => Some(
+                    transition
+                        .observed_micros
+                        .saturating_sub(bounds.started_micros),
+                ),
+            };
+        let (Some(start_micros), Some(end_micros)) = (align(applied[0]), align(terminal[0])) else {
+            timeline.omitted.status_spans = timeline.omitted.status_spans.saturating_add(1);
+            continue;
+        };
+        if start_micros > end_micros || end_micros > timeline.duration_micros {
+            timeline.omitted.status_spans = timeline.omitted.status_spans.saturating_add(1);
+            continue;
+        }
+        let kept = kept_by_target.entry(target_actor_id.clone()).or_default();
+        if *kept == MAXIMUM_TIMELINE_STATUS_SPANS_PER_TARGET
+            || timeline.status_spans.len() == MAXIMUM_TIMELINE_STATUS_SPANS
+        {
+            timeline.omitted.status_spans = timeline.omitted.status_spans.saturating_add(1);
+            continue;
+        }
+        *kept = kept.saturating_add(1);
+        let source_actor_id = match (&applied[0].source_actor_id, &terminal[0].source_actor_id) {
+            (Some(left), Some(right))
+                if left == right && participant_actor_ids.contains(left.as_str()) =>
+            {
+                Some(left.clone())
+            }
+            _ => None,
+        };
+        timeline.status_spans.push(PublicTimelineStatusSpan {
+            target_actor_id,
+            source_actor_id,
+            effect_id,
+            instance_id: instance_id.to_string(),
+            start_micros,
+            end_micros,
+            terminal_state: terminal[0].state,
+            evidence: vec![PublicTimelineStatusSpanEvidence {
+                source_report_id: report_id.to_owned(),
+                applied_event_sequence: applied[0].event_sequence,
+                terminal_event_sequence: terminal[0].event_sequence,
+                applied_game_time_millis: applied[0].game_time_millis,
+                terminal_game_time_millis: terminal[0].game_time_millis,
+            }],
+            omitted_evidence: 0,
+        });
+    }
+    timeline.status_spans.sort_by(|left, right| {
+        (
+            left.start_micros,
+            left.end_micros,
+            &left.target_actor_id,
+            &left.effect_id,
+            &left.instance_id,
+        )
+            .cmp(&(
+                right.start_micros,
+                right.end_micros,
+                &right.target_actor_id,
+                &right.effect_id,
+                &right.instance_id,
+            ))
+    });
+}
+
 fn dedupe_timeline_skill_use_rows(rows: &mut Vec<PublicTimelineSkillUse>) {
     rows.sort_by(|left, right| {
         (
@@ -8979,6 +9226,155 @@ fn dedupe_timeline_hostile_cast_rows(rows: &mut Vec<PublicTimelineHostileCast>) 
         }
     }
     *rows = deduped;
+}
+
+fn populate_reconciled_timeline_status_spans(
+    timeline: &mut PublicCombatTimeline,
+    sources: &[ReconciliationRunSource],
+    canonical_report_id: &str,
+) {
+    let Some(canonical_source) = sources
+        .iter()
+        .find(|source| source.report_id == canonical_report_id)
+    else {
+        return;
+    };
+    let participant_actor_ids = timeline
+        .participant_tracks
+        .iter()
+        .map(|track| track.actor_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let anchor = timeline.clock_anchor.clone();
+    let mut candidates = std::mem::take(&mut timeline.status_spans);
+    for source in sources
+        .iter()
+        .filter(|source| source.report_id != canonical_report_id)
+    {
+        let compatible = source.deployment_id == canonical_source.deployment_id
+            && source.client_build == canonical_source.client_build
+            && source.protocol_pack_digest == canonical_source.protocol_pack_digest;
+        if !compatible {
+            timeline.omitted.status_spans = timeline
+                .omitted
+                .status_spans
+                .saturating_add(source.timeline.status_spans.len());
+            continue;
+        }
+        for row in &source.timeline.status_spans {
+            if !participant_actor_ids.contains(row.target_actor_id.as_str()) {
+                timeline.omitted.status_spans = timeline.omitted.status_spans.saturating_add(1);
+                continue;
+            }
+            let mut evidence = row
+                .evidence
+                .iter()
+                .filter(|item| item.source_report_id == source.report_id)
+                .cloned()
+                .collect::<Vec<_>>();
+            let aligned = evidence
+                .iter()
+                .filter_map(|item| {
+                    Some((
+                        canonical_skill_use_at_micros(
+                            anchor.as_ref()?,
+                            item.applied_game_time_millis?,
+                        )?,
+                        canonical_skill_use_at_micros(
+                            anchor.as_ref()?,
+                            item.terminal_game_time_millis?,
+                        )?,
+                    ))
+                })
+                .collect::<BTreeSet<_>>();
+            if evidence.is_empty() || aligned.len() != 1 {
+                timeline.omitted.status_spans = timeline.omitted.status_spans.saturating_add(1);
+                continue;
+            }
+            let (start_micros, end_micros) = *aligned.first().expect("one aligned lifecycle");
+            if start_micros > end_micros || end_micros > timeline.duration_micros {
+                timeline.omitted.status_spans = timeline.omitted.status_spans.saturating_add(1);
+                continue;
+            }
+            evidence.sort();
+            candidates.push(PublicTimelineStatusSpan {
+                target_actor_id: row.target_actor_id.clone(),
+                source_actor_id: row
+                    .source_actor_id
+                    .as_ref()
+                    .filter(|actor_id| participant_actor_ids.contains(actor_id.as_str()))
+                    .cloned(),
+                effect_id: row.effect_id.clone(),
+                instance_id: row.instance_id.clone(),
+                start_micros,
+                end_micros,
+                terminal_state: row.terminal_state,
+                evidence,
+                omitted_evidence: row.omitted_evidence,
+            });
+        }
+    }
+
+    let mut grouped =
+        BTreeMap::<(u64, u64, String, String, String), Option<PublicTimelineStatusSpan>>::new();
+    for row in candidates {
+        let key = (
+            row.start_micros,
+            row.end_micros,
+            row.target_actor_id.clone(),
+            row.effect_id.clone(),
+            row.instance_id.clone(),
+        );
+        match grouped.entry(key) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(Some(row));
+            }
+            std::collections::btree_map::Entry::Occupied(mut entry) => {
+                let Some(previous) = entry.get_mut() else {
+                    continue;
+                };
+                if previous.terminal_state != row.terminal_state {
+                    entry.insert(None);
+                    timeline.omitted.status_spans = timeline.omitted.status_spans.saturating_add(1);
+                    continue;
+                }
+                if previous.source_actor_id != row.source_actor_id {
+                    previous.source_actor_id = None;
+                }
+                for item in row.evidence {
+                    if previous.evidence.contains(&item) {
+                        continue;
+                    }
+                    if previous.evidence.len() < MAXIMUM_TIMELINE_STATUS_SPAN_EVIDENCE {
+                        previous.evidence.push(item);
+                    } else {
+                        previous.omitted_evidence = previous.omitted_evidence.saturating_add(1);
+                    }
+                }
+                previous.omitted_evidence = previous
+                    .omitted_evidence
+                    .saturating_add(row.omitted_evidence);
+                previous.evidence.sort();
+            }
+        }
+    }
+    timeline.status_spans.clear();
+    let mut kept_by_target = BTreeMap::<String, usize>::new();
+    for (_, row) in grouped {
+        let Some(row) = row else {
+            continue;
+        };
+        let kept = kept_by_target
+            .entry(row.target_actor_id.clone())
+            .or_default();
+        if *kept == MAXIMUM_TIMELINE_STATUS_SPANS_PER_TARGET
+            || timeline.status_spans.len() == MAXIMUM_TIMELINE_STATUS_SPANS
+        {
+            timeline.omitted.status_spans = timeline.omitted.status_spans.saturating_add(1);
+            continue;
+        }
+        *kept = kept.saturating_add(1);
+        timeline.status_spans.push(row);
+    }
 }
 
 fn public_participant_key(participant: &PublicParticipant) -> String {
@@ -9640,6 +10036,101 @@ mod tests {
         }
     }
 
+    fn timeline_status_observation(
+        target_actor_id: &str,
+        effect_id: &str,
+        instance_id: i64,
+        state: StatusState,
+        observed_micros: u64,
+        event_sequence: u64,
+    ) -> ObservedTimelineStatusTransition {
+        ObservedTimelineStatusTransition {
+            source_actor_id: Some("actor-1".into()),
+            target_actor_id: target_actor_id.into(),
+            effect_id: effect_id.into(),
+            instance_id,
+            state,
+            observed_micros,
+            game_time_millis: None,
+            event_sequence,
+        }
+    }
+
+    #[test]
+    fn public_timeline_projects_only_complete_exact_participant_status_lifecycles() {
+        let participants = [
+            timeline_participant("actor-1"),
+            timeline_participant("actor-2"),
+        ];
+        let observations = vec![
+            timeline_status_observation("actor-2", "3003052", 7, StatusState::Applied, 1_100, 10),
+            timeline_status_observation("actor-2", "3003052", 7, StatusState::Refreshed, 1_200, 11),
+            timeline_status_observation("actor-2", "3003052", 7, StatusState::Removed, 1_500, 12),
+            // Missing apply is not a complete lifecycle.
+            timeline_status_observation("actor-2", "3003053", 8, StatusState::Removed, 1_600, 13),
+            // Non-participant status state remains private/unpublished.
+            timeline_status_observation("monster", "3003052", 9, StatusState::Applied, 1_100, 14),
+            timeline_status_observation("monster", "3003052", 9, StatusState::Removed, 1_400, 15),
+        ];
+        let mut timeline = PublicCombatTimeline {
+            duration_micros: 1_000,
+            ..Default::default()
+        };
+        populate_timeline_combat_data(&mut timeline, &participants, &[], None, None);
+        populate_timeline_status_spans(
+            &mut timeline,
+            "report-a",
+            &participants,
+            &observations,
+            Some(CanonicalRunObservedBounds {
+                started_micros: 1_000,
+                ended_micros: 2_000,
+            }),
+        );
+
+        assert_eq!(timeline.status_spans.len(), 1);
+        let span = &timeline.status_spans[0];
+        assert_eq!(span.target_actor_id, "actor-2");
+        assert_eq!(span.source_actor_id.as_deref(), Some("actor-1"));
+        assert_eq!(span.effect_id, "3003052");
+        assert_eq!(span.start_micros, 100);
+        assert_eq!(span.end_micros, 500);
+        assert_eq!(span.terminal_state, StatusState::Removed);
+        assert_eq!(span.evidence.len(), 1);
+        assert_eq!(timeline.omitted.status_spans, 1);
+    }
+
+    #[test]
+    fn public_timeline_keeps_ordered_zero_length_status_lifecycles_and_rejects_reversed_ones() {
+        let participants = [timeline_participant("actor-1")];
+        let observations = vec![
+            timeline_status_observation("actor-1", "3003052", 7, StatusState::Applied, 1_500, 10),
+            timeline_status_observation("actor-1", "3003052", 7, StatusState::Removed, 1_500, 11),
+            timeline_status_observation("actor-1", "3003053", 8, StatusState::Removed, 1_600, 12),
+            timeline_status_observation("actor-1", "3003053", 8, StatusState::Applied, 1_600, 13),
+        ];
+        let mut timeline = PublicCombatTimeline {
+            duration_micros: 1_000,
+            ..Default::default()
+        };
+
+        populate_timeline_status_spans(
+            &mut timeline,
+            "report-a",
+            &participants,
+            &observations,
+            Some(CanonicalRunObservedBounds {
+                started_micros: 1_000,
+                ended_micros: 2_000,
+            }),
+        );
+
+        assert_eq!(timeline.status_spans.len(), 1);
+        assert_eq!(timeline.status_spans[0].start_micros, 500);
+        assert_eq!(timeline.status_spans[0].end_micros, 500);
+        assert_eq!(timeline.omitted.status_spans, 1);
+    }
+
     #[test]
     fn public_timeline_projects_exact_player_cast_starts_without_fabrication() {
         let participants = [
@@ -10026,6 +10517,84 @@ mod tests {
         assert_eq!(timeline.rate_clock[2].second, 2);
         assert_eq!(timeline.rate_clock[2].edps_elapsed_micros, 1_750_000);
         assert_eq!(timeline.rate_clock[2].adps_elapsed_micros, 1_250_000);
+    }
+
+    #[test]
+    fn public_timeline_rate_clock_fails_closed_when_complete_claim_has_missing_whole_buckets() {
+        let points = vec![HistoryRateClockPoint {
+            second: 0,
+            edps_elapsed_micros: 1_000_000,
+            adps_elapsed_micros: 1_000_000,
+        }];
+        let mut timeline = PublicCombatTimeline {
+            duration_micros: 3_250_000,
+            series_bucket_micros: 1_000_000,
+            ..PublicCombatTimeline::default()
+        };
+
+        populate_timeline_rate_clock(&mut timeline, &points, true);
+
+        assert!(!timeline.rate_clock_complete);
+        assert!(timeline.rate_clock.is_empty());
+    }
+
+    #[test]
+    fn public_timeline_rate_clock_fails_closed_on_invalid_elapsed_evidence() {
+        let mut timeline = PublicCombatTimeline {
+            duration_micros: 2_000_000,
+            series_bucket_micros: 1_000_000,
+            ..PublicCombatTimeline::default()
+        };
+        let non_monotonic = vec![
+            HistoryRateClockPoint {
+                second: 0,
+                edps_elapsed_micros: 900_000,
+                adps_elapsed_micros: 800_000,
+            },
+            HistoryRateClockPoint {
+                second: 1,
+                edps_elapsed_micros: 700_000,
+                adps_elapsed_micros: 700_000,
+            },
+        ];
+
+        populate_timeline_rate_clock(&mut timeline, &non_monotonic, true);
+        assert!(!timeline.rate_clock_complete);
+        assert!(timeline.rate_clock.is_empty());
+
+        let adps_exceeds_edps = vec![
+            HistoryRateClockPoint {
+                second: 0,
+                edps_elapsed_micros: 800_000,
+                adps_elapsed_micros: 900_000,
+            },
+            HistoryRateClockPoint {
+                second: 1,
+                edps_elapsed_micros: 1_800_000,
+                adps_elapsed_micros: 1_800_000,
+            },
+        ];
+
+        populate_timeline_rate_clock(&mut timeline, &adps_exceeds_edps, true);
+        assert!(!timeline.rate_clock_complete);
+        assert!(timeline.rate_clock.is_empty());
+
+        let beyond_bucket_boundary = vec![
+            HistoryRateClockPoint {
+                second: 0,
+                edps_elapsed_micros: 1_000_001,
+                adps_elapsed_micros: 1_000_000,
+            },
+            HistoryRateClockPoint {
+                second: 1,
+                edps_elapsed_micros: 2_000_000,
+                adps_elapsed_micros: 2_000_000,
+            },
+        ];
+
+        populate_timeline_rate_clock(&mut timeline, &beyond_bucket_boundary, true);
+        assert!(!timeline.rate_clock_complete);
+        assert!(timeline.rate_clock.is_empty());
     }
 
     #[test]
@@ -15602,6 +16171,112 @@ mod tests {
         assert_eq!(timeline.hostile_casts[0].at_micros, 5_000);
         assert_eq!(timeline.hostile_casts[0].target_actor_id, None);
         assert_eq!(timeline.hostile_casts[0].evidence.len(), 2);
+    }
+
+    #[test]
+    fn reconciled_status_spans_align_exact_endpoints_and_withhold_conflicting_sources() {
+        let mut report_a =
+            fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
+        let mut report_b =
+            fixture_public_report("rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "character-b", 0);
+        for report in [&mut report_a, &mut report_b] {
+            report.runs[0].timeline.duration_micros = 10_000;
+            report.runs[0].timeline.clock_anchor = Some(PublicTimelineClockAnchor {
+                at_micros: 0,
+                game_time_millis: 100,
+                source_report_id: report.report_id.clone(),
+                event_sequence: 1,
+            });
+        }
+        let status = |report_id: &str,
+                      target: &str,
+                      source: Option<&str>,
+                      instance_id: &str,
+                      observed_start: u64,
+                      observed_end: u64,
+                      game_start: Option<i64>,
+                      game_end: Option<i64>,
+                      sequence: u64| PublicTimelineStatusSpan {
+            target_actor_id: target.into(),
+            source_actor_id: source.map(str::to_owned),
+            effect_id: "3003052".into(),
+            instance_id: instance_id.into(),
+            start_micros: observed_start,
+            end_micros: observed_end,
+            terminal_state: StatusState::Removed,
+            evidence: vec![PublicTimelineStatusSpanEvidence {
+                source_report_id: report_id.into(),
+                applied_event_sequence: sequence,
+                terminal_event_sequence: sequence + 1,
+                applied_game_time_millis: game_start,
+                terminal_game_time_millis: game_end,
+            }],
+            omitted_evidence: 0,
+        };
+        report_a.runs[0].timeline.status_spans = vec![status(
+            &report_a.report_id,
+            "character-a",
+            Some("character-a"),
+            "7",
+            5_000,
+            8_000,
+            Some(105),
+            Some(108),
+            10,
+        )];
+        report_b.runs[0].timeline.status_spans = vec![
+            status(
+                &report_b.report_id,
+                "character-a",
+                Some("character-b"),
+                "7",
+                7_500,
+                9_500,
+                Some(105),
+                Some(108),
+                20,
+            ),
+            status(
+                &report_b.report_id,
+                "character-b",
+                Some("character-b"),
+                "8",
+                8_000,
+                9_000,
+                Some(106),
+                Some(109),
+                22,
+            ),
+            status(
+                &report_b.report_id,
+                "character-b",
+                Some("character-b"),
+                "9",
+                9_000,
+                9_500,
+                None,
+                None,
+                24,
+            ),
+        ];
+        let sources = vec![
+            ReconciliationRunSource::from_report(&report_a, &report_a.runs[0], None),
+            ReconciliationRunSource::from_report(&report_b, &report_b.runs[0], None),
+        ];
+        let mut timeline = report_a.runs[0].timeline.clone();
+
+        populate_reconciled_timeline_status_spans(&mut timeline, &sources, &report_a.report_id);
+
+        assert_eq!(timeline.status_spans.len(), 2);
+        assert_eq!(timeline.status_spans[0].target_actor_id, "character-a");
+        assert_eq!(timeline.status_spans[0].start_micros, 5_000);
+        assert_eq!(timeline.status_spans[0].end_micros, 8_000);
+        assert_eq!(timeline.status_spans[0].source_actor_id, None);
+        assert_eq!(timeline.status_spans[0].evidence.len(), 2);
+        assert_eq!(timeline.status_spans[1].target_actor_id, "character-b");
+        assert_eq!(timeline.status_spans[1].start_micros, 6_000);
+        assert_eq!(timeline.status_spans[1].end_micros, 9_000);
+        assert_eq!(timeline.omitted.status_spans, 1);
     }
 
     #[test]

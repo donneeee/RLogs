@@ -12,6 +12,8 @@ import {
   LEGACY_RECONCILIATION_SCHEMA_VERSION, LEGACY_REPORT_PROJECTION_REVISION,
   LEGACY_REPORT_SCHEMA_VERSION, LEGACY_TIMELINE_SCHEMA_VERSION,
   RECONCILIATION_SCHEMA_VERSION,
+  STATUS_SPAN_RECONCILIATION_SCHEMA_VERSION, STATUS_SPAN_REPORT_PROJECTION_REVISION,
+  STATUS_SPAN_TIMELINE_SCHEMA_VERSION,
   UPCOMING_RECONCILIATION_SCHEMA_VERSION, UPCOMING_REPORT_PROJECTION_REVISION,
   UPCOMING_REPORT_SCHEMA_VERSION, UPCOMING_TIMELINE_SCHEMA_VERSION,
   catalogEntry, compatibleProfileName, expectedReportId, reconcileCatalogEntry,
@@ -81,6 +83,22 @@ function hostileCastTimeline(options = {}) {
       game_time_millis: 1_600, kind: "exact_wire_cast_start" }], omitted_evidence: 0,
   }];
   timeline.omitted.hostile_casts = 0;
+  return timeline;
+}
+
+function statusSpanTimeline(options = {}) {
+  const timeline = hostileCastTimeline(options);
+  timeline.schema_version = STATUS_SPAN_TIMELINE_SCHEMA_VERSION;
+  timeline.status_spans = [{
+    target_actor_id: "actor-2", source_actor_id: "actor-1", effect_id: "3003052",
+    instance_id: "93", start_micros: 700_000, end_micros: 900_000,
+    terminal_state: "removed", evidence: [{
+      source_report_id: timeline.canonical_report_id,
+      applied_event_sequence: 14, terminal_event_sequence: 15,
+      applied_game_time_millis: 1_700, terminal_game_time_millis: 1_900,
+    }], omitted_evidence: 0,
+  }];
+  timeline.omitted.status_spans = 0;
   return timeline;
 }
 
@@ -245,6 +263,32 @@ test("report v17 revision 11 strictly validates bounded hostile cast evidence", 
   assert.equal(validateOutput(targetSpecific, wakeup), true);
 });
 
+test("report v17 revision 12 strictly validates complete exact status spans", () => {
+  const output = { schema_version: 1, report: {
+    schema_version: UPCOMING_REPORT_SCHEMA_VERSION,
+    projection_revision: STATUS_SPAN_REPORT_PROJECTION_REVISION,
+    report_id: wakeup.expected_report_id,
+    verification: { artifact_sha256: digest },
+    runs: [{ timeline: statusSpanTimeline() }],
+  }, membership: { report_id: wakeup.expected_report_id, artifact_sha256: digest, runs: [] } };
+  assert.equal(validateOutput(output, wakeup), true);
+  const rejects = [
+    (timeline) => { delete timeline.status_spans; },
+    (timeline) => { timeline.status_spans[0].target_actor_id = "hostile-1"; },
+    (timeline) => { timeline.status_spans[0].source_actor_id = "hostile-1"; },
+    (timeline) => { timeline.status_spans[0].start_micros = timeline.status_spans[0].end_micros + 1; },
+    (timeline) => { timeline.status_spans[0].terminal_state = "refreshed"; },
+    (timeline) => { timeline.status_spans[0].evidence[0].source_report_id = `rpt_${"b".repeat(32)}`; },
+    (timeline) => { timeline.status_spans[0].evidence[0].applied_event_sequence = 16; },
+    (timeline) => { timeline.status_spans.push(structuredClone(timeline.status_spans[0])); },
+    (timeline) => { timeline.omitted.status_spans = -1; },
+  ];
+  for (const mutate of rejects) {
+    const invalid = structuredClone(output); mutate(invalid.report.runs[0].timeline);
+    assert.equal(validateOutput(invalid, wakeup), false);
+  }
+});
+
 test("backfill eligibility is limited to current public schema-12 replay evidence", () => {
   const row = {
     report_id: wakeup.expected_report_id, artifact_sha256: digest,
@@ -262,8 +306,8 @@ test("backfill eligibility is limited to current public schema-12 replay evidenc
 
 test("historical backfill is pinned to the exact current public timeline tuple", () => {
   assert.equal(BACKFILL_TARGET_SCHEMA_VERSION, 17);
-  assert.equal(BACKFILL_TARGET_PROJECTION_REVISION, 11);
-  assert.equal(BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION, 7);
+  assert.equal(BACKFILL_TARGET_PROJECTION_REVISION, 12);
+  assert.equal(BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION, 8);
 });
 
 test("backfill output can add schema fields but cannot change identity, owner, visibility, or evidence", () => {
@@ -288,7 +332,7 @@ test("backfill output can add schema fields but cannot change identity, owner, v
       projection_revision: BACKFILL_TARGET_PROJECTION_REVISION,
       verification: { ...original.verification }, runs: [{
         run_index: 0, run_group_id: "run_fixture",
-        timeline: hostileCastTimeline(),
+        timeline: statusSpanTimeline(),
       }],
     },
     membership: {
@@ -410,6 +454,15 @@ test("reconciliation output must preserve the exact source set and canonical spi
     ...output,
     schema_version: UPCOMING_RECONCILIATION_SCHEMA_VERSION,
     timeline: { schema_version: UPCOMING_TIMELINE_SCHEMA_VERSION },
+  }, "run_exact", sources), true);
+  assert.equal(validateReconciliationOutput({
+    ...output,
+    schema_version: STATUS_SPAN_RECONCILIATION_SCHEMA_VERSION,
+    timeline: statusSpanTimeline({
+      source: "reconciled_canonical_spine",
+      reportIds: sources.map((source) => source.report_id),
+      canonicalReportId: sources[0].report_id,
+    }),
   }, "run_exact", sources), true);
   assert.equal(validateReconciliationOutput({ ...output, rdps_status: "partial_packet_proven_rules" }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, schema_version: 16 }, "run_exact", sources), false);

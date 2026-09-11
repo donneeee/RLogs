@@ -259,6 +259,22 @@ kind, actor/entity identity, related healer identity when present, update kind,
 observation time, server time, and payload digest. A mismatch blocks
 reconciliation.
 
+Combat timeline schema 8 adds bounded `status_spans` for complete, exact wire
+lifecycles on public participants. A row exists only when one `Applied` event
+and one terminal `Removed` or `Consumed` event share the same numeric effect,
+wire instance, and participant target inside the canonical run. Refresh and
+stack transitions may occur between those endpoints, but they never create or
+extend a span by inference; refresh-only starts, duration-based expiry,
+unresolved effects, duplicate/contradictory endpoints, and non-participant
+targets are omitted and counted. Zero-length spans remain valid when ordered
+wire events share an exact timestamp. The optional source actor is published
+only when both endpoints agree on one public participant. Multi-POV rows cross
+deployment/build/protocol boundaries never, and secondary rows are admitted
+only when both endpoint game times align uniquely to the canonical clock.
+Effect IDs are technical identity: clients may show a trusted localized status
+name, otherwise they must label the ID as unlocalized rather than inventing a
+buff/debuff classification or display name.
+
 Ready state is remapped by stable character identity onto the canonical
 runtime entity and inserted after that run's entry boundary. In-run changes
 are admitted only before a canonical event with a strictly later

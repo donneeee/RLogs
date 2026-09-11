@@ -463,7 +463,7 @@ test("only the uploader can change visibility and the override changes authorize
   assert.equal((await report.json()).visibility, "private");
 });
 
-for (const projectionRevision of [9, 10, 11]) {
+for (const projectionRevision of [9, 10, 11, 12]) {
   test(`promoting a schema-17 revision-${projectionRevision} hosted replay publishes and only current projections wake run groups`, async () => {
     const { auth, d1, backgroundTasks } = authFixture();
     const reportId = `rpt_${"e".repeat(32)}`;
@@ -505,7 +505,7 @@ for (const projectionRevision of [9, 10, 11]) {
     assert.equal(d1[0].bindings[1], "public");
     assert.equal(d1[0].bindings[3], puts[0].key.slice(-69, -5));
     assert.equal(d1[0].bindings[4], puts[0].key);
-    const currentProjection = projectionRevision === 11;
+    const currentProjection = projectionRevision === 12;
     assert.equal(backgroundTasks.length, currentProjection ? 1 : 0);
     await Promise.all(backgroundTasks);
     assert.deepEqual(wakeups, (currentProjection ? ["run_one", "run_two"] : []).map((runGroupId) => ({
@@ -521,7 +521,7 @@ test("private transitions and stale hosted projections never schedule reconcilia
     { visibility: "unlisted", schemaVersion: 14, projectionRevision: 4 },
     { visibility: "public", schemaVersion: 13, projectionRevision: 3 },
     { visibility: "public", schemaVersion: 17, projectionRevision: 8 },
-    { visibility: "public", schemaVersion: 17, projectionRevision: 12 },
+    { visibility: "public", schemaVersion: 17, projectionRevision: 11 },
   ]) {
     const { auth, backgroundTasks } = authFixture();
     const reportId = `rpt_${"f".repeat(32)}`;

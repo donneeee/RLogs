@@ -178,6 +178,23 @@ broken skill, or change encounter boundaries and then recalculate historical
 reports without asking users to upload again. Local calculations are useful
 previews, but the server-owned replay is the leaderboard authority.
 
+Timeline DPS and rDPS ranges use the reducer-authored cumulative rate clock,
+not capture wall time. A clock advertised as complete must contain every full
+one-second bucket in the canonical run; only the optional fractional terminal
+bucket may carry forward the last exact elapsed values. Missing, non-monotonic,
+or otherwise invalid clock evidence clears the public clock and makes local
+range rates unavailable instead of synthesizing an authoritative-looking rate.
+
+Public combat timeline schema 8 may expose a bounded status interval only from
+one exact wire `Applied` transition and one ordered exact wire `Removed` or
+`Consumed` transition for the same public participant, effect, and instance.
+Refreshes and stacks may occur inside that interval but never infer its bounds;
+incomplete, ambiguous, non-participant, or cross-runtime evidence is omitted and
+counted. Equal-time endpoints remain an exact zero-length interval when their
+wire event sequence is ordered. A source actor is optional and is exposed only
+when both endpoints agree on a public participant. Numeric effect identity is
+not a trusted buff/debuff classification or display name.
+
 Runs with packet loss, unknown relevant routes, decode failures, unsupported
 builds, manual events, or impossible ordering remain inspectable. A versioned
 eligibility policy decides whether they are ranked, unranked, or invalid; the

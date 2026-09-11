@@ -11,7 +11,7 @@ const VISIBILITIES = new Set(["public", "unlisted", "private"]);
 const CURRENT_PUBLIC_PARSE_SCHEMA_VERSION = 17;
 // Visibility remains mutable for older immutable projections, but only the
 // exact current projection may enter the current hosted reconciliation flow.
-const RECONCILABLE_PUBLIC_PARSE_PROJECTION_REVISIONS = new Set([11]);
+const RECONCILABLE_PUBLIC_PARSE_PROJECTION_REVISIONS = new Set([12]);
 
 function json(value, status = 200) {
   return Response.json(value, {
