@@ -12,6 +12,8 @@ export const CURRENT_TIMELINE_SCHEMA_VERSION = 4;
 export const UPCOMING_REPORT_SCHEMA_VERSION = 17;
 export const UPCOMING_REPORT_PROJECTION_REVISION = 9;
 export const UPCOMING_TIMELINE_SCHEMA_VERSION = 5;
+export const EXACT_SKILL_REPORT_PROJECTION_REVISION = 10;
+export const EXACT_SKILL_TIMELINE_SCHEMA_VERSION = 6;
 // Backfill remains pinned to the legacy producer tuple. Advance all three
 // constants together only when the backfill container is intentionally upgraded.
 export const BACKFILL_TARGET_SCHEMA_VERSION = LEGACY_REPORT_SCHEMA_VERSION;
@@ -32,9 +34,93 @@ function validReportTuple(report) {
     report?.schema_version === UPCOMING_REPORT_SCHEMA_VERSION &&
     report?.projection_revision === UPCOMING_REPORT_PROJECTION_REVISION &&
     timelineSchemaVersion === UPCOMING_TIMELINE_SCHEMA_VERSION
+  ) || (
+    report?.schema_version === UPCOMING_REPORT_SCHEMA_VERSION &&
+    report?.projection_revision === EXACT_SKILL_REPORT_PROJECTION_REVISION &&
+    timelineSchemaVersion === EXACT_SKILL_TIMELINE_SCHEMA_VERSION
   );
-  return validTuple && report.runs.every((run) =>
-    run?.timeline?.schema_version === timelineSchemaVersion);
+  return validTuple && report.runs.every((run) => {
+    if (run?.timeline?.schema_version !== timelineSchemaVersion) return false;
+    return timelineSchemaVersion !== EXACT_SKILL_TIMELINE_SCHEMA_VERSION ||
+      validExactSkillTimeline(run.timeline, [report.report_id], "single_report", report.report_id);
+  });
+}
+
+const MAXIMUM_TIMELINE_SKILL_USES = 65_536;
+const MAXIMUM_TIMELINE_SKILL_USES_PER_PARTICIPANT = 16_384;
+const MAXIMUM_TIMELINE_SKILL_USE_EVIDENCE = 8;
+
+function nonNegativeSafeInteger(value) {
+  return Number.isSafeInteger(value) && value >= 0;
+}
+
+function boundedIdentifierText(value) {
+  return typeof value === "string" && value.length > 0 && value.length <= 96;
+}
+
+function sameStringSet(left, right) {
+  return left.length === right.length && new Set(left).size === left.length &&
+    new Set(right).size === right.length && left.every((value) => right.includes(value));
+}
+
+function validExactSkillTimeline(timeline, allowedReportIds, source, canonicalReportId) {
+  if (timeline?.schema_version !== EXACT_SKILL_TIMELINE_SCHEMA_VERSION ||
+      timeline.source !== source || timeline.canonical_report_id !== canonicalReportId ||
+      !nonNegativeSafeInteger(timeline.duration_micros) ||
+      !Array.isArray(timeline.contributing_report_ids) ||
+      !sameStringSet(timeline.contributing_report_ids, allowedReportIds) ||
+      !timeline.contributing_report_ids.every((reportId) => REPORT_ID.test(reportId)) ||
+      !Array.isArray(timeline.participant_tracks) || timeline.participant_tracks.length > 256 ||
+      !timeline.participant_tracks.every((track) => boundedIdentifierText(track?.actor_id) &&
+        nonNegativeSafeInteger(track?.omitted_skill_uses)) ||
+      new Set(timeline.participant_tracks.map((track) => track.actor_id)).size !== timeline.participant_tracks.length ||
+      !Array.isArray(timeline.skill_uses) || timeline.skill_uses.length > MAXIMUM_TIMELINE_SKILL_USES ||
+      !nonNegativeSafeInteger(timeline.omitted?.skill_uses)) return false;
+
+  const actors = new Set(timeline.participant_tracks.map((track) => track.actor_id));
+  const keptByActor = new Map();
+  const rowKeys = new Set();
+  for (const skill of timeline.skill_uses) {
+    if (!actors.has(skill?.actor_id) || !nonNegativeSafeInteger(skill?.at_micros) ||
+        skill.at_micros > timeline.duration_micros || !boundedIdentifierText(skill?.action_id) ||
+        (skill.action_instance_id !== undefined && !boundedIdentifierText(skill.action_instance_id)) ||
+        skill.state !== "started" ||
+        (skill.action_kind !== undefined && !boundedIdentifierText(skill.action_kind)) ||
+        !Array.isArray(skill.evidence) || skill.evidence.length > MAXIMUM_TIMELINE_SKILL_USE_EVIDENCE ||
+        !nonNegativeSafeInteger(skill.omitted_evidence)) return false;
+    const kept = (keptByActor.get(skill.actor_id) ?? 0) + 1;
+    if (kept > MAXIMUM_TIMELINE_SKILL_USES_PER_PARTICIPANT) return false;
+    keptByActor.set(skill.actor_id, kept);
+    const rowKey = JSON.stringify([skill.at_micros, skill.actor_id, skill.action_id, skill.action_instance_id ?? null]);
+    if (rowKeys.has(rowKey)) return false;
+    rowKeys.add(rowKey);
+    const evidenceKeys = new Set();
+    for (const evidence of skill.evidence) {
+      if (!REPORT_ID.test(evidence?.source_report_id ?? "") ||
+          !timeline.contributing_report_ids.includes(evidence.source_report_id) ||
+          !nonNegativeSafeInteger(evidence.event_sequence) ||
+          (evidence.game_time_millis !== undefined && !Number.isSafeInteger(evidence.game_time_millis)) ||
+          evidence.kind !== "exact_wire_cast_start") return false;
+      const evidenceKey = JSON.stringify([
+        evidence.source_report_id, evidence.event_sequence, evidence.game_time_millis ?? null, evidence.kind,
+      ]);
+      if (evidenceKeys.has(evidenceKey)) return false;
+      evidenceKeys.add(evidenceKey);
+    }
+  }
+
+  const perTrackOmissions = timeline.participant_tracks.reduce(
+    (sum, track) => sum + track.omitted_skill_uses, 0,
+  );
+  if (!Number.isSafeInteger(perTrackOmissions) || timeline.omitted.skill_uses < perTrackOmissions) return false;
+  if (timeline.clock_anchor !== undefined && (
+    !nonNegativeSafeInteger(timeline.clock_anchor?.at_micros) ||
+    timeline.clock_anchor.at_micros > timeline.duration_micros ||
+    !Number.isSafeInteger(timeline.clock_anchor.game_time_millis) ||
+    !timeline.contributing_report_ids.includes(timeline.clock_anchor.source_report_id) ||
+    !nonNegativeSafeInteger(timeline.clock_anchor.event_sequence)
+  )) return false;
+  return true;
 }
 
 export function expectedReportId(digest) {
@@ -204,7 +290,8 @@ export function validateReconciliationOutput(value, runGroupId, sources) {
     value?.timeline?.schema_version === CURRENT_TIMELINE_SCHEMA_VERSION
   ) || (
     value?.schema_version === UPCOMING_RECONCILIATION_SCHEMA_VERSION &&
-    value?.timeline?.schema_version === UPCOMING_TIMELINE_SCHEMA_VERSION
+    (value?.timeline?.schema_version === UPCOMING_TIMELINE_SCHEMA_VERSION ||
+      value?.timeline?.schema_version === EXACT_SKILL_TIMELINE_SCHEMA_VERSION)
   );
   if (!validTuple || value?.run_group_id !== runGroupId ||
       !RECONCILIATION_ID.test(value?.reconciliation_id ?? "") ||
@@ -224,6 +311,12 @@ export function validateReconciliationOutput(value, runGroupId, sources) {
   if (unique.size !== actual.length || !unique.has(reconciliationSourceIdentity(value.canonical_spine))) {
     return false;
   }
+  if (value.timeline?.schema_version === EXACT_SKILL_TIMELINE_SCHEMA_VERSION && !validExactSkillTimeline(
+    value.timeline,
+    value.reports.map((report) => report.report_id),
+    "reconciled_canonical_spine",
+    value.canonical_spine.report_id,
+  )) return false;
   const validStatus = [
     "single_vantage", "multiple_reports_no_additional_vantage",
     "cross_vantage_evidence_available", "reconciled",

@@ -9,7 +9,10 @@ const MAXIMUM_QUERY_LIMIT = 250;
 const REPORT_ID_PATTERN = /^rpt_[a-f0-9]{32}$/;
 const VISIBILITIES = new Set(["public", "unlisted", "private"]);
 const CURRENT_PUBLIC_PARSE_SCHEMA_VERSION = 17;
-const CURRENT_PUBLIC_PARSE_PROJECTION_REVISION = 9;
+// Public reports are immutable. Keep the immediately preceding schema-17
+// projection eligible so a report uploaded as unlisted before the timeline-v6
+// rollout can still be promoted and reconciled later.
+const RECONCILABLE_PUBLIC_PARSE_PROJECTION_REVISIONS = new Set([9, 10]);
 
 function json(value, status = 200) {
   return Response.json(value, {
@@ -674,7 +677,7 @@ export class RLogsAuthState {
         reportId, body.visibility, now, projectionSha256, projectionObjectKey,
       ).run();
       if (body.visibility === "public" && report.schema_version === CURRENT_PUBLIC_PARSE_SCHEMA_VERSION &&
-          report.projection_revision === CURRENT_PUBLIC_PARSE_PROJECTION_REVISION) {
+          RECONCILABLE_PUBLIC_PARSE_PROJECTION_REVISIONS.has(report.projection_revision)) {
         const task = this.wakeRunGroupReconciliations(reportId);
         if (typeof this.state.waitUntil === "function") this.state.waitUntil(task);
         else await task;

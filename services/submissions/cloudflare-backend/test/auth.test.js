@@ -463,60 +463,64 @@ test("only the uploader can change visibility and the override changes authorize
   assert.equal((await report.json()).visibility, "private");
 });
 
-test("promoting a current hosted replay publishes a public projection and wakes each exact run group", async () => {
-  const { auth, d1, backgroundTasks } = authFixture();
-  const reportId = `rpt_${"e".repeat(32)}`;
-  const report = {
-    schema_version: 17,
-    projection_revision: 9,
-    report_id: reportId,
-    visibility: "unlisted",
-  };
-  auth.hostedReport = async () => ({ report, visibility: "unlisted", submitterId: "usr_owner" });
-  const puts = [];
-  auth.env.RLOGS_ARTIFACTS = { async put(key, bytes) { puts.push({ key, value: JSON.parse(new TextDecoder().decode(bytes)) }); } };
-  auth.env.RLOGS_DB.prepare = (query) => ({ bind(...bindings) {
-    return {
-      query, bindings,
-      async run() { d1.push({ query, bindings }); return { success: true }; },
-      async all() {
-        assert.match(query, /r\.visibility='public'.*r\.verification_tier='replayed'/su);
-        return { results: [{ run_group_id: "run_one" }, { run_group_id: "run_two" }] };
-      },
+for (const projectionRevision of [9, 10]) {
+  test(`promoting a schema-17 revision-${projectionRevision} hosted replay publishes and wakes each exact run group`, async () => {
+    const { auth, d1, backgroundTasks } = authFixture();
+    const reportId = `rpt_${"e".repeat(32)}`;
+    const report = {
+      schema_version: 17,
+      projection_revision: projectionRevision,
+      report_id: reportId,
+      visibility: "unlisted",
     };
-  } });
-  const wakeups = [];
-  auth.env.RLOGS_VERIFIER = { async fetch(request) {
-    wakeups.push({ path: new URL(request.url).pathname, body: await request.json() });
-    return Response.json({ accepted: true });
-  } };
-  const response = await auth.updateParseVisibility(new Request(
-    `https://backend/v1/auth/parses/${reportId}/visibility`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ visibility: "public" }),
-    },
-  ), 100, reportId);
-  assert.equal(response.status, 200);
-  assert.equal(puts.length, 1);
-  assert.equal(puts[0].value.visibility, "public");
-  assert.match(puts[0].key, new RegExp(`^reports/${reportId}/projection-[a-f0-9]{64}\\.json$`, "u"));
-  assert.match(d1[0].query, /projection_sha256=COALESCE/u);
-  assert.equal(d1[0].bindings[1], "public");
-  assert.equal(d1[0].bindings[3], puts[0].key.slice(-69, -5));
-  assert.equal(d1[0].bindings[4], puts[0].key);
-  assert.equal(backgroundTasks.length, 1);
-  await Promise.all(backgroundTasks);
-  assert.deepEqual(wakeups, ["run_one", "run_two"].map((runGroupId) => ({
-    path: `/v1/reconciliation-jobs/${runGroupId}/run`,
-    body: { schema_version: 1, run_group_id: runGroupId },
-  })));
-});
+    auth.hostedReport = async () => ({ report, visibility: "unlisted", submitterId: "usr_owner" });
+    const puts = [];
+    auth.env.RLOGS_ARTIFACTS = { async put(key, bytes) { puts.push({ key, value: JSON.parse(new TextDecoder().decode(bytes)) }); } };
+    auth.env.RLOGS_DB.prepare = (query) => ({ bind(...bindings) {
+      return {
+        query, bindings,
+        async run() { d1.push({ query, bindings }); return { success: true }; },
+        async all() {
+          assert.match(query, /r\.visibility='public'.*r\.verification_tier='replayed'/su);
+          return { results: [{ run_group_id: "run_one" }, { run_group_id: "run_two" }] };
+        },
+      };
+    } });
+    const wakeups = [];
+    auth.env.RLOGS_VERIFIER = { async fetch(request) {
+      wakeups.push({ path: new URL(request.url).pathname, body: await request.json() });
+      return Response.json({ accepted: true });
+    } };
+    const response = await auth.updateParseVisibility(new Request(
+      `https://backend/v1/auth/parses/${reportId}/visibility`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visibility: "public" }),
+      },
+    ), 100, reportId);
+    assert.equal(response.status, 200);
+    assert.equal(puts.length, 1);
+    assert.equal(puts[0].value.visibility, "public");
+    assert.match(puts[0].key, new RegExp(`^reports/${reportId}/projection-[a-f0-9]{64}\\.json$`, "u"));
+    assert.match(d1[0].query, /projection_sha256=COALESCE/u);
+    assert.equal(d1[0].bindings[1], "public");
+    assert.equal(d1[0].bindings[3], puts[0].key.slice(-69, -5));
+    assert.equal(d1[0].bindings[4], puts[0].key);
+    assert.equal(backgroundTasks.length, 1);
+    await Promise.all(backgroundTasks);
+    assert.deepEqual(wakeups, ["run_one", "run_two"].map((runGroupId) => ({
+      path: `/v1/reconciliation-jobs/${runGroupId}/run`,
+      body: { schema_version: 1, run_group_id: runGroupId },
+    })));
+  });
+}
 
 test("private transitions and stale hosted projections never schedule reconciliation", async () => {
   for (const { visibility, schemaVersion, projectionRevision } of [
     { visibility: "private", schemaVersion: 14, projectionRevision: 4 },
     { visibility: "unlisted", schemaVersion: 14, projectionRevision: 4 },
     { visibility: "public", schemaVersion: 13, projectionRevision: 3 },
+    { visibility: "public", schemaVersion: 17, projectionRevision: 8 },
+    { visibility: "public", schemaVersion: 17, projectionRevision: 11 },
   ]) {
     const { auth, backgroundTasks } = authFixture();
     const reportId = `rpt_${"f".repeat(32)}`;

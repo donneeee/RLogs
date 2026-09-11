@@ -7,6 +7,7 @@ import {
   BACKFILL_TARGET_SCHEMA_VERSION, BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION,
   CURRENT_REPORT_PROJECTION_REVISION, CURRENT_REPORT_SCHEMA_VERSION,
   CURRENT_TIMELINE_SCHEMA_VERSION,
+  EXACT_SKILL_REPORT_PROJECTION_REVISION, EXACT_SKILL_TIMELINE_SCHEMA_VERSION,
   LEGACY_RECONCILIATION_SCHEMA_VERSION, LEGACY_REPORT_PROJECTION_REVISION,
   LEGACY_REPORT_SCHEMA_VERSION, LEGACY_TIMELINE_SCHEMA_VERSION,
   RECONCILIATION_SCHEMA_VERSION,
@@ -26,6 +27,46 @@ const wakeup = {
   expected_report_id: `rpt_${digest.slice(0, 32)}`,
   chunks: [],
 };
+
+function exactSkillTimeline({
+  source = "single_report",
+  reportIds = [wakeup.expected_report_id],
+  canonicalReportId = reportIds[0],
+} = {}) {
+  return {
+    schema_version: EXACT_SKILL_TIMELINE_SCHEMA_VERSION,
+    source,
+    canonical_report_id: canonicalReportId,
+    contributing_report_ids: reportIds,
+    duration_micros: 2_000_000,
+    participant_tracks: [
+      { actor_id: "actor-1", omitted_skill_uses: 0 },
+      { actor_id: "actor-2", omitted_skill_uses: 1 },
+    ],
+    clock_anchor: {
+      at_micros: 0,
+      game_time_millis: 1_000,
+      source_report_id: canonicalReportId,
+      event_sequence: 4,
+    },
+    skill_uses: [{
+      actor_id: "actor-1",
+      at_micros: 500_000,
+      action_id: "2233",
+      action_instance_id: "91",
+      state: "started",
+      action_kind: "skill",
+      evidence: [{
+        source_report_id: canonicalReportId,
+        event_sequence: 12,
+        game_time_millis: 1_500,
+        kind: "exact_wire_cast_start",
+      }],
+      omitted_evidence: 0,
+    }],
+    omitted: { skill_uses: 1 },
+  };
+}
 
 test("wake-up identities are derived from the sealed digest", () => {
   assert.equal(expectedReportId(digest), wakeup.expected_report_id);
@@ -109,6 +150,46 @@ test("container output accepts only the exact legacy current and upcoming report
       { timeline: { schema_version: CURRENT_TIMELINE_SCHEMA_VERSION } },
     ],
   } }, wakeup), false);
+});
+
+test("report v17 revision 10 strictly validates exact skill timeline evidence", () => {
+  const output = {
+    schema_version: 1,
+    report: {
+      schema_version: UPCOMING_REPORT_SCHEMA_VERSION,
+      projection_revision: EXACT_SKILL_REPORT_PROJECTION_REVISION,
+      report_id: wakeup.expected_report_id,
+      verification: { artifact_sha256: digest },
+      runs: [{ timeline: exactSkillTimeline() }],
+    },
+    membership: { report_id: wakeup.expected_report_id, artifact_sha256: digest, runs: [] },
+  };
+  assert.equal(validateOutput(output, wakeup), true);
+
+  const rejects = [
+    (timeline) => { timeline.source = "reconciled_canonical_spine"; },
+    (timeline) => { timeline.contributing_report_ids.push(`rpt_${"b".repeat(32)}`); },
+    (timeline) => { timeline.clock_anchor.at_micros = timeline.duration_micros + 1; },
+    (timeline) => { timeline.clock_anchor.source_report_id = `rpt_${"b".repeat(32)}`; },
+    (timeline) => { timeline.skill_uses[0].actor_id = "missing-actor"; },
+    (timeline) => { timeline.skill_uses[0].at_micros = timeline.duration_micros + 1; },
+    (timeline) => { timeline.skill_uses[0].state = "ended"; },
+    (timeline) => { timeline.skill_uses[0].evidence[0].kind = "derived_damage_bucket"; },
+    (timeline) => { timeline.skill_uses[0].evidence[0].source_report_id = `rpt_${"b".repeat(32)}`; },
+    (timeline) => { timeline.skill_uses[0].evidence[0].event_sequence = -1; },
+    (timeline) => { timeline.skill_uses.push(structuredClone(timeline.skill_uses[0])); },
+    (timeline) => { timeline.omitted.skill_uses = 0; },
+    (timeline) => { timeline.participant_tracks[0].omitted_skill_uses = -1; },
+  ];
+  for (const mutate of rejects) {
+    const invalid = structuredClone(output);
+    mutate(invalid.report.runs[0].timeline);
+    assert.equal(validateOutput(invalid, wakeup), false);
+  }
+  assert.equal(validateOutput({
+    ...output,
+    report: { ...output.report, projection_revision: UPCOMING_REPORT_PROJECTION_REVISION },
+  }, wakeup), false);
 });
 
 test("backfill eligibility is limited to current public schema-12 replay evidence", () => {
@@ -345,6 +426,42 @@ test("completed reconciliation requires replay-authored status, conservation, an
     schema_version: UPCOMING_RECONCILIATION_SCHEMA_VERSION,
     timeline: { ...output.timeline, schema_version: UPCOMING_TIMELINE_SCHEMA_VERSION },
   }, "run_exact", sources), true);
+
+  const exactTimeline = {
+    ...exactSkillTimeline({
+      source: "reconciled_canonical_spine",
+      reportIds: sources.map((source) => source.report_id),
+      canonicalReportId: sources[0].report_id,
+    }),
+    series_bucket_micros: 1_000_000,
+    rate_clock_complete: true,
+    rate_clock: [
+      { second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 500_000 },
+      { second: 1, edps_elapsed_micros: 2_000_000, adps_elapsed_micros: 1_500_000 },
+    ],
+  };
+  exactTimeline.omitted.rate_clock_points = 0;
+  exactTimeline.skill_uses[0].evidence.push({
+    source_report_id: sources[1].report_id,
+    event_sequence: 22,
+    game_time_millis: 1_500,
+    kind: "exact_wire_cast_start",
+  });
+  const exactOutput = {
+    ...output,
+    schema_version: UPCOMING_RECONCILIATION_SCHEMA_VERSION,
+    timeline: exactTimeline,
+  };
+  assert.equal(validateReconciliationOutput(exactOutput, "run_exact", sources), true);
+  const badExactEvidence = structuredClone(exactOutput);
+  badExactEvidence.timeline.skill_uses[0].evidence[1].source_report_id = `rpt_${"d".repeat(32)}`;
+  assert.equal(validateReconciliationOutput(badExactEvidence, "run_exact", sources), false);
+  const missingContributor = structuredClone(exactOutput);
+  missingContributor.timeline.contributing_report_ids.pop();
+  assert.equal(validateReconciliationOutput(missingContributor, "run_exact", sources), false);
+  const badAnchor = structuredClone(exactOutput);
+  badAnchor.timeline.clock_anchor.source_report_id = `rpt_${"d".repeat(32)}`;
+  assert.equal(validateReconciliationOutput(badAnchor, "run_exact", sources), false);
 
   for (const rdpsStatus of [undefined, "", " "]) {
     assert.equal(validateReconciliationOutput({ ...output, rdps_status: rdpsStatus }, "run_exact", sources), false);
