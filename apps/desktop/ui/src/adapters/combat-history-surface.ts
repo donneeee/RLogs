@@ -3497,7 +3497,7 @@ function recordedEventLanes(
     for (const { death, precision } of deaths) {
       const marker = historyDeathMarker(
         xFor(death.at_micros), y,
-        historyDeathSummary(actorLabel(actor), death, precision, durationMicros),
+        historyDeathSummary(actorLabel(actor), death, localizer, precision, durationMicros),
         color, false,
       );
       deathMarkers.push(marker);
@@ -3720,7 +3720,7 @@ function partyLineChart(
       svg.append(historyDeathMarker(
         xFor(second),
         yFor(value),
-        historyDeathSummary(actorLabel(entry.actor), death, precision, durationMicros),
+        historyDeathSummary(actorLabel(entry.actor), death, localizer, precision, durationMicros),
         entry.color,
       ));
     }
@@ -3916,33 +3916,66 @@ export function wireHistoryDeathSummaries(
 export function historyDeathSummary(
   actorName: string,
   death: HistoryDeathEvent,
+  localizer: UiLocalizer,
   precision: "exact_microsecond" | "one_second_bucket" = "exact_microsecond",
   durationMicros = death.at_micros + 1_000_000,
 ): string {
   const occurrence = precision === "one_second_bucket"
-    ? `${actorName} death observed in the ${formatExactGraphTime(death.at_micros)}–${formatExactGraphTime(
-      Math.min(Math.max(death.at_micros, durationMicros), death.at_micros + 1_000_000),
-    )} one-second bucket`
-    : `${actorName} died at ${formatExactGraphTime(death.at_micros)}`;
-  if (!death.cause) return `${occurrence}; cause unavailable.`;
-  const final = historyDeathHitSummary(death.cause.final_hit);
+    ? localizer.t("ui.combat_history.death.bucket", {
+      actor: actorName,
+      start: formatExactGraphTime(death.at_micros),
+      end: formatExactGraphTime(
+        Math.min(Math.max(death.at_micros, durationMicros), death.at_micros + 1_000_000),
+      ),
+    })
+    : localizer.t("ui.combat_history.death.exact", {
+      actor: actorName,
+      time: formatExactGraphTime(death.at_micros),
+    });
+  if (!death.cause) {
+    return localizer.t("ui.combat_history.death.cause_unavailable", { occurrence });
+  }
+  const final = historyDeathHitSummary(death.cause.final_hit, localizer);
   const recent = death.cause.prior_hits.length === 0
-    ? "No earlier hits in the two-second replay."
-    : `${death.cause.prior_hits.length} earlier hit${death.cause.prior_hits.length === 1 ? "" : "s"} in the two-second replay.`;
-  const truncated = death.cause.prior_hits_truncated ? " Earlier hits were truncated." : "";
-  return `${occurrence}. Final hit: ${final} ${recent}${truncated}`;
+    ? localizer.t("ui.combat_history.death.no_earlier_hits")
+    : localizer.t(
+      death.cause.prior_hits.length === 1
+        ? "ui.combat_history.death.one_earlier_hit"
+        : "ui.combat_history.death.earlier_hits",
+      { count: localizer.formatNumber(death.cause.prior_hits.length) },
+    );
+  const truncated = death.cause.prior_hits_truncated
+    ? localizer.t("ui.combat_history.death.earlier_hits_truncated")
+    : "";
+  return localizer.t("ui.combat_history.death.with_cause", { occurrence, final, recent, truncated });
 }
 
-function historyDeathHitSummary(hit: HistoryDeathHit): string {
-  const source = hit.source_presentation?.name?.trim() || `Actor ${hit.source_actor_id}`;
+function historyDeathHitSummary(hit: HistoryDeathHit, localizer: UiLocalizer): string {
+  const source = hit.source_presentation?.name?.trim() ||
+    localizer.t("ui.combat_history.death.actor_fallback", { id: hit.source_actor_id });
   const abilityId = hit.ability_presentation?.ability_id ??
     hit.breakdown_ability_id ?? hit.ability_id;
   const ability = hit.ability_presentation?.name?.trim() ||
-    (abilityId ? `Ability ${abilityId}` : "Unknown ability");
+    (abilityId
+      ? localizer.t("ui.combat_history.death.ability_fallback", { id: abilityId })
+      : localizer.t("ui.combat_history.death.unknown_ability"));
   const direct = hit.direct_source_actor_id
-    ? `; direct source ${hit.direct_source_presentation?.name?.trim() || `Actor ${hit.direct_source_actor_id}`} [actor ${hit.direct_source_actor_id}]`
+    ? localizer.t("ui.combat_history.death.direct_source", {
+      source: hit.direct_source_presentation?.name?.trim() ||
+        localizer.t("ui.combat_history.death.actor_fallback", { id: hit.direct_source_actor_id }),
+      actor_id: hit.direct_source_actor_id,
+    })
     : "";
-  return `${ability} [ability ${abilityId ?? "unknown"}] by ${source} [actor ${hit.source_actor_id}]${direct}; ${INTEGER.format(hit.reported_damage)} damage, ${INTEGER.format(hit.effective_damage)} effective${hit.critical ? ", critical" : ""}.`;
+  return localizer.t("ui.combat_history.death.hit", {
+    ability,
+    ability_id: abilityId ?? localizer.t("ui.combat_history.death.unknown_id"),
+    source,
+    source_actor_id: hit.source_actor_id,
+    direct,
+    reported: localizer.formatNumber(hit.reported_damage, { maximumFractionDigits: 0 }),
+    effective: localizer.formatNumber(hit.effective_damage, { maximumFractionDigits: 0 }),
+    critical: hit.critical ? localizer.t("ui.combat_history.death.critical") : "",
+  });
 }
 
 function formatExactGraphTime(micros: number): string {

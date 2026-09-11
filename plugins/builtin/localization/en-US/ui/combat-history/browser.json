@@ -218,6 +218,21 @@
     "ui.combat_history.graph.recorded_events_aria": "Exact recorded skill starts and deaths by player",
     "ui.combat_history.graph.ability_fallback": "Ability {id}",
     "ui.combat_history.graph.skill_event": "{actor} used {ability} at {time}",
-    "ui.combat_history.graph.skill_event_cluster": "{actor}: {count} recorded skill starts from {start} to {end} ({abilities})"
+    "ui.combat_history.graph.skill_event_cluster": "{actor}: {count} recorded skill starts from {start} to {end} ({abilities})",
+    "ui.combat_history.death.exact": "{actor} died at {time}",
+    "ui.combat_history.death.bucket": "{actor} death observed in the {start}–{end} one-second bucket",
+    "ui.combat_history.death.cause_unavailable": "{occurrence}; cause unavailable.",
+    "ui.combat_history.death.with_cause": "{occurrence}. Final hit: {final} {recent}{truncated}",
+    "ui.combat_history.death.no_earlier_hits": "No earlier hits in the two-second replay.",
+    "ui.combat_history.death.one_earlier_hit": "1 earlier hit in the two-second replay.",
+    "ui.combat_history.death.earlier_hits": "{count} earlier hits in the two-second replay.",
+    "ui.combat_history.death.earlier_hits_truncated": " Earlier hits were truncated.",
+    "ui.combat_history.death.actor_fallback": "Actor {id}",
+    "ui.combat_history.death.ability_fallback": "Ability {id}",
+    "ui.combat_history.death.unknown_ability": "Unknown ability",
+    "ui.combat_history.death.unknown_id": "unknown",
+    "ui.combat_history.death.direct_source": "; direct source {source} [actor {actor_id}]",
+    "ui.combat_history.death.hit": "{ability} [ability {ability_id}] by {source} [actor {source_actor_id}]{direct}; {reported} damage, {effective} effective{critical}.",
+    "ui.combat_history.death.critical": ", critical"
   }
 }

@@ -42,8 +42,9 @@ describe("Combat History death presentation", () => {
     },
   });
 
-  it("exposes localized cause plus raw IDs to hover and keyboard focus", () => {
-    const summary = historyDeathSummary("Alice", death());
+  it("exposes localized cause plus raw IDs to hover and keyboard focus", async () => {
+    const ui = await loadUiLocalizer("en-US");
+    const summary = historyDeathSummary("Alice", death(), ui);
     const marker = historyDeathMarker(10, 20, summary, "#35c2ff");
 
     expect(summary).toContain("Alice died at 0:03.500");
@@ -177,8 +178,9 @@ describe("Combat History death presentation", () => {
       .toContain("Powerdraw, Volley");
   });
 
-  it("shows the same cause summary on pointer hover and keyboard focus", () => {
-    const summary = historyDeathSummary("Alice", death());
+  it("shows the same cause summary on pointer hover and keyboard focus", async () => {
+    const ui = await loadUiLocalizer("en-US");
+    const summary = historyDeathSummary("Alice", death(), ui);
     const marker = historyDeathMarker(10, 20, summary, "#35c2ff");
     const preview = document.createElement("div");
     preview.id = "death-summary";
@@ -200,26 +202,42 @@ describe("Combat History death presentation", () => {
     expect(marker.hasAttribute("aria-describedby")).toBe(false);
   });
 
-  it("keeps malicious presentation text inert", () => {
+  it("keeps malicious presentation text inert", async () => {
+    const ui = await loadUiLocalizer("en-US");
     const event = death();
     event.cause!.final_hit.source_presentation!.name = "Boss <script>bad()</script>";
-    const marker = historyDeathMarker(10, 20, historyDeathSummary("Alice", event));
+    const marker = historyDeathMarker(10, 20, historyDeathSummary("Alice", event, ui));
 
     expect(marker.querySelector("script")).toBeNull();
     expect(marker.querySelector("title")?.textContent).toContain("<script>bad()</script>");
   });
 
-  it("retains a useful fallback when exact cause is unavailable", () => {
-    expect(historyDeathSummary("Alice", { at_micros: 3_000_000, cause: null }))
+  it("retains a useful fallback when exact cause is unavailable", async () => {
+    const ui = await loadUiLocalizer("en-US");
+    expect(historyDeathSummary("Alice", { at_micros: 3_000_000, cause: null }, ui))
       .toBe("Alice died at 0:03.000; cause unavailable.");
   });
 
-  it("preserves capped half-open timing for legacy one-second observations", () => {
+  it("preserves capped half-open timing for legacy one-second observations", async () => {
+    const ui = await loadUiLocalizer("en-US");
     expect(historyDeathSummary(
       "Alice",
       { at_micros: 3_000_000, cause: null },
+      ui,
       "one_second_bucket",
       3_500_000,
     )).toBe("Alice death observed in the 0:03.000–0:03.500 one-second bucket; cause unavailable.");
+  });
+
+  it("falls back to shipped English prose while preserving requested-locale number formatting", async () => {
+    const ui = await loadUiLocalizer("de-DE");
+    const event = death();
+    event.cause!.final_hit.reported_damage = 1_234;
+    event.cause!.final_hit.effective_damage = 1_200;
+
+    expect(ui.loadedLocales).toEqual(["en-US"]);
+    expect(historyDeathSummary("Alice", event, ui)).toContain(
+      "1.234 damage, 1.200 effective, critical.",
+    );
   });
 });
