@@ -626,6 +626,14 @@ pub fn localized_combat_action_name(
     {
         return Ok(Some(reviewed.actions[index].1.as_str()));
     }
+    // The generated locale catalogs deliberately retain the source-table
+    // design string when a shipped localization row is absent. That keeps the
+    // numeric row inspectable, but a Chinese design-time label must not be
+    // exposed as an English localization. Fail closed until a reviewed English
+    // identity is added; callers will retain the exact numeric ability ID.
+    if locale.locale == "en-US" && !direct_action_has_user_facing_english(ability_id)? {
+        return Ok(None);
+    }
     Ok(direct_name)
 }
 
@@ -775,6 +783,46 @@ mod tests {
                 .unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn unresolved_observed_actions_do_not_claim_design_strings_as_english() {
+        const OBSERVED_GAPS: &[i64] = &[2_212, 700_009, 873_204, 873_205, 1_009_702, 3_054_412];
+
+        for ability_id in OBSERVED_GAPS {
+            assert!(
+                combat_action_presentation(*ability_id).unwrap().is_some(),
+                "observed action {ability_id} lost its exact numeric presentation row"
+            );
+            for (build, digest) in [
+                ("24687926", DIGEST),
+                ("24699999", "sha256:different-compatible-build"),
+            ] {
+                assert_eq!(
+                    localized_combat_action_name_for_identity(
+                        "global",
+                        build,
+                        digest,
+                        *ability_id,
+                        "en-US",
+                    )
+                    .unwrap(),
+                    None,
+                    "observed action {ability_id} invented an English identity on build {build}"
+                );
+            }
+        }
+
+        // These source-table identities are valid native inspection evidence;
+        // only their unsupported English presentation is suppressed.
+        for ability_id in [2_212, 700_009, 1_009_702] {
+            assert!(
+                localized_combat_action_name(ability_id, "zh-CN")
+                    .unwrap()
+                    .is_some(),
+                "observed action {ability_id} lost its native source identity"
+            );
+        }
     }
 
     #[test]
