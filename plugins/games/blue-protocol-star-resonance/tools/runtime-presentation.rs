@@ -468,8 +468,12 @@ fn load_reviewed_combat_actions(
     let mut keys = BTreeMap::new();
     let mut presentation = BTreeMap::new();
     for source_path in json_files(source_root)? {
-        let source: ReviewedCombatActionSourceCatalog =
-            serde_json::from_slice(&fs::read(&source_path)?)?;
+        let source_bytes = fs::read(&source_path)?;
+        let source_value: serde_json::Value = serde_json::from_slice(&source_bytes)?;
+        if source_value.get("actions").is_none() {
+            continue;
+        }
+        let source: ReviewedCombatActionSourceCatalog = serde_json::from_value(source_value)?;
         if source.schema_version != SCHEMA_VERSION || source.game_build.trim().is_empty() {
             return Err(format!(
                 "unsupported reviewed combat-action source catalog in {}",

@@ -321,6 +321,134 @@
       "icon": null,
       "relation": "SeasonPhantomFactors links observed buff 3054440 and damage row 2305444006 to Shield Knight Reality Factor X5",
       "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 1222,
+      "kind": "base-skill",
+      "localization_key": "skill.1222.name",
+      "icon": "icons/combat/textures/mainui/skill/parkour_icon_skill_1.png",
+      "relation": "Current-build SkillTable provides the exact observed action and official Phantom Dash localization key",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 1223,
+      "kind": "base-skill",
+      "localization_key": "skill.1223.name",
+      "icon": null,
+      "relation": "Current-build SkillTable provides the exact observed action and official Phantom Dash localization key",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 1701,
+      "kind": "base-skill",
+      "localization_key": "skill.1701.name",
+      "icon": null,
+      "relation": "Current-build SkillTable provides the exact observed action and official Judgment Cut localization key",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 1901,
+      "kind": "base-skill",
+      "localization_key": "skill.1901.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr_skill_atk.png",
+      "relation": "Current-build SkillTable provides the exact observed action and official Halberd's Edge localization key",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2002,
+      "kind": "base-skill",
+      "localization_key": "skill.2002.name",
+      "icon": null,
+      "relation": "Current-build SkillTable provides the exact observed action and official Universal Recovery Skill localization key",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2201,
+      "kind": "base-skill",
+      "localization_key": "skill.2201.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Current-build SkillTable provides the exact observed action and official Bullseye localization key",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2209,
+      "kind": "base-skill",
+      "localization_key": "skill.2209.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_ult.png",
+      "relation": "Current-build SkillTable provides the exact observed action and official Luminary Bolt localization key",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2222,
+      "kind": "base-skill",
+      "localization_key": "skill.2222.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_tg02.png",
+      "relation": "Current-build SkillTable provides the exact observed action and official Double Arrow localization key",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2224,
+      "kind": "base-skill",
+      "localization_key": "skill.2224.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_tg03.png",
+      "relation": "Current-build SkillTable provides the exact observed action and official Lethal Shot localization key",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2231,
+      "kind": "base-skill",
+      "localization_key": "skill.2231.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_kx02.png",
+      "relation": "Current-build SkillTable provides the exact observed action and official Focus localization key",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2234,
+      "kind": "base-skill",
+      "localization_key": "skill.2234.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_kx04.png",
+      "relation": "Current-build SkillTable provides the exact observed action and official Radiance Barrage localization key",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2235,
+      "kind": "base-skill",
+      "localization_key": "skill.2235.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_kx06.png",
+      "relation": "Current-build SkillTable provides the exact observed action and official Deter Shot localization key",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2238,
+      "kind": "base-skill",
+      "localization_key": "skill.2238.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_kx08.png",
+      "relation": "Current-build SkillTable provides the exact observed action and official Blast Shot localization key",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2332,
+      "kind": "base-skill",
+      "localization_key": "skill.2332.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_tf03_01.png",
+      "relation": "Current-build SkillTable provides the exact observed action and official Passion Fury localization key",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2406,
+      "kind": "base-skill",
+      "localization_key": "skill.2406.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_tg02.png",
+      "relation": "Current-build SkillTable provides the exact observed action and official Vanguard Strike localization key",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2453,
+      "kind": "base-skill",
+      "localization_key": "skill.2453.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_kx09.png",
+      "relation": "Current-build SkillTable provides the exact observed action and official Sacred Blade localization key",
+      "review_state": "verified-current-build"
     }
   ]
 }

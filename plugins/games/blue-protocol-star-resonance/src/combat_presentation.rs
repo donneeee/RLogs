@@ -1249,6 +1249,40 @@ mod tests {
     }
 
     #[test]
+    fn direct_current_build_skilltable_actions_keep_their_reviewed_english_names() {
+        for (ability_id, expected) in [
+            (1222, "Phantom Dash"),
+            (1223, "Phantom Dash"),
+            (1701, "Judgment Cut"),
+            (1901, "Halberd's Edge"),
+            (2002, "Universal Recovery Skill"),
+            (2201, "Bullseye"),
+            (2209, "Luminary Bolt"),
+            (2222, "Double Arrow"),
+            (2224, "Lethal Shot"),
+            (2231, "Focus"),
+            (2234, "Radiance Barrage"),
+            (2235, "Deter Shot"),
+            (2238, "Blast Shot"),
+            (2332, "Passion Fury"),
+            (2406, "Vanguard Strike"),
+            (2453, "Sacred Blade"),
+        ] {
+            let presentation = combat_action_presentation(ability_id)
+                .unwrap()
+                .unwrap_or_else(|| panic!("reviewed action {ability_id} is absent"));
+            assert_eq!(presentation.resolution, "localized");
+            assert_eq!(
+                localized_combat_action_name(ability_id, "en-US")
+                    .unwrap()
+                    .as_deref(),
+                Some(expected),
+                "reviewed action {ability_id} changed identity"
+            );
+        }
+    }
+
+    #[test]
     fn current_build_observed_presentation_coverage_gate_is_exhaustive() {
         use std::collections::{BTreeMap, BTreeSet};
 
