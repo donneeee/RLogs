@@ -63,6 +63,9 @@ struct FanInState {
     next_sequence: u64,
     next_source_id: u32,
     last_observed_micros: u64,
+    registration_open: bool,
+    #[cfg(test)]
+    waiting_consumers: usize,
     metrics: MultiSourceFanInMetrics,
 }
 
@@ -74,6 +77,7 @@ struct SharedFanIn {
     queue_capacity: usize,
     max_queue_bytes: usize,
     max_sources: usize,
+    leased_registration: bool,
 }
 
 /// Private raw-frame fan-in intended to sit beneath one shared signature
@@ -86,11 +90,51 @@ pub(crate) struct MultiSourceFanIn {
 }
 
 impl MultiSourceFanIn {
+    #[allow(
+        dead_code,
+        reason = "legacy static construction remains available while Windows uses the leased lifecycle"
+    )]
     pub(crate) fn new(
         max_sources: usize,
         queue_capacity: usize,
         max_queue_bytes: usize,
         link_types: Vec<CaptureLinkType>,
+    ) -> Result<Self, CaptureError> {
+        Self::build(
+            max_sources,
+            queue_capacity,
+            max_queue_bytes,
+            link_types,
+            false,
+        )
+    }
+
+    pub(crate) fn new_with_registration_lease(
+        max_sources: usize,
+        queue_capacity: usize,
+        max_queue_bytes: usize,
+        link_types: Vec<CaptureLinkType>,
+    ) -> Result<(Self, MultiSourceRegistrationLease), CaptureError> {
+        let source = Self::build(
+            max_sources,
+            queue_capacity,
+            max_queue_bytes,
+            link_types,
+            true,
+        )?;
+        let lease = MultiSourceRegistrationLease {
+            shared: Arc::clone(&source.shared),
+            closed: false,
+        };
+        Ok((source, lease))
+    }
+
+    fn build(
+        max_sources: usize,
+        queue_capacity: usize,
+        max_queue_bytes: usize,
+        link_types: Vec<CaptureLinkType>,
+        leased_registration: bool,
     ) -> Result<Self, CaptureError> {
         if max_sources == 0 {
             return Err(configuration_error(
@@ -133,6 +177,9 @@ impl MultiSourceFanIn {
                     next_sequence: 1,
                     next_source_id: 0,
                     last_observed_micros: 0,
+                    registration_open: leased_registration,
+                    #[cfg(test)]
+                    waiting_consumers: 0,
                     metrics: MultiSourceFanInMetrics::default(),
                 }),
                 changed: Condvar::new(),
@@ -140,6 +187,7 @@ impl MultiSourceFanIn {
                 queue_capacity,
                 max_queue_bytes,
                 max_sources,
+                leased_registration,
             }),
             metadata: CaptureSourceMetadata {
                 source_id: "private-multi-source-fan-in".into(),
@@ -151,30 +199,12 @@ impl MultiSourceFanIn {
         })
     }
 
+    #[allow(
+        dead_code,
+        reason = "legacy static registration remains available beside the coordinator lease"
+    )]
     pub(crate) fn register_source(&self) -> Result<MultiSourceIngress, MultiSourceRegisterError> {
-        let mut state = self
-            .shared
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if state.stopped || state.terminated {
-            return Err(MultiSourceRegisterError::Stopped);
-        }
-        if state.metrics.active_sources >= self.shared.max_sources {
-            return Err(MultiSourceRegisterError::MaximumSources);
-        }
-        let source_id = state.next_source_id;
-        state.next_source_id = state
-            .next_source_id
-            .checked_add(1)
-            .ok_or(MultiSourceRegisterError::SourceIdentityExhausted)?;
-        state.metrics.registered_sources = state.metrics.registered_sources.saturating_add(1);
-        state.metrics.active_sources += 1;
-        Ok(MultiSourceIngress {
-            shared: Arc::clone(&self.shared),
-            source_id,
-            finished: false,
-        })
+        register_source(&self.shared)
     }
 
     pub(crate) fn stop_handle(&self) -> MultiSourceFanInStopHandle {
@@ -218,8 +248,18 @@ impl CaptureSource for MultiSourceFanIn {
                 state.terminated = true;
                 return Ok(None);
             }
-            if state.metrics.registered_sources > 0 && state.metrics.active_sources == 0 {
+            let registration_closed = !self.shared.leased_registration || !state.registration_open;
+            if registration_closed
+                && state.metrics.active_sources == 0
+                && (state.metrics.registered_sources > 0 || self.shared.leased_registration)
+            {
                 state.terminated = true;
+                if state.metrics.registered_sources == 0 {
+                    return Err(CaptureError::Adapter {
+                        adapter: "private-multi-source-fan-in".into(),
+                        message: "capture source registration closed without any sources".into(),
+                    });
+                }
                 if state.metrics.failed_sources == state.metrics.registered_sources {
                     return Err(CaptureError::Adapter {
                         adapter: "private-multi-source-fan-in".into(),
@@ -231,11 +271,20 @@ impl CaptureSource for MultiSourceFanIn {
                 }
                 return Ok(None);
             }
+            #[cfg(test)]
+            {
+                state.waiting_consumers += 1;
+                self.shared.changed.notify_all();
+            }
             state = self
                 .shared
                 .changed
                 .wait(state)
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
+            #[cfg(test)]
+            {
+                state.waiting_consumers = state.waiting_consumers.saturating_sub(1);
+            }
         }
     }
 }
@@ -244,6 +293,86 @@ impl Drop for MultiSourceFanIn {
     fn drop(&mut self) {
         self.stop_handle().request_stop();
     }
+}
+
+#[derive(Debug)]
+pub(crate) struct MultiSourceRegistrationLease {
+    shared: Arc<SharedFanIn>,
+    closed: bool,
+}
+
+impl MultiSourceRegistrationLease {
+    pub(crate) fn register_source(&self) -> Result<MultiSourceIngress, MultiSourceRegisterError> {
+        register_source(&self.shared)
+    }
+
+    pub(crate) fn close(mut self) {
+        self.close_inner();
+    }
+
+    #[cfg(test)]
+    fn wait_until_consumer_is_blocked(&self) {
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        while state.waiting_consumers == 0 {
+            state = self
+                .shared
+                .changed
+                .wait(state)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+    }
+
+    fn close_inner(&mut self) {
+        if self.closed {
+            return;
+        }
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.closed = true;
+        state.registration_open = false;
+        self.shared.changed.notify_all();
+    }
+}
+
+impl Drop for MultiSourceRegistrationLease {
+    fn drop(&mut self) {
+        self.close_inner();
+    }
+}
+
+fn register_source(
+    shared: &Arc<SharedFanIn>,
+) -> Result<MultiSourceIngress, MultiSourceRegisterError> {
+    let mut state = shared
+        .state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if state.stopped || state.terminated || (shared.leased_registration && !state.registration_open)
+    {
+        return Err(MultiSourceRegisterError::Stopped);
+    }
+    if state.metrics.active_sources >= shared.max_sources {
+        return Err(MultiSourceRegisterError::MaximumSources);
+    }
+    let source_id = state.next_source_id;
+    state.next_source_id = state
+        .next_source_id
+        .checked_add(1)
+        .ok_or(MultiSourceRegisterError::SourceIdentityExhausted)?;
+    state.metrics.registered_sources = state.metrics.registered_sources.saturating_add(1);
+    state.metrics.active_sources += 1;
+    Ok(MultiSourceIngress {
+        shared: Arc::clone(shared),
+        source_id,
+        finished: false,
+    })
 }
 
 #[derive(Debug)]
@@ -379,6 +508,7 @@ impl MultiSourceFanInStopHandle {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         state.stopped = true;
+        state.registration_open = false;
         self.shared.changed.notify_all();
     }
 }
@@ -392,6 +522,8 @@ fn configuration_error(message: impl Into<String>) -> CaptureError {
 
 #[cfg(test)]
 mod tests {
+    use std::{sync::mpsc, thread, time::Duration};
+
     use bytes::Bytes;
 
     use super::*;
@@ -559,6 +691,121 @@ mod tests {
                 .contains("all 2 registered capture sources failed")
         );
         assert_eq!(fan_in.next_frame().unwrap(), None);
+    }
+
+    #[test]
+    fn registration_lease_keeps_temporary_zero_reader_gap_alive() {
+        let (mut fan_in, lease) = MultiSourceFanIn::new_with_registration_lease(
+            2,
+            2,
+            1_024,
+            vec![CaptureLinkType::Ethernet],
+        )
+        .unwrap();
+        let mut first = lease.register_source().unwrap();
+        first.finish();
+        let (results, received) = mpsc::sync_channel(2);
+        let consumer = thread::spawn(move || {
+            results.send(fan_in.next_frame()).unwrap();
+            results.send(fan_in.next_frame()).unwrap();
+        });
+
+        lease.wait_until_consumer_is_blocked();
+        assert!(matches!(
+            received.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+        let mut replacement = lease.register_source().unwrap();
+        replacement.try_push(frame(1, 1, 8)).unwrap();
+        replacement.finish();
+        assert_eq!(
+            received
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap()
+                .unwrap()
+                .unwrap()
+                .bytes[0],
+            8
+        );
+        lease.wait_until_consumer_is_blocked();
+        assert!(matches!(
+            received.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+        lease.close();
+        assert_eq!(
+            received
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap()
+                .unwrap(),
+            None
+        );
+        consumer.join().unwrap();
+    }
+
+    #[test]
+    fn closing_registration_drains_then_preserves_all_failed_error() {
+        let (mut fan_in, lease) = MultiSourceFanIn::new_with_registration_lease(
+            2,
+            2,
+            1_024,
+            vec![CaptureLinkType::Ethernet],
+        )
+        .unwrap();
+        let mut first = lease.register_source().unwrap();
+        let mut second = lease.register_source().unwrap();
+        first.try_push(frame(1, 1, 9)).unwrap();
+        first.fail();
+        second.fail();
+        lease.close();
+
+        assert_eq!(fan_in.next_frame().unwrap().unwrap().bytes[0], 9);
+        assert!(
+            fan_in
+                .next_frame()
+                .unwrap_err()
+                .to_string()
+                .contains("all 2 registered capture sources failed")
+        );
+        assert_eq!(fan_in.next_frame().unwrap(), None);
+    }
+
+    #[test]
+    fn closing_unused_registration_returns_one_terminal_error() {
+        let (mut fan_in, lease) = MultiSourceFanIn::new_with_registration_lease(
+            1,
+            1,
+            1_024,
+            vec![CaptureLinkType::Ethernet],
+        )
+        .unwrap();
+        lease.close();
+
+        assert!(
+            fan_in
+                .next_frame()
+                .unwrap_err()
+                .to_string()
+                .contains("registration closed without any sources")
+        );
+        assert_eq!(fan_in.next_frame().unwrap(), None);
+    }
+
+    #[test]
+    fn user_stop_closes_registration_and_refuses_late_reader_race() {
+        let (fan_in, lease) = MultiSourceFanIn::new_with_registration_lease(
+            1,
+            1,
+            1_024,
+            vec![CaptureLinkType::Ethernet],
+        )
+        .unwrap();
+        fan_in.stop_handle().request_stop();
+
+        assert_eq!(
+            lease.register_source().unwrap_err(),
+            MultiSourceRegisterError::Stopped
+        );
     }
 
     #[test]

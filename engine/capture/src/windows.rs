@@ -5,7 +5,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     panic::{AssertUnwindSafe, catch_unwind},
     ptr, slice,
-    sync::Once,
+    sync::{Arc, Mutex, Once},
     thread::{self, JoinHandle},
     time::Duration,
 };
@@ -31,7 +31,7 @@ use windows_sys::Win32::{
 use crate::dumpcap::DumpcapLiveCapture;
 use crate::fan_in::{
     MultiSourceFanIn, MultiSourceFanInMetrics, MultiSourceFanInStopHandle, MultiSourceIngress,
-    MultiSourcePushError,
+    MultiSourcePushError, MultiSourceRegistrationLease,
 };
 use crate::npcap::NpcapLiveCapture;
 use crate::{
@@ -875,7 +875,7 @@ pub struct WindowsSignatureFanInDiagnostics {
 #[derive(Debug, Clone)]
 pub struct WindowsSignatureFanInStopHandle {
     fan_in: MultiSourceFanInStopHandle,
-    children: Vec<NpcapLiveStopHandle>,
+    children: Arc<DynamicChildStopRegistry<NpcapLiveStopHandle>>,
 }
 
 impl WindowsSignatureFanInStopHandle {
@@ -884,7 +884,7 @@ impl WindowsSignatureFanInStopHandle {
     }
 }
 
-trait FanInChildStop: Send + 'static {
+trait FanInChildStop: Clone + Send + 'static {
     fn request_child_stop(&self);
 }
 
@@ -894,12 +894,65 @@ impl FanInChildStop for NpcapLiveStopHandle {
     }
 }
 
-fn request_fan_in_stop<S: FanInChildStop>(fan_in: &MultiSourceFanInStopHandle, children: &[S]) {
+#[derive(Debug)]
+struct DynamicChildStopRegistry<S> {
+    inner: Mutex<DynamicChildStopState<S>>,
+    max_children: usize,
+}
+
+#[derive(Debug)]
+struct DynamicChildStopState<S> {
+    stopped: bool,
+    children: Vec<S>,
+}
+
+impl<S: FanInChildStop> DynamicChildStopRegistry<S> {
+    fn new(max_children: usize) -> Self {
+        Self {
+            inner: Mutex::new(DynamicChildStopState {
+                stopped: false,
+                children: Vec::new(),
+            }),
+            max_children,
+        }
+    }
+
+    fn register(&self, child: S) -> Result<(), ()> {
+        let mut state = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.stopped || state.children.len() >= self.max_children {
+            drop(state);
+            child.request_child_stop();
+            return Err(());
+        }
+        state.children.push(child);
+        Ok(())
+    }
+
+    fn request_stop(&self) {
+        let children = {
+            let mut state = self
+                .inner
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            state.stopped = true;
+            state.children.to_vec()
+        };
+        for child in children {
+            child.request_child_stop();
+        }
+    }
+}
+
+fn request_fan_in_stop<S: FanInChildStop>(
+    fan_in: &MultiSourceFanInStopHandle,
+    children: &DynamicChildStopRegistry<S>,
+) {
     // Refuse queue writes and registrations before waking native readers.
     fan_in.request_stop();
-    for child in children {
-        child.request_child_stop();
-    }
+    children.request_stop();
 }
 
 /// Initial bounded Windows adapter fan-in protected by exactly one shared
@@ -956,7 +1009,7 @@ struct StartedFanInSources<S> {
 fn start_fan_in_sources<O: FanInCandidateOpener>(
     candidates: &[WindowsCaptureCandidate],
     duration_seconds: u32,
-    filtered: &SignatureFlowCapture<MultiSourceFanIn>,
+    registration: &MultiSourceRegistrationLease,
     opener: &mut O,
 ) -> Result<StartedFanInSources<O::Stop>, CaptureError> {
     install_capture_reader_panic_hook();
@@ -978,14 +1031,12 @@ fn start_fan_in_sources<O: FanInCandidateOpener>(
                 continue;
             }
         };
-        let ingress =
-            filtered
-                .source()
-                .register_source()
-                .map_err(|error| CaptureError::Adapter {
-                    adapter: "windows-signature-fan-in".into(),
-                    message: format!("could not register a bounded Npcap candidate: {error}"),
-                })?;
+        let ingress = registration
+            .register_source()
+            .map_err(|error| CaptureError::Adapter {
+                adapter: "windows-signature-fan-in".into(),
+                message: format!("could not register a bounded Npcap candidate: {error}"),
+            })?;
         match thread::Builder::new()
             .name(format!("{CAPTURE_READER_THREAD_PREFIX}{index}"))
             .spawn(move || run_fan_in_source_guarded(source, ingress))
@@ -1019,7 +1070,7 @@ impl WindowsSignatureFanInCapture {
         signature: TcpPayloadPrefixSignature,
         filter: SignatureFlowCaptureConfig,
     ) -> Result<Self, CaptureError> {
-        let fan_in = MultiSourceFanIn::new(
+        let (fan_in, registration) = MultiSourceFanIn::new_with_registration_lease(
             MAX_WINDOWS_CAPTURE_CANDIDATES,
             WINDOWS_FAN_IN_QUEUE_FRAMES,
             WINDOWS_FAN_IN_QUEUE_BYTES,
@@ -1032,9 +1083,12 @@ impl WindowsSignatureFanInCapture {
         let started = start_fan_in_sources(
             candidates,
             duration_seconds,
-            &inner,
+            &registration,
             &mut NpcapCandidateOpener,
         )?;
+        // This initial-only runtime has no coordinator yet, so seal dynamic
+        // registration immediately after the bounded candidate set starts.
+        registration.close();
 
         if started.workers.is_empty() {
             aggregate_stop.request_stop();
@@ -1046,11 +1100,22 @@ impl WindowsSignatureFanInCapture {
                 }));
         }
         let opened_candidates = started.workers.len();
+        let children = Arc::new(DynamicChildStopRegistry::new(
+            MAX_WINDOWS_CAPTURE_CANDIDATES,
+        ));
+        for child in started.stops {
+            children
+                .register(child)
+                .map_err(|()| CaptureError::Adapter {
+                    adapter: "windows-signature-fan-in".into(),
+                    message: "could not retain a bounded Npcap stop handle".into(),
+                })?;
+        }
         Ok(Self {
             inner,
             stop: WindowsSignatureFanInStopHandle {
                 fan_in: aggregate_stop,
-                children: started.stops,
+                children,
             },
             workers: started.workers,
             planned_candidates: candidates.len().min(MAX_WINDOWS_CAPTURE_CANDIDATES),
@@ -1884,15 +1949,17 @@ mod tests {
             candidate("FAIL-D"),
             candidate("NEVER-OPENED"),
         ];
-        let fan_in = MultiSourceFanIn::new(4, 8, 4_096, Vec::new()).unwrap();
-        let filtered = SignatureFlowCapture::new_prefix(
+        let (fan_in, registration) =
+            MultiSourceFanIn::new_with_registration_lease(4, 8, 4_096, Vec::new()).unwrap();
+        let _filtered = SignatureFlowCapture::new_prefix(
             fan_in,
             prefix_signature,
             SignatureFlowCaptureConfig::default(),
         )
         .unwrap();
         let mut opener = FixtureOpener::default();
-        let started = start_fan_in_sources(&candidates, 30, &filtered, &mut opener).unwrap();
+        let started = start_fan_in_sources(&candidates, 30, &registration, &mut opener).unwrap();
+        registration.close();
 
         for worker in started.workers {
             worker.join().unwrap();
@@ -1937,7 +2004,8 @@ mod tests {
     #[test]
     fn fan_in_candidate_workers_isolate_one_child_read_failure() {
         let candidates = [candidate("RUNTIME-FAIL-A"), candidate("B")];
-        let fan_in = MultiSourceFanIn::new(4, 8, 4_096, Vec::new()).unwrap();
+        let (fan_in, registration) =
+            MultiSourceFanIn::new_with_registration_lease(4, 8, 4_096, Vec::new()).unwrap();
         let filtered = SignatureFlowCapture::new_prefix(
             fan_in,
             prefix_signature,
@@ -1945,7 +2013,8 @@ mod tests {
         )
         .unwrap();
         let mut opener = FixtureOpener::default();
-        let started = start_fan_in_sources(&candidates, 30, &filtered, &mut opener).unwrap();
+        let started = start_fan_in_sources(&candidates, 30, &registration, &mut opener).unwrap();
+        registration.close();
 
         for worker in started.workers {
             worker.join().unwrap();
@@ -1959,7 +2028,8 @@ mod tests {
     #[test]
     fn panicking_worker_is_failed_while_healthy_peer_frames_continue() {
         let candidates = [candidate("PANIC-A"), candidate("HEALTHY-B")];
-        let fan_in = MultiSourceFanIn::new(4, 8, 4_096, Vec::new()).unwrap();
+        let (fan_in, registration) =
+            MultiSourceFanIn::new_with_registration_lease(4, 8, 4_096, Vec::new()).unwrap();
         let mut filtered = SignatureFlowCapture::new_prefix(
             fan_in,
             prefix_signature,
@@ -1967,7 +2037,8 @@ mod tests {
         )
         .unwrap();
         let mut opener = FixtureOpener::default();
-        let started = start_fan_in_sources(&candidates, 30, &filtered, &mut opener).unwrap();
+        let started = start_fan_in_sources(&candidates, 30, &registration, &mut opener).unwrap();
+        registration.close();
 
         assert!(filtered.next_frame().unwrap().is_some());
         assert!(filtered.next_frame().unwrap().is_none());
@@ -2074,7 +2145,8 @@ mod tests {
     #[test]
     fn all_panicking_workers_return_terminal_error_without_panic_details() {
         let candidates = [candidate("PANIC-A"), candidate("PANIC-B")];
-        let fan_in = MultiSourceFanIn::new(4, 8, 4_096, Vec::new()).unwrap();
+        let (fan_in, registration) =
+            MultiSourceFanIn::new_with_registration_lease(4, 8, 4_096, Vec::new()).unwrap();
         let mut filtered = SignatureFlowCapture::new_prefix(
             fan_in,
             prefix_signature,
@@ -2082,7 +2154,8 @@ mod tests {
         )
         .unwrap();
         let mut opener = FixtureOpener::default();
-        let started = start_fan_in_sources(&candidates, 30, &filtered, &mut opener).unwrap();
+        let started = start_fan_in_sources(&candidates, 30, &registration, &mut opener).unwrap();
+        registration.close();
 
         let error = filtered.next_frame().unwrap_err();
         assert!(!error.to_string().contains("private fixture panic payload"));
@@ -2115,12 +2188,36 @@ mod tests {
             Arc::new(AtomicBool::new(false)),
             Arc::new(AtomicBool::new(false)),
         ];
-        let children = flags.iter().cloned().map(FixtureStop).collect::<Vec<_>>();
+        let children = DynamicChildStopRegistry::new(2);
+        for flag in &flags {
+            children.register(FixtureStop(Arc::clone(flag))).unwrap();
+        }
 
         request_fan_in_stop(&aggregate_stop, &children);
 
         assert!(fan_in.register_source().is_err());
         assert!(flags.iter().all(|flag| flag.load(Ordering::SeqCst)));
+    }
+
+    #[test]
+    fn cloned_stop_registry_observes_late_children_and_refuses_after_stop() {
+        let registry = Arc::new(DynamicChildStopRegistry::new(2));
+        let cloned_stop_view = Arc::clone(&registry);
+        let late_flag = Arc::new(AtomicBool::new(false));
+        registry
+            .register(FixtureStop(Arc::clone(&late_flag)))
+            .unwrap();
+
+        cloned_stop_view.request_stop();
+        assert!(late_flag.load(Ordering::SeqCst));
+
+        let refused_flag = Arc::new(AtomicBool::new(false));
+        assert!(
+            registry
+                .register(FixtureStop(Arc::clone(&refused_flag)))
+                .is_err()
+        );
+        assert!(refused_flag.load(Ordering::SeqCst));
     }
 
     #[test]
