@@ -133,6 +133,18 @@ export interface ActorGraphSeries {
   peak: number;
 }
 
+export interface HistoryRateVariants {
+  one: number | null;
+  five: number | null;
+  ten: number | null;
+  cumulative: number | null;
+}
+
+export interface HistoryDamageRateVariants {
+  edps: HistoryRateVariants;
+  adps: HistoryRateVariants;
+}
+
 export type CombatHistoryChangeSubscriber = (
   onChange: (update?: CombatHistoryChangeUpdate) => void,
   onError: (error: unknown) => void,
@@ -3398,7 +3410,6 @@ export function renderMetricGraph(
   const hasHostileCasts = showHostileEvents && (historyView?.hostile_casts?.length ?? 0) > 0;
   const eventLanes = recordedEventLanes(
     visibleEventParticipants,
-    durationSeconds,
     elapsedMicros,
     localizer,
     historyView,
@@ -3444,6 +3455,8 @@ export function renderMetricGraph(
         scaleMaximum,
         targetActorId === null,
         localizer,
+        historyView,
+        targetActorId,
       ),
     );
   } else {
@@ -3484,7 +3497,6 @@ export function renderMetricGraph(
 
 function recordedEventLanes(
   series: readonly Pick<ActorGraphSeries, "actor" | "color">[],
-  durationSeconds: number,
   durationMicros: number,
   localizer: UiLocalizer,
   historyView?: CombatHistoryView,
@@ -3511,7 +3523,8 @@ function recordedEventLanes(
     eventLabels: string[];
   }> = [];
   const xFor = (micros: number) => left +
-    (Math.min(durationSeconds, Math.max(0, micros / 1_000_000)) / durationSeconds) * plotWidth;
+    (Math.min(Math.max(0, durationMicros), Math.max(0, micros)) /
+      Math.max(1, durationMicros)) * plotWidth;
   hostileLanes.forEach(({ sourceActorId, casts }, laneIndex) => {
     const y = laneIndex * laneHeight + laneHeight / 2;
     const sourceActor = historyView?.actors.find((actor) => actor.actor_id === sourceActorId);
@@ -4079,6 +4092,131 @@ export function graphInspectionAtSecond(
   };
 }
 
+function historyGraphMaximumBoundary(durationMicros: number): number {
+  return Math.max(1, Math.ceil(Math.max(0, durationMicros) / 1_000_000));
+}
+
+function historyGraphBoundaryElapsedMicros(durationMicros: number, boundary: number): number {
+  const maximumBoundary = historyGraphMaximumBoundary(durationMicros);
+  const bounded = Math.max(0, Math.min(maximumBoundary, Math.round(boundary)));
+  return bounded === maximumBoundary
+    ? Math.max(0, durationMicros)
+    : Math.min(Math.max(0, durationMicros), bounded * 1_000_000);
+}
+
+function historyGraphClosestBoundary(durationMicros: number, elapsedMicros: number): number {
+  const maximumBoundary = historyGraphMaximumBoundary(durationMicros);
+  const boundedElapsed = Math.max(0, Math.min(Math.max(0, durationMicros), elapsedMicros));
+  const lower = Math.max(0, Math.min(maximumBoundary, Math.floor(boundedElapsed / 1_000_000)));
+  const upper = Math.min(maximumBoundary, lower + 1);
+  const lowerDistance = Math.abs(boundedElapsed - historyGraphBoundaryElapsedMicros(durationMicros, lower));
+  const upperDistance = Math.abs(historyGraphBoundaryElapsedMicros(durationMicros, upper) - boundedElapsed);
+  return upperDistance <= lowerDistance ? upper : lower;
+}
+
+function completeHistoryRateClock(view: CombatHistoryView | undefined): CombatHistoryView["rate_clock"] | null {
+  if (!view?.rate_clock_complete || !view.rate_clock?.length) return null;
+  const maximumBoundary = historyGraphMaximumBoundary(view.elapsed_micros);
+  if (view.rate_clock.length !== maximumBoundary) return null;
+  let priorEdps = 0;
+  let priorAdps = 0;
+  for (const [index, point] of view.rate_clock.entries()) {
+    if (point.second !== index || point.edps_elapsed_micros < priorEdps ||
+        point.adps_elapsed_micros < priorAdps ||
+        point.edps_elapsed_micros - priorEdps > 1_000_000 ||
+        point.adps_elapsed_micros - priorAdps > 1_000_000 ||
+        point.adps_elapsed_micros > point.edps_elapsed_micros) return null;
+    priorEdps = point.edps_elapsed_micros;
+    priorAdps = point.adps_elapsed_micros;
+  }
+  return priorEdps === view.elapsed_micros && priorAdps === view.active_combat_micros
+    ? view.rate_clock : null;
+}
+
+function historyRateClockFieldAtBoundary(
+  rateClock: NonNullable<CombatHistoryView["rate_clock"]>,
+  boundary: number,
+  field: "edps_elapsed_micros" | "adps_elapsed_micros",
+): number | null {
+  if (boundary === 0) return 0;
+  const point = rateClock[boundary - 1];
+  return point?.second === boundary - 1 ? point[field] : null;
+}
+
+function historyFractionalTerminalSplitsWindow(
+  durationMicros: number,
+  boundary: number,
+  maximumBoundary: number,
+  window: number,
+): boolean {
+  return window !== 1 && boundary === maximumBoundary &&
+    durationMicros % 1_000_000 !== 0 && durationMicros > window * 1_000_000;
+}
+
+export function historyDamageRateVariantsAtSecond(
+  actor: HistoryActorSummary,
+  view: CombatHistoryView | undefined,
+  requestedBoundary: number,
+  targetActorId: string | null = null,
+): HistoryDamageRateVariants | null {
+  const rateClock = completeHistoryRateClock(view);
+  if (!view || !rateClock) return null;
+  const maximumBoundary = historyGraphMaximumBoundary(view.elapsed_micros);
+  const boundary = Math.max(0, Math.min(maximumBoundary, Math.round(requestedBoundary)));
+  const points = targetActorId === null
+    ? actor.series
+    : actor.targets.find((target) => target.actor_id === targetActorId)?.series ?? [];
+  const damageByBoundary = new Map<number, number>();
+  for (const point of points) {
+    const sampleBoundary = point.second + 1;
+    if (!Number.isInteger(point.second) || sampleBoundary < 1 || sampleBoundary > maximumBoundary ||
+        damageByBoundary.has(sampleBoundary) || !Number.isFinite(point.damage) || point.damage < 0) return null;
+    damageByBoundary.set(sampleBoundary, point.damage);
+  }
+  const rate = (
+    field: "edps_elapsed_micros" | "adps_elapsed_micros",
+    window: 1 | 5 | 10 | "cumulative",
+  ): number | null => {
+    if (window !== "cumulative" && historyFractionalTerminalSplitsWindow(
+      view.elapsed_micros, boundary, maximumBoundary, window,
+    )) return null;
+    const startBoundary = window === "cumulative" ? 0 : Math.max(0, boundary - window);
+    const started = historyRateClockFieldAtBoundary(rateClock, startBoundary, field);
+    const ended = historyRateClockFieldAtBoundary(rateClock, boundary, field);
+    if (started == null || ended == null || ended <= started) return null;
+    let damage = 0;
+    for (const [sampleBoundary, value] of damageByBoundary) {
+      if (sampleBoundary > startBoundary && sampleBoundary <= boundary) damage += value;
+    }
+    return damage * 1_000_000 / (ended - started);
+  };
+  const variants = (field: "edps_elapsed_micros" | "adps_elapsed_micros"): HistoryRateVariants => ({
+    one: rate(field, 1),
+    five: rate(field, 5),
+    ten: rate(field, 10),
+    cumulative: rate(field, "cumulative"),
+  });
+  return { edps: variants("edps_elapsed_micros"), adps: variants("adps_elapsed_micros") };
+}
+
+export function historyVisibleDamageRateTotal(
+  rows: readonly HistoryDamageRateVariants[],
+): HistoryDamageRateVariants | null {
+  if (!rows.length) return null;
+  const total = (
+    clock: "edps" | "adps",
+    field: keyof HistoryRateVariants,
+  ): number | null => rows.every((row) => row[clock][field] !== null)
+    ? rows.reduce((sum, row) => sum + row[clock][field]!, 0) : null;
+  const variants = (clock: "edps" | "adps"): HistoryRateVariants => ({
+    one: total(clock, "one"),
+    five: total(clock, "five"),
+    ten: total(clock, "ten"),
+    cumulative: total(clock, "cumulative"),
+  });
+  return { edps: variants("edps"), adps: variants("adps") };
+}
+
 function partyLineChart(
   series: ActorGraphSeries[],
   definition: GraphDefinition,
@@ -4087,6 +4225,8 @@ function partyLineChart(
   scaleMaximum: number,
   showDeathMarkers: boolean,
   localizer: UiLocalizer,
+  historyView?: CombatHistoryView,
+  targetActorId: string | null = null,
 ): HTMLElement {
   const width = 1_120;
   const height = 330;
@@ -4097,7 +4237,8 @@ function partyLineChart(
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
   const scale = niceScale(scaleMaximum, 4);
-  const timeTicks = graphTimeTicks(durationSeconds);
+  const exactDurationSeconds = Math.max(0.001, durationMicros / 1_000_000);
+  const timeTicks = graphTimeTicks(exactDurationSeconds);
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.classList.add("combat-history-chart");
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
@@ -4107,13 +4248,16 @@ function partyLineChart(
     localizer.t("ui.combat_history.graph.aria", {
       title: definition.title,
       rate: definition.rateLabel,
-      duration: formatGraphTime(durationSeconds),
+      duration: formatExactGraphTime(durationMicros),
     }),
   );
   svg.tabIndex = 0;
 
-  const xFor = (second: number) =>
-    left + (Math.min(durationSeconds, Math.max(0, second)) / durationSeconds) * plotWidth;
+  const xForElapsed = (second: number) =>
+    left + (Math.min(exactDurationSeconds, Math.max(0, second)) / exactDurationSeconds) * plotWidth;
+  const xForBoundary = (boundary: number) => xForElapsed(
+    historyGraphBoundaryElapsedMicros(durationMicros, boundary) / 1_000_000,
+  );
   const yFor = (value: number) =>
     top + plotHeight - (Math.min(scale.maximum, Math.max(0, value)) / scale.maximum) * plotHeight;
 
@@ -4130,7 +4274,7 @@ function partyLineChart(
     );
   }
   for (const tick of timeTicks) {
-    const x = xFor(tick);
+    const x = xForElapsed(tick);
     svg.append(
       svgNode("line", "combat-history-grid-line combat-history-grid-line-time", {
         x1: x,
@@ -4150,7 +4294,7 @@ function partyLineChart(
 
   for (const entry of series) {
     const points = entry.values
-      .map((value, second) => `${xFor(second).toFixed(2)},${yFor(value).toFixed(2)}`)
+      .map((value, second) => `${xForBoundary(second).toFixed(2)},${yFor(value).toFixed(2)}`)
       .join(" ");
     const polyline = svgNode("polyline", "combat-history-character-line", {
       points,
@@ -4184,7 +4328,7 @@ function partyLineChart(
       const second = Math.min(durationSeconds, death.at_micros / 1_000_000);
       const value = entry.values[Math.round(second)] ?? 0;
       svg.append(historyDeathMarker(
-        xFor(second),
+        xForElapsed(second),
         yFor(value),
         historyDeathSummary(actorLabel(entry.actor), death, localizer, precision, durationMicros),
         entry.color,
@@ -4220,11 +4364,12 @@ function partyLineChart(
     localizer.t("ui.combat_history.graph.inspect_help"),
   );
   readout.setAttribute("aria-live", "polite");
-  let inspectedSecond: number | null = null;
-  const renderInspection = (requestedSecond: number) => {
-    const snapshot = graphInspectionAtSecond(series, requestedSecond, durationSeconds);
-    inspectedSecond = snapshot.second;
-    const x = xFor(snapshot.second);
+  let inspectedBoundary: number | null = null;
+  const renderInspection = (requestedBoundary: number) => {
+    const snapshot = graphInspectionAtSecond(series, requestedBoundary, durationSeconds);
+    inspectedBoundary = snapshot.second;
+    const elapsedMicros = historyGraphBoundaryElapsedMicros(durationMicros, snapshot.second);
+    const x = xForBoundary(snapshot.second);
     inspection.removeAttribute("hidden");
     inspectionLine.setAttribute("x1", x.toFixed(2));
     inspectionLine.setAttribute("x2", x.toFixed(2));
@@ -4234,9 +4379,39 @@ function partyLineChart(
       point.setAttribute("cx", x.toFixed(2));
       point.setAttribute("cy", yFor(value.value).toFixed(2));
     });
-    readout.replaceChildren(
-      element("strong", "", formatGraphTime(snapshot.second)),
-      ...snapshot.values.map((value) => {
+    const damageRows = definition.metric === "damage" ? series.map((entry) => ({
+      entry,
+      rates: historyDamageRateVariantsAtSecond(entry.actor, historyView, snapshot.second, targetActorId),
+    })) : [];
+    const visibleDamageTotal = historyVisibleDamageRateTotal(
+      damageRows.flatMap(({ rates }) => rates ? [rates] : []),
+    );
+    const formatRate = (value: number | null): string => value == null ? "—" :
+      localizer.formatNumber(value, { maximumFractionDigits: 1 });
+    const damageRateText = (rates: HistoryDamageRateVariants | null) => rates
+      ? localizer.t("ui.combat_history.graph.inspect_damage_rates", {
+        oneEdps: formatRate(rates.edps.one), oneAdps: formatRate(rates.adps.one),
+        fiveEdps: formatRate(rates.edps.five), fiveAdps: formatRate(rates.adps.five),
+        tenEdps: formatRate(rates.edps.ten), tenAdps: formatRate(rates.adps.ten),
+        runEdps: formatRate(rates.edps.cumulative), runAdps: formatRate(rates.adps.cumulative),
+      })
+      : localizer.t("ui.combat_history.graph.inspect_damage_unavailable");
+    const totalItem = definition.metric === "damage" && series.length > 1
+      ? [element(
+        "span", "combat-history-graph-inspection-total",
+        `${localizer.t("ui.combat_history.graph.visible_total")} ${damageRateText(
+          damageRows.every(({ rates }) => rates !== null) ? visibleDamageTotal : null,
+        )}`,
+      )] : [];
+    const damageItems = definition.metric === "damage" ? damageRows.map(({ entry, rates }) => {
+      const item = element(
+        "span", "combat-history-graph-inspection-value",
+        `${actorLabel(entry.actor)} ${damageRateText(rates)}`,
+      );
+      item.style.setProperty("--series-color", entry.color);
+      return item;
+    }) : [];
+    const standardItems = definition.metric === "damage" ? [] : snapshot.values.map((value) => {
         const item = element(
           "span",
           "combat-history-graph-inspection-value",
@@ -4248,11 +4423,16 @@ function partyLineChart(
         );
         item.style.setProperty("--series-color", value.color);
         return item;
-      }),
+      });
+    readout.replaceChildren(
+      element("strong", "", formatExactGraphTime(elapsedMicros)),
+      ...totalItem,
+      ...damageItems,
+      ...standardItems,
     );
   };
   const clearInspection = () => {
-    inspectedSecond = null;
+    inspectedBoundary = null;
     inspection.setAttribute("hidden", "");
     readout.textContent = localizer.t("ui.combat_history.graph.inspect_help");
   };
@@ -4260,10 +4440,11 @@ function partyLineChart(
     const bounds = svg.getBoundingClientRect();
     if (bounds.width <= 0) return;
     const viewX = ((event.clientX - bounds.left) / bounds.width) * width;
-    renderInspection(((viewX - left) / plotWidth) * durationSeconds);
+    const elapsedMicros = ((viewX - left) / plotWidth) * durationMicros;
+    renderInspection(historyGraphClosestBoundary(durationMicros, elapsedMicros));
   });
   svg.addEventListener("pointerleave", clearInspection);
-  svg.addEventListener("focus", () => renderInspection(inspectedSecond ?? 0));
+  svg.addEventListener("focus", () => renderInspection(inspectedBoundary ?? 0));
   svg.addEventListener("blur", clearInspection);
   svg.addEventListener("keydown", (event) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -4272,7 +4453,7 @@ function partyLineChart(
       ? 0
       : event.key === "End"
         ? durationSeconds
-        : (inspectedSecond ?? 0) + (event.key === "ArrowLeft" ? -1 : 1);
+        : (inspectedBoundary ?? 0) + (event.key === "ArrowLeft" ? -1 : 1);
     renderInspection(next);
   });
   const deathSummary = element("div", "combat-history-death-summary");
@@ -4475,6 +4656,7 @@ function niceScale(maximum: number, desiredSteps: number): { maximum: number; ti
 }
 
 function formatGraphTime(second: number): string {
+  if (!Number.isInteger(second)) return formatExactGraphTime(second * 1_000_000);
   const totalSeconds = Math.max(0, Math.round(second));
   const minutes = Math.floor(totalSeconds / 60);
   return `${minutes}:${(totalSeconds % 60).toString().padStart(2, "0")}`;

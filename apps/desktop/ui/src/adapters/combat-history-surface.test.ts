@@ -24,12 +24,14 @@ import {
   graphInspectionAtSecond,
   graphScaleMaximum,
   groupDisplayedAbilities,
+  historyDamageRateVariantsAtSecond,
   historyDamageInfluenceMatchesQuery,
   historyRdpsEffectPresentation,
   historyRdpsProgressPresentation,
   historyActorColor,
   historyOwnedSkillActors,
   historyTargetLabel,
+  historyVisibleDamageRateTotal,
   incomingDamageSourceGroups,
   loadoutTierForPresentation,
   participantRows,
@@ -986,6 +988,56 @@ describe("Combat History graph scaling", () => {
   it("keeps a non-zero baseline for an empty or zero-only segment", () => {
     expect(graphScaleMaximum([])).toBe(1);
     expect(graphScaleMaximum([[0, 0, 0]])).toBe(1);
+  });
+
+  it("derives exact eDPS and aDPS cursor windows from raw buckets and the canonical clocks", () => {
+    const actor = {
+      actor_id: "player-1", display_name: "Alice", death_seconds: [], targets: [],
+      series: [
+        { second: 0, damage: 100, effective_healing: 0, damage_taken: 0 },
+        { second: 1, damage: 200, effective_healing: 0, damage_taken: 0 },
+        { second: 2, damage: 50, effective_healing: 0, damage_taken: 0 },
+      ],
+    } as unknown as HistoryActorSummary;
+    const view = {
+      elapsed_micros: 2_500_000, active_combat_micros: 1_500_000,
+      rate_clock_complete: true,
+      rate_clock: [
+        { second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 },
+        { second: 1, edps_elapsed_micros: 2_000_000, adps_elapsed_micros: 1_000_000 },
+        { second: 2, edps_elapsed_micros: 2_500_000, adps_elapsed_micros: 1_500_000 },
+      ],
+    } as CombatHistoryView;
+
+    expect(historyDamageRateVariantsAtSecond(actor, view, 2)).toEqual({
+      edps: { one: 200, five: 150, ten: 150, cumulative: 150 },
+      adps: { one: null, five: 300, ten: 300, cumulative: 300 },
+    });
+    expect(historyDamageRateVariantsAtSecond(actor, view, 3)).toEqual({
+      edps: { one: 100, five: 140, ten: 140, cumulative: 140 },
+      adps: { one: 100, five: 350 / 1.5, ten: 350 / 1.5, cumulative: 350 / 1.5 },
+    });
+  });
+
+  it("fails closed for incomplete clocks and totals only the supplied visible rows", () => {
+    const actor = {
+      actor_id: "player-1", death_seconds: [], targets: [],
+      series: [{ second: 0, damage: 100, effective_healing: 0, damage_taken: 0 }],
+    } as unknown as HistoryActorSummary;
+    const view = {
+      elapsed_micros: 1_000_000, active_combat_micros: 1_000_000,
+      rate_clock_complete: true,
+      rate_clock: [{ second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 }],
+    } as CombatHistoryView;
+    const row = historyDamageRateVariantsAtSecond(actor, view, 1)!;
+
+    expect(historyDamageRateVariantsAtSecond(actor, { ...view, rate_clock_complete: false }, 1)).toBeNull();
+    expect(historyDamageRateVariantsAtSecond(actor, { ...view, rate_clock: [] }, 1)).toBeNull();
+    expect(historyVisibleDamageRateTotal([row, row])).toEqual({
+      edps: { one: 200, five: 200, ten: 200, cumulative: 200 },
+      adps: { one: 200, five: 200, ten: 200, cumulative: 200 },
+    });
+    expect(historyVisibleDamageRateTotal([row])).toEqual(row);
   });
 });
 

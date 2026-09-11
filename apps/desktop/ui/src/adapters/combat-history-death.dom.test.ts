@@ -329,6 +329,83 @@ describe("Combat History death presentation", () => {
     expect(maximumLabel(dominantHidden)).toBe("100");
   });
 
+  it("uses canonical fractional time and complete clocks for visible eDPS and aDPS cursor rates", async () => {
+    const ui = await loadUiLocalizer("en-US");
+    const actor = (actorId: string, scale: number) => ({
+      actor_id: actorId, display_name: actorId, actor_kind: "player",
+      death_events: [], death_seconds: [], skill_events: [], status_events: [], abilities: [], targets: [],
+      series: [
+        { second: 0, damage: 100 * scale, effective_healing: 0, damage_taken: 0 },
+        { second: 1, damage: 200 * scale, effective_healing: 0, damage_taken: 0 },
+        { second: 2, damage: 50 * scale, effective_healing: 0, damage_taken: 0 },
+      ],
+    }) as unknown as HistoryActorSummary;
+    const alice = actor("Alice", 1);
+    const bob = actor("Bob", 0.5);
+    const hidden = actor("Hidden", 0.25);
+    alice.death_events = [{ at_micros: 2_500_000, cause: null }];
+    const view = {
+      elapsed_micros: 2_500_000, active_combat_micros: 1_500_000,
+      rate_clock_complete: true,
+      rate_clock: [
+        { second: 0, edps_elapsed_micros: 1_000_000, adps_elapsed_micros: 1_000_000 },
+        { second: 1, edps_elapsed_micros: 2_000_000, adps_elapsed_micros: 1_000_000 },
+        { second: 2, edps_elapsed_micros: 2_500_000, adps_elapsed_micros: 1_500_000 },
+      ],
+      actors: [alice, bob, hidden], hostile_casts: [],
+    } as unknown as CombatHistoryView;
+    const rendered = renderMetricGraph(
+      [alice, bob, hidden],
+      { metric: "damage", title: "Damage", rateLabel: "DPS", description: "Damage rate" },
+      view.elapsed_micros, new Set([hidden.actor_id]),
+      new Map([[alice.actor_id, "#35c2ff"], [bob.actor_id, "#ffcc66"], [hidden.actor_id, "#ff6688"]]),
+      null, () => undefined, ui, view,
+    );
+    const chart = rendered.querySelector<SVGSVGElement>(".combat-history-chart")!;
+    chart.focus();
+    chart.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
+    const readout = rendered.querySelector(".combat-history-graph-inspection-readout")!;
+
+    expect(readout.querySelector("strong")?.textContent).toBe("0:02.500");
+    expect(readout.textContent).toContain("Visible total · 1s eDPS/aDPS 150 / 150");
+    expect(readout.textContent).toContain("5s 210 / 350 · 10s 210 / 350 · run 210 / 350");
+    expect(readout.textContent).toContain("Alice · 1s eDPS/aDPS 100 / 100");
+    expect(readout.textContent).toContain("Bob · 1s eDPS/aDPS 50 / 50");
+    expect(readout.textContent).not.toContain("Hidden");
+    expect(rendered.querySelector("[data-timeline-play]")).toBeNull();
+    expect([...rendered.querySelectorAll(".combat-history-x-label")].at(-1)?.textContent).toBe("0:02.500");
+    const graphEndpoint = rendered.querySelector(".combat-history-character-line")
+      ?.getAttribute("points")?.trim().split(" ").at(-1)?.split(",")[0];
+    const laneEndpoint = rendered.querySelector(".combat-history-event-lanes .combat-history-death-marker")
+      ?.getAttribute("transform")?.match(/^translate\(([^ ]+)/u)?.[1];
+    expect(graphEndpoint).toBe("1096.00");
+    expect(laneEndpoint).toBe(graphEndpoint);
+  });
+
+  it("does not substitute wall-time DPS pairs when the canonical rate clock is incomplete", async () => {
+    const ui = await loadUiLocalizer("en-US");
+    const actor = {
+      actor_id: "Alice", display_name: "Alice", actor_kind: "player",
+      death_events: [], death_seconds: [], skill_events: [], status_events: [], abilities: [], targets: [],
+      series: [{ second: 0, damage: 100, effective_healing: 0, damage_taken: 0 }],
+    } as unknown as HistoryActorSummary;
+    const rendered = renderMetricGraph(
+      [actor], { metric: "damage", title: "Damage", rateLabel: "DPS", description: "Damage rate" },
+      1_000_000, new Set(), new Map([[actor.actor_id, "#35c2ff"]]), null,
+      () => undefined, ui,
+      { elapsed_micros: 1_000_000, active_combat_micros: 1_000_000, rate_clock_complete: false,
+        rate_clock: [], actors: [actor] } as unknown as CombatHistoryView,
+    );
+    const chart = rendered.querySelector<SVGSVGElement>(".combat-history-chart")!;
+    chart.focus();
+    chart.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
+
+    expect(rendered.querySelector(".combat-history-graph-inspection-readout")?.textContent)
+      .toContain("eDPS/aDPS unavailable (complete rate clock required)");
+    expect(rendered.querySelector(".combat-history-graph-inspection-readout")?.textContent)
+      .not.toContain("100 / 100");
+  });
+
   it("discloses every dense exact skill start by keyboard and keeps player visibility coupled", async () => {
     const ui = await loadUiLocalizer("en-US");
     const actor = {
