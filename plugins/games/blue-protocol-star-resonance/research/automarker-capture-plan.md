@@ -37,13 +37,16 @@ the game protocol below is proven from a controlled capture.
   `24687926` with the exact reviewed protocol-pack digest. It spans 299.586
   seconds (3,852 complete Ethernet frames; no truncated, backward-timestamp,
   or missing-timestamp frames). The user's six placement acknowledgements fall
-  at approximately +168, +194, +216, +235, +259, and +284 seconds, so all six
-  actions are inside the retained PCAPNG.
+  at approximately +169, +195, +217, +236, +260, and +285 seconds, so all six
+  actions are inside the retained PCAPNG. These are later chat acknowledgements,
+  not instrumented game-click timestamps, and are correlation bounds only.
 - The exact-build nested protocol journal proves that the captured World
   connection stopped producing routed client calls at approximately +79
   seconds, before the first placement acknowledgement. The other retained
   connection continues through the end of capture but carries only gateway/team
-  notifications and echo traffic during the placement interval. Consequently,
+  notifications and periodic echo traffic during the placement interval. All
+  30 decoded client frames after +150 seconds repeat on an approximately
+  five-second cadence and are not placement-specific. Consequently,
   this solo-M1 capture contains no decoded outbound placement request to replay.
   It remains useful negative evidence and must not be described as an empty or
   missing capture.
@@ -72,11 +75,11 @@ the game protocol below is proven from a controlled capture.
   reading. It does **not** prove that Global Steam build `24687926` uses the
   same skill IDs or lifecycle, and it says nothing about the outbound placement
   request.
-- The `resonance-logs-cn` projection treats these entries as numbered spatial
-  markers with coordinates. The player's description may instead refer to
-  actor-targeted party icons like FFXIV automarkers. A controlled capture must
-  resolve whether the Tina/M17 action targets a ground/map position, a party
-  member, or both before RLogs chooses a canonical event shape.
+- The requested RLogs feature is specifically a save/load system for numbered
+  ground markers at exact map locations. It is not actor-targeted and is not a
+  DPS, run-clock, or overlay-canvas feature. A controlled capture must resolve
+  the native ground-marker placement, movement, and removal lifecycle before
+  RLogs chooses a canonical event shape or enables native loading.
 - Static game files expose `World.SetMapMark` and `World.RemoveMapMark` at
   service `103198054`, methods `65538` and `65539`. Their payloads are
   scene/map coordinates and custom text/icon data, not an actor target. Treat
@@ -121,8 +124,8 @@ starts capture before accepting any action, enforces the idle and spacing
 windows, and interactively timestamps the visible result of markers `1..6`.
 It also fails if the capture ends before its post-engagement state window.
 It requires a schema-1 action plan with the exact scene, initiating character,
-expected action, marker/icon identity, and either a ground coordinate or actor
-target for every marker. It also requires the installed game executable, the
+expected action, marker/icon identity, and a ground coordinate for every marker.
+It also requires the installed game executable, the
 repository-reviewed complete installed-file manifest for that exact build that
 authorizes its hash and byte length,
 the protocol-pack path, and the authoritative protocol-pack digest; it refuses
@@ -144,15 +147,15 @@ Example action plan (keep real actor identifiers and coordinates private):
 {
   "schema_version": 1,
   "scene_id": 1633,
-  "scene_name": "Tina M1",
+  "scene_name": "Mech Facility M1",
   "initiating_character": { "character_id": "character-id", "entity_uuid": "current-entity-uuid" },
   "actions": [
     { "marker_number": 1, "marker_identity": { "slot_number": 1, "icon_id": "marker-1" }, "expected_action": "place marker 1", "target": { "kind": "ground", "coordinates": { "x": 1.0, "y": 2.0, "z": 3.0 } } },
-    { "marker_number": 2, "marker_identity": { "slot_number": 2, "icon_id": "marker-2" }, "expected_action": "place marker 2", "target": { "kind": "actor", "target_id": "entity-or-character-id" } },
+    { "marker_number": 2, "marker_identity": { "slot_number": 2, "icon_id": "marker-2" }, "expected_action": "place marker 2", "target": { "kind": "ground", "coordinates": { "x": 2.0, "y": 3.0, "z": 4.0 } } },
     { "marker_number": 3, "marker_identity": { "slot_number": 3, "icon_id": "marker-3" }, "expected_action": "place marker 3", "target": { "kind": "ground", "coordinates": { "x": 4.0, "y": 5.0, "z": 6.0 } } },
-    { "marker_number": 4, "marker_identity": { "slot_number": 4, "icon_id": "marker-4" }, "expected_action": "place marker 4", "target": { "kind": "actor", "target_id": "entity-or-character-id" } },
+    { "marker_number": 4, "marker_identity": { "slot_number": 4, "icon_id": "marker-4" }, "expected_action": "place marker 4", "target": { "kind": "ground", "coordinates": { "x": 5.0, "y": 6.0, "z": 7.0 } } },
     { "marker_number": 5, "marker_identity": { "slot_number": 5, "icon_id": "marker-5" }, "expected_action": "place marker 5", "target": { "kind": "ground", "coordinates": { "x": 7.0, "y": 8.0, "z": 9.0 } } },
-    { "marker_number": 6, "marker_identity": { "slot_number": 6, "icon_id": "marker-6" }, "expected_action": "place marker 6", "target": { "kind": "actor", "target_id": "entity-or-character-id" } }
+    { "marker_number": 6, "marker_identity": { "slot_number": 6, "icon_id": "marker-6" }, "expected_action": "place marker 6", "target": { "kind": "ground", "coordinates": { "x": 8.0, "y": 9.0, "z": 10.0 } } }
   ]
 }
 ```
