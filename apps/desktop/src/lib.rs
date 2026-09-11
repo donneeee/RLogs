@@ -13710,6 +13710,12 @@ fn enrich_bpsr_run_rdps_effect_presentations(
             .iter()
             .filter_map(|influence| influence.effect_id.parse::<i64>().ok())
             .collect::<BTreeSet<_>>();
+        let referenced_status_effect_ids = view
+            .actors
+            .iter()
+            .flat_map(|actor| actor.status_events.iter())
+            .filter_map(|event| event.effect_id.parse::<i64>().ok())
+            .collect::<BTreeSet<_>>();
         view.rdps_effect_presentations = bpsr_rdps_effect_presentations(
             referenced_rdps_effect_ids,
             deployment_id,
@@ -13717,8 +13723,54 @@ fn enrich_bpsr_run_rdps_effect_presentations(
             protocol_pack_digest,
             locale,
         )?;
+        view.status_effect_presentations = bpsr_status_effect_presentations(
+            referenced_status_effect_ids,
+            deployment_id,
+            client_build,
+            protocol_pack_digest,
+            locale,
+        )?;
     }
     Ok(())
+}
+
+fn bpsr_status_effect_presentations(
+    effect_ids: BTreeSet<i64>,
+    deployment_id: &str,
+    client_build: &str,
+    protocol_pack_digest: &str,
+    locale: &str,
+) -> Result<Vec<HistoryRdpsEffectPresentation>, String> {
+    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)? {
+        return Ok(Vec::new());
+    }
+    let mut presentations = Vec::new();
+    for effect_id in effect_ids {
+        let Some(status) = status_effect_presentation(effect_id)? else {
+            continue;
+        };
+        // Do not promote a technical/catalog name to localized UI copy. When
+        // the exact-build locale has no reviewed display row, the consumer
+        // deliberately falls back to the numeric effect identity.
+        let Some(display) = status_effect_display_presentation_for_identity(
+            deployment_id,
+            client_build,
+            protocol_pack_digest,
+            effect_id,
+            locale,
+        )?
+        else {
+            continue;
+        };
+        presentations.push(HistoryRdpsEffectPresentation {
+            effect_id: effect_id.to_string(),
+            presentation_name: display.name.to_owned(),
+            presentation_kind: status.kind.clone(),
+            presentation_resolution: display.resolution.to_owned(),
+            icon_asset_path: bpsr_game_asset_path(status.icon.clone()),
+        });
+    }
+    Ok(presentations)
 }
 
 fn enrich_bpsr_live_rdps_effect_presentations(
@@ -18468,6 +18520,23 @@ mod tests {
                 ),
             }]
         );
+    }
+
+    #[test]
+    fn history_status_presentation_uses_full_trusted_status_catalog() {
+        let presentations = bpsr_status_effect_presentations(
+            BTreeSet::from([2_203_031, 9_999_999_999]),
+            "global",
+            "24687926",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+            "en-US",
+        )
+        .unwrap();
+
+        assert_eq!(presentations.len(), 1);
+        assert_eq!(presentations[0].effect_id, "2203031");
+        assert_eq!(presentations[0].presentation_name, "Wounding Curse");
+        assert!(!presentations[0].presentation_resolution.is_empty());
     }
 
     #[test]

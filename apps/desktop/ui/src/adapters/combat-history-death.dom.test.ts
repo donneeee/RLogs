@@ -81,6 +81,12 @@ describe("Combat History death presentation", () => {
       death_events: [death()],
       death_seconds: [],
       skill_events: [{ at_micros: 1_250_000, ability_id: "2233" }],
+      status_events: [
+        { at_micros: 500_000, effect_id: "11", instance_id: "a", state: "applied" },
+        { at_micros: 1_000_000, effect_id: "11", instance_id: "a", state: "removed" },
+        { at_micros: 2_000_000, effect_id: "12", instance_id: "b", state: "applied" },
+        { at_micros: 3_000_000, effect_id: "12", instance_id: "b", state: "consumed" },
+      ],
       abilities: [{
         ability_id: "2233", presentation_name: "Powerdraw",
         icon_asset_path: "/assets/bpsr/current/abilities/2233.webp",
@@ -97,6 +103,15 @@ describe("Combat History death presentation", () => {
       null,
       () => undefined,
       ui,
+      {
+        actors: [actor],
+        hostile_casts: [],
+        status_effect_presentations: [{
+          effect_id: "11", presentation_name: "Reviewed Ward",
+          presentation_kind: "status-effect", presentation_resolution: "localized-status-effect",
+          icon_asset_path: null,
+        }],
+      } as unknown as CombatHistoryView,
     );
 
     const visible = render(new Set());
@@ -112,11 +127,18 @@ describe("Combat History death presentation", () => {
     expect(visible.querySelector(".combat-history-skill-event-icon")?.getAttribute("href"))
       .toBe("/assets/bpsr/current/abilities/2233.webp");
     expect(visible.querySelector(".combat-history-skill-event-glyph")).toBeNull();
+    const statusSpans = visible.querySelectorAll<SVGGElement>(".combat-history-status-span");
+    expect(statusSpans).toHaveLength(2);
+    expect(statusSpans[0]!.getAttribute("aria-label"))
+      .toContain("Reviewed Ward applied at 0:00.500 and removed at 0:01.000");
+    expect(statusSpans[1]!.getAttribute("aria-label"))
+      .toContain("Unlocalized combat effect #12 applied at 0:02.000 and consumed at 0:03.000");
     expect(visible.querySelector("[data-timeline-play]")).toBeNull();
 
     const hidden = render(new Set([actor.actor_id]));
     expect(hidden.querySelector(".combat-history-character-line")).toBeNull();
     expect(hidden.querySelector(".combat-history-death-marker")).toBeNull();
+    expect(hidden.querySelector(".combat-history-status-span")).toBeNull();
     expect(hidden.querySelector(".combat-history-event-lanes")).toBeNull();
   });
 

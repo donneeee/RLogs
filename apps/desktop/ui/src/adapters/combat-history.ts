@@ -135,6 +135,7 @@ export interface CombatHistoryView {
   hostile_casts?: HistoryHostileCast[];
   damage_influences: HistoryDamageInfluenceSummary[];
   rdps_effect_presentations: HistoryRdpsEffectPresentation[];
+  status_effect_presentations?: HistoryRdpsEffectPresentation[];
 }
 
 export interface HistoryRdpsEffectPresentation {
@@ -214,6 +215,7 @@ export interface HistoryActorSummary {
   death_seconds: number[];
   death_events: HistoryDeathEvent[];
   skill_events: HistorySkillEvent[];
+  status_events: HistoryStatusEvent[];
   dps: number;
   encounter_dps: number;
   hps: number;
@@ -288,6 +290,15 @@ export interface HistoryDeathEvent {
 export interface HistorySkillEvent {
   at_micros: number;
   ability_id: string;
+}
+
+export interface HistoryStatusEvent {
+  at_micros: number;
+  effect_id: string;
+  instance_id?: string | null;
+  source_actor_id?: string | null;
+  source_entity_uuid?: string | null;
+  state: "applied" | "refreshed" | "stacked" | "consumed" | "removed";
 }
 
 export interface HistoryHostileCast {
@@ -592,6 +603,7 @@ export function parseCombatHistorySnapshot(value: unknown): CombatHistorySnapsho
         }
         normalizeHistoryDeathEvents(parsedActor, parsed.elapsed_micros as number);
         normalizeHistorySkillEvents(parsedActor, parsed.elapsed_micros as number);
+        normalizeHistoryStatusEvents(parsedActor, parsed.elapsed_micros as number);
         if (parsedActor.character_id === undefined) {
           parsedActor.character_id = null;
         }
@@ -774,6 +786,25 @@ export function parseCombatHistorySnapshot(value: unknown): CombatHistorySnapsho
         }
         optionalText(parsedPresentation.icon_asset_path, "rDPS effect presentation icon");
       });
+      if (parsed.status_effect_presentations === undefined) {
+        parsed.status_effect_presentations = [];
+      }
+      array(
+        parsed.status_effect_presentations,
+        "view status effect presentations",
+        20_000,
+      ).forEach((presentation, presentationIndex) => {
+        const parsedPresentation = record(
+          presentation,
+          `run ${runIndex} view ${viewIndex} status effect presentation ${presentationIndex}`,
+        );
+        text(parsedPresentation.effect_id, "status effect presentation ID");
+        text(parsedPresentation.presentation_name, "status effect presentation name");
+        text(parsedPresentation.presentation_kind, "status effect presentation kind");
+        text(parsedPresentation.presentation_resolution, "status effect presentation resolution");
+        if (parsedPresentation.icon_asset_path === undefined) parsedPresentation.icon_asset_path = null;
+        optionalText(parsedPresentation.icon_asset_path, "status effect presentation icon");
+      });
       if (parsed.damage_influences === undefined) parsed.damage_influences = [];
       array(parsed.damage_influences, "view damage influences", 1_000_000).forEach(
         (influence, influenceIndex) => {
@@ -882,6 +913,31 @@ function normalizeHistorySkillEvents(actor: Record<string, unknown>, elapsedMicr
     previousMicros = event.at_micros as number;
   });
   if (!valid) actor.skill_events = [];
+}
+
+function normalizeHistoryStatusEvents(actor: Record<string, unknown>, elapsedMicros: number): void {
+  if (actor.status_events === undefined) actor.status_events = [];
+  const events = array(actor.status_events, "actor status events", 100_000);
+  let previousMicros = -1;
+  let valid = true;
+  const states = new Set(["applied", "refreshed", "stacked", "consumed", "removed"]);
+  events.forEach((value, index) => {
+    const event = record(value, `actor status event ${index}`);
+    counter(event.at_micros, `actor status event ${index} timestamp`);
+    text(event.effect_id, `actor status event ${index} effect ID`);
+    if (event.instance_id === undefined) event.instance_id = null;
+    if (event.source_actor_id === undefined) event.source_actor_id = null;
+    if (event.source_entity_uuid === undefined) event.source_entity_uuid = null;
+    optionalText(event.instance_id, `actor status event ${index} instance ID`);
+    optionalText(event.source_actor_id, `actor status event ${index} source actor ID`);
+    optionalText(event.source_entity_uuid, `actor status event ${index} source entity UUID`);
+    if ((event.source_actor_id === null) !== (event.source_entity_uuid === null)) valid = false;
+    text(event.state, `actor status event ${index} state`);
+    if (!states.has(event.state as string) || (event.at_micros as number) > elapsedMicros ||
+        (event.at_micros as number) < previousMicros) valid = false;
+    previousMicros = event.at_micros as number;
+  });
+  if (!valid) actor.status_events = [];
 }
 
 function normalizeHistoryHostileCasts(view: Record<string, unknown>, elapsedMicros: number): void {

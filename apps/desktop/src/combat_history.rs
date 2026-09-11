@@ -706,6 +706,9 @@ pub(crate) fn merge_rdps_projection(
                 // artifacts deserialize without them, so replay may enrich the
                 // retained actor without deriving timestamps from cast totals.
                 actor.skill_events.clone_from(&projected_actor.skill_events);
+                actor
+                    .status_events
+                    .clone_from(&projected_actor.status_events);
                 actor.rdps = actor.rdps_damage.map(|damage| {
                     if view.elapsed_micros == 0 {
                         0.0
@@ -725,6 +728,8 @@ pub(crate) fn merge_rdps_projection(
                 ));
             }
             view.damage_influences = remap_projected_damage_influences(view, projected_view)?;
+            view.status_effect_presentations
+                .clone_from(&projected_view.status_effect_presentations);
             validate_rdps_conservation(view).map_err(|error| {
                 format!(
                     "replayed combat history run {} view {} could not conserve the saved ordinary combat cube: {error}",
@@ -1386,6 +1391,7 @@ mod tests {
                         hostile_casts: Vec::new(),
                         damage_influences: Vec::new(),
                         rdps_effect_presentations: Vec::new(),
+                        status_effect_presentations: Vec::new(),
                     }],
                 })
                 .collect(),
@@ -1632,6 +1638,7 @@ mod tests {
                     hostile_casts: Vec::new(),
                     damage_influences: Vec::new(),
                     rdps_effect_presentations: Vec::new(),
+                    status_effect_presentations: Vec::new(),
                 }],
             }],
         };

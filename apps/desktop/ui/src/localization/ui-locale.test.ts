@@ -108,6 +108,9 @@ describe("desktop UI locale packages", () => {
       "ui.combat_history.graph.run_time",
       "ui.combat_history.graph.inspect_help",
       "ui.combat_history.graph.inspect_value",
+      "ui.combat_history.graph.status_effect_fallback",
+      "ui.combat_history.graph.status_span_removed",
+      "ui.combat_history.graph.status_span_consumed",
     ]) {
       expect(localizer.t(key), key).not.toBe(key);
     }
@@ -119,6 +122,9 @@ describe("desktop UI locale packages", () => {
     expect(localizer.t("ui.combat_history.graph.hide_actor_aria", {
       actor: "MarieRose",
     })).toBe("Hide MarieRose in timelines");
+    expect(localizer.t("ui.combat_history.graph.status_effect_fallback", {
+      id: "2203291",
+    })).toBe("Unlocalized combat effect #2203291");
   });
 
   it("keeps every migrated combat-history key present in the shipped English package", async () => {

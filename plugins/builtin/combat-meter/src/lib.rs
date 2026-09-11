@@ -150,6 +150,11 @@ pub struct CombatHistoryView {
     /// Exact numeric effect IDs remain the join and attribution authority.
     #[serde(default)]
     pub rdps_effect_presentations: Vec<HistoryRdpsEffectPresentation>,
+    /// Trusted, display-only identities for exact status lifecycle rows. This
+    /// is separate from rDPS presentation so ordinary status evidence remains
+    /// visible when provider credit is unavailable.
+    #[serde(default)]
+    pub status_effect_presentations: Vec<HistoryRdpsEffectPresentation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -308,6 +313,11 @@ pub struct HistoryActorSummary {
     /// clock. These are recorded events, never reconstructed from cast totals.
     #[serde(default)]
     pub skill_events: Vec<HistorySkillEvent>,
+    /// Exact packet-observed status transitions received by this participant.
+    /// Consumers may form an interval only from an Applied transition and an
+    /// ordered Removed/Consumed transition with the same non-null instance.
+    #[serde(default)]
+    pub status_events: Vec<HistoryStatusEvent>,
     /// Damage divided by the selected elapsed time.
     pub dps: f64,
     /// Damage divided by selected active-combat time. Downtime never lowers it.
@@ -348,6 +358,19 @@ pub struct HistoryDeathEvent {
 pub struct HistorySkillEvent {
     pub at_micros: u64,
     pub ability_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryStatusEvent {
+    pub at_micros: u64,
+    pub effect_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_actor_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_entity_uuid: Option<String>,
+    pub state: StatusState,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1222,6 +1245,7 @@ struct HistoryValueAccumulator {
     death_seconds: Vec<u32>,
     death_events: Vec<HistoryDeathEvent>,
     skill_events: Vec<HistorySkillEvent>,
+    status_events: Vec<HistoryStatusEvent>,
     rdps_damage: Option<i64>,
     rdps_contribution_given: Option<i64>,
     rdps_contribution_received: Option<i64>,
@@ -4233,7 +4257,11 @@ impl CombatTimelinePlugin {
                     }
                 }
                 CombatFactKind::Status {
-                    effect_id, state, ..
+                    effect_id,
+                    attribution_source_actor_id,
+                    instance_id,
+                    state,
+                    ..
                 } => {
                     let Some((target_actor_id, target_entity_uuid)) = fact.target else {
                         continue;
@@ -4262,6 +4290,20 @@ impl CombatTimelinePlugin {
                         }
                         StatusState::Removed => effect.removed = effect.removed.saturating_add(1),
                     }
+                    values
+                        .entry(target_actor_id)
+                        .or_default()
+                        .status_events
+                        .push(HistoryStatusEvent {
+                            at_micros: offset_micros,
+                            effect_id: effect_id.to_string(),
+                            instance_id: instance_id.map(|value| value.to_string()),
+                            source_actor_id: attribution_source_actor_id
+                                .map(|value| value.to_string()),
+                            source_entity_uuid: attribution_source_actor_id
+                                .map(|_| fact.source_entity_uuid.to_string()),
+                            state,
+                        });
                 }
                 CombatFactKind::ExactDamageContribution { .. }
                 | CombatFactKind::ExactRationalDamageContribution { .. } => {}
@@ -4514,6 +4556,7 @@ impl CombatTimelinePlugin {
             hostile_casts,
             damage_influences,
             rdps_effect_presentations: Vec::new(),
+            status_effect_presentations: Vec::new(),
         }
     }
 
@@ -4620,6 +4663,7 @@ impl CombatTimelinePlugin {
             death_seconds: value.death_seconds,
             death_events: value.death_events,
             skill_events: value.skill_events,
+            status_events: value.status_events,
             dps: rate_per_second(value.damage, elapsed_seconds),
             encounter_dps: rate_per_second(value.damage, active_seconds),
             hps: rate_per_second(value.healing, elapsed_seconds),
@@ -9492,6 +9536,29 @@ mod tests {
         assert_eq!(effect.stacked, 1);
         assert_eq!(effect.consumed, 1);
         assert_eq!(effect.removed, 1);
+        let recipient = all
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "2")
+            .unwrap();
+        assert_eq!(recipient.status_events.len(), 4);
+        assert_eq!(recipient.status_events[0].at_micros, 6_000_000);
+        assert_eq!(recipient.status_events[0].effect_id, "2203031");
+        assert_eq!(
+            recipient.status_events[0].instance_id.as_deref(),
+            Some("2203031")
+        );
+        assert_eq!(
+            recipient.status_events[0].source_actor_id.as_deref(),
+            Some("1")
+        );
+        assert_eq!(
+            recipient.status_events[0].source_entity_uuid.as_deref(),
+            Some("1001")
+        );
+        assert_eq!(recipient.status_events[0].state, StatusState::Applied);
+        assert_eq!(recipient.status_events[2].state, StatusState::Consumed);
+        assert_eq!(recipient.status_events[3].state, StatusState::Removed);
         let target = all
             .targets
             .iter()

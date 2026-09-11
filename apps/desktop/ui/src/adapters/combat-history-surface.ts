@@ -3337,7 +3337,8 @@ export function renderMetricGraph(
     .filter((entry) =>
       entry.peak > 0 || (targetActorId === null &&
         ((entry.actor.death_events?.length ?? 0) > 0 || entry.actor.death_seconds.length > 0 ||
-          (entry.actor.skill_events?.length ?? 0) > 0)),
+          (entry.actor.skill_events?.length ?? 0) > 0 ||
+          (entry.actor.status_events?.length ?? 0) > 0)),
     );
   const visibleSeries = allSeries.filter(
     (entry) => !hiddenActorIds.has(entry.actor.actor_id),
@@ -3427,7 +3428,7 @@ function recordedEventLanes(
 ): HTMLElement | null {
   const playerLanes = series.filter(({ actor }) => graphActorKind(actor) === "player" && (
     (actor.skill_events?.length ?? 0) > 0 || (actor.death_events?.length ?? 0) > 0 ||
-    actor.death_seconds.length > 0));
+    (actor.status_events?.length ?? 0) > 0 || actor.death_seconds.length > 0));
   const hostileLanes = groupHostileCastsBySource(historyView?.hostile_casts ?? []);
   if (hostileLanes.length === 0 && playerLanes.length === 0) return null;
   const width = 1_120, left = 78, right = 24, laneHeight = 38;
@@ -3525,6 +3526,39 @@ function recordedEventLanes(
       svgNode("circle", "combat-history-event-lane-swatch", { cx: 10, cy: y, r: 3 }),
       svgText(18, y + 4, compactEventLaneLabel(actorLabel(actor)), "combat-history-event-lane-label", "start"),
     );
+    for (const span of completeHistoryStatusSpans(actor.status_events ?? [])) {
+      const presentation = historyView?.status_effect_presentations?.find(
+        (candidate) => candidate.effect_id === span.applied.effect_id &&
+          Boolean(candidate.presentation_name.trim()) &&
+          Boolean(candidate.presentation_resolution.trim()),
+      );
+      const effect = presentation?.presentation_name.trim() || localizer.t(
+        "ui.combat_history.graph.status_effect_fallback",
+        { id: span.applied.effect_id },
+      );
+      const summary = localizer.t(
+        span.terminal.state === "consumed"
+          ? "ui.combat_history.graph.status_span_consumed"
+          : "ui.combat_history.graph.status_span_removed",
+        {
+          actor: actorLabel(actor), effect,
+          start: formatExactGraphTime(span.applied.at_micros),
+          end: formatExactGraphTime(span.terminal.at_micros),
+        },
+      );
+      const startX = xFor(span.applied.at_micros);
+      const endX = xFor(span.terminal.at_micros);
+      const marker = svgNode("g", "combat-history-status-span", {
+        role: "img", tabindex: 0, "aria-label": summary,
+        "data-effect-id": span.applied.effect_id,
+        "data-terminal-state": span.terminal.state,
+      });
+      marker.append(svgNode("rect", "combat-history-status-span-bar", {
+        x: startX, y: y - 5, width: Math.max(1, endX - startX), height: 10, rx: 5,
+      }));
+      marker.append(svgTitle(summary));
+      row.append(marker);
+    }
     for (const cluster of clusterHistorySkillEvents(actor.skill_events ?? [], xFor)) {
       const first = cluster.events[0]!;
       const abilityNames = [...new Set(cluster.events.map((event) => {
@@ -3606,6 +3640,38 @@ function recordedEventLanes(
   wireHistoryDeathSummaries(deathMarkers, summary);
   frame.append(summary);
   return frame;
+}
+
+export function completeHistoryStatusSpans(
+  events: readonly HistoryActorSummary["status_events"][number][],
+): Array<{
+  applied: HistoryActorSummary["status_events"][number];
+  terminal: HistoryActorSummary["status_events"][number];
+}> {
+  type Event = HistoryActorSummary["status_events"][number];
+  const grouped = new Map<string, Event[]>();
+  const spans: Array<{ applied: Event; terminal: Event }> = [];
+  for (const event of events) {
+    if (!event.instance_id) continue;
+    const key = `${event.effect_id}\u0000${event.instance_id}`;
+    const group = grouped.get(key) ?? [];
+    group.push(event);
+    grouped.set(key, group);
+  }
+  for (const group of grouped.values()) {
+    const applied = group.filter((event) => event.state === "applied");
+    const terminal = group.filter((event) =>
+      event.state === "removed" || event.state === "consumed");
+    if (applied.length !== 1 || terminal.length !== 1) continue;
+    const startIndex = group.indexOf(applied[0]!);
+    const endIndex = group.indexOf(terminal[0]!);
+    if (startIndex !== 0 || endIndex !== group.length - 1 || endIndex <= startIndex) continue;
+    if (group.slice(1, -1).some((event) =>
+      event.state !== "refreshed" && event.state !== "stacked")) continue;
+    if (terminal[0]!.at_micros < applied[0]!.at_micros) continue;
+    spans.push({ applied: applied[0]!, terminal: terminal[0]! });
+  }
+  return spans.sort((left, right) => left.applied.at_micros - right.applied.at_micros);
 }
 
 function groupHostileCastsBySource(

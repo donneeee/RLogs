@@ -73,6 +73,28 @@ describe("combat history contracts", () => {
       .toEqual([]);
   });
 
+  it("preserves bounded exact status transitions and defaults legacy history", () => {
+    const exact = deathHistory();
+    Object.assign(exact.runs[0]!.views[0]!.actors[0]!, {
+      status_events: [
+        { at_micros: 1_000_000, effect_id: "2203291", instance_id: "81", state: "applied" },
+        { at_micros: 2_000_000, effect_id: "2203291", instance_id: "81", state: "removed" },
+      ],
+    });
+    expect(parseCombatHistorySnapshot(exact).runs[0]?.views[0]?.actors[0]?.status_events)
+      .toHaveLength(2);
+
+    const legacy = deathHistory();
+    expect(parseCombatHistorySnapshot(legacy).runs[0]?.views[0]?.actors[0]?.status_events)
+      .toEqual([]);
+
+    const invalid = structuredClone(exact);
+    (invalid.runs[0]!.views[0]!.actors[0]! as Record<string, any>)
+      .status_events[1].at_micros = 999_999;
+    expect(parseCombatHistorySnapshot(invalid).runs[0]?.views[0]?.actors[0]?.status_events)
+      .toEqual([]);
+  });
+
   it("accepts only bounded hostile casts from reducer-authored encounter targets", () => {
     const exact: any = deathHistory();
     const view = exact.runs[0].views[0];

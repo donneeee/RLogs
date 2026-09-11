@@ -8212,6 +8212,18 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
   font-size: 10px;
 }
 
+.combat-history-status-span-bar {
+  fill: color-mix(in srgb, var(--series-color) 34%, transparent);
+  stroke: var(--series-color);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.combat-history-status-span:focus-visible .combat-history-status-span-bar {
+  fill: color-mix(in srgb, var(--series-color) 58%, transparent);
+  stroke-width: 2;
+}
+
 .combat-history-skill-event-hitbox {
   fill: transparent;
   stroke: none;

@@ -15,6 +15,7 @@ import {
   catalogParticipantLabel,
   catalogParticipantTooltip,
   comparePartySortValues,
+  completeHistoryStatusSpans,
   combatPresentationDisplayName,
   compactSpecializationName,
   displayedUnmappedRdpsSkill,
@@ -42,6 +43,41 @@ it("uses reviewed effect names while preserving the explicit unresolved fallback
   expect(combatPresentationDisplayName("Luminary Bolt Vulnerability", "effect", ui))
     .toBe("Luminary Bolt Vulnerability");
   expect(combatPresentationDisplayName(null, "effect", ui)).toBe("Unresolved effect");
+});
+
+it("forms status spans only from unambiguous exact Applied-to-terminal instances", () => {
+  const event = (
+    at_micros: number,
+    effect_id: string,
+    instance_id: string | undefined,
+    state: "applied" | "refreshed" | "stacked" | "consumed" | "removed",
+  ) => ({ at_micros, effect_id, instance_id, state });
+  const spans = completeHistoryStatusSpans([
+    event(1_000, "11", "a", "applied"),
+    event(2_000, "11", "a", "refreshed"),
+    event(4_000, "11", "a", "removed"),
+    event(5_000, "12", "b", "applied"),
+    event(6_000, "12", "b", "consumed"),
+    event(7_000, "13", undefined, "applied"),
+    event(8_000, "13", undefined, "removed"),
+    event(9_000, "14", "ambiguous", "applied"),
+    event(10_000, "14", "ambiguous", "applied"),
+    event(11_000, "14", "ambiguous", "removed"),
+    event(12_000, "15", "dual-terminal", "applied"),
+    event(13_000, "15", "dual-terminal", "consumed"),
+    event(14_000, "15", "dual-terminal", "removed"),
+    event(15_000, "16", "outside", "refreshed"),
+    event(16_000, "16", "outside", "applied"),
+    event(17_000, "16", "outside", "removed"),
+    event(19_000, "17", "reversed", "removed"),
+    event(18_000, "17", "reversed", "applied"),
+  ]);
+  expect(spans.map(({ applied, terminal }) => [
+    applied.effect_id, applied.at_micros, terminal.at_micros, terminal.state,
+  ])).toEqual([
+    ["11", 1_000, 4_000, "removed"],
+    ["12", 5_000, 6_000, "consumed"],
+  ]);
 });
 
 describe("Combat History generated skill ownership", () => {
