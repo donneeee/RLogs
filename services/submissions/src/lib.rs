@@ -30,7 +30,8 @@ use rlogs_events::{
     RegionContext, RegionIdentity, RunState, StatusState, TimelineEventKind,
 };
 use rlogs_game_bpsr::{
-    BPSR_GAME_PLUGIN_ID, BpsrLifeWaveTriggerLearner, BpsrRemoteFactorLearner,
+    BPSR_GAME_PLUGIN_ID, BUNDLED_RUN_RULE_CLIENT_BUILD, BUNDLED_RUN_RULE_DEPLOYMENT_ID,
+    BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST, BpsrLifeWaveTriggerLearner, BpsrRemoteFactorLearner,
     BpsrStatResonanceTransitionLearner, BpsrStateDamageContributionProjector,
     CharacterProfilePatch, SwiftVortexCandidateAuditAnalyzer, SwiftVortexCandidateAuditReport,
     TRAINING_DURATION_MICROS, TrainingDummyController, TrainingDummyPhase,
@@ -40,7 +41,7 @@ use rlogs_game_bpsr::{
     is_stat_resonance_status, localized_class_name, localized_combat_action_name_for_identity,
     localized_monster_name_for_identity, localized_recount_group_name_for_identity,
     localized_scene_name_for_identity, localized_specialization_name,
-    status_effect_display_presentation, status_effect_presentation,
+    rdps_attribution_effect_presentation, status_effect_presentation,
 };
 use rlogs_log_format::{RlogLimits, RlogReader, RlogReplaySummary};
 use rlogs_plugin_combat_meter::{
@@ -72,11 +73,6 @@ use profiles::{
     PhotoAssetContent, PhotoAssetReceipt, PhotoCatalogQuery, PhotoLikeReceipt,
     ProfilePublishReceipt, ProfileRegistry, ProfileRegistryError, PublicPhotoCatalog,
     PublicProfile, PublicProfileCatalog, PublicProfileCatalogEntry, PublicProfileLoadout,
-};
-#[cfg(test)]
-use rlogs_game_bpsr::{
-    BUNDLED_RUN_RULE_CLIENT_BUILD, BUNDLED_RUN_RULE_DEPLOYMENT_ID,
-    BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
 };
 use rlogs_profiles::LocalProfilePackage;
 
@@ -1584,7 +1580,7 @@ impl SubmissionService {
             rdps_status: run.rdps_status.clone(),
             rate_clock: view.rate_clock.clone(),
             rate_clock_complete: view.rate_clock_complete,
-            rdps_effects: public_rdps_effects(view, presentation_semantics_authorized),
+            rdps_effects: public_rdps_effects(view, &history),
             rdps_influences: public_rdps_influences(view),
             canonical_run_observed_bounds,
             aligned_profile_observed_micros,
@@ -5143,6 +5139,12 @@ fn bpsr_has_presentation_semantic_authority(
     .map_err(ServiceError::Replay)
 }
 
+fn bpsr_has_exact_presentation_catalog_authority(history: &CombatHistorySnapshot) -> bool {
+    history.deployment_id == BUNDLED_RUN_RULE_DEPLOYMENT_ID
+        && history.client_build == BUNDLED_RUN_RULE_CLIENT_BUILD
+        && history.protocol_pack_digest == BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST
+}
+
 fn canonicalize_public_report_region(report: &mut PublicParseReport) {
     if report.game_plugin_id != BPSR_GAME_PLUGIN_ID {
         return;
@@ -5297,7 +5299,7 @@ fn public_runs(
                     .unwrap_or_default(),
                 rdps_influences: view.map(public_rdps_influences).unwrap_or_default(),
                 rdps_effects: view
-                    .map(|view| public_rdps_effects(view, presentation_semantics_authorized))
+                    .map(|view| public_rdps_effects(view, history))
                     .unwrap_or_default(),
                 timeline: PublicCombatTimeline::default(),
             };
@@ -7597,26 +7599,33 @@ fn public_participant(
 
 fn public_rdps_effects(
     view: &CombatHistoryView,
-    presentation_semantics_authorized: bool,
+    history: &CombatHistorySnapshot,
 ) -> Vec<PublicRdpsEffectPresentation> {
-    if !presentation_semantics_authorized {
-        return Vec::new();
-    }
-    view.rdps_effect_presentations
+    let exact_presentation_catalog_authorized =
+        bpsr_has_exact_presentation_catalog_authority(history);
+    view.damage_influences
         .iter()
-        .filter_map(|effect| {
-            let effect_id = effect.effect_id.parse::<i64>().ok()?;
-            let display = status_effect_display_presentation(effect_id, "en-US")
+        .filter_map(|influence| influence.effect_id.parse::<i64>().ok())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .filter_map(|effect_id| {
+            // The reviewed attribution label is presentation-only and keyed
+            // directly by the observed effect ID. Rich catalog metadata and
+            // assets remain confined to the exact deployment/build/digest.
+            let display = rdps_attribution_effect_presentation(effect_id, "en-US")
                 .ok()
                 .flatten()?;
-            let presentation = status_effect_presentation(effect_id).ok().flatten()?;
+            let presentation = exact_presentation_catalog_authorized
+                .then(|| status_effect_presentation(effect_id).ok().flatten())
+                .flatten();
             Some(PublicRdpsEffectPresentation {
-                effect_id: effect.effect_id.clone(),
-                presentation_name: display.name.to_owned(),
-                presentation_kind: presentation.kind.clone(),
+                effect_id: effect_id.to_string(),
+                presentation_name: display.name.clone(),
+                presentation_kind: presentation
+                    .map(|presentation| presentation.kind.clone())
+                    .unwrap_or_else(|| "status-effect".into()),
                 icon_asset_path: presentation
-                    .icon
-                    .as_ref()
+                    .and_then(|presentation| presentation.icon.as_ref())
                     .map(|path| format!("/game-assets/blue-protocol-star-resonance/shared/{path}")),
             })
         })
@@ -10949,6 +10958,32 @@ mod tests {
         }
     }
 
+    fn rdps_effect_influence(
+        effect_id: &str,
+    ) -> rlogs_plugin_combat_meter::HistoryDamageInfluenceSummary {
+        rlogs_plugin_combat_meter::HistoryDamageInfluenceSummary {
+            effect_id: effect_id.into(),
+            attribution_component: None,
+            complete_effect: true,
+            provider_actor_id: "1".into(),
+            provider_entity_uuid: "101".into(),
+            recipient_actor_id: "2".into(),
+            recipient_entity_uuid: "102".into(),
+            affected_ability_id: Some("2203521".into()),
+            target_actor_id: Some("3".into()),
+            target_entity_uuid: Some("103".into()),
+            first_observed_micros: 1_000,
+            last_observed_micros: 2_000,
+            damage_event_count: 1,
+            critical_hit_count: Some(1),
+            observed_damage: "1200".into(),
+            exact_integer_delta: "0".into(),
+            exact_rational_deltas: Vec::new(),
+            attributed_rdps: Some("109".into()),
+            damage_context_complete: true,
+        }
+    }
+
     #[test]
     fn public_timeline_prefers_exact_death_event_and_strips_private_entity_uuids() {
         let at_micros = 5_500_123;
@@ -12559,35 +12594,38 @@ mod tests {
     }
 
     #[test]
-    fn public_rdps_effect_display_is_rebuilt_from_trusted_ids() {
+    fn public_rdps_effect_display_is_derived_from_observed_influences() {
         let mut view = exact_death_view(HistoryDeathEvent {
             at_micros: 10,
             cause: None,
         });
-        view.rdps_effect_presentations = vec![
-            rlogs_plugin_combat_meter::HistoryRdpsEffectPresentation {
-                effect_id: "2110034".into(),
-                presentation_name: "stale name".into(),
-                presentation_kind: "stale kind".into(),
-                presentation_resolution: "stale resolution".into(),
-                icon_asset_path: Some("stale-icon".into()),
-            },
-            rlogs_plugin_combat_meter::HistoryRdpsEffectPresentation {
-                effect_id: "999999999".into(),
-                presentation_name: "untrusted unknown".into(),
-                presentation_kind: "untrusted kind".into(),
-                presentation_resolution: "untrusted resolution".into(),
-                icon_asset_path: Some("untrusted-icon".into()),
-            },
+        view.damage_influences = vec![
+            rdps_effect_influence("31602"),
+            rdps_effect_influence("31602"),
+            rdps_effect_influence("999999999"),
         ];
+        assert!(view.rdps_effect_presentations.is_empty());
 
-        assert!(public_rdps_effects(&view, false).is_empty());
-        let effects = public_rdps_effects(&view, true);
+        let exact = death_test_history();
+        let effects = public_rdps_effects(&view, &exact);
         assert_eq!(effects.len(), 1);
-        assert_eq!(effects[0].effect_id, "2110034");
-        assert_ne!(effects[0].presentation_name, "stale name");
-        assert_ne!(effects[0].presentation_kind, "stale kind");
-        assert_ne!(effects[0].icon_asset_path.as_deref(), Some("stale-icon"));
+        assert_eq!(effects[0].effect_id, "31602");
+        assert_eq!(effects[0].presentation_name, "Inspire");
+        assert_eq!(effects[0].presentation_kind, "status-effect");
+        assert!(effects[0].icon_asset_path.is_some());
+
+        let mut future_build = death_test_history();
+        future_build.client_build = "24699999".into();
+        let mut wrong_digest = death_test_history();
+        wrong_digest.protocol_pack_digest = "sha256:wrong-pack".into();
+        for unsupported in [&future_build, &wrong_digest] {
+            let display_only = public_rdps_effects(&view, unsupported);
+            assert_eq!(display_only.len(), 1);
+            assert_eq!(display_only[0].effect_id, "31602");
+            assert_eq!(display_only[0].presentation_name, "Inspire");
+            assert_eq!(display_only[0].presentation_kind, "status-effect");
+            assert_eq!(display_only[0].icon_asset_path, None);
+        }
     }
 
     #[test]

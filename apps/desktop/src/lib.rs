@@ -13845,15 +13845,20 @@ fn bpsr_rdps_effect_presentations(
     protocol_pack_digest: &str,
     locale: &str,
 ) -> Result<Vec<HistoryRdpsEffectPresentation>, String> {
-    if !bundled_localization_supports_identity(deployment_id, client_build, protocol_pack_digest)? {
-        return Ok(Vec::new());
-    }
+    let semantic_authorized =
+        exact_bpsr_catalog_authority(deployment_id, client_build, protocol_pack_digest);
     let mut presentations = Vec::new();
     for effect_id in effect_ids {
         let Some(attribution) = rdps_attribution_effect_presentation(effect_id, locale)? else {
             continue;
         };
-        let status = status_effect_presentation(effect_id)?;
+        // Attribution names are reviewed display copy keyed by the observed
+        // stable effect ID. Catalog mechanics and assets remain exact-build
+        // data and must not carry to another runtime identity.
+        let status = semantic_authorized
+            .then(|| status_effect_presentation(effect_id))
+            .transpose()?
+            .flatten();
         presentations.push(HistoryRdpsEffectPresentation {
             effect_id: effect_id.to_string(),
             presentation_name: attribution.name.clone(),
@@ -18618,31 +18623,34 @@ mod tests {
     #[test]
     fn live_run_projection_resolves_inspire_effect_presentation() {
         let mut snapshot = captured_marksman_history();
-        snapshot.runs[0].views[0].damage_influences.push(
-            rlogs_plugin_combat_meter::HistoryDamageInfluenceSummary {
-                effect_id: "31602".into(),
-                attribution_component: Some(
-                    "Inspire (31602) packet-final action-speed opportunity".into(),
-                ),
-                complete_effect: false,
-                provider_actor_id: "1".into(),
-                provider_entity_uuid: "101".into(),
-                recipient_actor_id: "2".into(),
-                recipient_entity_uuid: "102".into(),
-                affected_ability_id: Some("2203521".into()),
-                target_actor_id: Some("3".into()),
-                target_entity_uuid: Some("103".into()),
-                first_observed_micros: 1_000,
-                last_observed_micros: 2_000,
-                damage_event_count: 1,
-                critical_hit_count: Some(1),
-                observed_damage: "1200".into(),
-                exact_integer_delta: "0".into(),
-                exact_rational_deltas: Vec::new(),
-                attributed_rdps: Some("109".into()),
-                damage_context_complete: true,
-            },
-        );
+        let influence = rlogs_plugin_combat_meter::HistoryDamageInfluenceSummary {
+            effect_id: "31602".into(),
+            attribution_component: Some(
+                "Inspire (31602) packet-final action-speed opportunity".into(),
+            ),
+            complete_effect: false,
+            provider_actor_id: "1".into(),
+            provider_entity_uuid: "101".into(),
+            recipient_actor_id: "2".into(),
+            recipient_entity_uuid: "102".into(),
+            affected_ability_id: Some("2203521".into()),
+            target_actor_id: Some("3".into()),
+            target_entity_uuid: Some("103".into()),
+            first_observed_micros: 1_000,
+            last_observed_micros: 2_000,
+            damage_event_count: 1,
+            critical_hit_count: Some(1),
+            observed_damage: "1200".into(),
+            exact_integer_delta: "0".into(),
+            exact_rational_deltas: Vec::new(),
+            attributed_rdps: Some("109".into()),
+            damage_context_complete: true,
+        };
+        let mut unknown = influence.clone();
+        unknown.effect_id = "999999999".into();
+        snapshot.runs[0].views[0]
+            .damage_influences
+            .extend([influence.clone(), influence, unknown]);
 
         enrich_bpsr_run_rdps_effect_presentations(
             &mut snapshot.runs[0],
@@ -18739,23 +18747,30 @@ mod tests {
     }
 
     #[test]
-    fn rdps_effect_presentation_stays_withheld_without_semantic_authority() {
+    fn rdps_effect_labels_cross_builds_but_catalog_fields_require_exact_authority() {
         for (deployment_id, client_build, protocol_pack_digest) in [
             ("", "", ""),
             ("global", "24687926", "sha256:wrong-pack"),
             ("global", "24699999", BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST),
         ] {
-            assert!(
-                bpsr_rdps_effect_presentations(
-                    BTreeSet::from([31_602]),
-                    deployment_id,
-                    client_build,
-                    protocol_pack_digest,
-                    "en-US",
-                )
-                .unwrap()
-                .is_empty()
+            let presentations = bpsr_rdps_effect_presentations(
+                BTreeSet::from([31_602, 999_999_999]),
+                deployment_id,
+                client_build,
+                protocol_pack_digest,
+                "en-US",
+            )
+            .unwrap();
+
+            assert_eq!(presentations.len(), 1);
+            assert_eq!(presentations[0].effect_id, "31602");
+            assert_eq!(presentations[0].presentation_name, "Inspire");
+            assert_eq!(presentations[0].presentation_kind, "status-effect");
+            assert_eq!(
+                presentations[0].presentation_resolution,
+                "localized-status-effect"
             );
+            assert_eq!(presentations[0].icon_asset_path, None);
         }
     }
 
