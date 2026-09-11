@@ -136,6 +136,7 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
     overlayStatus.dataset.state = preparationError ? "error" : "status";
     if (update === null) return;
     const snapshot = update.snapshot;
+    const reviewedMechanics = snapshot.mechanics.filter((signal) => signal.mechanic_kind !== null);
     const sceneMap = snapshot.map_model === "absolute_scene_map";
     prepareMapAsset(snapshot.background_asset_url);
     const mapReady = sceneMap && snapshot.background_asset_url !== null && mapAssetState === "ready";
@@ -154,7 +155,7 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
     applyMapTransform();
     regions.replaceChildren();
     if (mapReady) {
-      for (const signal of snapshot.mechanics) {
+      for (const signal of reviewedMechanics) {
         const polygonPoints = projectCursedTombChargeRegion(snapshot, signal);
         if (polygonPoints.length >= 3) {
           const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
@@ -200,7 +201,7 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
     points.replaceChildren();
     for (const entity of projected) {
       const point = el("span", "mechanics-map-point");
-      const mechanic = snapshot.mechanics.find((signal) => signal.target_actor_id === entity.actor_id);
+      const mechanic = reviewedMechanics.find((signal) => signal.target_actor_id === entity.actor_id);
       point.dataset.kind = entity.kind;
       point.dataset.dead = String(entity.dead);
       point.dataset.stale = String(entity.stale);
@@ -259,14 +260,14 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
     if (!sceneMap) signals.append(notice("Game map unavailable", "No reviewed game-map asset matches this exact scene and runtime identity. The map remains blank.", "waiting"));
     if (!snapshot.encounter_pack_reviewed) signals.append(notice("Encounter pack", "No reviewed pack matches this exact scene. Positions remain exact; guidance stays disabled.", "waiting"));
     else signals.append(notice(snapshot.encounter_pack ?? "Encounter pack", "Current-build effect identities are enabled. No safe-area geometry is inferred.", "live"));
-    for (const signal of snapshot.mechanics) {
+    for (const signal of reviewedMechanics) {
       const target = snapshot.entities.find((entity) => entity.actor_id === signal.target_actor_id);
       const row = el("article", "mechanics-signal-row");
       const identity = mechanicKindLabel(signal.mechanic_kind) ?? signal.presentation_name ?? (signal.effect_id < 0 ? `Cast ${-signal.effect_id}` : `Effect ${signal.effect_id}`);
       row.append(text("strong", identity), text("span", `${target?.display_name ?? `Actor ${signal.target_actor_id}`}${signal.stacks === null ? "" : ` · ${signal.stacks} stacks`}${signal.duration_millis === null ? "" : ` · ${(signal.duration_millis / 1000).toFixed(1)}s`}`));
       signals.append(row);
     }
-    if (snapshot.mechanics.length === 0 && snapshot.data_gap === null) signals.append(text("p", "No active reviewed mechanic effects or targeted casts.", "runtime-empty-result"));
+    if (reviewedMechanics.length === 0 && snapshot.data_gap === null) signals.append(text("p", "No active reviewed mechanic effects or targeted casts.", "runtime-empty-result"));
   }
 
   function zoomMap(event: WheelEvent): void {

@@ -131,4 +131,35 @@ describe("Mechanics Map overlay launch", () => {
     expect(container.querySelector<HTMLElement>(".mechanics-radar")?.dataset.assetState).toBe("none");
     mounted.dispose();
   });
+
+  it("does not present an unresolved signal as reviewed mechanic guidance", async () => {
+    const images: Array<{ onload: (() => void) | null; onerror: (() => void) | null; src: string }> = [];
+    vi.stubGlobal("Image", class {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      src = "";
+      constructor() { images.push(this); }
+    });
+    const update = mapUpdate(1, true);
+    update.snapshot.mechanics[0]!.mechanic_kind = null;
+    update.snapshot.mechanics[0]!.presentation_name = "Unreviewed signal";
+    const container = document.createElement("main");
+    document.body.append(container);
+    const mounted = mountMechanicsMapSurface(container, {
+      loadSnapshot: async () => update,
+      waitForSnapshot: () => new Promise(() => undefined),
+      prepareLocalMaps: vi.fn(),
+      openOverlay: vi.fn(),
+    });
+
+    await vi.waitFor(() => expect(images).toHaveLength(1));
+    images[0]!.onload?.();
+    await vi.waitFor(() => expect(container.querySelectorAll(".mechanics-map-point")).toHaveLength(1));
+    expect(container.querySelector<HTMLElement>(".mechanics-map-point")?.dataset.mechanic).toBe("false");
+    expect(Array.from(container.querySelectorAll(".mechanics-signal-row")))
+      .not.toContainEqual(expect.objectContaining({ textContent: expect.stringContaining("Unreviewed signal") }));
+    expect(container.querySelector(".runtime-empty-result")?.textContent)
+      .toBe("No active reviewed mechanic effects or targeted casts.");
+    mounted.dispose();
+  });
 });
