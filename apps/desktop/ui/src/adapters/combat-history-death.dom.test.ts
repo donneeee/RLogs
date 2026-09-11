@@ -142,6 +142,71 @@ describe("Combat History death presentation", () => {
     expect(hidden.querySelector(".combat-history-event-lanes")).toBeNull();
   });
 
+  it("keeps the participant event lane when the selected metric has no trace", async () => {
+    const ui = await loadUiLocalizer("en-US");
+    const actor = {
+      actor_id: "alice", display_name: "Alice", actor_kind: "player",
+      death_events: [death()], death_seconds: [],
+      skill_events: [{ at_micros: 1_250_000, ability_id: "2233" }],
+      status_events: [
+        { at_micros: 500_000, effect_id: "11", instance_id: "ward", state: "applied" },
+        { at_micros: 1_000_000, effect_id: "11", instance_id: "ward", state: "removed" },
+      ],
+      abilities: [{ ability_id: "2233", presentation_name: "Powerdraw" }],
+      series: [{ second: 0, damage: 100, effective_healing: 0, damage_taken: 0 }],
+      targets: [],
+    } as unknown as HistoryActorSummary;
+    const render = (metric: "damage" | "rdps", hidden = new Set<string>()) =>
+      renderMetricGraph(
+        [actor],
+        { metric, title: metric, rateLabel: metric === "damage" ? "DPS" : "rDPS", description: metric },
+        3_500_123, hidden, new Map([[actor.actor_id, "#35c2ff"]]), null,
+        () => undefined, ui,
+      );
+
+    const damage = render("damage");
+    expect(damage.querySelector(".combat-history-character-line")).not.toBeNull();
+    expect(damage.querySelector(".combat-history-player-event-lane")).not.toBeNull();
+
+    const rdps = render("rdps");
+    expect(rdps.querySelector(".combat-history-character-line")).toBeNull();
+    expect(rdps.querySelector(".combat-history-player-event-lane")).not.toBeNull();
+    expect(rdps.querySelector(".combat-history-skill-event")).not.toBeNull();
+    expect(rdps.querySelector(".combat-history-status-span")).not.toBeNull();
+    expect(rdps.querySelector(".combat-history-death-marker")).not.toBeNull();
+
+    const hidden = render("rdps", new Set([actor.actor_id]));
+    expect(hidden.querySelector(".combat-history-player-event-lane")).toBeNull();
+    expect(hidden.querySelector(".combat-history-skill-event")).toBeNull();
+    expect(render("rdps").querySelector(".combat-history-player-event-lane"))
+      .not.toBeNull();
+  });
+
+  it("rescales the graph from visible traces only", async () => {
+    const ui = await loadUiLocalizer("en-US");
+    const actor = (actorId: string, damage: number) => ({
+      actor_id: actorId, display_name: actorId, actor_kind: "player",
+      death_events: [], death_seconds: [], skill_events: [], status_events: [], abilities: [],
+      series: [{ second: 0, damage, effective_healing: 0, damage_taken: 0 }], targets: [],
+    }) as unknown as HistoryActorSummary;
+    const dominant = actor("dominant", 10_000);
+    const remaining = actor("remaining", 100);
+    const render = (hidden: ReadonlySet<string>) => renderMetricGraph(
+      [dominant, remaining],
+      { metric: "damage", title: "Damage", rateLabel: "DPS", description: "Damage rate" },
+      1_000_000, hidden,
+      new Map([[dominant.actor_id, "#35c2ff"], [remaining.actor_id, "#ffcc66"]]),
+      null, () => undefined, ui,
+    );
+    const maximumLabel = (rendered: HTMLElement) =>
+      [...rendered.querySelectorAll(".combat-history-y-label")].at(-1)?.textContent;
+
+    expect(maximumLabel(render(new Set()))).toBe("10K");
+    const dominantHidden = render(new Set([dominant.actor_id]));
+    expect(dominantHidden.querySelectorAll(".combat-history-character-line")).toHaveLength(1);
+    expect(maximumLabel(dominantHidden)).toBe("100");
+  });
+
   it("discloses every dense exact skill start by keyboard and keeps player visibility coupled", async () => {
     const ui = await loadUiLocalizer("en-US");
     const actor = {

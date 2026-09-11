@@ -3378,9 +3378,26 @@ export function renderMetricGraph(
   const visibleSeries = allSeries.filter(
     (entry) => !hiddenActorIds.has(entry.actor.actor_id),
   );
+  // Recorded events are an independent timeline, not another projection of
+  // the selected graph metric. Keep every user-visible participant eligible
+  // for a lane even when that participant has no value for the current
+  // metric (for example, a damage dealer on the healing graph).
+  const visibleEventParticipants = actors.flatMap((actor, index) =>
+    hiddenActorIds.has(actor.actor_id) ? [] : [{
+      actor,
+      color: actorColors.get(actor.actor_id) ?? graphColor(index),
+    }]);
   const hasHostileCasts = showHostileEvents && (historyView?.hostile_casts?.length ?? 0) > 0;
+  const eventLanes = recordedEventLanes(
+    visibleEventParticipants,
+    durationSeconds,
+    elapsedMicros,
+    localizer,
+    historyView,
+    showHostileEvents,
+  );
   const scaleMaximum = graphScaleMaximum(
-    allSeries.map((entry) => entry.values),
+    visibleSeries.map((entry) => entry.values),
   );
   card.append(
     element(
@@ -3390,7 +3407,7 @@ export function renderMetricGraph(
       renderGraphMetricToggle(definition.metric, selectMetric, localizer),
     ),
   );
-  if (allSeries.length === 0 && !hasHostileCasts) {
+  if (allSeries.length === 0 && !hasHostileCasts && eventLanes === null) {
     card.append(
       element(
         "p",
@@ -3409,25 +3426,27 @@ export function renderMetricGraph(
       ),
     );
   }
-  card.append(
-    partyLineChart(
-      visibleSeries,
-      definition,
-      durationSeconds,
-      elapsedMicros,
-      scaleMaximum,
-      targetActorId === null,
-      localizer,
-    ),
-  );
-  const eventLanes = recordedEventLanes(
-    visibleSeries,
-    durationSeconds,
-    elapsedMicros,
-    localizer,
-    historyView,
-    showHostileEvents,
-  );
+  if (allSeries.length > 0 || hasHostileCasts) {
+    card.append(
+      partyLineChart(
+        visibleSeries,
+        definition,
+        durationSeconds,
+        elapsedMicros,
+        scaleMaximum,
+        targetActorId === null,
+        localizer,
+      ),
+    );
+  } else {
+    card.append(
+      element(
+        "p",
+        "combat-history-graph-note",
+        localizer.t("ui.combat_history.graph.no_values", { rate: definition.rateLabel }),
+      ),
+    );
+  }
   if (eventLanes) card.append(eventLanes);
   const stats = element("div", "combat-history-graph-stats");
   for (const entry of visibleSeries) {
@@ -3456,7 +3475,7 @@ export function renderMetricGraph(
 }
 
 function recordedEventLanes(
-  series: readonly ActorGraphSeries[],
+  series: readonly Pick<ActorGraphSeries, "actor" | "color">[],
   durationSeconds: number,
   durationMicros: number,
   localizer: UiLocalizer,
