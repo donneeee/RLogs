@@ -1273,9 +1273,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("reviewed action {ability_id} is absent"));
             assert_eq!(presentation.resolution, "localized");
             assert_eq!(
-                localized_combat_action_name(ability_id, "en-US")
-                    .unwrap()
-                    .as_deref(),
+                localized_combat_action_name(ability_id, "en-US").unwrap(),
                 Some(expected),
                 "reviewed action {ability_id} changed identity"
             );
