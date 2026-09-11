@@ -65,7 +65,8 @@ export function mountOverlayLayoutEditorSurface(container: HTMLElement, dependen
       visible.addEventListener("change", () => { const checked = visible.checked; edit((value) => { activeOverlaySetup(value).modules[id].visible = checked; }); }); card.append(title);
       for (const [key, label, min, max, step] of [
         ["x", "X %", 0, 100, 1], ["y", "Y %", 0, 100, 1], ["width", "Width %", 8, 100, 1], ["height", "Height %", 6, 100, 1],
-        ["opacity", "Opacity %", 20, 100, 5], ["scale", "Scale %", 50, 200, 5], ["zOrder", "Layer", 0, 1000, 1],
+        ["opacity", "Widget opacity %", 20, 100, 5], ["backgroundOpacity", "Background %", 0, 100, 5],
+        ["scale", "Scale %", 50, 200, 5], ["zOrder", "Layer", 0, 1000, 1],
       ] as const) {
         const field = input("number"); field.min = String(min); field.max = String(max); field.step = String(step);
         field.value = String(key === "zOrder" ? module[key] : Math.round(module[key] * 100));

@@ -1623,6 +1623,7 @@ export function mountMechanicsMapOverlay(
       if (visibility !== null) { preferences[visibility] = module.visible; element.hidden = !module.visible; }
       element.style.zIndex = String(module.zOrder);
       element.style.opacity = String(module.opacity);
+      element.style.setProperty("--overlay-module-background-opacity", String(module.backgroundOpacity));
       element.style.scale = String(module.scale);
       element.style.transformOrigin = "top left";
     }
@@ -1661,7 +1662,7 @@ export function mountMechanicsMapOverlay(
       layoutOperations.push((settings) => { const setup = settings.setups[setupId]; if (setup) setup.locked = locked; });
     }
     for (const id of ["map", "player", "actions", "party", "target", "objectives", "alerts"] as const) {
-      for (const key of ["x", "y", "width", "height", "visible", "zOrder", "opacity", "scale"] as const) {
+      for (const key of ["x", "y", "width", "height", "visible", "zOrder", "opacity", "backgroundOpacity", "scale"] as const) {
         if (beforeSetup.modules[id][key] === afterSetup.modules[id][key]) continue;
         const value = afterSetup.modules[id][key];
         layoutOperations.push((settings) => {

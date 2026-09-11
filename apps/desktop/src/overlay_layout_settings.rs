@@ -27,6 +27,8 @@ pub struct OverlayModuleLayout {
     pub visible: bool,
     pub z_order: u16,
     pub opacity: f64,
+    #[serde(default)]
+    pub background_opacity: f64,
     pub scale: f64,
 }
 
@@ -72,6 +74,7 @@ fn module(x: f64, y: f64, width: f64, height: f64, z_order: u16) -> OverlayModul
         visible: true,
         z_order,
         opacity: 1.0,
+        background_opacity: 0.0,
         scale: 1.0,
     }
 }
@@ -212,6 +215,7 @@ fn normalize_and_validate(settings: &mut OverlayLayoutSettings) -> Result<(), St
                 value.width,
                 value.height,
                 value.opacity,
+                value.background_opacity,
                 value.scale,
             ]
             .into_iter()
@@ -220,6 +224,7 @@ fn normalize_and_validate(settings: &mut OverlayLayoutSettings) -> Result<(), St
                 return Err("overlay module geometry must be finite".into());
             }
             value.opacity = value.opacity.clamp(0.2, 1.0);
+            value.background_opacity = value.background_opacity.clamp(0.0, 1.0);
             value.scale = value.scale.clamp(0.5, 2.0);
             value.width = value.width.clamp(0.08, 1.0 / value.scale);
             value.height = value.height.clamp(0.06, 1.0 / value.scale);
@@ -419,6 +424,7 @@ mod tests {
         map.width = 9.0;
         map.height = 0.001;
         map.opacity = 0.01;
+        map.background_opacity = 4.0;
         map.scale = 8.0;
         map.z_order = u16::MAX;
         normalize_and_validate(&mut settings).unwrap();
@@ -430,10 +436,11 @@ mod tests {
                 map.width,
                 map.height,
                 map.opacity,
+                map.background_opacity,
                 map.scale,
                 map.z_order
             ),
-            (0.0, 0.88, 0.5, 0.06, 0.2, 2.0, 1000)
+            (0.0, 0.88, 0.5, 0.06, 0.2, 1.0, 2.0, 1000)
         );
     }
 
@@ -451,6 +458,25 @@ mod tests {
         assert_eq!(reset.setups["default"].modules.len(), 7);
         assert!(!reset.setups["default"].locked);
         assert!(!reset.canvas_enabled);
+    }
+
+    #[test]
+    fn schema_two_without_background_opacity_migrates_to_transparent() {
+        let mut serialized = serde_json::to_value(OverlayLayoutSettings::default()).unwrap();
+        for module in serialized["setups"]["default"]["modules"]
+            .as_object_mut()
+            .unwrap()
+            .values_mut()
+        {
+            module.as_object_mut().unwrap().remove("backgroundOpacity");
+        }
+        let parsed: OverlayLayoutSettings = serde_json::from_value(serialized).unwrap();
+        assert!(
+            parsed.setups["default"]
+                .modules
+                .values()
+                .all(|module| module.background_opacity == 0.0)
+        );
     }
 
     #[test]

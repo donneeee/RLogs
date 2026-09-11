@@ -5743,7 +5743,7 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
 .overlay-canvas-runtime[data-mode="passive"] .dungeon-objectives-overlay-runtime,
 .overlay-canvas-runtime[data-mode="passive"] .mechanic-alerts-overlay-runtime {
   border: 0 !important;
-  background: transparent !important;
+  background: rgb(5 13 23 / var(--overlay-module-background-opacity, 0)) !important;
   background-image: none !important;
   box-shadow: none !important;
   backdrop-filter: none !important;

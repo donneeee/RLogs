@@ -187,6 +187,8 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     );
     expect(map.style.opacity).toBe("0.43");
     expect(player.style.opacity).toBe("0.61");
+    expect(map.style.getPropertyValue("--overlay-module-background-opacity")).toBe("0");
+    expect(player.style.getPropertyValue("--overlay-module-background-opacity")).toBe("0");
 
     const select = container.querySelector("select")!;
     const editorEscape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });

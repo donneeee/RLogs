@@ -3,7 +3,7 @@ export type OverlayModuleId = typeof OVERLAY_MODULE_IDS[number];
 
 export interface OverlayModuleLayout {
   x: number; y: number; width: number; height: number;
-  visible: boolean; zOrder: number; opacity: number; scale: number;
+  visible: boolean; zOrder: number; opacity: number; backgroundOpacity: number; scale: number;
 }
 
 export interface OverlaySetupLayout {
@@ -46,7 +46,7 @@ export function activeOverlaySetup(settings: OverlayLayoutSettings): OverlaySetu
 
 export function safeDefaultOverlayLayout(revision: number): OverlayLayoutSettings {
   const module = (x: number, y: number, width: number, height: number, zOrder: number): OverlayModuleLayout =>
-    ({ x, y, width, height, visible: true, zOrder, opacity: 1, scale: 1 });
+    ({ x, y, width, height, visible: true, zOrder, opacity: 1, backgroundOpacity: 0, scale: 1 });
   return { schemaVersion: 2, revision, canvasEnabled: false, selectedSetupId: "default", legacyMigrationComplete: true, setups: { default: {
     name: "Default HUD", locked: false, modules: {
       map: module(.015, .15, .325, .65, 1), player: module(.015, .06, .263, .16, 2),
@@ -69,7 +69,8 @@ export function clampOverlayModule(module: OverlayModuleLayout): OverlayModuleLa
   const scale = clamp(module.scale, 0.5, 2);
   const width = clamp(module.width, 0.08, 1 / scale); const height = clamp(module.height, 0.06, 1 / scale);
   return { ...module, x: clamp(module.x, 0, 1 - width * scale), y: clamp(module.y, 0, 1 - height * scale), width, height,
-    opacity: clamp(module.opacity, 0.2, 1), scale, zOrder: clamp(Math.round(module.zOrder), 0, 1000) };
+    opacity: clamp(module.opacity, 0.2, 1), backgroundOpacity: clamp(module.backgroundOpacity, 0, 1),
+    scale, zOrder: clamp(Math.round(module.zOrder), 0, 1000) };
 }
 
 export function raiseOverlayModule(setup: OverlaySetupLayout, selected: OverlayModuleId): number {
@@ -86,11 +87,13 @@ export function raiseOverlayModule(setup: OverlaySetupLayout, selected: OverlayM
 
 function parseModule(value: unknown): OverlayModuleLayout {
   if (!record(value) || !finite(value.x) || !finite(value.y) || !finite(value.width) || !finite(value.height) ||
-      typeof value.visible !== "boolean" || !safeInteger(value.zOrder) || !finite(value.opacity) || !finite(value.scale)) {
+      typeof value.visible !== "boolean" || !safeInteger(value.zOrder) || !finite(value.opacity) ||
+      (value.backgroundOpacity !== undefined && !finite(value.backgroundOpacity)) || !finite(value.scale)) {
     throw new Error("Invalid overlay module layout.");
   }
   return clampOverlayModule({ x: value.x, y: value.y, width: value.width, height: value.height,
-    visible: value.visible, zOrder: value.zOrder, opacity: value.opacity, scale: value.scale });
+    visible: value.visible, zOrder: value.zOrder, opacity: value.opacity,
+    backgroundOpacity: value.backgroundOpacity === undefined ? 0 : value.backgroundOpacity, scale: value.scale });
 }
 function clamp(value: number, minimum: number, maximum: number): number { return Math.min(maximum, Math.max(minimum, value)); }
 function finite(value: unknown): value is number { return typeof value === "number" && Number.isFinite(value); }
