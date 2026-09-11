@@ -189,13 +189,10 @@ export function modulePresentation(
 export function modulePresentationForCharacter(
   character: LocalModuleCharacter,
 ): ModulePresentationCatalog | null {
-  const presentation = character.module_presentation;
-  return presentation &&
-    presentation.deployment_id === character.deployment &&
-    presentation.client_build === character.source_client_build &&
-    presentation.protocol_pack_digest === character.source_protocol_pack_digest
-    ? presentation
-    : null;
+  // The host supplies a bounded bundled display catalog keyed by stable
+  // module/effect IDs. Its labels do not prove optimizer mechanics, so source
+  // identity must not suppress known names; scoring remains catalog-owned.
+  return character.module_presentation;
 }
 
 export function moduleQuality(value: ModuleCandidate): string {

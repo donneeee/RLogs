@@ -141,7 +141,7 @@ describe("local module optimizer contracts", () => {
     expect(presentation.icon).toContain("item_icons_mod_device_5.png");
   });
 
-  it("uses module and rune labels only for the exact package identity", () => {
+  it("uses trusted module and effect labels across source identities", () => {
     const presentation = {
       schema_version: 1 as const,
       locale: "en-US" as const,
@@ -164,7 +164,15 @@ describe("local module optimizer contracts", () => {
     expect(summarizeModuleLinks([
       { instance_id: "1", config_id: 5_500_104, quality: 4, parts: [{ part_id: 1110, initial_link_points: 20 }] },
     ], null, presentation)[0]?.name).toBe("Strength Boost");
-    expect(modulePresentationForCharacter({ ...character, source_client_build: "24687927" })).toBeNull();
+    for (const identity of [
+      { deployment: "global", source_client_build: "24252055", source_protocol_pack_digest: "sha256:older" },
+      { deployment: "global", source_client_build: "24687927", source_protocol_pack_digest: "sha256:newer" },
+      { deployment: "cn", source_client_build: "24687926", source_protocol_pack_digest: "sha256:other" },
+      { deployment: "", source_client_build: "", source_protocol_pack_digest: "" },
+    ]) {
+      expect(modulePresentationForCharacter({ ...character, ...identity })).toBe(presentation);
+    }
+    expect(modulePresentationForCharacter({ ...character, module_presentation: null })).toBeNull();
     expect(modulePresentation({ instance_id: "1", config_id: 5_500_104, quality: 4, parts: [] }, null).name)
       .toBe("Unlocalized combat module #5500104");
     const staleCatalog = parseOptimizerCatalog({

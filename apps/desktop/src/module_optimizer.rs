@@ -7,6 +7,10 @@ use crate::profile_packages::LocalProfilePackageStore;
 
 const MODULE_OPTIMIZER_INVENTORY_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_MODULES_PER_CHARACTER: usize = 4_096;
+const MODULE_PRESENTATION_CATALOG_DEPLOYMENT: &str = "global";
+const MODULE_PRESENTATION_CATALOG_BUILD: &str = "24687926";
+const MODULE_PRESENTATION_CATALOG_PACK_DIGEST: &str =
+    "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
 
 #[derive(Clone, Debug, Serialize)]
 pub struct LocalModuleInventoryView {
@@ -149,28 +153,23 @@ pub fn load_local_module_inventories(
 }
 
 fn module_presentation_for_identity(
-    deployment_id: &str,
-    client_build: &str,
-    protocol_pack_digest: &str,
+    _deployment_id: &str,
+    _client_build: &str,
+    _protocol_pack_digest: &str,
 ) -> Option<ModulePresentationView> {
     // Presentation-only mirror of the reviewed module namespaces shipped by
-    // the website schema-4 catalog. The runtime localization identity gate is
-    // deliberately independent of the older optimizer mechanics catalog.
-    if !rlogs_game_bpsr::bundled_localization_supports_identity(
-        deployment_id,
-        client_build,
-        protocol_pack_digest,
-    )
-    .unwrap_or(false)
-    {
-        return None;
-    }
+    // the website schema-4 catalog. These names are trusted display data keyed
+    // by stable module/effect IDs, so source build identity does not authorize
+    // them. The serialized identity describes the catalog's reviewed origin,
+    // not the character to which its stable-ID labels may be applied.
+    // Optimizer mechanics and scoring remain owned by the separately reviewed,
+    // exact-authority optimizer catalog.
     Some(ModulePresentationView {
         schema_version: 1,
         locale: "en-US",
-        deployment_id: deployment_id.to_owned(),
-        client_build: client_build.to_owned(),
-        protocol_pack_digest: protocol_pack_digest.to_owned(),
+        deployment_id: MODULE_PRESENTATION_CATALOG_DEPLOYMENT.to_owned(),
+        client_build: MODULE_PRESENTATION_CATALOG_BUILD.to_owned(),
+        protocol_pack_digest: MODULE_PRESENTATION_CATALOG_PACK_DIGEST.to_owned(),
         modules: BTreeMap::from([
             ("5500101".into(), "Basic Attack Module"),
             ("5500102".into(), "Advanced Attack Module"),
@@ -293,22 +292,43 @@ mod tests {
     }
 
     #[test]
-    fn module_presentation_is_bound_to_the_exact_runtime_identity() {
+    fn module_presentation_resolves_trusted_ids_across_source_identities() {
         const DIGEST: &str =
             "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
-        let presentation = module_presentation_for_identity("global", "24687926", DIGEST)
-            .expect("current exact identity has presentation authority");
-        assert_eq!(
-            presentation.modules.get("5500104"),
-            Some(&"Excellent Attack Module - Premium")
-        );
-        assert_eq!(
-            presentation.module_effects.get("1110"),
-            Some(&"Strength Boost")
-        );
-        assert!(module_presentation_for_identity("global", "24687927", DIGEST).is_none());
-        assert!(
-            module_presentation_for_identity("global", "24687926", "sha256:wrong-pack").is_none()
-        );
+        for (label, deployment, build, digest) in [
+            ("exact", "global", "24687926", DIGEST),
+            ("older", "global", "24252055", DIGEST),
+            ("newer", "global", "24699999", DIGEST),
+            ("wrong digest", "global", "24687926", "sha256:wrong-pack"),
+            ("cross deployment", "cn", "24699999", "sha256:another-pack"),
+            ("missing identity", "", "", ""),
+        ] {
+            let presentation = module_presentation_for_identity(deployment, build, digest)
+                .unwrap_or_else(|| panic!("{label} source identity should retain trusted labels"));
+            assert_eq!(
+                presentation.deployment_id, MODULE_PRESENTATION_CATALOG_DEPLOYMENT,
+                "{label}"
+            );
+            assert_eq!(
+                presentation.client_build, MODULE_PRESENTATION_CATALOG_BUILD,
+                "{label}"
+            );
+            assert_eq!(
+                presentation.protocol_pack_digest, MODULE_PRESENTATION_CATALOG_PACK_DIGEST,
+                "{label}"
+            );
+            assert_eq!(
+                presentation.modules.get("5500104"),
+                Some(&"Excellent Attack Module - Premium"),
+                "{label}"
+            );
+            assert_eq!(
+                presentation.module_effects.get("1110"),
+                Some(&"Strength Boost"),
+                "{label}"
+            );
+            assert!(!presentation.modules.contains_key("9999999"), "{label}");
+            assert!(!presentation.module_effects.contains_key("9999"), "{label}");
+        }
     }
 }
