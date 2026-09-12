@@ -30,12 +30,16 @@ class-validates `ZIndicatorMgr`, requires skill `1101`, slot `201`, PC point
 mode, release eligibility, the exact 18-metre range, and a settled finite
 position before emitting any input.
 
-The armed canary emits one six-pixel relative horizontal mouse move, waits for
-the game's normal indicator smoothing, observes the position, emits the inverse
-only while the game remains foreground, and finally sends Escape to cancel. It
-never emits a mouse button, Enter, Normal Attack, or placement confirmation.
-Loss of focus prevents further input. Its receipt contains no PID,
-account/session identity, raw address, or filesystem path.
+The armed calibration emits four six-pixel relative moves in the exact order
+`+X, -X, +Y, -Y`. Each move is paired with its subsequent settled observation,
+including a monotonic relative timestamp, position, current velocity, stability
+gap, and measured stability delta. Before every input it revalidates foreground
+ownership, the exact Marker 1 lifecycle, and the original class-validated root
+context. Any change fails the run and prevents further movement. Escape is sent
+at the end only while the same Marker 1 context remains active in the
+foreground game. It never emits a mouse button, Enter, Normal Attack, or
+placement confirmation. Its receipt contains no PID, account/session identity,
+raw address, or filesystem path.
 
 ## Package and run
 
@@ -58,13 +62,15 @@ while safely stationary in a dungeon as leader. Open Team, open the marker
 palette, manually select Marker 1, keep the game focused, and run:
 
 ```powershell
-.\run-bpsr-automarker-lifecycle-probe.ps1 -ArmReversibleNudge
+.\run-bpsr-automarker-lifecycle-probe.ps1 -ArmReversibleCalibration
 ```
 
 After launching it, use the visible five-second countdown to return focus to
-the game. Do not click during the approximately one-second canary. A passing receipt
-requires the indicator to move, approximately return, and become inactive after
-Escape. A failed-closed receipt is not placement authority.
+the game. Do not click during the approximately three-second calibration. A passing receipt
+requires both mouse axes to excite the indicator, the symmetric sequence to
+approximately return, and the indicator to become inactive after Escape. The
+old `-ArmReversibleNudge` switch is intentionally rejected rather than treated
+as an alias. A failed-closed receipt is not placement authority.
 
 The output is a sanitized JSON receipt containing exact artifact hashes,
 sampling counts, policy assertions, and deduplicated lifecycle transitions.

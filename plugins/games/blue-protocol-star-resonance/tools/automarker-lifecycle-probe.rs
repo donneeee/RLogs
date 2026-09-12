@@ -3,7 +3,7 @@
 //! The observer opens one already-running client with query/read rights only.
 //! It follows one compile-time allowlisted IL2CPP object chain and samples six
 //! reviewed fields. Its default mode cannot emit input. An exact-token armed
-//! canary may emit one tiny relative mouse nudge, its inverse, and Escape; it
+//! canary may emit four tiny symmetric orthogonal mouse moves and Escape; it
 //! never clicks or confirms a marker. It cannot write/invoke game code, debug,
 //! inject, suspend, place markers, inspect packets, or scan/dump process memory.
 
@@ -94,8 +94,11 @@ mod windows {
     const INDICATOR_DATA_MAX_DISTANCE: usize = 0x5C;
     const INDICATOR_MGR_POS: usize = 0x80;
     const INDICATOR_IS_PC_MODE: usize = 0xD8;
+    const INDICATOR_CURRENT_VELOCITY: usize = 0xDC;
     const INDICATOR_SKILL_ID: usize = 0xE8;
     const INDICATOR_SLOT_ID: usize = 0xEC;
+    const INDICATOR_ENTER_STATE: usize = 0x110;
+    const INDICATOR_CAMERA_OPEN_ID: usize = 0x114;
     const SKILL_SLOT_ID: usize = 0x18;
     const SKILL_LAST_USED_SLOT_ID: usize = 0x1C;
     const SKILL_LAST_PRESS_SLOT_ID: usize = 0x20;
@@ -103,12 +106,21 @@ mod windows {
     const MAX_C_STRING_BYTES: usize = 96;
     const MIN_USER_ADDRESS: usize = 0x1_0000;
     const MAX_USER_ADDRESS: usize = 0x0000_7fff_ffff_ffff;
-    const ARMED_MODE_TOKEN: &str = "marker1-reversible-nudge-v1";
+    const ARMED_MODE_TOKEN: &str = "marker1-reversible-calibration-v1";
     const MARKER_1_SKILL_ID: i32 = 1101;
     const MARKER_1_SLOT_ID: i32 = 201;
     const MARKER_MAX_DISTANCE: f32 = 18.0;
-    const NUDGE_PIXELS: i32 = 6;
+    const CALIBRATION_PIXELS: i32 = 6;
+    const CALIBRATION_SEQUENCE: [[i32; 2]; 4] = [
+        [CALIBRATION_PIXELS, 0],
+        [-CALIBRATION_PIXELS, 0],
+        [0, CALIBRATION_PIXELS],
+        [0, -CALIBRATION_PIXELS],
+    ];
     const SETTLE_MILLIS: u64 = 350;
+    const STABILITY_SAMPLE_MILLIS: u64 = 50;
+    const MAX_SETTLED_POSITION_DELTA: f32 = 0.002;
+    const MAX_SETTLED_VELOCITY: f32 = 0.02;
 
     #[derive(Clone, Debug, Eq, PartialEq)]
     struct Roots {
@@ -154,30 +166,59 @@ mod windows {
         param_2: f32,
         max_distance: f32,
         position: Position,
+        current_velocity: Position,
         is_pc_mode: bool,
         skill_id: i32,
         slot_id: i32,
+        enter_state: i32,
+        camera_open_id: i32,
     }
 
     #[derive(Clone, Debug, Serialize)]
     struct CanaryReceipt {
         armed: bool,
         mode: &'static str,
-        nudge_pixels: i32,
+        calibration_pixels: i32,
         marker_1_state_validated: bool,
-        game_was_foreground: bool,
-        forward_input_emitted: bool,
-        inverse_input_emitted: bool,
+        foreground_validated_before_every_input: bool,
+        root_context_unchanged: bool,
+        lifecycle_context_unchanged: bool,
+        rank_2_input_excitation: bool,
         escape_emitted: bool,
-        baseline: Option<Position>,
-        nudged: Option<Position>,
-        returned: Option<Position>,
-        forward_distance: Option<f32>,
-        return_error: Option<f32>,
-        changed: bool,
+        baseline: Option<SettledObservation>,
+        transitions: Vec<CalibrationTransition>,
+        final_return_error: Option<f32>,
         approximately_returned: bool,
         cancelled: bool,
         outcome: &'static str,
+    }
+
+    #[derive(Clone, Debug, Serialize)]
+    struct SettledObservation {
+        elapsed_micros: u128,
+        position: Position,
+        current_velocity: Position,
+        stability_sample_gap_millis: u64,
+        stability_position_delta: f32,
+        velocity_norm: f32,
+        settled: bool,
+    }
+
+    #[derive(Clone, Debug, Serialize)]
+    struct CalibrationTransition {
+        sequence_index: usize,
+        emitted_integer_mouse_delta: [i32; 2],
+        input_elapsed_micros: u128,
+        subsequent_observation: SettledObservation,
+        displacement: f32,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum CalibrationAction {
+        Move([i32; 2]),
+        Escape,
+        AbortForeground,
+        AbortContext,
     }
 
     #[derive(Debug, Serialize)]
@@ -402,7 +443,7 @@ mod windows {
 
         let memory = ProcessMemory(handle.0);
         let (events, counters, canary) = if armed {
-            let canary = run_reversible_nudge_canary(&memory, module.base, process_id);
+            let canary = run_reversible_calibration_canary(&memory, module.base, process_id);
             (Vec::new(), Counters::default(), canary)
         } else {
             let (events, counters) = observe(
@@ -414,7 +455,7 @@ mod windows {
             (events, counters, read_only_canary_receipt())
         };
         let receipt = Receipt {
-            schema_version: 2,
+            schema_version: 3,
             generated_by: "rlogs-bpsr-automarker-lifecycle-probe",
             game: "blue-protocol-star-resonance",
             deployment: "global",
@@ -492,91 +533,159 @@ mod windows {
         CanaryReceipt {
             armed: false,
             mode: "read-only",
-            nudge_pixels: 0,
+            calibration_pixels: 0,
             marker_1_state_validated: false,
-            game_was_foreground: false,
-            forward_input_emitted: false,
-            inverse_input_emitted: false,
+            foreground_validated_before_every_input: false,
+            root_context_unchanged: false,
+            lifecycle_context_unchanged: false,
+            rank_2_input_excitation: false,
             escape_emitted: false,
             baseline: None,
-            nudged: None,
-            returned: None,
-            forward_distance: None,
-            return_error: None,
-            changed: false,
+            transitions: Vec::new(),
+            final_return_error: None,
             approximately_returned: false,
             cancelled: false,
             outcome: "not-armed-read-only",
         }
     }
 
-    fn run_reversible_nudge_canary(
+    fn run_reversible_calibration_canary(
         memory: &impl Memory,
         module_base: usize,
         process_id: u32,
     ) -> CanaryReceipt {
+        let started = Instant::now();
         let mut receipt = CanaryReceipt {
             armed: true,
             mode: ARMED_MODE_TOKEN,
-            nudge_pixels: NUDGE_PIXELS,
+            calibration_pixels: CALIBRATION_PIXELS,
             marker_1_state_validated: false,
-            game_was_foreground: false,
-            forward_input_emitted: false,
-            inverse_input_emitted: false,
+            foreground_validated_before_every_input: true,
+            root_context_unchanged: true,
+            lifecycle_context_unchanged: true,
+            rank_2_input_excitation: calibration_sequence_is_rank_2(),
             escape_emitted: false,
             baseline: None,
-            nudged: None,
-            returned: None,
-            forward_distance: None,
-            return_error: None,
-            changed: false,
+            transitions: Vec::new(),
+            final_return_error: None,
             approximately_returned: false,
             cancelled: false,
             outcome: "preflight-rejected-marker-state",
         };
-        let baseline_state = match stable_marker_1_state(memory, module_base) {
-            Ok(state) => state,
+        let baseline = match stable_marker_1_sample(memory, module_base, &started) {
+            Ok(sample) => sample,
             Err(_) => return receipt,
         };
         receipt.marker_1_state_validated = true;
-        let baseline = baseline_state.indicator.position.clone();
-        receipt.baseline = Some(baseline.clone());
-        if !game_is_foreground(process_id) {
-            receipt.outcome = "preflight-rejected-foreground";
-            return receipt;
-        }
-        receipt.game_was_foreground = true;
+        let baseline_position = baseline.observation.position.clone();
+        let baseline_roots = baseline.roots.clone();
+        let baseline_context = MarkerContext::from(&baseline.state);
+        receipt.baseline = Some(baseline.observation);
         receipt.outcome = "failed-closed";
 
-        receipt.forward_input_emitted = emit_relative_mouse(NUDGE_PIXELS);
-        if receipt.forward_input_emitted {
-            thread::sleep(Duration::from_millis(SETTLE_MILLIS));
-            if let Ok(state) = stable_marker_1_state(memory, module_base) {
-                let distance = position_distance(&baseline, &state.indicator.position);
-                receipt.nudged = Some(state.indicator.position);
-                receipt.forward_distance = Some(distance);
-                receipt.changed = distance >= 0.001;
-            }
-        }
-
-        // Never send cleanup input to a different foreground application.
-        if receipt.forward_input_emitted && game_is_foreground(process_id) {
-            receipt.inverse_input_emitted = emit_relative_mouse(-NUDGE_PIXELS);
-            if receipt.inverse_input_emitted {
-                thread::sleep(Duration::from_millis(SETTLE_MILLIS));
-                if let Ok(state) = stable_marker_1_state(memory, module_base) {
-                    let error = position_distance(&baseline, &state.indicator.position);
-                    receipt.returned = Some(state.indicator.position);
-                    receipt.return_error = Some(error);
-                    let tolerance = receipt
-                        .forward_distance
-                        .map_or(0.15, |distance| (distance * 0.35).max(0.15));
-                    receipt.approximately_returned = error <= tolerance;
+        for (sequence_index, delta) in CALIBRATION_SEQUENCE.into_iter().enumerate() {
+            let pre_input = match stable_marker_1_sample(memory, module_base, &started) {
+                Ok(sample) => sample,
+                Err(_) => {
+                    receipt.root_context_unchanged = false;
+                    receipt.lifecycle_context_unchanged = false;
+                    receipt.outcome = "aborted-context";
+                    break;
+                }
+            };
+            let roots_match = pre_input.roots == baseline_roots;
+            let context_matches = MarkerContext::from(&pre_input.state) == baseline_context;
+            let action = next_calibration_action(
+                sequence_index,
+                game_is_foreground(process_id),
+                roots_match && context_matches,
+            );
+            match action {
+                CalibrationAction::AbortForeground => {
+                    receipt.foreground_validated_before_every_input = false;
+                    receipt.outcome = "aborted-foreground";
+                    break;
+                }
+                CalibrationAction::AbortContext => {
+                    receipt.root_context_unchanged &= roots_match;
+                    receipt.lifecycle_context_unchanged &= context_matches;
+                    receipt.outcome = "aborted-context";
+                    break;
+                }
+                CalibrationAction::Move(planned) if planned == delta => {}
+                _ => {
+                    receipt.outcome = "aborted-sequence";
+                    break;
                 }
             }
+            let input_elapsed_micros = started.elapsed().as_micros();
+            if !emit_relative_mouse(delta) {
+                receipt.outcome = "aborted-input";
+                break;
+            }
+            thread::sleep(Duration::from_millis(SETTLE_MILLIS));
+            let observed = match stable_marker_1_sample(memory, module_base, &started) {
+                Ok(sample) => sample,
+                Err(_) => {
+                    receipt.root_context_unchanged = false;
+                    receipt.lifecycle_context_unchanged = false;
+                    receipt.outcome = "aborted-context-after-input";
+                    break;
+                }
+            };
+            let roots_match = observed.roots == baseline_roots;
+            let context_matches = MarkerContext::from(&observed.state) == baseline_context;
+            receipt.root_context_unchanged &= roots_match;
+            receipt.lifecycle_context_unchanged &= context_matches;
+            if !roots_match || !context_matches {
+                receipt.outcome = "aborted-context-after-input";
+                break;
+            }
+            let prior_position = receipt
+                .transitions
+                .last()
+                .map(|transition| &transition.subsequent_observation.position)
+                .unwrap_or(&baseline_position);
+            let displacement = position_distance(prior_position, &observed.observation.position);
+            receipt.transitions.push(CalibrationTransition {
+                sequence_index,
+                emitted_integer_mouse_delta: delta,
+                input_elapsed_micros,
+                subsequent_observation: observed.observation,
+                displacement,
+            });
         }
 
-        if game_is_foreground(process_id) {
+        if receipt.transitions.len() == CALIBRATION_SEQUENCE.len() {
+            if let Some(last) = receipt.transitions.last() {
+                let error =
+                    position_distance(&baseline_position, &last.subsequent_observation.position);
+                let maximum_displacement = receipt
+                    .transitions
+                    .iter()
+                    .map(|transition| transition.displacement)
+                    .fold(0.0f32, f32::max);
+                receipt.final_return_error = Some(error);
+                receipt.approximately_returned = error <= (maximum_displacement * 0.35).max(0.15);
+            }
+        }
+
+        let (final_roots_match, final_lifecycle_match) =
+            match stable_marker_1_sample(memory, module_base, &started) {
+                Ok(sample) => (
+                    sample.roots == baseline_roots,
+                    MarkerContext::from(&sample.state) == baseline_context,
+                ),
+                Err(_) => (false, false),
+            };
+        receipt.root_context_unchanged &= final_roots_match;
+        receipt.lifecycle_context_unchanged &= final_lifecycle_match;
+        let escape_action = next_calibration_action(
+            CALIBRATION_SEQUENCE.len(),
+            game_is_foreground(process_id),
+            final_roots_match && final_lifecycle_match,
+        );
+        if escape_action == CalibrationAction::Escape {
             receipt.escape_emitted = emit_escape();
             if receipt.escape_emitted {
                 thread::sleep(Duration::from_millis(150));
@@ -584,12 +693,20 @@ mod windows {
                     .map(|state| !state.indicator.is_enable)
                     .unwrap_or(false);
             }
+        } else if escape_action == CalibrationAction::AbortForeground {
+            receipt.foreground_validated_before_every_input = false;
         }
 
-        if receipt.forward_input_emitted
-            && receipt.inverse_input_emitted
+        if receipt.transitions.len() == CALIBRATION_SEQUENCE.len()
+            && receipt
+                .transitions
+                .iter()
+                .all(|step| step.displacement >= 0.001)
+            && receipt.foreground_validated_before_every_input
+            && receipt.root_context_unchanged
+            && receipt.lifecycle_context_unchanged
+            && receipt.rank_2_input_excitation
             && receipt.escape_emitted
-            && receipt.changed
             && receipt.approximately_returned
             && receipt.cancelled
         {
@@ -598,21 +715,127 @@ mod windows {
         receipt
     }
 
-    fn stable_marker_1_state(
+    #[derive(Clone)]
+    struct StableMarkerSample {
+        roots: Roots,
+        state: LifecycleState,
+        observation: SettledObservation,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    struct MarkerContext {
+        slot_id: i32,
+        last_used_slot_id: i32,
+        last_press_slot_id: i32,
+        is_press: bool,
+        is_enable: bool,
+        is_pc_up_release: bool,
+        is_can_release: bool,
+        indicator_type: u8,
+        data_skill_id: i32,
+        data_slot_id: i32,
+        param_1: f32,
+        param_2: f32,
+        max_distance: f32,
+        is_pc_mode: bool,
+        skill_id: i32,
+        indicator_slot_id: i32,
+        enter_state: i32,
+        camera_open_id: i32,
+    }
+
+    impl From<&LifecycleState> for MarkerContext {
+        fn from(state: &LifecycleState) -> Self {
+            Self {
+                slot_id: state.slot_id,
+                last_used_slot_id: state.last_used_slot_id,
+                last_press_slot_id: state.last_press_slot_id,
+                is_press: state.is_press,
+                is_enable: state.indicator.is_enable,
+                is_pc_up_release: state.indicator.is_pc_up_release,
+                is_can_release: state.indicator.is_can_release,
+                indicator_type: state.indicator.indicator_type,
+                data_skill_id: state.indicator.data_skill_id,
+                data_slot_id: state.indicator.data_slot_id,
+                param_1: state.indicator.param_1,
+                param_2: state.indicator.param_2,
+                max_distance: state.indicator.max_distance,
+                is_pc_mode: state.indicator.is_pc_mode,
+                skill_id: state.indicator.skill_id,
+                indicator_slot_id: state.indicator.slot_id,
+                enter_state: state.indicator.enter_state,
+                camera_open_id: state.indicator.camera_open_id,
+            }
+        }
+    }
+
+    fn stable_marker_1_sample(
         memory: &impl Memory,
         module_base: usize,
-    ) -> Result<LifecycleState, Box<dyn Error>> {
-        let first = coherent_sample(memory, module_base)
+        started: &Instant,
+    ) -> Result<StableMarkerSample, Box<dyn Error>> {
+        let (first_roots, first) = coherent_sample_with_roots(memory, module_base)
             .map_err(|_| "marker state was unavailable or failed identity validation")?;
-        thread::sleep(Duration::from_millis(50));
-        let second = coherent_sample(memory, module_base)
+        thread::sleep(Duration::from_millis(STABILITY_SAMPLE_MILLIS));
+        let (second_roots, second) = coherent_sample_with_roots(memory, module_base)
             .map_err(|_| "marker state was unavailable or failed identity validation")?;
         require_marker_1_state(&first)?;
         require_marker_1_state(&second)?;
-        if position_distance(&first.indicator.position, &second.indicator.position) > 0.002 {
+        let position_delta =
+            position_distance(&first.indicator.position, &second.indicator.position);
+        let velocity_norm = position_norm(&second.indicator.current_velocity);
+        if first_roots != second_roots
+            || position_delta > MAX_SETTLED_POSITION_DELTA
+            || velocity_norm > MAX_SETTLED_VELOCITY
+        {
             return Err("Marker 1 indicator was not settled; no input emitted".into());
         }
-        Ok(second)
+        Ok(StableMarkerSample {
+            roots: second_roots,
+            observation: SettledObservation {
+                elapsed_micros: started.elapsed().as_micros(),
+                position: second.indicator.position.clone(),
+                current_velocity: second.indicator.current_velocity.clone(),
+                stability_sample_gap_millis: STABILITY_SAMPLE_MILLIS,
+                stability_position_delta: position_delta,
+                velocity_norm,
+                settled: true,
+            },
+            state: second,
+        })
+    }
+
+    fn next_calibration_action(
+        completed_transitions: usize,
+        foreground: bool,
+        context_matches: bool,
+    ) -> CalibrationAction {
+        if !foreground {
+            return CalibrationAction::AbortForeground;
+        }
+        if !context_matches {
+            return CalibrationAction::AbortContext;
+        }
+        CALIBRATION_SEQUENCE
+            .get(completed_transitions)
+            .copied()
+            .map_or(CalibrationAction::Escape, CalibrationAction::Move)
+    }
+
+    fn calibration_sequence_is_rank_2() -> bool {
+        let xx: i64 = CALIBRATION_SEQUENCE
+            .iter()
+            .map(|delta| i64::from(delta[0]).pow(2))
+            .sum();
+        let yy: i64 = CALIBRATION_SEQUENCE
+            .iter()
+            .map(|delta| i64::from(delta[1]).pow(2))
+            .sum();
+        let xy: i64 = CALIBRATION_SEQUENCE
+            .iter()
+            .map(|delta| i64::from(delta[0]) * i64::from(delta[1]))
+            .sum();
+        xx * yy - xy * xy > 0
     }
 
     fn require_marker_1_state(state: &LifecycleState) -> Result<(), Box<dyn Error>> {
@@ -646,6 +869,10 @@ mod windows {
             .sqrt()
     }
 
+    fn position_norm(position: &Position) -> f32 {
+        (position.x.powi(2) + position.y.powi(2) + position.z.powi(2)).sqrt()
+    }
+
     fn game_is_foreground(process_id: u32) -> bool {
         let window = unsafe { GetForegroundWindow() };
         if window.is_null() {
@@ -656,13 +883,13 @@ mod windows {
         foreground_process_id == process_id
     }
 
-    fn emit_relative_mouse(dx: i32) -> bool {
+    fn emit_relative_mouse(delta: [i32; 2]) -> bool {
         let input = INPUT {
             r#type: INPUT_MOUSE,
             Anonymous: INPUT_0 {
                 mi: MOUSEINPUT {
-                    dx,
-                    dy: 0,
+                    dx: delta[0],
+                    dy: delta[1],
                     mouseData: 0,
                     dwFlags: MOUSEEVENTF_MOVE,
                     time: 0,
@@ -755,6 +982,13 @@ mod windows {
         memory: &impl Memory,
         module_base: usize,
     ) -> Result<LifecycleState, AcquireError> {
+        coherent_sample_with_roots(memory, module_base).map(|(_, state)| state)
+    }
+
+    fn coherent_sample_with_roots(
+        memory: &impl Memory,
+        module_base: usize,
+    ) -> Result<(Roots, LifecycleState), AcquireError> {
         let before = acquire_roots(memory, module_base)?;
         let first_state = read_state(memory, &before)?;
         let second_state = read_state(memory, &before)?;
@@ -762,7 +996,7 @@ mod windows {
         if before != after || first_state != second_state {
             return Err(AcquireError::Torn);
         }
-        Ok(first_state)
+        Ok((before, first_state))
     }
 
     fn acquire_roots(memory: &impl Memory, module_base: usize) -> Result<Roots, AcquireError> {
@@ -929,9 +1163,15 @@ mod windows {
             param_2: f32_at(memory, checked_add(indicator, INDICATOR_DATA_PARAM_2)?)?,
             max_distance: f32_at(memory, checked_add(indicator, INDICATOR_DATA_MAX_DISTANCE)?)?,
             position: position_at(memory, checked_add(indicator, INDICATOR_MGR_POS)?)?,
+            current_velocity: position_at(
+                memory,
+                checked_add(indicator, INDICATOR_CURRENT_VELOCITY)?,
+            )?,
             is_pc_mode: bool_at(memory, checked_add(indicator, INDICATOR_IS_PC_MODE)?)?,
             skill_id: i32_at(memory, checked_add(indicator, INDICATOR_SKILL_ID)?)?,
             slot_id: i32_at(memory, checked_add(indicator, INDICATOR_SLOT_ID)?)?,
+            enter_state: i32_at(memory, checked_add(indicator, INDICATOR_ENTER_STATE)?)?,
+            camera_open_id: i32_at(memory, checked_add(indicator, INDICATOR_CAMERA_OPEN_ID)?)?,
         };
         Ok(LifecycleState {
             slot_id,
@@ -1507,6 +1747,7 @@ mod windows {
             );
             m.put(indicator + INDICATOR_MGR_POS, &xyz);
             m.put(indicator + INDICATOR_IS_PC_MODE, &[1]);
+            m.put(indicator + INDICATOR_CURRENT_VELOCITY, &[0u8; 12]);
             m.put(
                 indicator + INDICATOR_SKILL_ID,
                 &MARKER_1_SKILL_ID.to_le_bytes(),
@@ -1515,6 +1756,8 @@ mod windows {
                 indicator + INDICATOR_SLOT_ID,
                 &MARKER_1_SLOT_ID.to_le_bytes(),
             );
+            m.put(indicator + INDICATOR_ENTER_STATE, &3i32.to_le_bytes());
+            m.put(indicator + INDICATOR_CAMERA_OPEN_ID, &7i32.to_le_bytes());
             m
         }
 
@@ -1587,6 +1830,115 @@ mod windows {
             assert!(reject_unknown_options(&options).is_err());
             options.insert("armed-mode".into(), ARMED_MODE_TOKEN.into());
             assert!(reject_unknown_options(&options).is_ok());
+        }
+
+        #[test]
+        fn calibration_sequence_is_symmetric_ordered_and_rank_two() {
+            assert_eq!(CALIBRATION_SEQUENCE, [[6, 0], [-6, 0], [0, 6], [0, -6]]);
+            assert!(calibration_sequence_is_rank_2());
+            assert_eq!(
+                CALIBRATION_SEQUENCE
+                    .into_iter()
+                    .fold([0, 0], |sum, delta| [sum[0] + delta[0], sum[1] + delta[1]]),
+                [0, 0]
+            );
+        }
+
+        #[test]
+        fn calibration_actions_fail_closed_on_focus_or_context_loss() {
+            assert_eq!(
+                next_calibration_action(0, true, true),
+                CalibrationAction::Move([6, 0])
+            );
+            assert_eq!(
+                next_calibration_action(1, true, true),
+                CalibrationAction::Move([-6, 0])
+            );
+            assert_eq!(
+                next_calibration_action(2, true, true),
+                CalibrationAction::Move([0, 6])
+            );
+            assert_eq!(
+                next_calibration_action(3, true, true),
+                CalibrationAction::Move([0, -6])
+            );
+            assert_eq!(
+                next_calibration_action(4, true, true),
+                CalibrationAction::Escape
+            );
+            assert_eq!(
+                next_calibration_action(1, false, true),
+                CalibrationAction::AbortForeground
+            );
+            assert_eq!(
+                next_calibration_action(1, true, false),
+                CalibrationAction::AbortContext
+            );
+
+            let baseline = coherent_sample(&valid_memory(), 0x10_0000).unwrap();
+            let mut changed = baseline.clone();
+            changed.indicator.camera_open_id += 1;
+            assert_ne!(
+                MarkerContext::from(&baseline),
+                MarkerContext::from(&changed)
+            );
+        }
+
+        #[test]
+        fn calibration_receipt_pairs_exact_integer_delta_with_settled_observation() {
+            let observation = SettledObservation {
+                elapsed_micros: 200,
+                position: Position {
+                    x: 1.0,
+                    y: 2.0,
+                    z: 3.0,
+                },
+                current_velocity: Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                stability_sample_gap_millis: STABILITY_SAMPLE_MILLIS,
+                stability_position_delta: 0.0,
+                velocity_norm: 0.0,
+                settled: true,
+            };
+            let transition = CalibrationTransition {
+                sequence_index: 2,
+                emitted_integer_mouse_delta: [0, 6],
+                input_elapsed_micros: 100,
+                subsequent_observation: observation,
+                displacement: 1.0,
+            };
+            let json = serde_json::to_string(&transition).unwrap();
+            assert!(json.contains("\"emitted_integer_mouse_delta\":[0,6]"));
+            assert!(json.contains("\"input_elapsed_micros\":100"));
+            assert!(json.contains("\"elapsed_micros\":200"));
+            assert!(json.contains("\"settled\":true"));
+            assert!(!json.contains("pid"));
+            assert!(!json.contains("address"));
+            assert!(!json.contains("path"));
+            let read_only_json = serde_json::to_string(&read_only_canary_receipt()).unwrap();
+            assert!(!read_only_json.contains("pid"));
+            assert!(!read_only_json.contains("address"));
+            assert!(!read_only_json.contains("path"));
+        }
+
+        #[test]
+        fn calibration_action_surface_has_no_click_or_confirmation_variant() {
+            for completed in 0..CALIBRATION_SEQUENCE.len() {
+                assert!(matches!(
+                    next_calibration_action(completed, true, true),
+                    CalibrationAction::Move(_)
+                ));
+            }
+            assert_eq!(
+                next_calibration_action(CALIBRATION_SEQUENCE.len(), true, true),
+                CalibrationAction::Escape
+            );
+            let policy = read_only_canary_receipt();
+            assert!(!policy.armed);
+            assert!(policy.transitions.is_empty());
         }
 
         #[test]

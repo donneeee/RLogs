@@ -4,7 +4,7 @@ param(
     [string]$SteamManifest,
     [ValidateRange(100, 60000)][int]$DurationMs = 15000,
     [ValidateRange(5, 1000)][int]$IntervalMs = 10,
-    [switch]$ArmReversibleNudge
+    [switch]$ArmReversibleCalibration
 )
 
 $ErrorActionPreference = 'Stop'
@@ -68,7 +68,7 @@ if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
 }
 
 $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
-$receipt = Join-Path $PSScriptRoot "automarker-lifecycle-$stamp.v2.json"
+$receipt = Join-Path $PSScriptRoot "automarker-lifecycle-$stamp.v3.json"
 if (Test-Path -LiteralPath $receipt) { throw 'Refusing to overwrite an existing receipt.' }
 
 $arguments = @(
@@ -80,14 +80,14 @@ $arguments = @(
     '--interval-ms', $IntervalMs,
     '--output', $receipt
 )
-if ($ArmReversibleNudge) {
-    Write-Warning 'ARMED CANARY: manually select Marker 1 and keep the game focused. This emits only a 6-pixel mouse nudge, its inverse, and Escape. It never clicks.'
+if ($ArmReversibleCalibration) {
+    Write-Warning 'ARMED CALIBRATION: manually select Marker 1 and keep the game focused. This emits +X, -X, +Y, -Y six-pixel mouse moves and Escape. It never clicks.'
     Write-Host 'Return focus to the game now. The fail-closed canary starts in 5 seconds.'
     foreach ($remaining in 5..1) {
         Write-Host "$remaining..."
         Start-Sleep -Seconds 1
     }
-    $arguments += @('--armed-mode', 'marker1-reversible-nudge-v1')
+    $arguments += @('--armed-mode', 'marker1-reversible-calibration-v1')
 }
 
 & $probe @arguments
