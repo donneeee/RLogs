@@ -95,6 +95,26 @@ struct SceneLocalizationBundle {
     scenes: Vec<(i64, String)>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ExactCurrentSceneBundle {
+    schema_version: u16,
+    deployment_id: String,
+    channel: String,
+    game_build: String,
+    scenes: Vec<ExactCurrentScene>,
+    unresolved_scene_ids: Vec<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ExactCurrentScene {
+    scene_id: i64,
+    name: String,
+    scene_type: i32,
+    scene_subtype: i32,
+    parent_scene_id: i64,
+    scene_resource_id: i64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct BattleImaginePresentation {
     skill_id: i64,
@@ -211,7 +231,40 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     if monster_keys.is_empty() {
         return Err("the reviewed monster catalog is empty".into());
     }
-    let (scene_keys, scene_presentation) = load_scenes(&catalog_root.join("scenes"))?;
+    let (mut scene_keys, mut scene_presentation) = load_scenes(&catalog_root.join("scenes"))?;
+    let exact_current_scenes: ExactCurrentSceneBundle = serde_json::from_slice(&fs::read(
+        catalog_root.join("coverage/exact-current-scene-presentation.v1.json"),
+    )?)?;
+    if exact_current_scenes.schema_version != 1
+        || exact_current_scenes.deployment_id != "global"
+        || exact_current_scenes.channel != "steam"
+        || exact_current_scenes.game_build != "24687926"
+        || exact_current_scenes.unresolved_scene_ids != [6615]
+    {
+        return Err("exact-current scene presentation evidence has an unsupported identity".into());
+    }
+    let mut exact_english_scene_names = BTreeMap::new();
+    for scene in exact_current_scenes.scenes {
+        if scene.scene_id <= 0 || scene.name.trim().is_empty() {
+            return Err("exact-current scene presentation has an invalid row".into());
+        }
+        let key = format!("scene.{}.name", scene.scene_id);
+        if scene_keys.insert(key.clone(), scene.scene_id).is_some()
+            || exact_english_scene_names
+                .insert(key, scene.name.clone())
+                .is_some()
+        {
+            return Err(format!("duplicate exact-current scene {}", scene.scene_id).into());
+        }
+        scene_presentation.push(ScenePresentation {
+            scene_id: scene.scene_id,
+            scene_type: scene.scene_type,
+            scene_subtype: scene.scene_subtype,
+            parent_scene_id: scene.parent_scene_id,
+            scene_resource_id: scene.scene_resource_id,
+        });
+    }
+    scene_presentation.sort_by_key(|scene| scene.scene_id);
     if scene_presentation.is_empty() {
         return Err("the reviewed scene catalog is empty".into());
     }
@@ -338,17 +391,25 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         let scene_entries = load_localization_entries(&locale_directory.path().join("scenes"))?;
         let mut scenes = Vec::with_capacity(scene_keys.len());
         for (key, id) in &scene_keys {
-            let entry = scene_entries.get(key).ok_or_else(|| {
-                format!("locale {locale} is missing reviewed scene localization {key}")
-            })?;
-            if entry.locale != locale || entry.text.trim().is_empty() {
+            let (entry_locale, entry_text) = match scene_entries.get(key) {
+                Some(entry) => (entry.locale.as_str(), entry.text.as_str()),
+                None => (
+                    "en-US",
+                    exact_english_scene_names
+                        .get(key)
+                        .map(String::as_str)
+                        .ok_or_else(|| {
+                            format!("locale {locale} is missing reviewed scene localization {key}")
+                        })?,
+                ),
+            };
+            if (entry_locale != locale && entry_locale != "en-US") || entry_text.trim().is_empty() {
                 return Err(format!(
-                    "scene localization {} has an invalid locale or empty name",
-                    entry.key
+                    "scene localization {key} has an invalid locale or empty name"
                 )
                 .into());
             }
-            scenes.push((*id, entry.text.clone()));
+            scenes.push((*id, entry_text.to_owned()));
         }
         scenes.sort_by_key(|(id, _)| *id);
         let scene_path = directory.join("scene-names.v1.json");

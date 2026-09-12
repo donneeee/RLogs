@@ -18379,6 +18379,38 @@ mod tests {
     }
 
     #[test]
+    fn history_composes_exact_scene_names_with_only_captured_difficulty() {
+        let mut captured = captured_marksman_history();
+        captured.client_build = "24687926".into();
+        captured.runs[0].scene_id = Some(14_001);
+        captured.runs[0].difficulty_family = Some("captured-family".into());
+        captured.runs[0].difficulty_tier = Some(7);
+        enrich_bpsr_history_presentation(&mut captured, "en-US").unwrap();
+        assert_eq!(
+            captured.runs[0].presentation_scene_name.as_deref(),
+            Some("Winged Whale Investigation Area I")
+        );
+        assert_eq!(
+            captured.runs[0].difficulty_family.as_deref(),
+            Some("captured-family")
+        );
+        assert_eq!(captured.runs[0].difficulty_tier, Some(7));
+
+        let mut absent = captured_marksman_history();
+        absent.client_build = "24687926".into();
+        absent.runs[0].scene_id = Some(14_002);
+        absent.runs[0].difficulty_family = None;
+        absent.runs[0].difficulty_tier = None;
+        enrich_bpsr_history_presentation(&mut absent, "en-US").unwrap();
+        assert_eq!(
+            absent.runs[0].presentation_scene_name.as_deref(),
+            Some("Winged Whale Investigation Area II")
+        );
+        assert_eq!(absent.runs[0].difficulty_family, None);
+        assert_eq!(absent.runs[0].difficulty_tier, None);
+    }
+
+    #[test]
     fn history_imagine_labels_cross_builds_only_from_observed_item_ids() {
         let mut snapshot = captured_marksman_history();
         snapshot.client_build = "24687926".into();

@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "deployment_id": "global",
+  "channel": "steam",
+  "game_build": "24687926",
+  "authority": "exact-current-build-static-data",
+  "sources": {
+    "SceneTable.json": "sha256:eb5abc1ab2930fc18111613478c126db13164a9984c85fababe14c721d2c9b09",
+    "DungeonsTable.json": "sha256:74baa357ab8be4f8fe0ac347c326b3ef9489f430b7be4f333c276ca399c488e4"
+  },
+  "scenes": [
+    {
+      "scene_id": 14001,
+      "name": "Winged Whale Investigation Area I",
+      "scene_type": 2,
+      "scene_subtype": 5,
+      "parent_scene_id": 0,
+      "scene_resource_id": 14001,
+      "dungeon_id": 14001,
+      "play_type": 21,
+      "difficulty_family": null,
+      "difficulty_tier": null
+    },
+    {
+      "scene_id": 14002,
+      "name": "Winged Whale Investigation Area II",
+      "scene_type": 2,
+      "scene_subtype": 5,
+      "parent_scene_id": 0,
+      "scene_resource_id": 14001,
+      "dungeon_id": 14002,
+      "play_type": 21,
+      "difficulty_family": null,
+      "difficulty_tier": null
+    }
+  ],
+  "unresolved_scene_ids": [6615],
+  "policy": {
+    "exact_names_only": true,
+    "english_fallback_for_untranslated_locales": true,
+    "difficulty_is_not_inferred": true,
+    "raw_id_fallback_is_preserved": true
+  }
+}

@@ -296,6 +296,43 @@ mod tests {
     }
 
     #[test]
+    fn resolves_exact_current_winged_whale_scenes_without_inventing_difficulty() {
+        let evidence: serde_json::Value = serde_json::from_str(include_str!(
+            "../game-data/catalog/coverage/exact-current-scene-presentation.v1.json"
+        ))
+        .unwrap();
+        assert_eq!(evidence["authority"], "exact-current-build-static-data");
+        assert_eq!(evidence["game_build"], "24687926");
+        assert_eq!(evidence["unresolved_scene_ids"], serde_json::json!([6615]));
+
+        for (scene_id, expected_name) in [
+            (14_001, "Winged Whale Investigation Area I"),
+            (14_002, "Winged Whale Investigation Area II"),
+        ] {
+            let scene = scene_presentation(scene_id).unwrap().unwrap();
+            assert_eq!(scene.scene_type, 2);
+            assert_eq!(scene.scene_subtype, 5);
+            assert_eq!(scene.parent_scene_id, 0);
+            assert_eq!(scene.scene_resource_id, 14_001);
+            assert_eq!(
+                localized_scene_name(scene_id, "en-US").unwrap(),
+                Some(expected_name)
+            );
+            let row = evidence["scenes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["scene_id"] == scene_id)
+                .unwrap();
+            assert_eq!(row["name"], expected_name);
+            assert_eq!(row["difficulty_family"], serde_json::Value::Null);
+            assert_eq!(row["difficulty_tier"], serde_json::Value::Null);
+        }
+        assert!(scene_presentation(6615).unwrap().is_none());
+        assert_eq!(localized_scene_name(6615, "en-US").unwrap(), None);
+    }
+
+    #[test]
     fn preserves_unnamed_and_unknown_scene_identity() {
         assert!(scene_presentation(1).unwrap().is_some());
         assert_eq!(localized_scene_name(1, "en-US").unwrap(), None);
