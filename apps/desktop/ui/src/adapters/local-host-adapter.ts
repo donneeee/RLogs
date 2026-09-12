@@ -759,6 +759,9 @@ function createLocalHostAdapter(localizer: UiLocalizer): DesktopHostAdapter {
                 body: JSON.stringify(request),
               }));
             },
+            async copyCanaryCommand(command) {
+              await navigator.clipboard.writeText(command);
+            },
             async openOverlay() {
               await openEditableOverlayCanvas(invoke);
             },

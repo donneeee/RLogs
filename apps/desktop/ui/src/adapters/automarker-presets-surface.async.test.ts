@@ -2,8 +2,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AutomarkerLocalLoadResult, AutomarkerPresetView, ObservedMarkerSnapshot } from "./automarker-presets";
-import { mountAutomarkerPresetsSurface } from "./automarker-presets-surface";
+import type { ActivateAutomarkerPresetRequest, AutomarkerLocalLoadResult, AutomarkerNativeActivationResult, AutomarkerPresetView, ObservedMarkerSnapshot } from "./automarker-presets";
+import { mountAutomarkerPresetsSurface, safeAimCanaryCommand } from "./automarker-presets-surface";
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -129,6 +129,59 @@ afterEach(() => {
 });
 
 describe("mounted automarker preset editor request ordering", () => {
+  it("copies a gated name-based aim canary without IDs, coordinates, or activation", async () => {
+    const catalog = view(1_633, "dungeon.1633", "Boss's opener", 91.25);
+    catalog.context!.clientBuild = "25247556";
+    const copyCanaryCommand = vi.fn(async (_command: string) => undefined);
+    const activatePreset = vi.fn(async (_request: ActivateAutomarkerPresetRequest): Promise<AutomarkerNativeActivationResult> => ({ activated: false, reason: "native_waymark_transport_unavailable" }));
+    const saveCurrent = vi.fn(async () => catalog);
+    const loadPreset = vi.fn(async () => { throw new Error("not used"); });
+    const openOverlay = vi.fn(async () => undefined);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const mounted = mountAutomarkerPresetsSurface(container, {
+      loadPresets: async () => catalog,
+      loadObservedMarkers: async () => unavailableObserved("25247556"),
+      saveCurrent,
+      loadPreset,
+      activatePreset,
+      copyCanaryCommand,
+      openOverlay,
+    });
+    await flushPromises();
+
+    const copy = [...container.querySelectorAll("button")]
+      .find((candidate) => candidate.textContent === "Copy safe aim canary")!;
+    expect(copy.disabled).toBe(false);
+    copy.click();
+    await flushPromises();
+
+    expect(copyCanaryCommand).toHaveBeenCalledOnce();
+    const command = copyCanaryCommand.mock.calls[0]![0];
+    expect(command).toBe(".\\run-bpsr-automarker-lifecycle-probe.ps1 -ArmClosedLoopAim -PresetName 'Boss''s opener'");
+    expect(command).not.toContain(catalog.presets[0]!.presetId);
+    expect(command).not.toMatch(/Target[XYZ]|91\.25/);
+    expect(activatePreset).not.toHaveBeenCalled();
+    expect(saveCurrent).not.toHaveBeenCalled();
+    expect(loadPreset).not.toHaveBeenCalled();
+    expect(openOverlay).not.toHaveBeenCalled();
+    expect(container.querySelector(".automarker-status")?.textContent).toContain("never clicks or places");
+    mounted.dispose();
+  });
+
+  it("fails the safe canary handoff closed for the wrong build, duplicate names, or control characters", () => {
+    const catalog = view(1_633, "dungeon.1633", "Opener", 1);
+    const presetId = catalog.presets[0]!.presetId;
+    expect(safeAimCanaryCommand(catalog, presetId).enabled).toBe(false);
+
+    catalog.context!.clientBuild = "25247556";
+    catalog.presets = [...catalog.presets, { ...catalog.presets[0]!, presetId: "duplicate" }];
+    expect(safeAimCanaryCommand(catalog, presetId).reason).toMatch(/unique/i);
+
+    catalog.presets = [{ ...catalog.presets[0]!, name: "Bad\nName" }];
+    expect(safeAimCanaryCommand(catalog, presetId).reason).toMatch(/control/i);
+  });
+
   it("exports the selected preset as a safe identity-free JSON download", async () => {
     const catalog = view(6_525, "mech-facility", "../../Méch: opener?", 7);
     let exportedBlob: Blob | null = null;

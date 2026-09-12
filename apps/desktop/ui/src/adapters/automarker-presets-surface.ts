@@ -18,7 +18,51 @@ export interface AutomarkerPresetDependencies {
   loadPreset(request: LoadAutomarkerPresetRequest): Promise<AutomarkerLocalLoadResult>;
   // Deliberately not called while Place in game remains disabled.
   activatePreset?(request: ActivateAutomarkerPresetRequest): Promise<AutomarkerNativeActivationResult>;
+  copyCanaryCommand?(command: string): Promise<void>;
   openOverlay(): Promise<void>;
+}
+
+const SAFE_AIM_CANARY_BUILD = "25247556";
+
+export interface SafeAimCanaryCommand {
+  enabled: boolean;
+  reason: string;
+  command?: string;
+}
+
+export function safeAimCanaryCommand(
+  view: AutomarkerPresetView | null,
+  selectedPresetId: string | null,
+): SafeAimCanaryCommand {
+  if (view?.context === null || view === null) {
+    return { enabled: false, reason: "Enter a supported dungeon scene first." };
+  }
+  if (view.context.clientBuild !== SAFE_AIM_CANARY_BUILD) {
+    return { enabled: false, reason: `The safe aim canary is verified only for build ${SAFE_AIM_CANARY_BUILD}.` };
+  }
+  const matches = view.presets.filter((preset) => preset.presetId === selectedPresetId);
+  if (matches.length !== 1) {
+    return { enabled: false, reason: "Select one saved marker setup first." };
+  }
+  const preset = matches[0]!;
+  if (preset.activityFamilyId !== view.context.activityFamilyId) {
+    return { enabled: false, reason: "The selected setup is not from the exact active dungeon family." };
+  }
+  if (preset.points.filter((point) => point.markerNumber === 1).length !== 1) {
+    return { enabled: false, reason: "The selected setup must contain exactly one Marker 1." };
+  }
+  if (preset.name.length === 0 || /\p{C}/u.test(preset.name)) {
+    return { enabled: false, reason: "The setup name contains unsupported control characters." };
+  }
+  if (view.presets.filter((candidate) => candidate.name === preset.name).length !== 1) {
+    return { enabled: false, reason: "Setup names must be unique in this dungeon family for the safe canary." };
+  }
+  const escapedName = preset.name.replaceAll("'", "''");
+  return {
+    enabled: true,
+    reason: "Copy the external opt-in Marker 1 aim-and-rollback canary command.",
+    command: `.\\run-bpsr-automarker-lifecycle-probe.ps1 -ArmClosedLoopAim -PresetName '${escapedName}'`,
+  };
 }
 
 export function mountAutomarkerPresetsSurface(
@@ -78,8 +122,9 @@ export function mountAutomarkerPresetsSurface(
   importFile.className = "automarker-import-file";
   const preview = button("Preview on map", "quiet-button");
   const placeInGame = button("Place in game", "primary-button");
+  const copyCanary = button("Copy safe aim canary", "quiet-button");
   const refresh = button("Refresh scene", "quiet-button");
-  controls.append(captureCurrent, save, saveAs, load, exportPreset, importPreset, preview, placeInGame, refresh, importFile);
+  controls.append(captureCurrent, save, saveAs, load, exportPreset, importPreset, preview, placeInGame, copyCanary, refresh, importFile);
   const status = text("p", "Connecting to the local marker store…", "card-copy automarker-status");
   const detail = el("div", "automarker-preset-detail");
   card.append(nameLabel, presetLabel, editor, controls, status, detail);
@@ -106,6 +151,7 @@ export function mountAutomarkerPresetsSurface(
   importPreset.addEventListener("click", () => importFile.click());
   importFile.addEventListener("change", () => void importSelectedFile());
   captureCurrent.addEventListener("click", () => void captureCurrentMarkers());
+  copyCanary.addEventListener("click", () => void copySafeAimCanary());
   refresh.addEventListener("click", () => void refreshView());
   setEditorPoints([{ markerNumber: 1, x: 0, y: 0, z: 0 }]);
   void refreshView();
@@ -349,6 +395,18 @@ export function mountAutomarkerPresetsSurface(
     }
   }
 
+  async function copySafeAimCanary(): Promise<void> {
+    const availability = safeAimCanaryCommand(view, selectedId);
+    if (!availability.enabled || availability.command === undefined || dependencies.copyCanaryCommand === undefined) return;
+    try {
+      await dependencies.copyCanaryCommand(availability.command);
+      if (!alive) return;
+      status.textContent = "Copied the external opt-in Marker 1 aim-and-rollback canary. In its package folder, manually select Marker 1, keep the game focused, and run it without touching the mouse. It never clicks or places.";
+    } catch (error) {
+      if (alive) status.textContent = message(error);
+    }
+  }
+
   function render(): void {
     const context = view?.context ?? null;
     sceneBadge.textContent = context === null ? "NO SCENE" : context.sceneName ?? `SCENE ${context.sceneId}`;
@@ -391,6 +449,11 @@ export function mountAutomarkerPresetsSurface(
     captureCurrent.title = captureAvailability.reason;
     placeInGame.disabled = true;
     placeInGame.title = `The marker request is verified, but native placement is unavailable until rLogs can invoke the game's own request path (${view?.nativeLoadReason ?? "native_waymark_transport_unavailable"})`;
+    const canary = safeAimCanaryCommand(view, selectedId);
+    copyCanary.disabled = busy || !canary.enabled || dependencies.copyCanaryCommand === undefined;
+    copyCanary.title = dependencies.copyCanaryCommand === undefined
+      ? "Clipboard access is unavailable in this surface."
+      : canary.reason;
     detail.replaceChildren();
     if (context !== null) {
       detail.append(text("p", `${context.activityFamilyId} · Build ${context.clientBuild} · Scene ${context.sceneId} · Map ${context.mapId}`, "card-copy"));
