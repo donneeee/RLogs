@@ -845,6 +845,56 @@ mod tests {
     }
 
     #[test]
+    fn observed_marker_and_fixed32_changes_preserve_only_the_protobuf_length() {
+        let samples = [
+            (1, 1_789_176_498_286, 607),
+            (2, 1_789_176_505_357, 696),
+            (3, 1_789_176_510_696, 762),
+            (4, 1_789_176_515_414, 822),
+            (5, 1_789_176_517_633, 850),
+            (6, 1_789_176_520_665, 887),
+        ];
+        for (marker, begin, counter) in samples {
+            let original = request(
+                marker,
+                [250.35721, 118.0, -64.2384, 250.49268],
+                [250.44351, 118.02, -61.48509, 250.49268],
+                begin,
+                counter,
+            );
+            let changed_fixed32 = request(
+                marker,
+                [-999_999.0, 0.125, 999_999.0, 359.999],
+                [-1.0, -2.0, -3.0, 0.0],
+                begin,
+                counter,
+            );
+            assert_eq!(original.len(), 161);
+            assert_eq!(changed_fixed32.len(), 161);
+        }
+
+        // This proves only protobuf width stability. It deliberately says
+        // nothing about zstd size, TCP layout, server acceptance, or sending.
+        let proof: serde_json::Value = serde_json::from_str(include_str!(
+            "../research/game-file-inventory/global/steam-25247556/ground-marker-packet-substitution-feasibility.v1.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            proof["protobuf_wire_layout"]["derived_observed_lengths"]["world_types_use_slot_bytes"],
+            161
+        );
+        assert_eq!(
+            proof["length_preservation"]["complete_wire_length_preservation_proven"],
+            false
+        );
+        assert_eq!(proof["conclusion"]["runtime_sender_enabled"], false);
+        assert_eq!(
+            proof["conclusion"]["permission_to_replay_inject_or_rewrite"],
+            false
+        );
+    }
+
+    #[test]
     fn mismatched_marker_identity_and_tampered_envelope_fail_closed() {
         let pack = current_pack(AUTOMARKER_REQUEST_BUILD);
         let mut payload = request(1, [1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0], 99, 10);

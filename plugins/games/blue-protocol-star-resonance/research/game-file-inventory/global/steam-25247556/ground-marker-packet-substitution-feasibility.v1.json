@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "build_id": "25247556",
+  "audit_kind": "sanitized-read-only-offline-ground-marker-packet-substitution-feasibility",
+  "scope": {
+    "new_traffic_captured": false,
+    "packet_transmission_performed": false,
+    "packet_replay_performed": false,
+    "packet_modification_performed": false,
+    "injector_constructed": false,
+    "anti_cheat_bypass_code_produced": false,
+    "sources": [
+      "outbound-ground-marker-request-correlation-proof.v1.json",
+      "use-slot-current-schema-transport-proof.v1.json",
+      "src/automarker_request.rs",
+      "src/framing.rs",
+      "engine/capture/src/npcap.rs"
+    ]
+  },
+  "envelope_layers": [
+    {
+      "layer": "tcp_stream",
+      "proven": true,
+      "detail": "RLogs reconstructs ordered TCP bytes before BPSR framing; physical segmentation and retransmission layout are not retained in the sanitized marker proof."
+    },
+    {
+      "layer": "outer_bpsr_frame_up",
+      "proven": true,
+      "detail": "Six-byte header [total_length:u32 big-endian][fragment:u16 big-endian], fragment 5 with high bit reserved as the zstd flag; payload begins with a four-byte frame sequence."
+    },
+    {
+      "layer": "nested_bpsr_call",
+      "proven": true,
+      "detail": "Six-byte frame header followed by [service:u64][stub:u32][call:u32][method:u32], all decoded big-endian, then the application body."
+    },
+    {
+      "layer": "protobuf_application",
+      "proven": true,
+      "detail": "Zproto.World.Types.UseSlot field 1 contains Zproto.UseSlotRequest."
+    },
+    {
+      "layer": "authenticated_attribute_envelope",
+      "proven": true,
+      "detail": "UseSlotRequest field 4 is 80 bytes: IV 16, HMAC-SHA256 32, AES-CBC ciphertext 32; the MAC covers IV plus ciphertext."
+    }
+  ],
+  "protobuf_wire_layout": {
+    "marker_identity": {
+      "slot_id": {
+        "path": "1.1",
+        "wire_type": "varint",
+        "observed_values": [201, 202, 203, 204, 205, 206],
+        "value_width_bytes": 2,
+        "width_stable_across_observed_marker_range": true
+      },
+      "skill_id": {
+        "path": "1.3.2",
+        "wire_type": "varint",
+        "observed_values": [1101, 1102, 1103, 1104, 1105, 1106],
+        "value_width_bytes": 2,
+        "width_stable_across_observed_marker_range": true
+      },
+      "must_change_together": true
+    },
+    "positions": {
+      "target_path": "1.3.6",
+      "current_path": "1.3.7",
+      "message": "Zproto.Position",
+      "fields": {
+        "1": "x fixed32",
+        "2": "y fixed32",
+        "3": "z fixed32",
+        "4": "heading fixed32"
+      },
+      "encoded_message_length_bytes": 20,
+      "scalar_width_stable_for_every_float32_bit_pattern": true
+    },
+    "fresh_or_session_values": [
+      {
+        "path": "1.3.1",
+        "name": "skill_uuid",
+        "wire_type": "varint",
+        "observed_value_width_bytes": 5,
+        "game_owned": true
+      },
+      {
+        "path": "1.3.4",
+        "name": "begin_time",
+        "wire_type": "varint",
+        "observed_value_width_bytes": 6,
+        "game_owned": true
+      },
+      {
+        "path": "1.5",
+        "name": "sessionSequence",
+        "proto_type": "uint32",
+        "wire_type": "varint",
+        "observed_value_width_bytes": 2,
+        "game_owned": true
+      }
+    ],
+    "derived_observed_lengths": {
+      "use_skill_param_bytes": 66,
+      "use_slot_request_bytes": 158,
+      "world_types_use_slot_bytes": 161,
+      "conditions": "Observed fields are present once, the attribute envelope is 80 bytes, and UUID, begin-time, and session-sequence values remain in their observed protobuf varint-width bands."
+    }
+  },
+  "length_preservation": {
+    "marker_1_through_6_at_application_layer": true,
+    "xyz_fixed32_at_application_layer": true,
+    "authenticated_attribute_hmac_directly_covers_marker_or_position_fields": false,
+    "complete_wire_length_preservation_proven": false,
+    "reasons_complete_wire_length_is_unproven": [
+      "The sanitized proof does not retain outer or nested zstd flags.",
+      "The sanitized proof does not retain complete outer/nested frame lengths or batching.",
+      "Equal protobuf length does not guarantee equal compressed length.",
+      "The sanitized proof does not retain TCP segmentation, overlap, or retransmission layout."
+    ]
+  },
+  "checksum_and_sequence_assessment": {
+    "bpsr_checksum_present_in_parser_grammar": false,
+    "absence_of_any_other_integrity_check_proven": false,
+    "equal_tcp_payload_length_would_shift_later_tcp_sequence_numbers": false,
+    "raw_rewrite_still_requires": [
+      "suppression of the original packet",
+      "correct IP and TCP checksums",
+      "consistent rewriting of retransmissions and overlaps",
+      "an inline connection owner or filter",
+      "preservation of game FrameUp sequence and RPC call ID ordering"
+    ],
+    "dynamic_game_owned_values": [
+      "skill/action UUID",
+      "begin time",
+      "sessionSequence",
+      "authenticated attributes",
+      "RPC call ID",
+      "FrameUp sequence"
+    ]
+  },
+  "state_divergence": {
+    "safe_reconciliation_proven": false,
+    "unproven_checks": [
+      "slot and skill eligibility",
+      "target range, navigation, and ground-raycast acceptance",
+      "current-position consistency",
+      "cooldown and replacement state",
+      "authenticated-attribute semantic binding",
+      "client prediction versus changed server-authoritative marker state",
+      "failure and acknowledgement handling"
+    ]
+  },
+  "capture_boundary": {
+    "rlogs_npcap_runtime_path": "sniff_only",
+    "npcap_functions_bound": [
+      "pcap_open_live",
+      "pcap_next_ex",
+      "pcap_datalink",
+      "pcap_geterr",
+      "pcap_close",
+      "pcap_compile",
+      "pcap_setfilter",
+      "pcap_freecode"
+    ],
+    "npcap_send_function_bound_or_called": false,
+    "packet_dll_send_exports_only_validated_for_dependency_compatibility": true,
+    "windivert_implementation_present": false,
+    "inline_drop_rewrite_or_retransmission_engine_present": false
+  },
+  "conclusion": {
+    "application_level_equal_length_substitution_proven_for_marker_and_xyz": true,
+    "live_wire_substitution_feasible": "unproven",
+    "server_acceptance_proven": false,
+    "anti_cheat_safety_proven": false,
+    "runtime_sender_enabled": false,
+    "permission_to_replay_inject_or_rewrite": false
+  },
+  "next_non_invasive_evidence": {
+    "source": "already-retained private six-marker capture only",
+    "action": "Generate a sanitized offline frame-layout receipt without network endpoints, raw payloads, identifiers, or exact TCP sequence numbers.",
+    "implemented_offline_tool": "rlogs-bpsr-automarker-wire-layout-receipt",
+    "required_aggregates": [
+      "outer and nested compression flags and frame lengths",
+      "nested-frame counts and lengths per FrameUp",
+      "decoded application offset and length",
+      "TCP segment-count and retransmission/overlap classification",
+      "synthetic-buffer proof that selected same-width field changes preserve every uncompressed container length"
+    ],
+    "still_not_proven_after_receipt": [
+      "server acceptance",
+      "anti-cheat safety",
+      "permission to transmit"
+    ]
+  },
+  "privacy": {
+    "contains_cryptographic_keys": false,
+    "contains_raw_payloads": false,
+    "contains_network_endpoints": false,
+    "contains_tcp_sequence_numbers": false,
+    "contains_local_absolute_paths": false,
+    "contains_personal_identity": false
+  }
+}

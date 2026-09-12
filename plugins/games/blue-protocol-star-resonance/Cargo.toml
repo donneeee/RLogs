@@ -519,3 +519,7 @@ path = "tools/controlled-formula-capture-receipt.rs"
 [[bin]]
 name = "rlogs-bpsr-marker-journal-audit"
 path = "tools/marker-journal-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-automarker-wire-layout-receipt"
+path = "tools/automarker-wire-layout-receipt.rs"
