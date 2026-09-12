@@ -76,7 +76,7 @@ function deferred<T>(): Deferred<T> {
 
 function view(sceneId: number, familyId: string, name: string, x: number): AutomarkerPresetView {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     context: {
       clientBuild: "24687926",
       sceneId,
@@ -87,9 +87,6 @@ function view(sceneId: number, familyId: string, name: string, x: number): Autom
     presets: [{
       presetId: `preset-${sceneId}-00000000`,
       name,
-      clientBuild: "24687926",
-      sceneId,
-      mapId: sceneId,
       activityFamilyId: familyId,
       savedAtUnixMillis: 1,
       points: [{ markerNumber: 1, x, y: 2, z: 3 }],

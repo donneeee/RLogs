@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-const SCHEMA_VERSION: u16 = 3;
+const SCHEMA_VERSION: u16 = 4;
 const MAX_PRESETS: usize = 128;
 const MAX_STORE_BYTES: u64 = 512 * 1024;
 const MAX_NAME_CHARS: usize = 80;
@@ -24,9 +24,6 @@ pub struct AutomarkerPoint {
 pub struct AutomarkerPreset {
     pub preset_id: String,
     pub name: String,
-    pub client_build: String,
-    pub scene_id: i32,
-    pub map_id: u32,
     pub activity_family_id: String,
     pub saved_at_unix_millis: u64,
     pub points: Vec<AutomarkerPoint>,
@@ -48,6 +45,7 @@ struct LegacyAutomarkerPresetFileV1 {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[allow(dead_code)]
 struct LegacyAutomarkerPresetV1 {
     preset_id: String,
     name: String,
@@ -62,7 +60,28 @@ struct LegacyAutomarkerPresetV1 {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct LegacyAutomarkerPresetFileV2 {
     schema_version: u16,
-    presets: Vec<AutomarkerPreset>,
+    presets: Vec<LegacyAutomarkerPresetV2>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[allow(dead_code)]
+struct LegacyAutomarkerPresetV2 {
+    preset_id: String,
+    name: String,
+    client_build: String,
+    scene_id: i32,
+    map_id: u32,
+    activity_family_id: String,
+    saved_at_unix_millis: u64,
+    points: Vec<AutomarkerPoint>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LegacyAutomarkerPresetFileV3 {
+    schema_version: u16,
+    presets: Vec<LegacyAutomarkerPresetV2>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -187,9 +206,6 @@ impl AutomarkerPresetStore {
         let preset = AutomarkerPreset {
             preset_id: preset_id.clone(),
             name: request.name.trim().to_owned(),
-            client_build: context.client_build.clone(),
-            scene_id: context.scene_id,
-            map_id: context.map_id,
             activity_family_id: context.activity_family_id.clone(),
             saved_at_unix_millis: now_unix_millis,
             points,
@@ -370,9 +386,6 @@ fn load(
                 Ok(AutomarkerPreset {
                     preset_id: preset.preset_id,
                     name: preset.name,
-                    client_build: preset.client_build,
-                    scene_id: preset.scene_id,
-                    map_id: preset.map_id,
                     activity_family_id,
                     saved_at_unix_millis: preset.saved_at_unix_millis,
                     points: preset.points,
@@ -403,12 +416,51 @@ fn load(
                                 preset.preset_id, preset.scene_id
                             )
                         })?;
-                    Ok(preset)
+                    Ok(AutomarkerPreset {
+                        preset_id: preset.preset_id,
+                        name: preset.name,
+                        activity_family_id: preset.activity_family_id,
+                        saved_at_unix_millis: preset.saved_at_unix_millis,
+                        points: preset.points,
+                    })
                 })
                 .collect::<Result<Vec<_>, String>>()?;
             (presets, true)
         }
         3 => {
+            let file: LegacyAutomarkerPresetFileV3 =
+                serde_json::from_slice(&bytes).map_err(|error| {
+                    format!("schema-three automarker preset file is invalid: {error}")
+                })?;
+            if file.schema_version != 3 || file.presets.len() > MAX_PRESETS {
+                return Err(
+                    "schema-three automarker preset file has an unsupported schema or size".into(),
+                );
+            }
+            let presets = file.presets.into_iter().map(|preset| {
+                let expected_family_id = scene_families.get(&preset.scene_id).ok_or_else(|| {
+                    format!(
+                        "schema-three automarker preset {} uses scene {} without a reviewed automarker-family identity",
+                        preset.preset_id, preset.scene_id
+                    )
+                })?;
+                if &preset.activity_family_id != expected_family_id {
+                    return Err(format!(
+                        "automarker preset {} does not match the reviewed automarker-family identity for scene {}",
+                        preset.preset_id, preset.scene_id
+                    ));
+                }
+                Ok(AutomarkerPreset {
+                    preset_id: preset.preset_id,
+                    name: preset.name,
+                    activity_family_id: preset.activity_family_id,
+                    saved_at_unix_millis: preset.saved_at_unix_millis,
+                    points: preset.points,
+                })
+            }).collect::<Result<Vec<_>, String>>()?;
+            (presets, true)
+        }
+        4 => {
             let file: AutomarkerPresetFile = serde_json::from_slice(&bytes)
                 .map_err(|error| format!("automarker preset file is invalid: {error}"))?;
             if file.schema_version != SCHEMA_VERSION || file.presets.len() > MAX_PRESETS {
@@ -427,18 +479,6 @@ fn load(
         validate_name(&preset.name)?;
         if preset.activity_family_id.trim().is_empty() || preset.activity_family_id.len() > 128 {
             return Err("automarker preset dungeon-family identity is invalid".into());
-        }
-        let expected_family_id = scene_families.get(&preset.scene_id).ok_or_else(|| {
-            format!(
-                "automarker preset {} uses scene {} without a reviewed automarker-family identity",
-                preset.preset_id, preset.scene_id
-            )
-        })?;
-        if &preset.activity_family_id != expected_family_id {
-            return Err(format!(
-                "automarker preset {} does not match the reviewed automarker-family identity for scene {}",
-                preset.preset_id, preset.scene_id
-            ));
         }
         validate_points(&preset.points)?;
     }
@@ -683,6 +723,21 @@ mod tests {
         let persisted: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         let preset = persisted["presets"][0].as_object().unwrap();
+        assert_eq!(
+            preset
+                .keys()
+                .map(String::as_str)
+                .collect::<std::collections::BTreeSet<_>>(),
+            [
+                "activityFamilyId",
+                "name",
+                "points",
+                "presetId",
+                "savedAtUnixMillis"
+            ]
+            .into_iter()
+            .collect()
+        );
         for forbidden in [
             "accountId",
             "accountUuid",
@@ -693,6 +748,10 @@ mod tests {
             "sessionId",
             "sessionSequence",
             "skillUuid",
+            "entityUuid",
+            "clientBuild",
+            "sceneId",
+            "mapId",
         ] {
             assert!(
                 !preset.contains_key(forbidden),
@@ -767,7 +826,7 @@ mod tests {
     }
 
     #[test]
-    fn keeps_scene_presets_visible_across_build_updates() {
+    fn keeps_family_presets_visible_across_build_scene_and_map_updates() {
         let path = temporary_path("build-provenance");
         let mut store = open(&path);
         store
@@ -784,9 +843,10 @@ mod tests {
             .unwrap();
         let mut patched = mech();
         patched.client_build = "24699999".into();
+        patched.scene_id = 1_101;
+        patched.map_id = 9_999;
         let view = store.compatible(patched.clone());
         assert_eq!(view.presets.len(), 1);
-        assert_eq!(view.presets[0].client_build, "24687926");
         assert!(!view.capture_supported);
         assert!(!view.native_load_supported);
         assert!(
@@ -1002,8 +1062,11 @@ mod tests {
         assert_eq!(migrated.presets[0].activity_family_id, "dungeon.1633");
         let persisted: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-        assert_eq!(persisted["schemaVersion"], 3);
+        assert_eq!(persisted["schemaVersion"], 4);
         assert_eq!(persisted["presets"][0]["activityFamilyId"], "dungeon.1633");
+        assert!(persisted["presets"][0].get("clientBuild").is_none());
+        assert!(persisted["presets"][0].get("sceneId").is_none());
+        assert!(persisted["presets"][0].get("mapId").is_none());
         let _ = std::fs::remove_file(path);
     }
 
@@ -1031,7 +1094,7 @@ mod tests {
         assert!(store.compatible(tina(1_631)).presets.is_empty());
         let persisted: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-        assert_eq!(persisted["schemaVersion"], 3);
+        assert_eq!(persisted["schemaVersion"], 4);
         assert_eq!(persisted["presets"][0]["activityFamilyId"], "dungeon.1633");
         let _ = std::fs::remove_file(path);
     }
@@ -1059,6 +1122,73 @@ mod tests {
                 .contains("does not match the reviewed automarker-family identity")
         );
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn migrates_schema_three_to_portable_schema_four_and_survives_catalog_scene_removal() {
+        let path = temporary_path("schema-three-portable");
+        let legacy = serde_json::json!({
+            "schemaVersion": 3,
+            "presets": [{
+                "presetId": "preset-portable-v3",
+                "name": "Portable",
+                "clientBuild": "24687926",
+                "sceneId": 1100,
+                "mapId": 1100,
+                "activityFamilyId": "mech-facility",
+                "savedAtUnixMillis": 10,
+                "points": [{ "markerNumber": 1, "x": 1.0, "y": 2.0, "z": 3.0 }]
+            }]
+        });
+        std::fs::write(&path, serde_json::to_vec_pretty(&legacy).unwrap()).unwrap();
+        drop(open(&path));
+
+        let persisted: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(persisted["schemaVersion"], 4);
+        assert!(persisted["presets"][0].get("clientBuild").is_none());
+        assert!(persisted["presets"][0].get("sceneId").is_none());
+        assert!(persisted["presets"][0].get("mapId").is_none());
+
+        let reopened = AutomarkerPresetStore::open(&path, &BTreeMap::new()).unwrap();
+        assert_eq!(reopened.compatible(mech()).presets.len(), 1);
+        assert!(reopened.compatible(tina(1_633)).presets.is_empty());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn schema_four_rejects_unknown_identity_and_provenance_fields() {
+        for field in [
+            "accountUuid",
+            "characterUuid",
+            "playerUuid",
+            "entityUuid",
+            "skillUuid",
+            "sessionSequence",
+            "clientBuild",
+            "sceneId",
+            "mapId",
+        ] {
+            let path = temporary_path(field);
+            let mut preset = serde_json::json!({
+                "presetId": "preset-unknown-field",
+                "name": "Portable",
+                "activityFamilyId": "mech-facility",
+                "savedAtUnixMillis": 10,
+                "points": [{ "markerNumber": 1, "x": 1.0, "y": 2.0, "z": 3.0 }]
+            });
+            preset
+                .as_object_mut()
+                .unwrap()
+                .insert(field.into(), serde_json::json!(1));
+            let invalid = serde_json::json!({ "schemaVersion": 4, "presets": [preset] });
+            std::fs::write(&path, serde_json::to_vec_pretty(&invalid).unwrap()).unwrap();
+            assert!(
+                AutomarkerPresetStore::open(&path, &families()).is_err(),
+                "accepted {field}"
+            );
+            let _ = std::fs::remove_file(path);
+        }
     }
 
     #[test]

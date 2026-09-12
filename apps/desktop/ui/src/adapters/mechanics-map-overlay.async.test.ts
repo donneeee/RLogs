@@ -111,7 +111,7 @@ function populatedSnapshot(revision: number, currentHp: number): MechanicsMapUpd
 
 function catalog(sceneId: number, familyId: string, name: string): AutomarkerPresetView {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     context: {
       clientBuild: "24687926",
       sceneId,
@@ -122,9 +122,6 @@ function catalog(sceneId: number, familyId: string, name: string): AutomarkerPre
     presets: [{
       presetId: `preset-${sceneId}-00000000`,
       name,
-      clientBuild: "24687926",
-      sceneId,
-      mapId: sceneId,
       activityFamilyId: familyId,
       savedAtUnixMillis: 1,
       points: [{ markerNumber: 1, x: 1, y: 2, z: 3 }],

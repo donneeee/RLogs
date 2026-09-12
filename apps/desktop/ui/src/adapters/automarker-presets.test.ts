@@ -17,11 +17,11 @@ import { automarkerPresetContextKey } from "./automarker-presets-surface";
 
 function view() {
   return {
-    schemaVersion: 3 as const,
+    schemaVersion: 4 as const,
     context: { clientBuild: "24687926", sceneId: 1633, mapId: 1633, activityFamilyId: "dungeon.1633", sceneName: "Tina M1" },
     presets: [{
-      presetId: "preset-000000000001-0000", name: "Opener", clientBuild: "24687926",
-      sceneId: 1633, mapId: 1633, activityFamilyId: "dungeon.1633", savedAtUnixMillis: 1,
+      presetId: "preset-000000000001-0000", name: "Opener",
+      activityFamilyId: "dungeon.1633", savedAtUnixMillis: 1,
       points: [{ markerNumber: 1, x: 1.25, y: 2.5, z: -4.75 }],
     }],
     captureSupported: false,
@@ -119,7 +119,7 @@ describe("automarker preset catalog", () => {
     expect(automarkerPresetContextKey(hostRestart)).not.toBe(automarkerPresetContextKey(original));
   });
 
-  it("accepts exact scene-scoped filesystem preset views", () => {
+  it("accepts compact family-scoped filesystem preset views", () => {
     expect(parseAutomarkerPresetView(view()).presets[0]?.points[0]?.y).toBe(2.5);
   });
 
@@ -142,10 +142,27 @@ describe("automarker preset catalog", () => {
     expect(() => parseAutomarkerPresetView(value)).toThrow(/another dungeon family/i);
   });
 
-  it("keeps captured build as provenance across patches in the same scene", () => {
+  it("keeps presets portable across build, scene, and map changes within a family", () => {
     const value = view();
     value.context.clientBuild = "24699999";
+    value.context.sceneId = 9_999;
+    value.context.mapId = 8_888;
     expect(parseAutomarkerPresetView(value).presets).toHaveLength(1);
+  });
+
+  it("rejects identity, session, and provenance fields in a portable preset", () => {
+    for (const [field, fieldValue] of Object.entries({
+      accountUuid: "account", characterUuid: "character", playerUuid: "player",
+      entityUuid: "entity", skillUuid: 123, sessionSequence: 7,
+      clientBuild: "24687926", sceneId: 1633, mapId: 1633,
+    })) {
+      const value = view() as unknown as { presets: Array<Record<string, unknown>> };
+      value.presets[0]![field] = fieldValue;
+      expect(() => parseAutomarkerPresetView(value), field).toThrow(/invalid automarker preset catalog/i);
+    }
+    const pointValue = view() as unknown as { presets: Array<{ points: Array<Record<string, unknown>> }> };
+    pointValue.presets[0]!.points[0]!.entityUuid = "entity";
+    expect(() => parseAutomarkerPresetView(pointValue)).toThrow(/invalid automarker preset catalog/i);
   });
 
   it("accepts only a family-compatible local load response", () => {

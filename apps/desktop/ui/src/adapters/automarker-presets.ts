@@ -8,9 +8,6 @@ export interface AutomarkerPoint {
 export interface AutomarkerPreset {
   presetId: string;
   name: string;
-  clientBuild: string;
-  sceneId: number;
-  mapId: number;
   activityFamilyId: string;
   savedAtUnixMillis: number;
   points: readonly AutomarkerPoint[];
@@ -25,7 +22,7 @@ export interface AutomarkerSceneContext {
 }
 
 export interface AutomarkerPresetView {
-  schemaVersion: 3;
+  schemaVersion: 4;
   context: AutomarkerSceneContext | null;
   presets: readonly AutomarkerPreset[];
   captureSupported: boolean;
@@ -203,7 +200,7 @@ export function newlyCreatedPresetId(
 }
 
 export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView {
-  if (!record(value) || value.schemaVersion !== 3 ||
+  if (!record(value) || value.schemaVersion !== 4 ||
       !(value.context === null || validContext(value.context)) ||
       !Array.isArray(value.presets) || !value.presets.every(validPreset) ||
       typeof value.captureSupported !== "boolean" ||
@@ -318,9 +315,10 @@ function validContext(value: unknown): value is AutomarkerSceneContext {
 }
 
 function validPreset(value: unknown): value is AutomarkerPreset {
-  return record(value) && typeof value.presetId === "string" && value.presetId.length >= 8 &&
+  return record(value) && exactKeys(value, [
+    "presetId", "name", "activityFamilyId", "savedAtUnixMillis", "points",
+  ]) && typeof value.presetId === "string" && value.presetId.length >= 8 &&
     typeof value.name === "string" && value.name.trim().length >= 1 && value.name.length <= 80 &&
-    validBuild(value.clientBuild) && integer(value.sceneId) && integer(value.mapId) &&
     validFamily(value.activityFamilyId) &&
     integer(value.savedAtUnixMillis) && Array.isArray(value.points) && value.points.length >= 1 &&
     value.points.length <= 6 && value.points.every(validPoint) &&
@@ -328,7 +326,8 @@ function validPreset(value: unknown): value is AutomarkerPreset {
 }
 
 function validPoint(value: unknown): value is AutomarkerPoint {
-  return record(value) && integer(value.markerNumber) && Number(value.markerNumber) >= 1 &&
+  return record(value) && exactKeys(value, ["markerNumber", "x", "y", "z"]) &&
+    integer(value.markerNumber) && Number(value.markerNumber) >= 1 &&
     Number(value.markerNumber) <= 6 && finite(value.x) && finite(value.y) && finite(value.z);
 }
 
@@ -376,4 +375,9 @@ function finite(value: unknown): value is number {
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function exactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+  const keys = Object.keys(value);
+  return keys.length === expected.length && expected.every((key) => Object.hasOwn(value, key));
 }

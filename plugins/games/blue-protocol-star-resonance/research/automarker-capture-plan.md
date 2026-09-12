@@ -96,6 +96,16 @@ new stream.
 
 ## Placement transport architecture
 
+The preset is portable content, not a captured request. Its durable data is the
+dungeon-family identity, a local name/identifier, and numbered XYZ positions.
+It must never persist an account, character, player/entity UUID, action UUID,
+session sequence, synchronized timestamp, RPC/frame counter, authentication
+field, or captured request bytes. At activation, RLogs revalidates the current
+scene family and asks the currently logged-in game client to perform the normal
+marker action; the game supplies every live identity and transport value for
+that current player. The server remains the authority on whether that player is
+the party leader.
+
 For exact saved XYZ, the preferred future architecture is an in-process call
 through the exact-current-build high-level normal marker action. The current
 package now proves the normal UI boundary as
@@ -395,8 +405,9 @@ success-path empty return are now captured; outstanding requirements include:
 
 - exact remote-client build identity and a complete current-build request
   schema, including field `1.5` and authenticated plaintext field `6`;
-- actor addressing (character ID, actor ID, entity UUID, or another lifetime
-  identity) without guessing;
+- for any direct packet-injection experiment only, actor addressing (character
+  ID, actor ID, entity UUID, or another lifetime identity) without guessing;
+  the preferred high-level game action must resolve the current actor itself;
 - correlated error/rejection returns and permission behavior;
 - marker slot/icon values, uniqueness and collision behavior;
 - replace, individual-clear, clear-all, despawn, scene-change, wipe, and
