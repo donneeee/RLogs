@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "sanitized-reversible-orthogonal-calibration",
+  "exactBuild": "25247556",
+  "calibrationPixels": 6,
+  "sourceReceiptSha256": {
+    "abortedContext": "0c255c5069a09e9ad20f2d06f456fd38bb8eac608126da2ae66180f9dd6645e1",
+    "passed": "9621509ee6f0f0557fa4a8b8c563d58b0627c45b417cb0ec2376adbcebf83668"
+  },
+  "abortedContextCanary": {
+    "preflightPassed": true,
+    "rootContextUnchanged": false,
+    "lifecycleContextUnchanged": false,
+    "inputTransitions": 0,
+    "outcome": "aborted-context"
+  },
+  "passedCanary": {
+    "rootContextUnchanged": true,
+    "lifecycleContextUnchanged": true,
+    "foregroundValidatedBeforeEveryInput": true,
+    "maximumSettledPositionDelta": 0.0016055843,
+    "maximumSettledVelocityNorm": 0.0073315,
+    "settlingPositionLimit": 0.002,
+    "settlingVelocityLimit": 0.02,
+    "samples": [
+      { "position": [95.20996, 122.16426, -289.22324], "mouseDelta": null },
+      { "position": [95.202644, 122.16426, -289.18265], "mouseDelta": [6, 0] },
+      { "position": [95.20987, 122.16426, -289.22305], "mouseDelta": [-6, 0] },
+      { "position": [95.27765, 122.16426, -289.21286], "mouseDelta": [0, 6] },
+      { "position": [95.210495, 122.16426, -289.2233], "mouseDelta": [0, -6] }
+    ],
+    "reportedFinalReturnError": 0.000537534
+  },
+  "derivedModel": {
+    "worldDisplacementPerMouseUnit": [
+      [-0.0012118333, 0.0112445833],
+      [0.0, 0.0],
+      [0.0067491667, 0.0017191667]
+    ],
+    "gramDeterminant": 6.0800867e-9,
+    "spectralConditionNumber": 2.7559202,
+    "transitionResidualRms": 0.0002493304,
+    "computedReturnError": 0.000538354
+  },
+  "privacy": {
+    "containsProcessId": false,
+    "containsPointer": false,
+    "containsPath": false,
+    "containsAccountOrSession": false,
+    "containsRawPacket": false
+  },
+  "authority": {
+    "processMemoryWritten": false,
+    "codeInjected": false,
+    "mouseClickEmitted": false,
+    "placementAttempted": false,
+    "packetSynthesisPerformed": false
+  },
+  "nextCanary": {
+    "mode": "marker1-single-planner-step-and-restore-v1",
+    "manualPrerequisite": "user manually selects marker 1",
+    "target": "one operator-selected saved world coordinate proven within the live 18m player range",
+    "sequence": [
+      "repeat symmetric +X,-X,+Y,-Y calibration",
+      "fit and validate the rank-2 model",
+      "emit one planner-selected integer move bounded to 4 pixels",
+      "wait for the same settled read-only observation gates",
+      "require strictly reduced target distance and an actual-to-predicted improvement ratio of at least 0.20",
+      "emit the exact inverse move and verify return within 0.002m",
+      "emit Escape only while the game remains foreground"
+    ],
+    "forbidden": [
+      "mouse click",
+      "Enter or NormalAttack",
+      "marker placement",
+      "process memory write",
+      "code injection or internal function invocation",
+      "packet construction or synthesis"
+    ]
+  }
+}

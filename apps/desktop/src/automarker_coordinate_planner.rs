@@ -142,6 +142,47 @@ pub struct CoordinateMoveProposal {
     pub trust_region_clamped: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CertifiedCalibrationModel {
+    /// World-space displacement per integer mouse unit, columns X then Y.
+    pub jacobian: [[f64; 2]; 3],
+    pub condition_number: f64,
+    pub residual_rms: f64,
+    pub return_error: f64,
+}
+
+/// Validates and fits one read-only symmetric orthogonal calibration receipt.
+/// This exposes evidence only; it cannot issue input or confirm placement.
+pub fn certify_symmetric_calibration(
+    observations: &[SettledIndicatorObservation],
+    config: CoordinatePlannerConfig,
+) -> Result<CertifiedCalibrationModel, PlannerAbort> {
+    validate_config(config)?;
+    let Some(first) = observations.first() else {
+        return Err(PlannerAbort::InsufficientObservations);
+    };
+    validate_inputs(
+        observations,
+        [1.0, 1.0, 1.0],
+        [1.0, 1.0, 1.0],
+        HARD_PLAYER_TARGET_LIMIT,
+        first.lifecycle_generation,
+        first.root_generation,
+        first.context_identity,
+    )?;
+    require_symmetric_orthogonal_calibration(observations)?;
+    let model = fit_normalized_jacobian(observations, config)?;
+    Ok(CertifiedCalibrationModel {
+        jacobian: model.jacobian,
+        condition_number: model.condition_number,
+        residual_rms: model.residual_rms,
+        return_error: norm3(subtract3(
+            observations.last().unwrap().position,
+            first.position,
+        )),
+    })
+}
+
 #[derive(Clone, Copy, Debug)]
 struct PendingCommand {
     command_id: u32,
@@ -424,6 +465,7 @@ impl CoordinatePlannerSession {
 struct LocalModel {
     jacobian: [[f64; 2]; 3],
     condition_number: f64,
+    residual_rms: f64,
 }
 
 fn validate_inputs(
@@ -614,6 +656,7 @@ fn fit_normalized_jacobian(
     Ok(LocalModel {
         jacobian,
         condition_number: input_condition.max(output_condition),
+        residual_rms,
     })
 }
 
@@ -859,6 +902,102 @@ mod tests {
 
     fn session(config: CoordinatePlannerConfig) -> CoordinatePlannerSession {
         CoordinatePlannerSession::new(config, LIFE, ROOT, CONTEXT).unwrap()
+    }
+
+    #[test]
+    fn sanitized_v6_receipts_certify_rank_two_fit_return_and_context_abort() {
+        let proof: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/automarker/calibration-v6-sanitized-proof.v1.json"
+        ))
+        .unwrap();
+        assert_eq!(proof["exactBuild"], "25247556");
+        let aborted = &proof["abortedContextCanary"];
+        assert_eq!(aborted["outcome"], "aborted-context");
+        assert_eq!(aborted["inputTransitions"], 0);
+        assert_eq!(aborted["rootContextUnchanged"], false);
+        assert_eq!(aborted["lifecycleContextUnchanged"], false);
+        assert!(
+            proof["privacy"]
+                .as_object()
+                .unwrap()
+                .values()
+                .all(|v| v == false)
+        );
+        assert!(
+            proof["authority"]
+                .as_object()
+                .unwrap()
+                .values()
+                .all(|v| v == false)
+        );
+
+        let passed = &proof["passedCanary"];
+        assert!(
+            passed["maximumSettledPositionDelta"].as_f64().unwrap()
+                <= passed["settlingPositionLimit"].as_f64().unwrap()
+        );
+        assert!(
+            passed["maximumSettledVelocityNorm"].as_f64().unwrap()
+                <= passed["settlingVelocityLimit"].as_f64().unwrap()
+        );
+        let observations = passed["samples"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| {
+                let position = row["position"].as_array().unwrap();
+                let delta = row["mouseDelta"]
+                    .as_array()
+                    .map(|values| CertifiedMouseDelta {
+                        planner_command_id: None,
+                        delta: [
+                            values[0].as_i64().unwrap() as i32,
+                            values[1].as_i64().unwrap() as i32,
+                        ],
+                        exclusive_input_ownership: true,
+                    });
+                sample(
+                    [
+                        position[0].as_f64().unwrap(),
+                        position[1].as_f64().unwrap(),
+                        position[2].as_f64().unwrap(),
+                    ],
+                    delta,
+                )
+            })
+            .collect::<Vec<_>>();
+        let model =
+            certify_symmetric_calibration(&observations, CoordinatePlannerConfig::default())
+                .unwrap();
+        let gram = jacobian_gram(model.jacobian);
+        assert!(gram[0][0] * gram[1][1] - gram[0][1].powi(2) > 1.0e-10);
+        assert!(model.condition_number < 4.0);
+        assert!(model.residual_rms < 0.001);
+        assert!(model.return_error < 0.001);
+        let derived = &proof["derivedModel"];
+        assert!(
+            (model.condition_number - derived["spectralConditionNumber"].as_f64().unwrap()).abs()
+                < 0.000_01
+        );
+        assert!(
+            (model.residual_rms - derived["transitionResidualRms"].as_f64().unwrap()).abs()
+                < 0.000_01
+        );
+        assert!(
+            (model.return_error - derived["computedReturnError"].as_f64().unwrap()).abs()
+                < 0.000_01
+        );
+        assert!(
+            (model.return_error - passed["reportedFinalReturnError"].as_f64().unwrap()).abs()
+                < 0.000_01
+        );
+
+        let mut discontinuous = observations;
+        discontinuous[1].context_continuous = false;
+        assert_eq!(
+            certify_symmetric_calibration(&discontinuous, CoordinatePlannerConfig::default()),
+            Err(PlannerAbort::ContextDiscontinuity)
+        );
     }
 
     fn proposal(decision: PlannerDecision) -> CoordinateMoveProposal {
