@@ -19627,6 +19627,40 @@ mod tests {
     fn observed_marker_wait_route_requires_cursor_and_returns_get_projection() {
         let root = temporary_root();
         let controller = Arc::new(RuntimeController::new(root.clone()).unwrap());
+        controller
+            .live_observed_marker_feed
+            .begin_session(ObservedMarkerSessionStamp {
+                session_id: "sanitized-session".into(),
+                deployment_id: "sanitized-deployment".into(),
+                client_build: "sanitized-build".into(),
+                protocol_pack_digest: "sha256:sanitized".into(),
+                protocol_supported: true,
+                request_observer_supported: true,
+            });
+        controller
+            .live_observed_marker_feed
+            .observe_verified_request("sanitized-session", 2, 10);
+        controller.live_observed_marker_feed.publish(
+            "sanitized-session",
+            Some(100),
+            Some(200),
+            Some(11),
+            Ok(vec![rlogs_game_bpsr::LocalMapMarker {
+                passive_instance_id: 1,
+                related_entity_uuid: None,
+                marker_number: 2,
+                x: Some(1.0),
+                y: Some(2.0),
+                z: Some(3.0),
+                observed_micros: 11,
+            }]),
+        );
+        let revision = controller.observed_marker_snapshot().revision;
+        let wait_body = serde_json::to_vec(&serde_json::json!({
+            "after_revision": revision,
+            "timeout_millis": 1
+        }))
+        .unwrap();
 
         let get_response = invoke_local_http_route(
             Arc::clone(&controller),
@@ -19640,7 +19674,7 @@ mod tests {
             root.clone(),
             "POST",
             "/api/automarkers/observed/wait",
-            br#"{"after_revision":0,"timeout_millis":1}"#,
+            &wait_body,
         );
         assert!(get_response.starts_with("HTTP/1.1 200 OK"));
         assert!(wait_response.starts_with("HTTP/1.1 200 OK"));
@@ -19648,6 +19682,17 @@ mod tests {
             get_response.split_once("\r\n\r\n").unwrap().1,
             wait_response.split_once("\r\n\r\n").unwrap().1
         );
+        let projection: serde_json::Value =
+            serde_json::from_str(wait_response.split_once("\r\n\r\n").unwrap().1).unwrap();
+        assert_eq!(projection["revision"], revision);
+        assert_eq!(projection["sessionId"], "sanitized-session");
+        assert_eq!(projection["deploymentId"], "sanitized-deployment");
+        assert_eq!(projection["clientBuild"], "sanitized-build");
+        assert_eq!(projection["protocolPackDigest"], "sha256:sanitized");
+        assert_eq!(projection["sceneId"], 100);
+        assert_eq!(projection["mapId"], 200);
+        assert_eq!(projection["verifiedRequests"][0]["markerNumber"], 2);
+        assert_eq!(projection["markers"][0]["markerNumber"], 2);
 
         let missing_cursor = invoke_local_http_route(
             Arc::clone(&controller),
