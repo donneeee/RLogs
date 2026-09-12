@@ -140,6 +140,25 @@
     "reason": "The numbered scene-marker UI is proven in ordinary dungeon context; broader stage families require separate eligibility evidence.",
     "mech_facility_and_tina_policy": "The gate does not infer a stage class from a scene name. It evaluates the live class. Mech Facility and Tina pass when their live current stage is Panda.StageDungeon and otherwise fail closed; a runtime receipt is required before claiming their class assignment."
   },
+  "sanitized_runtime_observations": [
+    {
+      "receipt_schema_version": 8,
+      "receipt_sha256": "3d09adc1e4335ee85d8d2f92a9e05a77e1f4942d7f9eb9afed859e57f0ca01f3",
+      "scene_id": 6525,
+      "map_id": 6525,
+      "activity_family_id": "mech-facility",
+      "exact_image_identity": true,
+      "root_chain_class_valid": true,
+      "root_chain_stable": true,
+      "lifecycle_idle": true,
+      "dungeon_stage_gate": {
+        "proven": true,
+        "reason": "proven-read-only-current-dungeon-stage"
+      },
+      "activation_attempted": false,
+      "conclusion": "The live exact-build preflight class-validated Mech Facility scene/map 6525 as a stable, non-switching Panda.StageDungeon."
+    }
+  ],
   "privacy": {
     "contains_raw_dump_or_full_binary": false,
     "contains_only_bounded_instruction_bytes": true,

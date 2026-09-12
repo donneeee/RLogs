@@ -68,6 +68,22 @@ assert.equal(dungeonProof.generated_layout_evidence.stage_getter.rva_hex, "0xBCD
 assert.equal(dungeonProof.generated_layout_evidence.stage_getter.generated_c_return_type, "uint8_t");
 assert.equal(dungeonProof.stage_singleton.independent_native_slot_references.length, 3);
 assert.equal(dungeonProof.runtime_acceptance_contract.length, 5);
+assert.equal(dungeonProof.sanitized_runtime_observations.length, 1);
+const mechFacilityObservation = dungeonProof.sanitized_runtime_observations[0];
+assert.equal(mechFacilityObservation.receipt_schema_version, 8);
+assert.match(mechFacilityObservation.receipt_sha256, /^[0-9a-f]{64}$/);
+assert.equal(mechFacilityObservation.scene_id, 6525);
+assert.equal(mechFacilityObservation.map_id, 6525);
+assert.equal(mechFacilityObservation.activity_family_id, "mech-facility");
+assert.equal(mechFacilityObservation.exact_image_identity, true);
+assert.equal(mechFacilityObservation.root_chain_class_valid, true);
+assert.equal(mechFacilityObservation.root_chain_stable, true);
+assert.equal(mechFacilityObservation.lifecycle_idle, true);
+assert.deepEqual(mechFacilityObservation.dungeon_stage_gate, {
+  proven: true,
+  reason: "proven-read-only-current-dungeon-stage",
+});
+assert.equal(mechFacilityObservation.activation_attempted, false);
 assert.equal(dungeonProof.scope.process_memory_write, false);
 assert.equal(dungeonProof.scope.game_method_invocation, false);
 assert.equal(dungeonProof.scope.runtime_activation_enabled, false);
