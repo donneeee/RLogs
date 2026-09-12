@@ -109,6 +109,7 @@ mod windows {
     const ARMED_MODE_TOKEN: &str = "marker1-reversible-calibration-v1";
     const MARKER_1_SKILL_ID: i32 = 1101;
     const MARKER_1_SLOT_ID: i32 = 201;
+    const MARKER_PARAM: f32 = 1.0;
     const MARKER_MAX_DISTANCE: f32 = 18.0;
     const CALIBRATION_PIXELS: i32 = 6;
     const CALIBRATION_SEQUENCE: [[i32; 2]; 4] = [
@@ -121,6 +122,7 @@ mod windows {
     const STABILITY_SAMPLE_MILLIS: u64 = 50;
     const MAX_SETTLED_POSITION_DELTA: f32 = 0.002;
     const MAX_SETTLED_VELOCITY: f32 = 0.02;
+    const PROCESS_READ_RIGHTS: u32 = PROCESS_QUERY_INFORMATION | PROCESS_VM_READ;
 
     #[derive(Clone, Debug, Eq, PartialEq)]
     struct Roots {
@@ -191,6 +193,106 @@ mod windows {
         approximately_returned: bool,
         cancelled: bool,
         outcome: &'static str,
+        preflight: Option<PreflightDiagnostic>,
+    }
+
+    #[derive(Clone, Debug, Serialize)]
+    struct PreflightDiagnostic {
+        acquisition_status: &'static str,
+        class_context_validated: bool,
+        coherent_samples_acquired: bool,
+        root_context_unchanged: Option<bool>,
+        observed: Option<SafeObservedScalars>,
+        gates: Option<PreflightFieldGates>,
+        stability: Option<PreflightStability>,
+        passed: bool,
+    }
+
+    #[derive(Clone, Debug, Serialize)]
+    struct SafeObservedScalars {
+        input_slot_id: i32,
+        input_last_used_slot_id: i32,
+        input_last_press_slot_id: i32,
+        input_is_press: bool,
+        is_enable: bool,
+        is_pc_up_release: bool,
+        is_can_release: bool,
+        indicator_type: u8,
+        data_skill_id: i32,
+        data_slot_id: i32,
+        param_1: f32,
+        param_2: f32,
+        max_distance: f32,
+        current_velocity: Position,
+        is_pc_mode: bool,
+        manager_skill_id: i32,
+        manager_slot_id: i32,
+        enter_state: i32,
+        camera_open_id: i32,
+    }
+
+    #[derive(Clone, Debug, Serialize)]
+    struct PreflightFieldGates {
+        is_enable: bool,
+        is_pc_up_release_false: bool,
+        is_can_release: bool,
+        indicator_type_point: bool,
+        data_skill_id_marker_1: bool,
+        data_slot_id_marker_1: bool,
+        param_1_expected: bool,
+        param_2_expected: bool,
+        max_distance_expected: bool,
+        is_pc_mode: bool,
+        manager_skill_id_marker_1: bool,
+        manager_slot_id_marker_1: bool,
+    }
+
+    impl PreflightFieldGates {
+        fn from_state(state: &LifecycleState) -> Self {
+            let indicator = &state.indicator;
+            Self {
+                is_enable: indicator.is_enable,
+                is_pc_up_release_false: !indicator.is_pc_up_release,
+                is_can_release: indicator.is_can_release,
+                indicator_type_point: indicator.indicator_type == 1,
+                data_skill_id_marker_1: indicator.data_skill_id == MARKER_1_SKILL_ID,
+                data_slot_id_marker_1: indicator.data_slot_id == MARKER_1_SLOT_ID,
+                // buildIndicatorData consumes [1, 18] as Type and MaxDistance;
+                // absent array elements 2 and 3 default Param1/Param2 to 1.
+                param_1_expected: approx(indicator.param_1, MARKER_PARAM, 0.01),
+                param_2_expected: approx(indicator.param_2, MARKER_PARAM, 0.01),
+                max_distance_expected: approx(indicator.max_distance, MARKER_MAX_DISTANCE, 0.01),
+                is_pc_mode: indicator.is_pc_mode,
+                manager_skill_id_marker_1: indicator.skill_id == MARKER_1_SKILL_ID,
+                manager_slot_id_marker_1: indicator.slot_id == MARKER_1_SLOT_ID,
+            }
+        }
+
+        fn all_passed(&self) -> bool {
+            self.is_enable
+                && self.is_pc_up_release_false
+                && self.is_can_release
+                && self.indicator_type_point
+                && self.data_skill_id_marker_1
+                && self.data_slot_id_marker_1
+                && self.param_1_expected
+                && self.param_2_expected
+                && self.max_distance_expected
+                && self.is_pc_mode
+                && self.manager_skill_id_marker_1
+                && self.manager_slot_id_marker_1
+        }
+    }
+
+    #[derive(Clone, Debug, Serialize)]
+    struct PreflightStability {
+        sample_gap_millis: u64,
+        position_delta: f32,
+        maximum_position_delta: f32,
+        velocity_norm: f32,
+        maximum_velocity_norm: f32,
+        position_stable: bool,
+        velocity_settled: bool,
     }
 
     #[derive(Clone, Debug, Serialize)]
@@ -295,7 +397,14 @@ mod windows {
         threads_suspended: bool,
         code_injected_or_invoked: bool,
         process_memory_written: bool,
+        remote_process_write_rights_requested: bool,
+        remote_memory_allocated: bool,
+        remote_thread_created: bool,
+        dll_injected: bool,
+        internal_game_function_invoked: bool,
         packets_observed_or_modified: bool,
+        packet_synthesis_performed: bool,
+        ordinary_foreground_input_only: bool,
         place_enabled: bool,
         mouse_click_emitted: bool,
         reversible_mouse_move_enabled: bool,
@@ -419,8 +528,7 @@ mod windows {
             return Err("running GameAssembly does not match the reviewed file".into());
         }
 
-        let handle =
-            unsafe { OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, 0, process_id) };
+        let handle = unsafe { OpenProcess(PROCESS_READ_RIGHTS, 0, process_id) };
         if handle.is_null() {
             return Err("could not open the selected process for read/query access".into());
         }
@@ -455,7 +563,7 @@ mod windows {
             (events, counters, read_only_canary_receipt())
         };
         let receipt = Receipt {
-            schema_version: 3,
+            schema_version: 4,
             generated_by: "rlogs-bpsr-automarker-lifecycle-probe",
             game: "blue-protocol-star-resonance",
             deployment: "global",
@@ -509,7 +617,14 @@ mod windows {
                 threads_suspended: false,
                 code_injected_or_invoked: false,
                 process_memory_written: false,
+                remote_process_write_rights_requested: false,
+                remote_memory_allocated: false,
+                remote_thread_created: false,
+                dll_injected: false,
+                internal_game_function_invoked: false,
                 packets_observed_or_modified: false,
+                packet_synthesis_performed: false,
+                ordinary_foreground_input_only: true,
                 place_enabled: false,
                 mouse_click_emitted: false,
                 reversible_mouse_move_enabled: armed,
@@ -546,6 +661,7 @@ mod windows {
             approximately_returned: false,
             cancelled: false,
             outcome: "not-armed-read-only",
+            preflight: None,
         }
     }
 
@@ -571,10 +687,13 @@ mod windows {
             approximately_returned: false,
             cancelled: false,
             outcome: "preflight-rejected-marker-state",
+            preflight: None,
         };
-        let baseline = match stable_marker_1_sample(memory, module_base, &started) {
-            Ok(sample) => sample,
-            Err(_) => return receipt,
+        let (preflight, baseline) = diagnose_marker_1_preflight(memory, module_base, &started);
+        receipt.preflight = Some(preflight);
+        let baseline = match baseline {
+            Some(sample) => sample,
+            None => return receipt,
         };
         receipt.marker_1_state_validated = true;
         let baseline_position = baseline.observation.position.clone();
@@ -769,40 +888,122 @@ mod windows {
         }
     }
 
+    impl From<&LifecycleState> for SafeObservedScalars {
+        fn from(state: &LifecycleState) -> Self {
+            Self {
+                input_slot_id: state.slot_id,
+                input_last_used_slot_id: state.last_used_slot_id,
+                input_last_press_slot_id: state.last_press_slot_id,
+                input_is_press: state.is_press,
+                is_enable: state.indicator.is_enable,
+                is_pc_up_release: state.indicator.is_pc_up_release,
+                is_can_release: state.indicator.is_can_release,
+                indicator_type: state.indicator.indicator_type,
+                data_skill_id: state.indicator.data_skill_id,
+                data_slot_id: state.indicator.data_slot_id,
+                param_1: state.indicator.param_1,
+                param_2: state.indicator.param_2,
+                max_distance: state.indicator.max_distance,
+                current_velocity: state.indicator.current_velocity.clone(),
+                is_pc_mode: state.indicator.is_pc_mode,
+                manager_skill_id: state.indicator.skill_id,
+                manager_slot_id: state.indicator.slot_id,
+                enter_state: state.indicator.enter_state,
+                camera_open_id: state.indicator.camera_open_id,
+            }
+        }
+    }
+
+    fn diagnose_marker_1_preflight(
+        memory: &impl Memory,
+        module_base: usize,
+        started: &Instant,
+    ) -> (PreflightDiagnostic, Option<StableMarkerSample>) {
+        let rejected = |status, class_context_validated| PreflightDiagnostic {
+            acquisition_status: status,
+            class_context_validated,
+            coherent_samples_acquired: false,
+            root_context_unchanged: None,
+            observed: None,
+            gates: None,
+            stability: None,
+            passed: false,
+        };
+        let initial_roots = match acquire_roots(memory, module_base) {
+            Ok(roots) => roots,
+            Err(error) => return (rejected(acquire_error_label(error), false), None),
+        };
+        let (first_roots, first) = match coherent_sample_with_roots(memory, module_base) {
+            Ok(sample) => sample,
+            Err(error) => return (rejected(acquire_error_label(error), true), None),
+        };
+        thread::sleep(Duration::from_millis(STABILITY_SAMPLE_MILLIS));
+        let (second_roots, second) = match coherent_sample_with_roots(memory, module_base) {
+            Ok(sample) => sample,
+            Err(error) => return (rejected(acquire_error_label(error), true), None),
+        };
+        let roots_unchanged = initial_roots == first_roots && first_roots == second_roots;
+        let gates = PreflightFieldGates::from_state(&second);
+        let position_delta =
+            position_distance(&first.indicator.position, &second.indicator.position);
+        let velocity_norm = position_norm(&second.indicator.current_velocity);
+        let stability = PreflightStability {
+            sample_gap_millis: STABILITY_SAMPLE_MILLIS,
+            position_delta,
+            maximum_position_delta: MAX_SETTLED_POSITION_DELTA,
+            velocity_norm,
+            maximum_velocity_norm: MAX_SETTLED_VELOCITY,
+            position_stable: position_delta <= MAX_SETTLED_POSITION_DELTA,
+            velocity_settled: velocity_norm <= MAX_SETTLED_VELOCITY,
+        };
+        let passed = roots_unchanged
+            && gates.all_passed()
+            && stability.position_stable
+            && stability.velocity_settled;
+        let observation = SettledObservation {
+            elapsed_micros: started.elapsed().as_micros(),
+            position: second.indicator.position.clone(),
+            current_velocity: second.indicator.current_velocity.clone(),
+            stability_sample_gap_millis: STABILITY_SAMPLE_MILLIS,
+            stability_position_delta: position_delta,
+            velocity_norm,
+            settled: passed,
+        };
+        let diagnostic = PreflightDiagnostic {
+            acquisition_status: "coherent",
+            class_context_validated: true,
+            coherent_samples_acquired: true,
+            root_context_unchanged: Some(roots_unchanged),
+            observed: Some(SafeObservedScalars::from(&second)),
+            gates: Some(gates),
+            stability: Some(stability),
+            passed,
+        };
+        let sample = passed.then_some(StableMarkerSample {
+            roots: second_roots,
+            state: second,
+            observation,
+        });
+        (diagnostic, sample)
+    }
+
+    fn acquire_error_label(error: AcquireError) -> &'static str {
+        match error {
+            AcquireError::Unavailable => "unavailable",
+            AcquireError::Identity => "identity-rejected",
+            AcquireError::Read => "read-failed",
+            AcquireError::Torn => "torn",
+        }
+    }
+
     fn stable_marker_1_sample(
         memory: &impl Memory,
         module_base: usize,
         started: &Instant,
     ) -> Result<StableMarkerSample, Box<dyn Error>> {
-        let (first_roots, first) = coherent_sample_with_roots(memory, module_base)
-            .map_err(|_| "marker state was unavailable or failed identity validation")?;
-        thread::sleep(Duration::from_millis(STABILITY_SAMPLE_MILLIS));
-        let (second_roots, second) = coherent_sample_with_roots(memory, module_base)
-            .map_err(|_| "marker state was unavailable or failed identity validation")?;
-        require_marker_1_state(&first)?;
-        require_marker_1_state(&second)?;
-        let position_delta =
-            position_distance(&first.indicator.position, &second.indicator.position);
-        let velocity_norm = position_norm(&second.indicator.current_velocity);
-        if first_roots != second_roots
-            || position_delta > MAX_SETTLED_POSITION_DELTA
-            || velocity_norm > MAX_SETTLED_VELOCITY
-        {
-            return Err("Marker 1 indicator was not settled; no input emitted".into());
-        }
-        Ok(StableMarkerSample {
-            roots: second_roots,
-            observation: SettledObservation {
-                elapsed_micros: started.elapsed().as_micros(),
-                position: second.indicator.position.clone(),
-                current_velocity: second.indicator.current_velocity.clone(),
-                stability_sample_gap_millis: STABILITY_SAMPLE_MILLIS,
-                stability_position_delta: position_delta,
-                velocity_norm,
-                settled: true,
-            },
-            state: second,
-        })
+        diagnose_marker_1_preflight(memory, module_base, started)
+            .1
+            .ok_or_else(|| "Marker 1 preflight or settle gate failed; no input emitted".into())
     }
 
     fn next_calibration_action(
@@ -836,28 +1037,6 @@ mod windows {
             .map(|delta| i64::from(delta[0]) * i64::from(delta[1]))
             .sum();
         xx * yy - xy * xy > 0
-    }
-
-    fn require_marker_1_state(state: &LifecycleState) -> Result<(), Box<dyn Error>> {
-        let indicator = &state.indicator;
-        if !indicator.is_enable
-            || indicator.is_pc_up_release
-            || !indicator.is_can_release
-            || indicator.indicator_type != 1
-            || indicator.data_skill_id != MARKER_1_SKILL_ID
-            || indicator.data_slot_id != MARKER_1_SLOT_ID
-            || !approx(indicator.param_1, 1.0, 0.01)
-            || !approx(indicator.param_2, MARKER_MAX_DISTANCE, 0.01)
-            || !approx(indicator.max_distance, MARKER_MAX_DISTANCE, 0.01)
-            || !indicator.is_pc_mode
-            || indicator.skill_id != MARKER_1_SKILL_ID
-            || indicator.slot_id != MARKER_1_SLOT_ID
-        {
-            return Err(
-                "exact Marker 1 PC indicator state was not active; no input emitted".into(),
-            );
-        }
-        Ok(())
     }
 
     fn approx(left: f32, right: f32, epsilon: f32) -> bool {
@@ -1736,10 +1915,13 @@ mod windows {
                 indicator + INDICATOR_DATA_SLOT_ID,
                 &MARKER_1_SLOT_ID.to_le_bytes(),
             );
-            m.put(indicator + INDICATOR_DATA_PARAM_1, &1.0f32.to_le_bytes());
+            m.put(
+                indicator + INDICATOR_DATA_PARAM_1,
+                &MARKER_PARAM.to_le_bytes(),
+            );
             m.put(
                 indicator + INDICATOR_DATA_PARAM_2,
-                &MARKER_MAX_DISTANCE.to_le_bytes(),
+                &MARKER_PARAM.to_le_bytes(),
             );
             m.put(
                 indicator + INDICATOR_DATA_MAX_DISTANCE,
@@ -1774,7 +1956,7 @@ mod windows {
                     z: 3.75
                 }
             );
-            assert!(require_marker_1_state(&state).is_ok());
+            assert!(PreflightFieldGates::from_state(&state).all_passed());
         }
 
         #[test]
@@ -1945,10 +2127,88 @@ mod windows {
         fn marker_gate_rejects_any_non_marker_one_state() {
             let mut state = coherent_sample(&valid_memory(), 0x10_0000).unwrap();
             state.indicator.slot_id = 202;
-            assert!(require_marker_1_state(&state).is_err());
+            assert!(!PreflightFieldGates::from_state(&state).all_passed());
             state.indicator.slot_id = MARKER_1_SLOT_ID;
             state.indicator.is_can_release = false;
-            assert!(require_marker_1_state(&state).is_err());
+            assert!(!PreflightFieldGates::from_state(&state).all_passed());
+        }
+
+        #[test]
+        fn preflight_diagnostic_reports_each_safe_gate_without_input_authority() {
+            let memory = valid_memory();
+            let (diagnostic, sample) =
+                diagnose_marker_1_preflight(&memory, 0x10_0000, &Instant::now());
+            assert!(sample.is_some());
+            assert!(diagnostic.class_context_validated);
+            assert!(diagnostic.coherent_samples_acquired);
+            assert_eq!(diagnostic.root_context_unchanged, Some(true));
+            assert!(diagnostic.passed);
+            let observed = diagnostic.observed.as_ref().unwrap();
+            assert_eq!(observed.indicator_type, 1);
+            assert_eq!(observed.data_skill_id, MARKER_1_SKILL_ID);
+            assert_eq!(observed.data_slot_id, MARKER_1_SLOT_ID);
+            assert_eq!(observed.max_distance, MARKER_MAX_DISTANCE);
+            assert_eq!(
+                observed.current_velocity,
+                Position {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0
+                }
+            );
+            assert!(diagnostic.gates.as_ref().unwrap().all_passed());
+            assert!(diagnostic.stability.as_ref().unwrap().velocity_settled);
+        }
+
+        #[test]
+        fn preflight_mismatch_is_diagnostic_and_returns_no_sample() {
+            let mut memory = valid_memory();
+            memory.put(0x91_0000 + INDICATOR_DATA_TYPE, &[0]);
+            memory.put(
+                0x91_0000 + INDICATOR_DATA_PARAM_2,
+                &MARKER_MAX_DISTANCE.to_le_bytes(),
+            );
+            let (diagnostic, sample) =
+                diagnose_marker_1_preflight(&memory, 0x10_0000, &Instant::now());
+            assert!(sample.is_none());
+            assert!(!diagnostic.passed);
+            assert_eq!(diagnostic.observed.as_ref().unwrap().indicator_type, 0);
+            assert_eq!(
+                diagnostic.observed.as_ref().unwrap().param_2,
+                MARKER_MAX_DISTANCE
+            );
+            assert!(!diagnostic.gates.as_ref().unwrap().indicator_type_point);
+            assert!(!diagnostic.gates.as_ref().unwrap().param_2_expected);
+        }
+
+        #[test]
+        fn preflight_velocity_rejection_is_sanitized() {
+            let mut memory = valid_memory();
+            memory.put(
+                0x91_0000 + INDICATOR_CURRENT_VELOCITY,
+                &0.5f32.to_le_bytes(),
+            );
+            let (diagnostic, sample) =
+                diagnose_marker_1_preflight(&memory, 0x10_0000, &Instant::now());
+            assert!(sample.is_none());
+            assert!(!diagnostic.stability.as_ref().unwrap().velocity_settled);
+            let json = serde_json::to_string(&diagnostic).unwrap();
+            for forbidden in ["pid", "pointer", "address", "path", "account", "session"] {
+                assert!(!json.contains(forbidden));
+            }
+        }
+
+        #[test]
+        fn preflight_reports_class_context_rejection_without_scalar_leakage() {
+            let mut memory = valid_memory();
+            memory.text(0xA3_0500, "WrongIndicatorManager");
+            let (diagnostic, sample) =
+                diagnose_marker_1_preflight(&memory, 0x10_0000, &Instant::now());
+            assert!(sample.is_none());
+            assert!(!diagnostic.class_context_validated);
+            assert_eq!(diagnostic.acquisition_status, "identity-rejected");
+            assert!(diagnostic.observed.is_none());
+            assert!(diagnostic.gates.is_none());
         }
 
         #[test]
@@ -1981,7 +2241,14 @@ mod windows {
                 threads_suspended: false,
                 code_injected_or_invoked: false,
                 process_memory_written: false,
+                remote_process_write_rights_requested: false,
+                remote_memory_allocated: false,
+                remote_thread_created: false,
+                dll_injected: false,
+                internal_game_function_invoked: false,
                 packets_observed_or_modified: false,
+                packet_synthesis_performed: false,
+                ordinary_foreground_input_only: true,
                 place_enabled: false,
                 mouse_click_emitted: false,
                 reversible_mouse_move_enabled: false,
@@ -1992,6 +2259,36 @@ mod windows {
             assert!(!json.contains("address_hex"));
             assert!(!json.contains("path\""));
             assert!(json.contains("\"place_enabled\":false"));
+            assert!(json.contains("\"remote_process_write_rights_requested\":false"));
+            assert!(json.contains("\"internal_game_function_invoked\":false"));
+            assert!(json.contains("\"packet_synthesis_performed\":false"));
+            assert!(json.contains("\"ordinary_foreground_input_only\":true"));
+        }
+
+        #[test]
+        fn source_has_no_remote_write_injection_or_packet_synthesis_primitives() {
+            let source = include_str!("automarker-lifecycle-probe.rs");
+            let forbidden = [
+                ["PROCESS_", "VM_WRITE"].concat(),
+                ["PROCESS_", "ALL_ACCESS"].concat(),
+                ["Write", "ProcessMemory"].concat(),
+                ["Virtual", "AllocEx"].concat(),
+                ["Virtual", "ProtectEx"].concat(),
+                ["Create", "RemoteThread"].concat(),
+                ["Load", "LibraryW"].concat(),
+                ["WSA", "Send"].concat(),
+                ["send", "to("].concat(),
+            ];
+            for primitive in forbidden {
+                assert!(
+                    !source.contains(&primitive),
+                    "prohibited primitive introduced into read-only observer"
+                );
+            }
+            assert_eq!(
+                PROCESS_READ_RIGHTS,
+                PROCESS_QUERY_INFORMATION | PROCESS_VM_READ
+            );
         }
 
         #[test]

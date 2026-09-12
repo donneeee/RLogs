@@ -41,6 +41,32 @@ foreground game. It never emits a mouse button, Enter, Normal Attack, or
 placement confirmation. Its receipt contains no PID, account/session identity,
 raw address, or filesystem path.
 
+Receipt schema v4 retains a sanitized diagnostic even when armed preflight is
+rejected before input. It reports acquisition/class/coherence status, whether
+the allowlisted roots stayed unchanged, each exact Marker 1 field gate, the
+safe observed scalar flags and IDs, indicator parameters and range, input-slot
+state, current velocity, camera/enter state, and the measured settle evidence.
+It does not relax any gate: a failed field or settle check still returns before
+`SendInput`. Default read-only mode already records the same raw lifecycle
+scalars as ordinary transition events when Marker 1 remains active long enough
+to be sampled; v4 makes the armed failure self-diagnosing in one receipt.
+
+The first v3 live rejection exposed no failed field. Exact-build disassembly of
+`ZIndicatorMgr.buildIndicatorData` subsequently corrected one preflight
+interpretation: the marker table array `[1, 18]` supplies indicator type `1`
+and maximum distance `18`; missing elements 2 and 3 default `Param1` and
+`Param2` to `1`. Therefore the reviewed Marker 1 scalar expectation is
+`Type=1`, `MaxDistance=18`, `Param1=1`, `Param2=1`. The v4 diagnostic retains
+separate observed values and pass/fail results for all four fields.
+
+The process boundary is permanently read-only for anti-cheat safety. The probe
+requests only `PROCESS_QUERY_INFORMATION | PROCESS_VM_READ`; it has no remote
+write/all-access right, remote allocation or thread creation, DLL injection,
+internal game-function invocation, or packet synthesis surface. The armed
+calibration is limited to ordinary foreground Windows mouse movement and Escape
+after all read-only gates pass. Source and receipt-policy tests enforce this
+boundary.
+
 ## Package and run
 
 The delivery package contains the native probe, a launcher, and this README;

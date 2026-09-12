@@ -68,7 +68,7 @@ if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
 }
 
 $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
-$receipt = Join-Path $PSScriptRoot "automarker-lifecycle-$stamp.v3.json"
+$receipt = Join-Path $PSScriptRoot "automarker-lifecycle-$stamp.v4.json"
 if (Test-Path -LiteralPath $receipt) { throw 'Refusing to overwrite an existing receipt.' }
 
 $arguments = @(
