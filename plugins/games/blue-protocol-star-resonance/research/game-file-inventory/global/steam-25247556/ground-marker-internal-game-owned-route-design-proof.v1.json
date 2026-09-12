@@ -188,12 +188,27 @@
       "rva": "0x670EB30",
       "generated_c_signature": "void Cysharp_Threading_Tasks_UniTask__Post(System_Action_o* action, int32_t timing, const MethodInfo* method)",
       "timing": "Update = 8",
-      "reason": "It is a named one-shot main-player-loop dispatch surface."
+      "reason": "It is a named one-shot main-player-loop dispatch surface.",
+      "exact_build_native_flow": [
+        "UniTask.Post moves the timing value to ECX, the Action pointer to RDX, clears the hidden MethodInfo slot in R8, and tail-jumps to PlayerLoopHelper.AddContinuation.",
+        "PlayerLoopHelper.AddContinuation resolves PlayerLoopHelper static fields, bounds-checks the timing index against the managed yielders array, selects the indexed ContinuationQueue, and tail-jumps to ContinuationQueue.Enqueue.",
+        "ContinuationQueue.Enqueue uses its SpinLock and stores the managed Action into actionList when idle or waitingList while RunCore is dequeuing; the managed array store applies the IL2CPP write barrier.",
+        "ContinuationQueue.RunCore invokes every Action through the delegate invoke pointer, clears consumed array entries, and swaps in the waiting list for a later pass instead of recursively invoking actions enqueued during the current pass.",
+        "A managed exception escaping one callback is caught, sent to UnityEngine.Debug.LogException, and the queue continues to the next callback."
+      ],
+      "one_shot_queue_semantics_statically_proven": true,
+      "removal_or_cancellation_api_present": false
     },
     "related_delegate_surface": {
       "system_action_constructor_rva": "0xB38650",
       "system_action_invoke_rva": "0xABDE30",
-      "switch_to_main_thread_awaiter_on_completed_rva": "0x6719000"
+      "switch_to_main_thread_awaiter_on_completed_rva": "0x6719000",
+      "player_loop_helper_add_continuation_rva": "0x670AFE0",
+      "continuation_queue_enqueue_rva": "0x676A0B0",
+      "continuation_queue_run_rva": "0x676A620",
+      "continuation_queue_run_core_rva": "0x676A630",
+      "player_loop_helper_type_info_pointer_rva": "0x9591498",
+      "system_action_type_info_pointer_rva": "0x961A5F0"
     },
     "delegate_requirements": [
       "A valid managed System.Action must be allocated using the exact current IL2CPP type and constructor contract.",
@@ -204,9 +219,59 @@
     "alternative_candidate": {
       "identity": "UpdateManager.AddUpdate(MonoBehaviour, int, UpdateManager.OnUpdate)",
       "rva": "0x4097270",
-      "limitations": "Requires a live MonoBehaviour, an OnUpdate delegate with the correct float callback ABI, stable rooting, registration ownership, and guaranteed DelUpdate cleanup."
+      "del_update_rva": "0x4097310",
+      "limitations": "This is a recurring registration, not a one-shot queue. It requires a live MonoBehaviour, an OnUpdate(float) delegate with the correct ABI, stable rooting, registration ownership, and guaranteed DelUpdate cleanup after success, cancellation, exception, scene transition, and shutdown."
     },
-    "conclusion": "No sanctioned bridge, delegate construction route, GC-rooting policy, exception boundary, or cancellation guarantee is proven. The scheduler is a design candidate, not an activation contract."
+    "other_rejected_candidates": [
+      {
+        "identity": "UnityEngine.UnitySynchronizationContext.Post(SendOrPostCallback, object)",
+        "rva": "0x6D16F20",
+        "execution_rva": "0x6D172D0",
+        "status": "engine-owned one-shot queue but not an external bridge",
+        "limitations": "It still requires attached in-process execution plus a valid managed SendOrPostCallback and state object. It has no per-item removal API, so cancellation remains a callback-time check with the same race and lifetime problems."
+      },
+      {
+        "identity": "ZenFulcrum.EmbeddedBrowser.Browser.RunOnMainThread(Action)",
+        "rva": "0x7105440",
+        "status": "component-owned one-shot list but not a general bridge",
+        "limitations": "It requires discovery and lifetime ownership of a live Browser MonoBehaviour and appends the same managed Action shape to that component's thingsToDo list. It provides no external IPC, cancellation token, or scene-independent owner and is less suitable than the process-wide UniTask queue."
+      }
+    ],
+    "external_process_boundary": {
+      "relevant_game_assembly_exports_present": [
+        "il2cpp_domain_get",
+        "il2cpp_thread_attach",
+        "il2cpp_thread_detach",
+        "il2cpp_object_new",
+        "il2cpp_gchandle_new",
+        "il2cpp_gchandle_free",
+        "il2cpp_runtime_invoke"
+      ],
+      "meaning": "These exports make an in-process managed bridge mechanically conceivable but do not provide an IPC boundary. An external rLogs process cannot call them or supply a callback without executing code inside the game process.",
+      "sanctioned_external_ipc_or_plugin_entry_found": false,
+      "safe_in_process_entry_found": false
+    },
+    "non_activating_read_only_preflight": {
+      "possible": true,
+      "can_prove": [
+        "the process and loaded GameAssembly match the reviewed executable and assembly hashes",
+        "the entry bytes for UniTask.Post, PlayerLoopHelper.AddContinuation, ContinuationQueue.Enqueue, and ContinuationQueue.RunCore match this exact build",
+        "PlayerLoopHelper TypeInfo at module RVA 0x9591498 resolves to initialized class static fields",
+        "the static mainThreadId is non-zero and the Unity synchronization context is non-null",
+        "the static yielders array is non-null, has an index for Update timing 8, and that ContinuationQueue is non-null",
+        "the Update queue reports timing 8 and has class-valid managed action-list storage"
+      ],
+      "cannot_prove_without_scheduling": [
+        "that an externally constructed Action is ABI-valid and invocable",
+        "that a callback trampoline remains mapped, rooted, and exception-contained until execution",
+        "that the callback executes exactly once before a scene or leader transition",
+        "that cancellation wins every race after enqueue",
+        "that the two game-owned marker calls are atomic against normal input",
+        "that the server accepts the requested remote coordinate"
+      ],
+      "activation_permitted_by_preflight": false
+    },
+    "conclusion": "The exact-build one-shot queue and its managed-array rooting semantics are statically proven, but no sanctioned external bridge, attached execution context, delegate/trampoline construction contract, race-free cancellation protocol, or lifecycle-safe callback ownership is proven. The scheduler remains a design candidate, not an activation contract."
   },
   "required_fail_closed_gates": {
     "before_queue_and_inside_callback": [
