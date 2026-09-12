@@ -508,16 +508,31 @@ mod tests {
             proof["conclusion"]["permission_to_send_or_replay_packets"],
             false
         );
-        let observed = proof["observations"]
+        let receipt: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../tests/fixtures/automarker/tina-m20-six-marker-points.v1.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            receipt["evidenceKind"],
+            "sanitized-inbound-marker-coordinate-receipt"
+        );
+        assert!(
+            receipt["privacy"]
+                .as_object()
+                .unwrap()
+                .values()
+                .all(|value| value == false)
+        );
+        let observed = receipt["points"]
             .as_array()
             .unwrap()
             .iter()
             .map(|row| {
                 (
-                    row["marker_number"].as_u64().unwrap() as u8,
-                    row["position"]["x"].as_f64().unwrap() as f32,
-                    row["position"]["y"].as_f64().unwrap() as f32,
-                    row["position"]["z"].as_f64().unwrap() as f32,
+                    row["markerNumber"].as_u64().unwrap() as u8,
+                    row["x"].as_f64().unwrap() as f32,
+                    row["y"].as_f64().unwrap() as f32,
+                    row["z"].as_f64().unwrap() as f32,
                 )
             })
             .collect::<Vec<_>>();

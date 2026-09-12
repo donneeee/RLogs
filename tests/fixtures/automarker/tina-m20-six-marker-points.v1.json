@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "evidenceKind": "sanitized-inbound-marker-coordinate-receipt",
+  "activityFamilyId": "dungeon.1633",
+  "sceneId": 1633,
+  "mapId": 1633,
+  "points": [
+    { "markerNumber": 1, "x": 1.8669852, "y": 110.00002, "z": 17.699286 },
+    { "markerNumber": 2, "x": 11.352993, "y": 110.00001, "z": 13.218566 },
+    { "markerNumber": 3, "x": 16.131142, "y": 110.00001, "z": 3.1119096 },
+    { "markerNumber": 4, "x": 14.323665, "y": 110.00002, "z": -5.955439 },
+    { "markerNumber": 5, "x": 5.9726048, "y": 110.00002, "z": -15.009228 },
+    { "markerNumber": 6, "x": -4.3912945, "y": 110.00002, "z": -15.824863 }
+  ],
+  "privacy": {
+    "containsRawCapture": false,
+    "containsRawPayload": false,
+    "containsNetworkEndpoint": false,
+    "containsUuid": false,
+    "containsSessionValue": false,
+    "containsPrivatePath": false
+  }
+}

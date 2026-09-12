@@ -267,6 +267,11 @@ impl ObservedMarkerFeed {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::automarker_presets::{
+        AutomarkerPoint, AutomarkerPresetStore, AutomarkerSceneContext,
+        LoadAutomarkerPresetRequest, SaveAutomarkerPresetRequest,
+    };
+    use std::collections::BTreeMap;
 
     fn stamp(session_id: &str, protocol_supported: bool) -> ObservedMarkerSessionStamp {
         ObservedMarkerSessionStamp {
@@ -387,5 +392,129 @@ mod tests {
         let finished = feed.current();
         assert!(!finished.request_observer_supported);
         assert_eq!(finished.verified_request_count, 0);
+    }
+
+    #[test]
+    fn sanitized_six_marker_snapshot_survives_feed_save_and_reopen_exactly() {
+        let receipt: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/automarker/tina-m20-six-marker-points.v1.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            receipt["evidenceKind"],
+            "sanitized-inbound-marker-coordinate-receipt"
+        );
+        assert!(
+            receipt["privacy"]
+                .as_object()
+                .unwrap()
+                .values()
+                .all(|value| value == false)
+        );
+
+        let expected = receipt["points"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| AutomarkerPoint {
+                marker_number: row["markerNumber"].as_u64().unwrap() as u8,
+                x: row["x"].as_f64().unwrap() as f32,
+                y: row["y"].as_f64().unwrap() as f32,
+                z: row["z"].as_f64().unwrap() as f32,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(expected.len(), 6);
+
+        let feed = ObservedMarkerFeed::default();
+        feed.begin_session(stamp("sanitized-replay", true));
+        feed.publish(
+            "sanitized-replay",
+            Some(receipt["sceneId"].as_i64().unwrap() as i32),
+            Some(receipt["mapId"].as_u64().unwrap() as u32),
+            Some(1),
+            Ok(expected
+                .iter()
+                .map(|point| LocalMapMarker {
+                    passive_instance_id: i64::from(point.marker_number),
+                    related_entity_uuid: None,
+                    marker_number: point.marker_number,
+                    x: Some(point.x),
+                    y: Some(point.y),
+                    z: Some(point.z),
+                })
+                .collect()),
+        );
+        let snapshot = feed.current();
+        assert_eq!(snapshot.reason, "observed_markers_available");
+        assert_eq!(snapshot.markers.len(), 6);
+        let feed_points = snapshot
+            .markers
+            .into_iter()
+            .map(|point| AutomarkerPoint {
+                marker_number: point.marker_number,
+                x: point.x,
+                y: point.y,
+                z: point.z,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(feed_points, expected);
+
+        let context = AutomarkerSceneContext {
+            client_build: "sanitized-build".into(),
+            scene_id: receipt["sceneId"].as_i64().unwrap() as i32,
+            map_id: receipt["mapId"].as_u64().unwrap() as u32,
+            activity_family_id: receipt["activityFamilyId"].as_str().unwrap().into(),
+            scene_name: Some("Sanitized marker fixture".into()),
+        };
+        let path = std::env::temp_dir().join(format!(
+            "rlogs-automarker-boundary-{}.json",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let mut families = BTreeMap::new();
+        families.insert(context.scene_id, context.activity_family_id.clone());
+        let mut store = AutomarkerPresetStore::open(&path, &families).unwrap();
+        let saved = store
+            .save(
+                SaveAutomarkerPresetRequest {
+                    preset_id: None,
+                    name: "Sanitized six-marker replay".into(),
+                    points: feed_points,
+                    expected_context: context.clone(),
+                },
+                context.clone(),
+                1,
+            )
+            .unwrap();
+        let preset_id = saved.presets[0].preset_id.clone();
+        assert_eq!(saved.presets[0].points, expected);
+        drop(store);
+
+        let persisted: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let preset = persisted["presets"][0].as_object().unwrap();
+        assert_eq!(
+            preset.keys().map(String::as_str).collect::<Vec<_>>(),
+            vec![
+                "activityFamilyId",
+                "name",
+                "points",
+                "presetId",
+                "savedAtUnixMillis"
+            ]
+        );
+
+        let reopened = AutomarkerPresetStore::open(&path, &families).unwrap();
+        let loaded = reopened
+            .load(
+                LoadAutomarkerPresetRequest {
+                    preset_id,
+                    expected_context: context.clone(),
+                },
+                context,
+            )
+            .unwrap();
+        assert_eq!(loaded.preset.points, expected);
+        let _ = std::fs::remove_file(path);
     }
 }

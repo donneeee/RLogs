@@ -94,6 +94,17 @@ new stream.
   never be copied from a capture. The sanitized static proof is recorded in
   `steam-25247556/ground-marker-high-level-action-proof.v1.json`.
 
+The six-marker capture/save boundary also has a privacy-minimal regression
+fixture at `tests/fixtures/automarker/tina-m20-six-marker-points.v1.json`. Tests
+reconstruct the marker notification at runtime, pass it through the real
+`LocalMapMarkerProjection`, publish the reducer-shaped result through
+`ObservedMarkerFeed`, save schema-v4 portable content, reopen it, and compare all
+six numbered XYZ positions exactly. The fixture contains no raw capture bytes,
+network endpoints, UUIDs, session values, or private paths. Offline combat-PCAP
+replay does not publish markers into this feed because marker state is
+intentionally local and non-canonical; that separation is preserved rather than
+inventing canonical automarker events.
+
 ## Placement transport architecture
 
 The preset is portable content, not a captured request. Its durable data is the
