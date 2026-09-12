@@ -80,17 +80,36 @@ new stream.
   by the game rather than copied or extrapolated. This proves the route/request
   topology and the local save-location fields; it does not authorize an
   encoder, sender, replay, or placement adapter.
+- A read-only current-build package audit identifies the normal dungeon-marker
+  UI at `ui/view/main_copy_punctuate_view.lua`. It loads
+  `weapon_skill:GetSceneMaskSkillList()`, whose current-build implementation
+  selects `SkillSlotPositionTableMgr` rows with
+  `SlotLogicType == SkillSlotLogicType.SceneMaskSkill`. The view invokes
+  `Z.PlayerInputController:FlagSkill(info.id, true|false)` and uses
+  `Z.PlayerInputController:StopSkill(info.skillId)` for deletion. Its leader-id
+  comparison is game UI eligibility behavior for the currently active dungeon
+  character, not an RLogs account or identity binding. The high-level call
+  accepts no player UUID, action UUID, session sequence, authenticated payload,
+  or transport counter, so those values remain fresh game-owned state and must
+  never be copied from a capture. The sanitized static proof is recorded in
+  `steam-25247556/ground-marker-high-level-action-proof.v1.json`.
 
 ## Placement transport architecture
 
 For exact saved XYZ, the preferred future architecture is an in-process call
-through the exact-current-build high-level normal marker action. That keeps
+through the exact-current-build high-level normal marker action. The current
+package now proves the normal UI boundary as
+`Z.PlayerInputController:FlagSkill(info.id, true|false)`. That keeps
 `sessionSequence`, action identity, synchronized time, authenticated attributes,
 RPC call IDs, `FrameUp` IDs, ordering, and retransmission inside the game. The
-current package proves a generated `zproto.World.UseSlot` Lua proxy that encodes
-`vRequest` and dispatches through `LuaProxyCall`, but it does not expose a
-reviewed external ABI. Calling that lower-level proxy directly remains blocked
-because the caller would still have to construct the complete live request.
+view obtains `info.id` from the exact-current-build scene-mask skill table and
+does not accept a world `Position`. It instead drives `Skill_Horizontal` and
+`Skill_Vertical` through `TouchManager.TouchController:TrySetAxis`; native
+targeting or raycast logic resolves the ground point. The package also proves a
+generated `zproto.World.UseSlot` Lua proxy that encodes `vRequest` and
+dispatches through `LuaProxyCall`, but it does not expose a reviewed external
+ABI. Calling that lower-level proxy directly remains blocked because the caller
+would still have to construct the complete live request.
 
 Normal game-UI input is the least invasive fallback, but the reviewed code and
 artifacts contain no deterministic saved-world-XYZ to camera/screen/raycast
@@ -98,6 +117,17 @@ adapter. It can reproduce an approximate visible click, not an exact preset
 coordinate. Raw TCP insertion or rewriting is not an acceptable alternative:
 the RLogs network path is passive and owns neither the live connection's
 sequence state nor retransmission. Do not add a stream sender.
+
+The least-invasive next evidence is one read-only runtime call trace during a
+normal UI placement, starting at `PlayerInputController.FlagSkill` and following
+the native target/raycast handler immediately before `World.UseSlot`. Record the
+method names, argument types, and the game-owned field or property holding the
+resolved ground `Position`. If an existing high-level position setter is
+proven, it is the preferred exact-XYZ boundary before normal `FlagSkill`
+release. If no setter exists, a world-to-screen/camera projection must be
+validated against occlusion, range, navigation, and ground-raycast rules before
+the existing two skill axes can be considered deterministic. Until then,
+`Place` remains disabled.
 
 ## Evidence already available
 

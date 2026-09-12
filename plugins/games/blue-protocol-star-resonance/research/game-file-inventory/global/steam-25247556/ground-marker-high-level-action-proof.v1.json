@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "generated_by": "rlogs-bpsr-ground-marker-high-level-action-audit",
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "build_id": "25247556",
+  "audit_kind": "sanitized-read-only-current-build-high-level-ground-marker-action-proof",
+  "scope": {
+    "package_read_only": true,
+    "packet_transmission_performed": false,
+    "packet_replay_performed": false,
+    "process_memory_read": false,
+    "process_memory_write": false,
+    "input_automation_performed": false,
+    "runtime_placement_enabled": false
+  },
+  "current_build_lua_evidence": {
+    "container": "current_build_package_container_m0",
+    "view": {
+      "lua_path": "ui/view/main_copy_punctuate_view.lua",
+      "class": "Main_copy_punctuateView",
+      "chunk_offset_decimal": 1143912043,
+      "behavioral_identity": [
+        "loads the scene-mask skill list",
+        "presents place and delete modes for six numbered dungeon markers",
+        "watches LocalAttr.FlagSkillState",
+        "checks dungeon stage and current team leadership before exposing the action"
+      ]
+    },
+    "marker_table": {
+      "lua_path": "ui/view_model/weapon_skill_vm.lua",
+      "chunk_offset_decimal": 828139111,
+      "method": "GetSceneMaskSkillList",
+      "table_manager": "SkillSlotPositionTableMgr",
+      "filter": "row.SlotLogicType == SkillSlotLogicType.SceneMaskSkill",
+      "selected_fields": [
+        "table data key exposed to the view as info.id",
+        "row.SkillId exposed to the view as info.skillId"
+      ],
+      "observed_wire_mapping": "normal UI entries correlate with slots 201 through 206 and skills 1101 through 1106"
+    },
+    "high_level_calls": [
+      {
+        "receiver": "Z.PlayerInputController",
+        "method": "FlagSkill",
+        "proven_call_shape": "FlagSkill(info.id, true|false)",
+        "explicit_argument_count": 2,
+        "argument_1": "scene-mask table entry id selected by the normal UI",
+        "argument_2": "boolean phase value; true is used on selection or pointer-down and false on release or back",
+        "position_argument_present": false,
+        "proof": "Lua 5.3 CALL operands and register flow in the current-build view chunk"
+      },
+      {
+        "receiver": "Z.PlayerInputController",
+        "method": "StopSkill",
+        "proven_call_shape": "StopSkill(info.skillId)",
+        "explicit_argument_count": 1,
+        "purpose": "normal UI delete path for a marker skill"
+      },
+      {
+        "receiver": "TouchManager.TouchController",
+        "method": "TrySetAxis",
+        "proven_call_shapes": [
+          "TrySetAxis(\"Skill_Horizontal\", value)",
+          "TrySetAxis(\"Skill_Vertical\", value)"
+        ],
+        "purpose": "normal placement reticle input"
+      }
+    ]
+  },
+  "leader_behavior_boundary": {
+    "ui_check": "teamData_.TeamInfo.baseInfo.leaderId is compared with ContainerMgr.CharSerialize.charBase.charId while StageMgr.IsDungeonStage is true",
+    "meaning": "This is game UI eligibility behavior for the active character, not an RLogs account, identity, or authorization binding.",
+    "rlogs_identity_binding_required": false,
+    "captured_leader_identity_reusable": false
+  },
+  "fresh_state_ownership": {
+    "high_level_call_accepts_player_or_character_uuid": false,
+    "high_level_call_accepts_action_or_skill_uuid": false,
+    "high_level_call_accepts_session_sequence": false,
+    "high_level_call_accepts_authenticated_attribute_data": false,
+    "game_owned_values": [
+      "active player and character context",
+      "skill and action instance UUID",
+      "begin time",
+      "UseSlotRequest.sessionSequence",
+      "authenticated action attributes",
+      "RPC call id",
+      "FrameUp sequence",
+      "transport ordering and retransmission"
+    ],
+    "portability_conclusion": "The proven high-level boundary is suitable for any eligible active dungeon leader only because the live game supplies fresh identity, session, authentication, and transport state. Captured values must never be copied into a later action."
+  },
+  "exact_xyz_boundary": {
+    "exact_saved_xyz_supported": false,
+    "reason": "FlagSkill accepts the selected scene-mask entry id and a boolean phase value, not a world Position. The normal UI drives horizontal and vertical skill axes, after which native targeting or raycast logic owns the resolved ground point.",
+    "unproven_items": [
+      "native field or property holding the resolved ground target",
+      "current-build target-position setter above World.UseSlot",
+      "deterministic world-to-screen and camera projection for arbitrary saved XYZ",
+      "occlusion, range, navigation, and ground-raycast acceptance rules"
+    ]
+  },
+  "next_evidence": {
+    "least_invasive_step": "Perform one read-only runtime call trace during a normal UI marker placement, beginning at PlayerInputController.FlagSkill and following the native target or raycast handler immediately before World.UseSlot.",
+    "record_only": [
+      "method names and call ordering",
+      "argument types and values at the high-level target boundary",
+      "the game-owned field or property containing the resolved ground Position",
+      "whether an existing target-position setter is called before FlagSkill release"
+    ],
+    "preferred_resolution": "If an existing high-level Position setter is proven, use it before the normal FlagSkill release while leaving all request and transport construction inside the game.",
+    "fallback_resolution": "If no setter exists, validate a world-to-screen and camera projection that drives the existing skill axes and lets the game perform its own raycast.",
+    "prohibited": [
+      "reuse of captured player, character, action, session, authentication, call, or frame identifiers",
+      "direct request synthesis or replay",
+      "TCP stream insertion or rewriting"
+    ]
+  },
+  "conclusion": {
+    "normal_ground_marker_ui_identified": true,
+    "high_level_flag_skill_call_shape_proven": true,
+    "game_owned_fresh_state_boundary_proven": true,
+    "exact_world_position_parameter_proven": false,
+    "runtime_sender_enabled": false,
+    "placement_feature_must_remain_closed": true
+  },
+  "privacy": {
+    "contains_cryptographic_keys": false,
+    "contains_raw_package_bytes": false,
+    "contains_raw_payloads": false,
+    "contains_network_endpoints": false,
+    "contains_local_absolute_paths": false,
+    "contains_personal_identity": false,
+    "contains_private_runtime_identifiers": false
+  }
+}
