@@ -163,7 +163,29 @@ canary or adding placement authority:
   -PresetId 'preset-000000000001-0000'
 ```
 
-`-PresetId` and explicit `-TargetX/-TargetY/-TargetZ` are mutually exclusive.
+The Automarkers UI displays preset names and marker counts, but not the backing
+preset ID. The v13 launcher therefore also supports an exact preset name:
+
+```powershell
+.\run-bpsr-automarker-lifecycle-probe.ps1 `
+  -ArmClosedLoopAim `
+  -PresetName 'Boss opening'
+```
+
+Names are ordinal and case-sensitive and must resolve exactly once inside the
+active family. Zero matches or duplicate exact names fail closed. Deterministic
+automation can continue to use `-PresetId`. To discover IDs without exposing
+coordinates or capture identity, run:
+
+```powershell
+.\run-bpsr-automarker-lifecycle-probe.ps1 -ListPresets
+```
+
+The sanitized table contains only preset name, ID, active family, and sorted
+marker numbers. It contains no XYZ, session, deployment, or protocol digest.
+
+`-PresetId`, `-PresetName`, and explicit `-TargetX/-TargetY/-TargetZ` are
+mutually exclusive.
 Preset mode fetches only `/api/automarkers/presets` over literal
 `http://127.0.0.1:<port>`, rejects redirects and proxies, requires schema v4,
 exact build `25247556`, a complete active scene/map/family context, a matching

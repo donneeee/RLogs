@@ -11,6 +11,8 @@ param(
     [Nullable[double]]$TargetY,
     [Nullable[double]]$TargetZ,
     [string]$PresetId,
+    [string]$PresetName,
+    [switch]$ListPresets,
     [string]$RLogsBaseUrl,
     [switch]$SelfTest,
     [switch]$DryRun
@@ -108,7 +110,11 @@ function Get-LoopbackPresetProjection([string]$BaseUrl) {
     $client.Timeout = [TimeSpan]::FromSeconds(2)
     $response = $null
     try {
-        $response = $client.GetAsync("$BaseUrl/api/automarkers/presets").GetAwaiter().GetResult()
+        try {
+            $response = $client.GetAsync("$BaseUrl/api/automarkers/presets").GetAwaiter().GetResult()
+        } catch {
+            throw 'The local rLogs presets endpoint did not respond within the safety window.'
+        }
         if ([int]$response.StatusCode -ne 200) { throw "rLogs presets endpoint returned HTTP $([int]$response.StatusCode)." }
         $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
         if ([Text.Encoding]::UTF8.GetByteCount($body) -gt 524288) { throw 'rLogs presets response exceeded the 512 KiB safety limit.' }
@@ -149,12 +155,12 @@ function Find-RLogsLoopbackBaseUrl {
         } catch { continue }
     }
     if ($matches.Count -ne 1) {
-        throw "Found $($matches.Count) unambiguous rLogs loopback hosts. Supply -RLogsBaseUrl http://127.0.0.1:<port>."
+        throw "Expected exactly one valid rLogs loopback host but found $($matches.Count). Supply -RLogsBaseUrl http://127.0.0.1:<port>."
     }
     return $matches[0]
 }
 
-function Resolve-MarkerOnePresetTarget($Projection, [string]$RequestedPresetId) {
+function Get-ExactActivePresetContext($Projection) {
     Assert-PresetProjectionSchema $Projection
     if ($null -eq $Projection.context -or
         -not (Test-ExactPropertySet $Projection.context @('clientBuild', 'sceneId', 'mapId', 'activityFamilyId', 'sceneName'))) {
@@ -168,19 +174,56 @@ function Resolve-MarkerOnePresetTarget($Projection, [string]$RequestedPresetId) 
         [string]::IsNullOrWhiteSpace([string]$context.activityFamilyId)) {
         throw 'The active rLogs build/scene/map/family context is incomplete or does not match this canary.'
     }
-    $selected = @($Projection.presets | Where-Object { [string]$_.presetId -ceq $RequestedPresetId })
-    if ($selected.Count -ne 1) { throw "Preset '$RequestedPresetId' was not uniquely resolved." }
+    if (@($Projection.presets | Where-Object { [string]$_.activityFamilyId -cne [string]$context.activityFamilyId }).Count -ne 0) {
+        throw 'The preset projection contains a preset outside the exact active activity family.'
+    }
+    return $context
+}
+
+function Resolve-MarkerOnePresetTarget($Projection, [string]$RequestedPresetId, [string]$RequestedPresetName) {
+    $context = Get-ExactActivePresetContext $Projection
+    if (-not [string]::IsNullOrWhiteSpace($RequestedPresetId)) {
+        $selected = @($Projection.presets | Where-Object { [string]$_.presetId -ceq $RequestedPresetId })
+        $selector = "ID '$([regex]::Replace($RequestedPresetId, '\p{C}', '?'))'"
+    } else {
+        $selected = @($Projection.presets | Where-Object { [string]$_.name -ceq $RequestedPresetName })
+        $selector = "name '$([regex]::Replace($RequestedPresetName, '\p{C}', '?'))'"
+    }
+    if ($selected.Count -ne 1) { throw "Preset $selector matched $($selected.Count) presets; exactly one is required." }
     $preset = $selected[0]
     if ([string]$preset.activityFamilyId -cne [string]$context.activityFamilyId) {
-        throw "Preset '$RequestedPresetId' does not belong to the exact active activity family."
+        throw "Preset $selector does not belong to the exact active activity family."
     }
     $markerOne = @($preset.points | Where-Object { $_.markerNumber -eq 1 })
-    if ($markerOne.Count -ne 1) { throw "Preset '$RequestedPresetId' must contain exactly one Marker 1 point." }
+    if ($markerOne.Count -ne 1) { throw "Preset $selector must contain exactly one Marker 1 point." }
     $point = $markerOne[0]
     foreach ($coordinate in @($point.x, $point.y, $point.z)) {
-        if (-not (Test-FiniteJsonNumber $coordinate)) { throw "Preset '$RequestedPresetId' has a non-finite Marker 1 coordinate." }
+        if (-not (Test-FiniteJsonNumber $coordinate)) { throw "Preset $selector has a non-finite Marker 1 coordinate." }
     }
-    return [pscustomobject]@{ X = [double]$point.x; Y = [double]$point.y; Z = [double]$point.z }
+    return [pscustomobject]@{
+        X = [double]$point.x
+        Y = [double]$point.y
+        Z = [double]$point.z
+        PresetId = [string]$preset.presetId
+        PresetName = [string]$preset.name
+    }
+}
+
+function Write-SanitizedPresetList($Projection) {
+    $context = Get-ExactActivePresetContext $Projection
+    $rows = @($Projection.presets | Sort-Object -Property name, presetId | ForEach-Object {
+        [pscustomobject]@{
+            Name = ([regex]::Replace([string]$_.name, '\p{C}', '?'))
+            PresetId = ([regex]::Replace([string]$_.presetId, '\p{C}', '?'))
+            Family = ([regex]::Replace([string]$context.activityFamilyId, '\p{C}', '?'))
+            Markers = (@($_.points.markerNumber | Sort-Object) -join ',')
+        }
+    })
+    if ($rows.Count -eq 0) {
+        Write-Host 'No presets exist for the exact active activity family.'
+        return
+    }
+    $rows | Format-Table -Property Name, PresetId, Family, Markers -AutoSize
 }
 
 function Assert-LauncherTargetSelection(
@@ -188,6 +231,8 @@ function Assert-LauncherTargetSelection(
     [bool]$OneStep,
     [bool]$ClosedLoop,
     [string]$RequestedPresetId,
+    [string]$RequestedPresetName,
+    [bool]$ListingPresets,
     [Nullable[double]]$X,
     [Nullable[double]]$Y,
     [Nullable[double]]$Z
@@ -196,20 +241,26 @@ function Assert-LauncherTargetSelection(
         throw 'Choose only one armed canary mode.'
     }
     $hasPreset = -not [string]::IsNullOrWhiteSpace($RequestedPresetId)
+    $hasPresetName = -not [string]::IsNullOrWhiteSpace($RequestedPresetName)
     $hasAnyCoordinate = ($null -ne $X -or $null -ne $Y -or $null -ne $Z)
     $hasAllCoordinates = ($null -ne $X -and $null -ne $Y -and $null -ne $Z)
-    if ($hasPreset -and -not $ClosedLoop) { throw '-PresetId is supported only with -ArmClosedLoopAim.' }
-    if ($hasPreset -and $hasAnyCoordinate) {
-        throw '-PresetId and explicit -TargetX/-TargetY/-TargetZ are mutually exclusive.'
+    if (($hasPreset -or $hasPresetName) -and -not $ClosedLoop) {
+        throw '-PresetId and -PresetName are supported only with -ArmClosedLoopAim.'
     }
-    if (($OneStep -or $ClosedLoop) -and -not $hasPreset -and -not $hasAllCoordinates) {
-        throw 'Supply either -PresetId (closed-loop only) or all of -TargetX, -TargetY, and -TargetZ.'
+    if (@($hasPreset, $hasPresetName, $hasAnyCoordinate).Where({ $_ }).Count -gt 1) {
+        throw '-PresetId, -PresetName, and explicit -TargetX/-TargetY/-TargetZ are mutually exclusive.'
+    }
+    if (($OneStep -or $ClosedLoop) -and -not $hasPreset -and -not $hasPresetName -and -not $hasAllCoordinates) {
+        throw 'Supply -PresetId, -PresetName (closed-loop only), or all of -TargetX/-TargetY/-TargetZ.'
     }
     if ($hasAnyCoordinate -and -not $hasAllCoordinates) {
         throw '-TargetX, -TargetY, and -TargetZ must be supplied together.'
     }
-    if (-not ($OneStep -or $ClosedLoop) -and ($hasPreset -or $hasAnyCoordinate)) {
+    if (-not ($OneStep -or $ClosedLoop) -and ($hasPreset -or $hasPresetName -or $hasAnyCoordinate)) {
         throw 'Target coordinates and presets require an armed planner mode.'
+    }
+    if ($ListingPresets -and ($Calibration -or $OneStep -or $ClosedLoop -or $hasPreset -or $hasPresetName -or $hasAnyCoordinate)) {
+        throw '-ListPresets cannot be combined with an armed mode or a target selector.'
     }
 }
 
@@ -219,45 +270,62 @@ function Invoke-LauncherSelfTest {
     try { Assert-LoopbackBaseUrl 'http://localhost:54221' } catch { $rejected = $true }
     if (-not $rejected) { throw 'Self-test failed: non-literal loopback host was accepted.' }
     $json = '{"schemaVersion":4,"context":{"clientBuild":"25247556","sceneId":100,"mapId":200,"activityFamilyId":"tina","sceneName":"Tina"},"presets":[{"presetId":"preset-test","name":"Test","activityFamilyId":"tina","savedAtUnixMillis":1,"points":[{"markerNumber":1,"x":1.5,"y":2.5,"z":3.5}]}],"captureSupported":false,"captureReason":"native_waymark_state_unverified","captureSessionId":null,"deploymentId":null,"protocolPackDigest":null,"nativeLoadSupported":false,"nativeLoadReason":"native_waymark_transport_unavailable","previewSessionId":"preview-test"}' | ConvertFrom-Json
-    $target = Resolve-MarkerOnePresetTarget $json 'preset-test'
+    $target = Resolve-MarkerOnePresetTarget $json 'preset-test' $null
     if ($target.X -ne 1.5 -or $target.Y -ne 2.5 -or $target.Z -ne 3.5) { throw 'Self-test failed: target coordinates changed.' }
+    $namedTarget = Resolve-MarkerOnePresetTarget $json $null 'Test'
+    if ($namedTarget.PresetId -cne 'preset-test') { throw 'Self-test failed: unique exact preset name resolved the wrong ID.' }
+    $listOutput = Write-SanitizedPresetList $json | Out-String
+    foreach ($required in @('Test', 'preset-test', 'tina', '1')) {
+        if ($listOutput -notmatch [regex]::Escape($required)) { throw "Self-test failed: sanitized list omitted '$required'." }
+    }
+    foreach ($forbidden in @('1.5', '2.5', '3.5', 'captureSessionId', 'deploymentId')) {
+        if ($listOutput -match [regex]::Escape($forbidden)) { throw "Self-test failed: sanitized list exposed '$forbidden'." }
+    }
+    $rejected = $false
+    try { [void](Resolve-MarkerOnePresetTarget $json $null 'test') } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Self-test failed: preset-name matching was not exact/case-sensitive.' }
     $json.presets[0].points += [pscustomobject]@{ markerNumber = 1; x = 4; y = 5; z = 6 }
     $rejected = $false
-    try { [void](Resolve-MarkerOnePresetTarget $json 'preset-test') } catch { $rejected = $true }
+    try { [void](Resolve-MarkerOnePresetTarget $json 'preset-test' $null) } catch { $rejected = $true }
     if (-not $rejected) { throw 'Self-test failed: duplicate Marker 1 was accepted.' }
     $familyJson = '{"schemaVersion":4,"context":{"clientBuild":"25247556","sceneId":100,"mapId":200,"activityFamilyId":"other","sceneName":"Other"},"presets":[{"presetId":"preset-test","name":"Test","activityFamilyId":"tina","savedAtUnixMillis":1,"points":[{"markerNumber":1,"x":1.5,"y":2.5,"z":3.5}]}],"captureSupported":false,"captureReason":"native_waymark_state_unverified","captureSessionId":null,"deploymentId":null,"protocolPackDigest":null,"nativeLoadSupported":false,"nativeLoadReason":"native_waymark_transport_unavailable","previewSessionId":"preview-test"}' | ConvertFrom-Json
     $rejected = $false
-    try { [void](Resolve-MarkerOnePresetTarget $familyJson 'preset-test') } catch { $rejected = $true }
+    try { [void](Resolve-MarkerOnePresetTarget $familyJson 'preset-test' $null) } catch { $rejected = $true }
     if (-not $rejected) { throw 'Self-test failed: mismatched activity family was accepted.' }
+    $nameJson = '{"schemaVersion":4,"context":{"clientBuild":"25247556","sceneId":100,"mapId":200,"activityFamilyId":"tina","sceneName":"Tina"},"presets":[{"presetId":"preset-one","name":"Same Name","activityFamilyId":"tina","savedAtUnixMillis":1,"points":[{"markerNumber":1,"x":1.5,"y":2.5,"z":3.5}]},{"presetId":"preset-two","name":"Same Name","activityFamilyId":"tina","savedAtUnixMillis":2,"points":[{"markerNumber":1,"x":4.5,"y":5.5,"z":6.5}]}],"captureSupported":false,"captureReason":"native_waymark_state_unverified","captureSessionId":null,"deploymentId":null,"protocolPackDigest":null,"nativeLoadSupported":false,"nativeLoadReason":"native_waymark_transport_unavailable","previewSessionId":"preview-test"}' | ConvertFrom-Json
     $rejected = $false
-    try { Assert-LauncherTargetSelection $false $false $true 'preset-test' 1 2 3 } catch { $rejected = $true }
+    try { [void](Resolve-MarkerOnePresetTarget $nameJson $null 'Same Name') } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Self-test failed: ambiguous exact preset name was accepted.' }
+    $rejected = $false
+    try { Assert-LauncherTargetSelection $false $false $true 'preset-test' $null $false 1 2 3 } catch { $rejected = $true }
     if (-not $rejected) { throw 'Self-test failed: preset and explicit XYZ were accepted together.' }
-    Assert-LauncherTargetSelection $false $false $true 'preset-test' $null $null $null
-    Assert-LauncherTargetSelection $false $false $true $null 1 2 3
-    Write-Host 'Launcher self-test passed: loopback policy, schema, family context, and unique Marker 1 resolution.'
+    Assert-LauncherTargetSelection $false $false $true 'preset-test' $null $false $null $null $null
+    Assert-LauncherTargetSelection $false $false $true $null 'Test' $false $null $null $null
+    Assert-LauncherTargetSelection $false $false $true $null $null $false 1 2 3
+    Assert-LauncherTargetSelection $false $false $false $null $null $true $null $null $null
+    Write-Host 'Launcher self-test passed: loopback policy, schema, family context, ID/name uniqueness, and target exclusivity.'
 }
 
 if ($SelfTest) {
-    if ($DryRun -or $ArmReversibleCalibration -or $ArmSinglePlannerStep -or $ArmClosedLoopAim) {
+    if ($DryRun -or $ListPresets -or $ArmReversibleCalibration -or $ArmSinglePlannerStep -or $ArmClosedLoopAim) {
         throw '-SelfTest cannot be combined with dry-run or armed modes.'
     }
     Invoke-LauncherSelfTest
     return
 }
 
-if (-not (Test-Path -LiteralPath $probe -PathType Leaf)) {
-    throw 'The probe executable is missing from this package.'
-}
-
 if ($DryRun) {
-    if ($ArmReversibleCalibration -or $ArmSinglePlannerStep -or $ArmClosedLoopAim) {
+    if ($ListPresets -or $ArmReversibleCalibration -or $ArmSinglePlannerStep -or $ArmClosedLoopAim) {
         throw '-DryRun cannot be combined with an armed mode.'
+    }
+    if (-not (Test-Path -LiteralPath $probe -PathType Leaf)) {
+        throw 'The probe executable is missing from this package.'
     }
     $dryStamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
     $dryReceipt = Join-Path $PSScriptRoot "automarker-dry-run-$dryStamp.v1.json"
     $value = [ordered]@{
         schemaVersion = 1
-        evidenceKind = 'automarker-v11-packaged-dry-run'
+        evidenceKind = 'automarker-v13-packaged-dry-run'
         exactBuild = $expectedBuild
         executablePresent = $true
         processOpened = $false
@@ -271,7 +339,18 @@ if ($DryRun) {
     return
 }
 
-Assert-LauncherTargetSelection $ArmReversibleCalibration $ArmSinglePlannerStep $ArmClosedLoopAim $PresetId $TargetX $TargetY $TargetZ
+Assert-LauncherTargetSelection $ArmReversibleCalibration $ArmSinglePlannerStep $ArmClosedLoopAim $PresetId $PresetName $ListPresets $TargetX $TargetY $TargetZ
+
+if ($ListPresets) {
+    if ([string]::IsNullOrWhiteSpace($RLogsBaseUrl)) { $RLogsBaseUrl = Find-RLogsLoopbackBaseUrl }
+    else { Assert-LoopbackBaseUrl $RLogsBaseUrl }
+    Write-SanitizedPresetList (Get-LoopbackPresetProjection $RLogsBaseUrl)
+    return
+}
+
+if (-not (Test-Path -LiteralPath $probe -PathType Leaf)) {
+    throw 'The probe executable is missing from this package.'
+}
 
 function Find-ExactInstall {
     $steamRoots = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -343,19 +422,22 @@ if ($ArmReversibleCalibration) {
 }
 if ($ArmSinglePlannerStep -or $ArmClosedLoopAim) {
     $hasPreset = -not [string]::IsNullOrWhiteSpace($PresetId)
+    $hasPresetName = -not [string]::IsNullOrWhiteSpace($PresetName)
     if ([string]::IsNullOrWhiteSpace($RLogsBaseUrl)) {
         $RLogsBaseUrl = Find-RLogsLoopbackBaseUrl
         Write-Host "Resolved the unique rLogs loopback host at $RLogsBaseUrl."
     } else {
         Assert-LoopbackBaseUrl $RLogsBaseUrl
     }
-    if ($hasPreset) {
+    if ($hasPreset -or $hasPresetName) {
         $projection = Get-LoopbackPresetProjection $RLogsBaseUrl
-        $resolved = Resolve-MarkerOnePresetTarget $projection $PresetId
+        $resolved = Resolve-MarkerOnePresetTarget $projection $PresetId $PresetName
         $TargetX = [Nullable[double]]$resolved.X
         $TargetY = [Nullable[double]]$resolved.Y
         $TargetZ = [Nullable[double]]$resolved.Z
-        Write-Host "Resolved Marker 1 from preset '$PresetId' in the exact active activity family."
+        $resolvedName = [regex]::Replace($resolved.PresetName, '\p{C}', '?')
+        $resolvedId = [regex]::Replace($resolved.PresetId, '\p{C}', '?')
+        Write-Host "Resolved Marker 1 from preset '$resolvedName' ($resolvedId) in the exact active activity family."
     }
     foreach ($coordinate in @($TargetX.Value, $TargetY.Value, $TargetZ.Value)) {
         if ([double]::IsNaN($coordinate) -or [double]::IsInfinity($coordinate)) {
