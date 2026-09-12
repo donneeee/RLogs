@@ -82,6 +82,11 @@ $arguments = @(
 )
 if ($ArmReversibleNudge) {
     Write-Warning 'ARMED CANARY: manually select Marker 1 and keep the game focused. This emits only a 6-pixel mouse nudge, its inverse, and Escape. It never clicks.'
+    Write-Host 'Return focus to the game now. The fail-closed canary starts in 5 seconds.'
+    foreach ($remaining in 5..1) {
+        Write-Host "$remaining..."
+        Start-Sleep -Seconds 1
+    }
     $arguments += @('--armed-mode', 'marker1-reversible-nudge-v1')
 }
 

@@ -61,7 +61,8 @@ palette, manually select Marker 1, keep the game focused, and run:
 .\run-bpsr-automarker-lifecycle-probe.ps1 -ArmReversibleNudge
 ```
 
-Do not click during the approximately one-second canary. A passing receipt
+After launching it, use the visible five-second countdown to return focus to
+the game. Do not click during the approximately one-second canary. A passing receipt
 requires the indicator to move, approximately return, and become inactive after
 Escape. A failed-closed receipt is not placement authority.
 
