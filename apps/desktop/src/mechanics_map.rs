@@ -171,6 +171,17 @@ pub struct MechanicsMapMarker {
     pub x: Option<f32>,
     pub y: Option<f32>,
     pub z: Option<f32>,
+    /// Sanitized packet observation receipt for future placement pacing.
+    /// Present only for the exact inbound numbered-marker projection.
+    pub acknowledgment: Option<MechanicsMapMarkerAcknowledgment>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MechanicsMapMarkerAcknowledgment {
+    pub marker_number: u8,
+    pub slot_id: i32,
+    pub skill_id: i32,
+    pub observed_micros: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -697,6 +708,7 @@ impl MechanicsMapProjector {
                         x: event.x,
                         y: event.y,
                         z: event.z,
+                        acknowledgment: None,
                     };
                     changed |= self.markers.get(&event.marker_id) != Some(&marker);
                     self.markers.insert(event.marker_id, marker);
@@ -1429,6 +1441,12 @@ impl MechanicsMapProjector {
                         x: marker.x,
                         y: marker.y,
                         z: marker.z,
+                        acknowledgment: Some(MechanicsMapMarkerAcknowledgment {
+                            marker_number: marker.marker_number,
+                            slot_id: 200 + i32::from(marker.marker_number),
+                            skill_id: 1100 + i32::from(marker.marker_number),
+                            observed_micros: marker.observed_micros,
+                        }),
                     },
                 )
             })
@@ -2327,11 +2345,56 @@ mod tests {
                 x: Some(12.0),
                 y: Some(0.0),
                 z: Some(-8.0),
+                observed_micros: 123,
             }])
         );
-        assert_eq!(projector.snapshot().markers[0].marker_number, Some(4));
+        let marker = projector.snapshot().markers[0].clone();
+        assert_eq!(marker.marker_number, Some(4));
+        assert_eq!(
+            marker.acknowledgment,
+            Some(MechanicsMapMarkerAcknowledgment {
+                marker_number: 4,
+                slot_id: 204,
+                skill_id: 1104,
+                observed_micros: 123,
+            })
+        );
         assert!(projector.replace_local_markers([]));
         assert!(projector.snapshot().markers.is_empty());
+    }
+
+    #[test]
+    fn tina_m20_fixture_reaches_live_map_with_exact_six_slot_acknowledgments() {
+        let receipt: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/automarker/tina-m20-six-marker-points.v1.json"
+        ))
+        .unwrap();
+        let markers = receipt["points"].as_array().unwrap().iter().map(|row| {
+            let number = row["markerNumber"].as_u64().unwrap() as u8;
+            rlogs_game_bpsr::LocalMapMarker {
+                passive_instance_id: i64::from(number),
+                related_entity_uuid: None,
+                marker_number: number,
+                x: Some(row["x"].as_f64().unwrap() as f32),
+                y: Some(row["y"].as_f64().unwrap() as f32),
+                z: Some(row["z"].as_f64().unwrap() as f32),
+                observed_micros: 10_000 + u64::from(number),
+            }
+        });
+        let mut projector = MechanicsMapProjector::default();
+        assert!(projector.replace_local_markers(markers));
+        let snapshot = projector.snapshot();
+        assert_eq!(snapshot.markers.len(), 6);
+        for (index, marker) in snapshot.markers.iter().enumerate() {
+            let number = (index + 1) as u8;
+            assert_eq!(marker.marker_number, Some(number));
+            let ack = marker.acknowledgment.as_ref().unwrap();
+            assert_eq!(
+                (ack.slot_id, ack.skill_id),
+                (200 + i32::from(number), 1100 + i32::from(number))
+            );
+            assert_eq!(ack.observed_micros, 10_000 + u64::from(number));
+        }
     }
 
     fn envelope(sequence: u64, event: CanonicalEvent) -> EventEnvelope {
@@ -2566,6 +2629,7 @@ mod tests {
                 x: Some(10.0),
                 y: Some(0.0),
                 z: Some(20.0),
+                observed_micros: 123,
             }]);
             assert_eq!(projector.snapshot().map_model, "absolute_scene_map");
             assert_eq!(
@@ -2706,6 +2770,7 @@ mod tests {
                 x: Some(10.0),
                 y: Some(0.0),
                 z: Some(20.0),
+                observed_micros: 123,
             }]);
 
             let mut unsupported_region = reviewed_region();

@@ -292,6 +292,7 @@ mod tests {
             x: Some(f32::from(number)),
             y: Some(2.0),
             z: Some(3.0),
+            observed_micros: u64::from(number),
         }
     }
 
@@ -441,6 +442,7 @@ mod tests {
                     x: Some(point.x),
                     y: Some(point.y),
                     z: Some(point.z),
+                    observed_micros: 1,
                 })
                 .collect()),
         );

@@ -66,6 +66,12 @@ export interface MechanicsMapSnapshot {
     x: number | null;
     y: number | null;
     z: number | null;
+    acknowledgment?: {
+      marker_number: number;
+      slot_id: number;
+      skill_id: number;
+      observed_micros: number;
+    } | null;
   }[];
   data_gap: string | null;
   last_event_sequence: number | null;
@@ -668,7 +674,17 @@ function marker(value: unknown): boolean {
   return record(value) && nullableInteger(value.marker_id) &&
     (value.marker_number === null || (Number.isSafeInteger(value.marker_number) && (value.marker_number as number) >= 1 && (value.marker_number as number) <= 6)) &&
     nullableNonnegativeInteger(value.related_actor_id) && nullableFinite(value.x) &&
-    nullableFinite(value.y) && nullableFinite(value.z);
+    nullableFinite(value.y) && nullableFinite(value.z) &&
+    (value.acknowledgment === undefined || value.acknowledgment === null || markerAcknowledgment(value.acknowledgment));
+}
+
+function markerAcknowledgment(value: unknown): boolean {
+  if (!record(value) || !Number.isSafeInteger(value.marker_number) ||
+    !Number.isSafeInteger(value.slot_id) || !Number.isSafeInteger(value.skill_id) ||
+    !nonnegativeInteger(value.observed_micros)) return false;
+  const markerNumber = value.marker_number as number;
+  return markerNumber >= 1 && markerNumber <= 6 &&
+    value.slot_id === 200 + markerNumber && value.skill_id === 1100 + markerNumber;
 }
 
 function record(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }

@@ -88,8 +88,11 @@ describe("Mechanics Map", () => {
     value.markers = [{
       marker_id: null, marker_number: 6, related_actor_id: 3,
       x: 12.5, y: null, z: -8.25,
+      acknowledgment: { marker_number: 6, slot_id: 206, skill_id: 1106, observed_micros: 1234 },
     }];
-    expect(parseMechanicsMapUpdate({ schema_version: 14, revision: 3, snapshot: value }).snapshot.markers[0]?.marker_number).toBe(6);
+    const marker = parseMechanicsMapUpdate({ schema_version: 14, revision: 3, snapshot: value }).snapshot.markers[0];
+    expect(marker?.marker_number).toBe(6);
+    expect(marker?.acknowledgment).toEqual({ marker_number: 6, slot_id: 206, skill_id: 1106, observed_micros: 1234 });
   });
 
   it("rejects invalid or excessive markers", () => {
@@ -99,6 +102,8 @@ describe("Mechanics Map", () => {
       { marker_id: 1.5, marker_number: null, related_actor_id: null, x: 1, y: 2, z: 3 },
       { marker_id: null, marker_number: 1, related_actor_id: -1, x: 1, y: 2, z: 3 },
       { marker_id: null, marker_number: 1, related_actor_id: null, x: Number.POSITIVE_INFINITY, y: 2, z: 3 },
+      { marker_id: null, marker_number: 1, related_actor_id: null, x: 1, y: 2, z: 3,
+        acknowledgment: { marker_number: 1, slot_id: 202, skill_id: 1101, observed_micros: 1 } },
     ];
     for (const invalid of invalidMarkers) {
       const value = snapshot();

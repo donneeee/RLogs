@@ -28,6 +28,8 @@ pub struct LocalMapMarker {
     pub x: Option<f32>,
     pub y: Option<f32>,
     pub z: Option<f32>,
+    /// Capture-clock observation time for the authoritative inbound start.
+    pub observed_micros: u64,
 }
 
 /// Why the current observed marker projection cannot yet be imported as a
@@ -45,7 +47,10 @@ pub enum LocalMapMarkerSnapshotError {
 
 #[derive(Debug, Default)]
 pub struct LocalMapMarkerProjection {
-    markers: BTreeMap<i64, LocalMapMarker>,
+    // One live value per numbered game slot. A later authoritative start for
+    // the same number is a move/replacement, even when the passive instance
+    // identity changes.
+    markers: BTreeMap<u8, LocalMapMarker>,
 }
 
 impl LocalMapMarkerProjection {
@@ -209,15 +214,20 @@ impl LocalMapMarkerProjection {
                         x: position.as_ref().and_then(|p| p.x),
                         y: position.as_ref().and_then(|p| p.y),
                         z: position.as_ref().and_then(|p| p.z),
+                        observed_micros: record.observed_micros,
                     };
-                    if self.markers.contains_key(&instance) || self.markers.len() < MAX_MARKERS {
-                        changed |= self.markers.insert(instance, marker) != Some(marker);
+                    if self.markers.contains_key(&marker_number) || self.markers.len() < MAX_MARKERS
+                    {
+                        changed |= self.markers.insert(marker_number, marker) != Some(marker);
                     }
                 }
             }
             if let Some(ends) = ends {
                 for instance in ends.passive_uuids {
-                    changed |= self.markers.remove(&instance).is_some();
+                    let before = self.markers.len();
+                    self.markers
+                        .retain(|_, marker| marker.passive_instance_id != instance);
+                    changed |= self.markers.len() != before;
                 }
             }
         }
@@ -340,6 +350,68 @@ mod tests {
             )
         );
         assert!(projection.observe(&pack, &record(3, vec![])));
+        assert_eq!(projection.markers().count(), 0);
+    }
+
+    #[test]
+    fn same_number_is_replaced_and_only_its_proven_current_end_removes_it() {
+        let pack = source_observer_pack();
+        let start = |instance: i32, x: f32, observed_micros: u64| {
+            let payload = schema::SyncNearDeltaInfo {
+                deltas: vec![schema::AoiSyncDelta {
+                    passive_skill_infos: Some(schema::SeqPassiveSkillInfo {
+                        actor_uuid: None,
+                        passive_infos: vec![schema::PassiveSkillInfo {
+                            uuid: Some(instance),
+                            skill_id: Some(1101),
+                            target_position: Some(
+                                schema::Position {
+                                    x: Some(x),
+                                    y: Some(2.0),
+                                    z: Some(3.0),
+                                    facing_radians: None,
+                                }
+                                .encode_to_vec(),
+                            ),
+                            ..Default::default()
+                        }],
+                    }),
+                    ..Default::default()
+                }],
+            }
+            .encode_to_vec();
+            let mut value = record(45, payload);
+            value.observed_micros = observed_micros;
+            value
+        };
+        let end = |instance: i64| {
+            record(
+                45,
+                schema::SyncNearDeltaInfo {
+                    deltas: vec![schema::AoiSyncDelta {
+                        passive_skill_end_infos: Some(schema::SeqPassiveSkillEndInfo {
+                            actor_uuid: None,
+                            passive_uuids: vec![instance],
+                        }),
+                        ..Default::default()
+                    }],
+                }
+                .encode_to_vec(),
+            )
+        };
+
+        let mut projection = LocalMapMarkerProjection::default();
+        assert!(projection.observe(&pack, &start(10, 1.0, 100)));
+        assert!(projection.observe(&pack, &start(11, 9.0, 200)));
+        let moved = projection.markers().next().unwrap();
+        assert_eq!(projection.markers().count(), 1);
+        assert_eq!(
+            (moved.passive_instance_id, moved.x, moved.observed_micros),
+            (11, Some(9.0), 200)
+        );
+        assert!(!projection.observe(&pack, &end(10)));
+        assert_eq!(projection.markers().count(), 1);
+        assert!(projection.observe(&pack, &end(11)));
         assert_eq!(projection.markers().count(), 0);
     }
 
@@ -629,6 +701,7 @@ mod tests {
             x,
             y,
             z,
+            observed_micros: instance as u64,
         };
         let mut projection = LocalMapMarkerProjection::default();
         assert_eq!(
@@ -638,10 +711,10 @@ mod tests {
 
         projection
             .markers
-            .insert(20, marker(20, 2, Some(4.0), Some(5.0), Some(6.0)));
+            .insert(2, marker(20, 2, Some(4.0), Some(5.0), Some(6.0)));
         projection
             .markers
-            .insert(10, marker(10, 1, Some(1.0), Some(2.0), Some(3.0)));
+            .insert(1, marker(10, 1, Some(1.0), Some(2.0), Some(3.0)));
         let snapshot = projection.preset_snapshot().unwrap();
         assert_eq!(
             snapshot
@@ -653,29 +726,27 @@ mod tests {
 
         projection
             .markers
-            .insert(30, marker(30, 2, Some(7.0), Some(8.0), Some(9.0)));
-        assert_eq!(
-            projection.preset_snapshot(),
-            Err(LocalMapMarkerSnapshotError::DuplicateNumber)
-        );
-        projection.markers.remove(&30);
+            .insert(2, marker(30, 2, Some(7.0), Some(8.0), Some(9.0)));
+        let moved = projection.preset_snapshot().unwrap();
+        assert_eq!(moved[1].passive_instance_id, 30);
         projection
             .markers
-            .insert(40, marker(40, 3, Some(1.0), None, Some(3.0)));
+            .insert(3, marker(40, 3, Some(1.0), None, Some(3.0)));
         assert_eq!(
             projection.preset_snapshot(),
             Err(LocalMapMarkerSnapshotError::MissingCoordinate)
         );
         projection
             .markers
-            .insert(40, marker(40, 3, Some(f32::NAN), Some(2.0), Some(3.0)));
+            .insert(3, marker(40, 3, Some(f32::NAN), Some(2.0), Some(3.0)));
         assert_eq!(
             projection.preset_snapshot(),
             Err(LocalMapMarkerSnapshotError::InvalidCoordinate)
         );
+        projection.markers.remove(&3);
         projection
             .markers
-            .insert(40, marker(40, 7, Some(1.0), Some(2.0), Some(3.0)));
+            .insert(7, marker(40, 7, Some(1.0), Some(2.0), Some(3.0)));
         assert_eq!(
             projection.preset_snapshot(),
             Err(LocalMapMarkerSnapshotError::InvalidMarkerNumber)
