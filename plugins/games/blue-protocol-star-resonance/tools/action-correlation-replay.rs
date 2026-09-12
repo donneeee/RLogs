@@ -813,6 +813,7 @@ mod tests {
                 version: None,
             },
             protocol_pack_digest: None,
+            protocol_pack_authority: None,
         });
 
         let error = analyze(&candidate, &journal, "fixture.jsonl".into()).unwrap_err();

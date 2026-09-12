@@ -7,7 +7,7 @@ use rlogs_capture::{CaptureSource, OfflineCapture, ValidatedCapture};
 use rlogs_core::ResearchConnectionFile;
 use rlogs_game_bpsr::{
     BpsrFrameUpLayout, BpsrFramerSetConfig, BpsrFramingConfig, CaptureAdapter, CaptureSession,
-    GameBuild, JsonlJournalWriter, ProtocolPack, ResearchPipeline,
+    GameBuild, JsonlJournalWriter, ProtocolPack, ProtocolPackJournalAuthority, ResearchPipeline,
 };
 
 fn main() {
@@ -32,16 +32,23 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         serde_json::from_slice(&std::fs::read(&arguments.connections)?)?;
     let connections = connections.validate()?;
     let target = &pack.definition().target;
-    let game_build = GameBuild {
+    let pack_build = GameBuild {
         deployment_id: target.deployment_id.clone(),
         region_id: target.region_id.clone(),
         channel: target.channel.clone(),
         build_id: target.build_id.clone(),
         executable_version: target.executable_version.clone(),
     };
-    if !pack.matches(&game_build) {
+    if !pack.matches(&pack_build) {
         return Err("protocol pack does not match its own exact build target".into());
     }
+    let (game_build, protocol_pack_authority) = journal_identity(
+        &pack_build,
+        arguments.captured_build.as_deref(),
+        arguments
+            .unverified_carry_forward_pack_source_build
+            .as_deref(),
+    )?;
 
     let offline = OfflineCapture::open(&arguments.input)?;
     let adapter_name = offline.metadata().source_id.clone();
@@ -61,6 +68,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             version: Some(env!("CARGO_PKG_VERSION").into()),
         },
         protocol_pack_digest: Some(pack.digest().to_owned()),
+        protocol_pack_authority,
     };
 
     let partial = partial_path(&arguments.output)?;
@@ -150,6 +158,8 @@ struct Arguments {
     input: PathBuf,
     output: PathBuf,
     nested_frame_up: bool,
+    captured_build: Option<String>,
+    unverified_carry_forward_pack_source_build: Option<String>,
 }
 
 fn arguments() -> Result<Arguments, String> {
@@ -162,6 +172,8 @@ fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Argu
     let mut capture_id = None;
     let mut private_research = false;
     let mut nested_frame_up = false;
+    let mut captured_build = None;
+    let mut unverified_carry_forward_pack_source_build = None;
     let mut positional = Vec::new();
     let mut arguments = arguments.into_iter();
 
@@ -176,6 +188,14 @@ fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Argu
             connections = unique_value(connections, arguments.next(), "--connections")?;
         } else if argument == OsStr::new("--capture-id") {
             capture_id = unique_value(capture_id, arguments.next(), "--capture-id")?;
+        } else if argument == OsStr::new("--captured-build") {
+            captured_build = unique_value(captured_build, arguments.next(), "--captured-build")?;
+        } else if argument == OsStr::new("--unverified-carry-forward-pack-source-build") {
+            unverified_carry_forward_pack_source_build = unique_value(
+                unverified_carry_forward_pack_source_build,
+                arguments.next(),
+                "--unverified-carry-forward-pack-source-build",
+            )?;
         } else if argument.to_string_lossy().starts_with('-') {
             return Err(usage());
         } else {
@@ -192,6 +212,14 @@ fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Argu
     if !valid_capture_id(&capture_id) {
         return Err("capture ID must use 1-128 ASCII letters, digits, '.', '_', or '-'".into());
     }
+    let captured_build = optional_build(captured_build, "captured build")?;
+    let unverified_carry_forward_pack_source_build = optional_build(
+        unverified_carry_forward_pack_source_build,
+        "carry-forward pack source build",
+    )?;
+    if captured_build.is_some() != unverified_carry_forward_pack_source_build.is_some() {
+        return Err("--captured-build and --unverified-carry-forward-pack-source-build must be supplied together".into());
+    }
 
     Ok(Arguments {
         pack: pack.map(PathBuf::from).ok_or_else(usage)?,
@@ -200,6 +228,8 @@ fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Argu
         input: positional.remove(0),
         output: positional.remove(0),
         nested_frame_up,
+        captured_build,
+        unverified_carry_forward_pack_source_build,
     })
 }
 
@@ -222,6 +252,58 @@ fn valid_capture_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
 }
 
+fn journal_identity(
+    pack_build: &GameBuild,
+    captured_build: Option<&str>,
+    carry_forward_source_build: Option<&str>,
+) -> Result<(GameBuild, Option<ProtocolPackJournalAuthority>), String> {
+    match (captured_build, carry_forward_source_build) {
+        (None, None) => Ok((pack_build.clone(), None)),
+        (Some(captured_build), Some(source_build)) => {
+            if source_build != pack_build.build_id {
+                return Err(format!(
+                    "declared carry-forward pack source build {source_build} does not match pack target {}",
+                    pack_build.build_id
+                ));
+            }
+            if captured_build == source_build {
+                return Err("unverified carry-forward mode requires distinct captured and pack-source builds".into());
+            }
+            let mut game_build = pack_build.clone();
+            game_build.build_id = captured_build.to_owned();
+            Ok((
+                game_build,
+                Some(ProtocolPackJournalAuthority {
+                    kind: "unverified-carry-forward-decoder-hypothesis".into(),
+                    source_build: source_build.to_owned(),
+                    captured_build: captured_build.to_owned(),
+                    exact_for_captured_build: false,
+                    runtime_authority: false,
+                }),
+            ))
+        }
+        _ => Err("--captured-build and --unverified-carry-forward-pack-source-build must be supplied together".into()),
+    }
+}
+
+fn optional_build(value: Option<OsString>, description: &str) -> Result<Option<String>, String> {
+    let Some(value) = value else { return Ok(None) };
+    let value = value
+        .into_string()
+        .map_err(|_| format!("{description} must be valid UTF-8"))?;
+    if value.is_empty()
+        || value.len() > 128
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    {
+        return Err(format!(
+            "{description} must use 1-128 ASCII letters, digits, '.', '_', or '-'"
+        ));
+    }
+    Ok(Some(value))
+}
+
 fn partial_path(output: &Path) -> Result<PathBuf, String> {
     let name = output
         .file_name()
@@ -231,7 +313,7 @@ fn partial_path(output: &Path) -> Result<PathBuf, String> {
 }
 
 fn usage() -> String {
-    "usage: rlogs-protocol-journal --private-research [--nested-frame-up] --pack <pack.json> --connections <connections.json> --capture-id <id> <capture.pcapng> <output.jsonl>".into()
+    "usage: rlogs-protocol-journal --private-research [--nested-frame-up] [--captured-build <actual-build> --unverified-carry-forward-pack-source-build <pack-build>] --pack <pack.json> --connections <connections.json> --capture-id <id> <capture.pcapng> <output.jsonl>".into()
 }
 
 #[cfg(test)]
@@ -259,6 +341,7 @@ mod tests {
 
         assert_eq!(parsed.capture_id, "controlled-001");
         assert!(!parsed.nested_frame_up);
+        assert_eq!(parsed.captured_build, None);
         let nested = parse_arguments(os(&[
             "--private-research",
             "--nested-frame-up",
@@ -273,6 +356,45 @@ mod tests {
         ]))
         .unwrap();
         assert!(nested.nested_frame_up);
+        let carry_forward = parse_arguments(os(&[
+            "--private-research",
+            "--pack",
+            "pack.json",
+            "--connections",
+            "connections.json",
+            "--capture-id",
+            "controlled-003",
+            "--captured-build",
+            "25247556",
+            "--unverified-carry-forward-pack-source-build",
+            "24687926",
+            "capture.pcapng",
+            "capture.jsonl",
+        ]))
+        .unwrap();
+        assert_eq!(carry_forward.captured_build.as_deref(), Some("25247556"));
+        assert_eq!(
+            carry_forward
+                .unverified_carry_forward_pack_source_build
+                .as_deref(),
+            Some("24687926")
+        );
+        assert!(
+            parse_arguments(os(&[
+                "--private-research",
+                "--pack",
+                "pack.json",
+                "--connections",
+                "connections.json",
+                "--capture-id",
+                "controlled-004",
+                "--captured-build",
+                "25247556",
+                "capture.pcapng",
+                "capture.jsonl",
+            ]))
+            .is_err()
+        );
         assert!(
             parse_arguments(os(&[
                 "--pack",
@@ -294,5 +416,26 @@ mod tests {
             partial_path(Path::new("private/capture.jsonl")).unwrap(),
             PathBuf::from("private/.capture.jsonl.partial")
         );
+    }
+
+    #[test]
+    fn carry_forward_identity_keeps_captured_and_pack_builds_distinct() {
+        let pack_build = GameBuild {
+            deployment_id: "global".into(),
+            region_id: None,
+            channel: "steam".into(),
+            build_id: "24687926".into(),
+            executable_version: None,
+        };
+        let (captured, authority) =
+            journal_identity(&pack_build, Some("25247556"), Some("24687926")).unwrap();
+        let authority = authority.unwrap();
+        assert_eq!(captured.build_id, "25247556");
+        assert_eq!(authority.source_build, "24687926");
+        assert_eq!(authority.captured_build, "25247556");
+        assert!(!authority.exact_for_captured_build);
+        assert!(!authority.runtime_authority);
+        assert!(journal_identity(&pack_build, Some("25247556"), Some("wrong")).is_err());
+        assert!(journal_identity(&pack_build, Some("24687926"), Some("24687926")).is_err());
     }
 }

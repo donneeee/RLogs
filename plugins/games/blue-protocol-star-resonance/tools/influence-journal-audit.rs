@@ -1433,6 +1433,7 @@ mod tests {
                 version: None,
             },
             protocol_pack_digest: Some(pack.digest().into()),
+            protocol_pack_authority: None,
         };
         let exact_overview = overview(&target.build_id);
         assert!(

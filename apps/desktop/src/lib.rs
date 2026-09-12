@@ -10,6 +10,7 @@ mod layout_settings;
 mod mechanics_map;
 mod module_optimizer;
 mod native_plugin_processes;
+mod observed_markers;
 mod overlay_layout_settings;
 mod parser_health;
 mod photo_wall_pending;
@@ -55,6 +56,7 @@ use mechanics_map::{
 };
 use module_optimizer::{LocalModuleInventoryView, load_local_module_inventories};
 use native_plugin_processes::{NativePluginLaunch, NativePluginProcesses};
+use observed_markers::{ObservedMarkerFeed, ObservedMarkerSessionStamp, ObservedMarkerSnapshot};
 use overlay_layout_settings::{
     OverlayLayoutSettings, OverlayLayoutSettingsStore, OverlayLayoutUpdateError,
 };
@@ -5729,6 +5731,7 @@ struct RuntimeController {
     live_combat_feed: Arc<LiveCombatFeed>,
     live_character_stats_feed: Arc<LiveCharacterStatsFeed>,
     live_mechanics_map_feed: Arc<MechanicsMapFeed>,
+    live_observed_marker_feed: Arc<ObservedMarkerFeed>,
     live_event_feed: Arc<LiveEventFeed>,
     combat_history_feed: Arc<CombatHistoryRevisionFeed>,
     history_rdps_backfill: Arc<HistoryRdpsBackfillQueue>,
@@ -6033,6 +6036,7 @@ impl RuntimeController {
             live_combat_feed: Arc::new(LiveCombatFeed::default()),
             live_character_stats_feed: Arc::new(LiveCharacterStatsFeed::default()),
             live_mechanics_map_feed: Arc::new(MechanicsMapFeed::default()),
+            live_observed_marker_feed: Arc::new(ObservedMarkerFeed::default()),
             live_event_feed: Arc::new(LiveEventFeed::default()),
             combat_history_feed: Arc::new(CombatHistoryRevisionFeed::default()),
             history_rdps_backfill: Arc::new(history_rdps_backfill),
@@ -6935,6 +6939,10 @@ impl RuntimeController {
 
     fn live_mechanics_map_snapshot(&self) -> MechanicsMapUpdate {
         self.live_mechanics_map_feed.current()
+    }
+
+    fn observed_marker_snapshot(&self) -> ObservedMarkerSnapshot {
+        self.live_observed_marker_feed.current()
     }
 
     fn automarker_presets(&self) -> AutomarkerPresetView {
@@ -9028,6 +9036,16 @@ impl RuntimeController {
         self.live_character_stats_feed
             .publish(LiveCharacterStatsSnapshot::default());
         self.live_mechanics_map_feed.reset();
+        self.live_observed_marker_feed
+            .begin_session(ObservedMarkerSessionStamp {
+                session_id: request.session_id.clone(),
+                deployment_id: pack.definition().target.deployment_id.clone(),
+                client_build: pack.definition().target.build_id.clone(),
+                protocol_pack_digest: pack.digest().to_owned(),
+                protocol_supported: rlogs_game_bpsr::LocalMapMarkerProjection::protocol_supported(
+                    &pack,
+                ),
+            });
         self.live_event_feed.reset(request.session_id.clone());
         self.schedule_automatic_local_game_map_refresh();
 
@@ -9048,6 +9066,7 @@ impl RuntimeController {
         let live_combat_feed = Arc::clone(&self.live_combat_feed);
         let live_character_stats_feed = Arc::clone(&self.live_character_stats_feed);
         let live_mechanics_map_feed = Arc::clone(&self.live_mechanics_map_feed);
+        let live_observed_marker_feed = Arc::clone(&self.live_observed_marker_feed);
         let live_event_feed = Arc::clone(&self.live_event_feed);
         let submission_queue = Arc::clone(&self.submission_queue);
         let combat_history = Arc::clone(&self.combat_history);
@@ -9084,6 +9103,7 @@ impl RuntimeController {
         let supervisor_live_stop = Arc::clone(&self.live_stop);
         let supervisor_live_process_id = Arc::clone(&self.live_process_id);
         let supervisor_live_combat_control = Arc::clone(&self.live_combat_control);
+        let supervisor_live_observed_marker_feed = Arc::clone(&self.live_observed_marker_feed);
         let session_id = request.session_id.clone();
         let supervisor_session_id = session_id.clone();
         let validation_game_build = target.build_id.clone();
@@ -9155,6 +9175,7 @@ impl RuntimeController {
                     live_mechanics_map.reset(&session_id, &live_header.region.client_build);
                     let mut live_local_markers =
                         rlogs_game_bpsr::LocalMapMarkerProjection::default();
+                    let mut last_local_marker_observed_micros = None;
                     let mut training_dummy = TrainingDummyController::default();
                     let mut training_dummy_writer = TrainingDummyLogWriter::new(
                         &output_directory,
@@ -9669,7 +9690,11 @@ impl RuntimeController {
                             }, |photo| {
                                 local_photo_assets.push(photo.clone());
                             }, |record, status| {
-                                local_markers_dirty |= live_local_markers.observe(&pack, record);
+                                if live_local_markers.observe(&pack, record) {
+                                    local_markers_dirty = true;
+                                    last_local_marker_observed_micros =
+                                        Some(record.observed_micros);
+                                }
                                 frame_protocol_observability
                                     .observe_protocol(&pack, record, status);
                                 if live_event_inspector_active
@@ -9992,8 +10017,18 @@ impl RuntimeController {
                             burst_metrics.observe_projection(projection_started.elapsed());
                         }
                         live_combat_feed.signal_damage_batch(&live_damage_activity);
-                        if mechanics_map_dirty {
-                            live_mechanics_map_feed.publish(live_mechanics_map.snapshot());
+                        if mechanics_map_dirty || local_markers_dirty {
+                            let mechanics_snapshot = live_mechanics_map.snapshot();
+                            live_observed_marker_feed.publish(
+                                &session_id,
+                                mechanics_snapshot.scene_id,
+                                mechanics_snapshot.map_id,
+                                last_local_marker_observed_micros,
+                                live_local_markers.preset_snapshot(),
+                            );
+                            if mechanics_map_dirty {
+                                live_mechanics_map_feed.publish(mechanics_snapshot);
+                            }
                         }
                         let current_photo_wall_publication_enabled =
                             live_photo_wall_publication_enabled(&live_submission_policy);
@@ -10374,6 +10409,7 @@ impl RuntimeController {
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
                     *control = None;
                 }
+                live_observed_marker_feed.finish_session(&session_id);
 
                 let mut state = state
                     .lock()
@@ -10494,6 +10530,7 @@ impl RuntimeController {
                                 .unwrap_or_else(std::sync::PoisonError::into_inner);
                             *control = None;
                         }
+                        supervisor_live_observed_marker_feed.finish_session(&supervisor_session_id);
                         let terminal_health_snapshot =
                             mark_live_parser_panicked(&supervisor_state, &panic);
                         finish_parser_health(
@@ -10521,6 +10558,8 @@ impl RuntimeController {
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
                 *control = None;
+                self.live_observed_marker_feed
+                    .finish_session(&request.session_id);
                 let terminal_health_snapshot = {
                     let mut state = self
                         .state
@@ -14782,6 +14821,9 @@ fn handle_connection(
         }
         ("GET", "/api/automarkers/presets") => {
             write_json(&mut stream, 200, &controller.automarker_presets())?;
+        }
+        ("GET", "/api/automarkers/observed") => {
+            write_json(&mut stream, 200, &controller.observed_marker_snapshot())?;
         }
         ("POST", "/api/automarkers/presets/save") => {
             let request: SaveAutomarkerPresetRequest = match serde_json::from_slice(&request.body) {

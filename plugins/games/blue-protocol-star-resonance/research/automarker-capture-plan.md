@@ -147,11 +147,16 @@ an explicit placement description when the coordinate must be learned from the
 packet. Character and instance entity identifiers may likewise be marked
 unknown before capture with acquisition notes when they must be resolved from
 the authenticated or dungeon-entry state retained by the capture.
-It also requires the installed game executable, the
-repository-reviewed complete installed-file manifest for that exact build that
-authorizes its hash and byte length,
-the protocol-pack path, and the authoritative protocol-pack digest; it refuses
-an executable/build/pack mismatch rather than inferring one. On completion it
+It also requires the installed game executable and either (a) the
+repository-reviewed complete installed-file manifest plus protocol pack for
+that exact build, or (b) explicit
+`-RawCaptureWithUnverifiedProtocolCarryForward` mode with the reviewed Steam
+distribution snapshot for the captured build and
+`-ProtocolPackSourceBuild` naming the older selected pack. The latter mode is
+only a raw-capture/decoder hypothesis: its manifest records the actual captured
+build separately and states that the older pack is neither exact for that build
+nor runtime authority. It never silently relabels the older pack as current.
+On completion it
 writes a private action ledger and session manifest with
 SHA-256 hashes, executable/build/pack identity, the all-IPv4 transport
 inventory, and an outbound-during-placement followed by inbound-on-the-same-flow
@@ -159,6 +164,14 @@ preservation check for every action window. The plan, pack, executable, and buil
 before capture and checked again before completion. Failed sessions keep
 self-describing partial evidence and a failed manifest with the reason and all
 available artifact hashes.
+
+For the first one-marker protocol proof, an exact XYZ is not required before
+capture. A ground target may instead set
+`"coordinates_known_before_capture": false`, omit `coordinates`, and provide a
+nonblank `placement_description` telling the operator where to click. This
+keeps guessed coordinates out of the evidence and lets the packet observation
+establish the encoded position. The original finite `x`/`y`/`z` form remains
+valid when the coordinates are independently known.
 The client-host filter is intentionally a superset of process-owned traffic so
 transport and remote-flow changes cannot escape it. Review the dry run before
 capturing; the harness never injects, replays, or sends game-protocol data.

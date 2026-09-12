@@ -193,7 +193,9 @@ pub use install::{
     resolve_live_steam_protocol_pack, resolve_packet_detected_protocol_pack,
     steam_manifest_for_executable,
 };
-pub use journal::{CaptureSession, GameBuild, JournalError, ProtocolJournal};
+pub use journal::{
+    CaptureSession, GameBuild, JournalError, ProtocolJournal, ProtocolPackJournalAuthority,
+};
 pub use loadout::{normalize_auxiliary_imagine_tier, project_actor_loadouts};
 pub use local_marker::{LocalMapMarker, LocalMapMarkerProjection, LocalMapMarkerSnapshotError};
 pub use module_effect_resolution::{

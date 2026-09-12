@@ -142,6 +142,7 @@ impl<'a> ContinuousBpsrRecorder<'a> {
                             version: None,
                         },
                         protocol_pack_digest: Some(pack.digest().to_owned()),
+                        protocol_pack_authority: None,
                     },
                 )
             })

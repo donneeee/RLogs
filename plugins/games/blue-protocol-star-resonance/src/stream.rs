@@ -403,6 +403,7 @@ mod tests {
                 version: None,
             },
             protocol_pack_digest: None,
+            protocol_pack_authority: None,
         }
     }
 

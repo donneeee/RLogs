@@ -26,6 +26,17 @@ pub struct CaptureSession {
     pub game_build: GameBuild,
     pub adapter: CaptureAdapter,
     pub protocol_pack_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protocol_pack_authority: Option<ProtocolPackJournalAuthority>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProtocolPackJournalAuthority {
+    pub kind: String,
+    pub source_build: String,
+    pub captured_build: String,
+    pub exact_for_captured_build: bool,
+    pub runtime_authority: bool,
 }
 
 /// Append-only lossless protocol records for one capture session.
@@ -144,6 +155,7 @@ mod tests {
                 version: None,
             },
             protocol_pack_digest: None,
+            protocol_pack_authority: None,
         }
     }
 

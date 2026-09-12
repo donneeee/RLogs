@@ -46,6 +46,13 @@ pub struct LocalMapMarkerProjection {
 }
 
 impl LocalMapMarkerProjection {
+    /// Whether this exact build/pack pair has authority for the provisional
+    /// observed-marker decoder. Carry-forward packs deliberately remain off.
+    pub fn protocol_supported(pack: &ProtocolPack) -> bool {
+        pack.definition().target.build_id == CURRENT_PROVISIONAL_BUILD
+            && pack.digest() == CURRENT_PROVISIONAL_PACK_DIGEST
+    }
+
     pub fn markers(&self) -> impl Iterator<Item = LocalMapMarker> + '_ {
         self.markers.values().copied()
     }
@@ -80,9 +87,7 @@ impl LocalMapMarkerProjection {
     }
 
     pub fn observe(&mut self, pack: &ProtocolPack, record: &CaptureRecord) -> bool {
-        if pack.definition().target.build_id != CURRENT_PROVISIONAL_BUILD
-            || pack.digest() != CURRENT_PROVISIONAL_PACK_DIGEST
-        {
+        if !Self::protocol_supported(pack) {
             return false;
         }
         let CaptureRecordKind::Packet(packet) = &record.kind else {
