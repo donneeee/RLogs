@@ -1,4 +1,7 @@
-use std::sync::Mutex;
+use std::{
+    sync::{Condvar, Mutex},
+    time::{Duration, Instant},
+};
 
 use rlogs_game_bpsr::{LocalMapMarker, LocalMapMarkerSnapshotError};
 use serde::Serialize;
@@ -92,6 +95,7 @@ impl Default for ObservedMarkerSnapshot {
 #[derive(Debug, Default)]
 pub struct ObservedMarkerFeed {
     snapshot: Mutex<ObservedMarkerSnapshot>,
+    changed: Condvar,
 }
 
 impl ObservedMarkerFeed {
@@ -155,6 +159,8 @@ impl ObservedMarkerFeed {
                 let mut next = next;
                 next.revision = current.revision.saturating_add(1);
                 *current = next;
+                drop(current);
+                self.changed.notify_all();
             }
             return;
         };
@@ -206,6 +212,8 @@ impl ObservedMarkerFeed {
             let mut next = next;
             next.revision = current.revision.saturating_add(1);
             *current = next;
+            drop(current);
+            self.changed.notify_all();
         }
     }
 
@@ -234,6 +242,8 @@ impl ObservedMarkerFeed {
             markers: Vec::new(),
             ..current.clone()
         };
+        drop(current);
+        self.changed.notify_all();
     }
 
     pub fn current(&self) -> ObservedMarkerSnapshot {
@@ -241,6 +251,27 @@ impl ObservedMarkerFeed {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
+    }
+
+    /// Waits until a strictly newer sanitized observation is available, or
+    /// until the caller's bounded timeout expires.
+    pub fn wait_after(&self, after_revision: u64, timeout: Duration) -> ObservedMarkerSnapshot {
+        let deadline = Instant::now() + timeout;
+        let mut snapshot = self
+            .snapshot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        while snapshot.revision <= after_revision {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            snapshot = match self.changed.wait_timeout(snapshot, remaining) {
+                Ok((snapshot, _)) => snapshot,
+                Err(poisoned) => poisoned.into_inner().0,
+            };
+        }
+        snapshot.clone()
     }
 
     /// Records only a bounded acknowledgement that the exact current-build
@@ -283,6 +314,8 @@ impl ObservedMarkerFeed {
                 .sort_by_key(|request| request.marker_number);
         }
         current.revision = current.revision.saturating_add(1);
+        drop(current);
+        self.changed.notify_all();
     }
 
     fn replace(&self, mut next: ObservedMarkerSnapshot) {
@@ -292,6 +325,8 @@ impl ObservedMarkerFeed {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         next.revision = current.revision.saturating_add(1);
         *current = next;
+        drop(current);
+        self.changed.notify_all();
     }
 }
 
@@ -302,7 +337,7 @@ mod tests {
         AutomarkerPoint, AutomarkerPresetStore, AutomarkerSceneContext,
         LoadAutomarkerPresetRequest, SaveAutomarkerPresetRequest,
     };
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, sync::Arc, thread};
 
     fn stamp(session_id: &str, protocol_supported: bool) -> ObservedMarkerSessionStamp {
         ObservedMarkerSessionStamp {
@@ -325,6 +360,40 @@ mod tests {
             z: Some(3.0),
             observed_micros: u64::from(number),
         }
+    }
+
+    #[test]
+    fn wait_returns_only_after_a_new_sanitized_revision_or_timeout() {
+        let feed = Arc::new(ObservedMarkerFeed::default());
+        feed.begin_session(stamp("one", true));
+        let revision = feed.current().revision;
+
+        // A stale worker and an identical context-less projection are both
+        // ignored, so neither can advance or wake the feed.
+        feed.publish(
+            "stale",
+            Some(100),
+            Some(200),
+            Some(300),
+            Ok(vec![marker(1)]),
+        );
+        feed.publish("one", Some(100), None, Some(300), Ok(vec![marker(1)]));
+        let timed_out = feed.wait_after(revision, Duration::from_millis(1));
+        assert_eq!(timed_out.revision, revision);
+
+        let publisher = Arc::clone(&feed);
+        let worker = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(10));
+            publisher.publish("one", Some(100), Some(200), Some(301), Ok(vec![marker(1)]));
+        });
+        let observed = feed.wait_after(revision, Duration::from_secs(1));
+        worker.join().unwrap();
+
+        assert_eq!(observed.revision, revision + 1);
+        assert_eq!(observed.scene_id, Some(100));
+        assert_eq!(observed.map_id, Some(200));
+        assert_eq!(observed.markers.len(), 1);
+        assert_eq!(observed, feed.current());
     }
 
     #[test]

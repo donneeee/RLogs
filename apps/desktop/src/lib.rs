@@ -947,6 +947,8 @@ const DEFAULT_LIVE_COMBAT_WAIT_MILLIS: u64 = 1_000;
 const MAXIMUM_LIVE_COMBAT_WAIT_MILLIS: u64 = 5_000;
 const DEFAULT_LIVE_CHARACTER_STATS_WAIT_MILLIS: u64 = 5_000;
 const MAXIMUM_LIVE_CHARACTER_STATS_WAIT_MILLIS: u64 = 30_000;
+const DEFAULT_OBSERVED_MARKER_WAIT_MILLIS: u64 = 5_000;
+const MAXIMUM_OBSERVED_MARKER_WAIT_MILLIS: u64 = 30_000;
 static NEXT_AUTOMARKER_PREVIEW_SESSION: AtomicU64 = AtomicU64::new(1);
 const COMBAT_HISTORY_FEED_SCHEMA_VERSION: u16 = 2;
 const DEFAULT_COMBAT_HISTORY_WAIT_MILLIS: u64 = 5_000;
@@ -2191,6 +2193,13 @@ struct LiveCharacterStatsWaitRequest {
     timeout_millis: u64,
 }
 
+#[derive(Debug, Deserialize)]
+struct ObservedMarkerWaitRequest {
+    after_revision: u64,
+    #[serde(default = "default_observed_marker_wait_millis")]
+    timeout_millis: u64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct CombatHistoryRevisionUpdate {
     schema_version: u16,
@@ -2569,6 +2578,10 @@ fn default_live_combat_wait_millis() -> u64 {
 
 fn default_live_character_stats_wait_millis() -> u64 {
     DEFAULT_LIVE_CHARACTER_STATS_WAIT_MILLIS
+}
+
+fn default_observed_marker_wait_millis() -> u64 {
+    DEFAULT_OBSERVED_MARKER_WAIT_MILLIS
 }
 
 fn default_combat_history_wait_millis() -> u64 {
@@ -6994,6 +7007,19 @@ impl RuntimeController {
 
     fn observed_marker_snapshot(&self) -> ObservedMarkerSnapshot {
         self.live_observed_marker_feed.current()
+    }
+
+    fn wait_for_observed_markers(
+        &self,
+        request: ObservedMarkerWaitRequest,
+    ) -> ObservedMarkerSnapshot {
+        let timeout = Duration::from_millis(
+            request
+                .timeout_millis
+                .clamp(1, MAXIMUM_OBSERVED_MARKER_WAIT_MILLIS),
+        );
+        self.live_observed_marker_feed
+            .wait_after(request.after_revision, timeout)
     }
 
     fn automarker_presets(&self) -> AutomarkerPresetView {
@@ -14957,6 +14983,20 @@ fn handle_connection(
         ("GET", "/api/automarkers/observed") => {
             write_json(&mut stream, 200, &controller.observed_marker_snapshot())?;
         }
+        ("POST", "/api/automarkers/observed/wait") => {
+            let request: ObservedMarkerWaitRequest = match serde_json::from_slice(&request.body) {
+                Ok(request) => request,
+                Err(error) => {
+                    write_api_error(&mut stream, 400, format!("invalid request: {error}"))?;
+                    return Ok(());
+                }
+            };
+            write_json(
+                &mut stream,
+                200,
+                &controller.wait_for_observed_markers(request),
+            )?;
+        }
         ("POST", "/api/automarkers/presets/save") => {
             let request: SaveAutomarkerPresetRequest = match serde_json::from_slice(&request.body) {
                 Ok(request) => request,
@@ -17139,6 +17179,34 @@ mod tests {
             "rlogs-desktop-host-{}-{unique}-{sequence}",
             std::process::id(),
         ))
+    }
+
+    fn invoke_local_http_route(
+        controller: Arc<RuntimeController>,
+        ui_root: PathBuf,
+        method: &str,
+        route: &str,
+        body: &[u8],
+    ) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let worker = thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            handle_connection(stream, &ui_root, &controller).unwrap();
+        });
+        let mut stream = TcpStream::connect(address).unwrap();
+        write!(
+            stream,
+            "{method} {route} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        )
+        .unwrap();
+        stream.write_all(body).unwrap();
+        stream.flush().unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        worker.join().unwrap();
+        response
     }
 
     fn endpoint(last: u8, port: u16) -> IpEndpoint {
@@ -19553,6 +19621,46 @@ mod tests {
         assert_eq!(reset.revision, 9);
         assert!(reset.character.is_none());
         assert!(reset.current_values.is_empty());
+    }
+
+    #[test]
+    fn observed_marker_wait_route_requires_cursor_and_returns_get_projection() {
+        let root = temporary_root();
+        let controller = Arc::new(RuntimeController::new(root.clone()).unwrap());
+
+        let get_response = invoke_local_http_route(
+            Arc::clone(&controller),
+            root.clone(),
+            "GET",
+            "/api/automarkers/observed",
+            b"",
+        );
+        let wait_response = invoke_local_http_route(
+            Arc::clone(&controller),
+            root.clone(),
+            "POST",
+            "/api/automarkers/observed/wait",
+            br#"{"after_revision":0,"timeout_millis":1}"#,
+        );
+        assert!(get_response.starts_with("HTTP/1.1 200 OK"));
+        assert!(wait_response.starts_with("HTTP/1.1 200 OK"));
+        assert_eq!(
+            get_response.split_once("\r\n\r\n").unwrap().1,
+            wait_response.split_once("\r\n\r\n").unwrap().1
+        );
+
+        let missing_cursor = invoke_local_http_route(
+            Arc::clone(&controller),
+            root.clone(),
+            "POST",
+            "/api/automarkers/observed/wait",
+            br#"{"timeout_millis":1}"#,
+        );
+        assert!(missing_cursor.starts_with("HTTP/1.1 400 Bad Request"));
+        assert!(missing_cursor.contains("missing field `after_revision`"));
+
+        drop(controller);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
