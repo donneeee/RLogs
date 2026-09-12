@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-mod automarker_activation;
+pub mod automarker_activation;
 pub mod automarker_coordinate_planner;
 mod automarker_presets;
 mod character_identities;
