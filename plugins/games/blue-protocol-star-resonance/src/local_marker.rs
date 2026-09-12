@@ -11,9 +11,12 @@ use crate::{
     game_schema_v1 as schema,
 };
 
-const CURRENT_PROVISIONAL_BUILD: &str = "24687926";
-const CURRENT_PROVISIONAL_PACK_DIGEST: &str =
+const REVIEWED_MARKER_OBSERVER_SOURCE_BUILD: &str = "24687926";
+const REVIEWED_MARKER_OBSERVER_SOURCE_PACK_DIGEST: &str =
     "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
+const VERIFIED_MARKER_OBSERVER_COMPATIBILITY_BUILD: &str = "25247556";
+const VERIFIED_MARKER_OBSERVER_COMPATIBILITY_PACK_DIGEST: &str =
+    "sha256:480f928cca6baf19c1ebaf85e8c52f2f1852096167043260503cca6d46133a60";
 const WORLD_NTF: u64 = 1_664_308_034;
 const MAX_MARKERS: usize = 64;
 
@@ -46,11 +49,22 @@ pub struct LocalMapMarkerProjection {
 }
 
 impl LocalMapMarkerProjection {
-    /// Whether this exact build/pack pair has authority for the provisional
-    /// observed-marker decoder. Carry-forward packs deliberately remain off.
+    /// Whether this exact build/pack identity has authority for passive marker
+    /// observation. The one compatibility identity admitted here is locked to
+    /// a triangulated live-server observation, local build registry, and
+    /// deterministic derived-pack digest; it grants no authority to send,
+    /// replay, or infer an outbound marker request.
     pub fn protocol_supported(pack: &ProtocolPack) -> bool {
-        pack.definition().target.build_id == CURRENT_PROVISIONAL_BUILD
-            && pack.digest() == CURRENT_PROVISIONAL_PACK_DIGEST
+        matches!(
+            (pack.definition().target.build_id.as_str(), pack.digest()),
+            (
+                REVIEWED_MARKER_OBSERVER_SOURCE_BUILD,
+                REVIEWED_MARKER_OBSERVER_SOURCE_PACK_DIGEST
+            ) | (
+                VERIFIED_MARKER_OBSERVER_COMPATIBILITY_BUILD,
+                VERIFIED_MARKER_OBSERVER_COMPATIBILITY_PACK_DIGEST
+            )
+        )
     }
 
     pub fn markers(&self) -> impl Iterator<Item = LocalMapMarker> + '_ {
@@ -218,6 +232,24 @@ mod tests {
         CaptureRecordKind, CompressionState, PacketEnvelope, PacketPayload, RouteKey, RoutedMessage,
     };
 
+    fn source_observer_pack() -> ProtocolPack {
+        ProtocolPack::from_json(include_bytes!(
+            "../protocol-packs/global/steam-24687926/pack.json"
+        ))
+        .unwrap()
+    }
+
+    fn current_observer_pack(build: &str) -> ProtocolPack {
+        crate::compatibility_epoch::retarget_protocol_pack(
+            &source_observer_pack(),
+            "compatibility-fallback",
+            "global",
+            "steam",
+            build,
+        )
+        .unwrap()
+    }
+
     fn record(method: u32, payload: Vec<u8>) -> CaptureRecord {
         CaptureRecord {
             sequence: 1,
@@ -251,10 +283,7 @@ mod tests {
 
     #[test]
     fn lifecycle_and_scene_clear_remain_local() {
-        let pack = ProtocolPack::from_json(include_bytes!(
-            "../protocol-packs/global/steam-24687926/pack.json"
-        ))
-        .unwrap();
+        let pack = source_observer_pack();
         let passive = schema::SeqPassiveSkillInfo {
             actor_uuid: Some(10),
             passive_infos: vec![schema::PassiveSkillInfo {
@@ -323,6 +352,214 @@ mod tests {
         let mut projection = LocalMapMarkerProjection::default();
         assert!(!projection.observe(&pack, &record(45, vec![])));
         assert_eq!(projection.markers().count(), 0);
+    }
+
+    #[test]
+    fn marker_observation_is_locked_to_verified_build_and_digest_pairs() {
+        let source = source_observer_pack();
+        assert!(LocalMapMarkerProjection::protocol_supported(&source));
+
+        let current = current_observer_pack(VERIFIED_MARKER_OBSERVER_COMPATIBILITY_BUILD);
+        assert_eq!(
+            current.digest(),
+            VERIFIED_MARKER_OBSERVER_COMPATIBILITY_PACK_DIGEST
+        );
+        assert!(LocalMapMarkerProjection::protocol_supported(&current));
+        for (method, expected) in [
+            (6, DecoderKind::SyncNearEntitiesV1),
+            (45, DecoderKind::SyncNearDeltaV1),
+            (46, DecoderKind::SyncToMeDeltaV1),
+        ] {
+            let inbound = RouteKey::new(
+                PacketDirection::ServerToClient,
+                FragmentKind::Notify,
+                WORLD_NTF,
+                method,
+            );
+            assert_eq!(current.decoder(&inbound), Some(expected));
+            for (direction, fragment) in [
+                (PacketDirection::ClientToServer, FragmentKind::Notify),
+                (PacketDirection::ClientToServer, FragmentKind::Call),
+                (PacketDirection::ClientToServer, FragmentKind::Return),
+                (PacketDirection::ServerToClient, FragmentKind::Call),
+                (PacketDirection::ServerToClient, FragmentKind::Return),
+            ] {
+                assert_eq!(
+                    current.decoder(&RouteKey::new(direction, fragment, WORLD_NTF, method)),
+                    None
+                );
+            }
+        }
+
+        for unsupported in ["25247555", "25247557", "99999999"] {
+            let generally_compatible = current_observer_pack(unsupported);
+            assert!(matches!(
+                crate::bpsr_runtime_authority("global", unsupported, generally_compatible.digest())
+                    .unwrap(),
+                Some(crate::BpsrRuntimeAuthority::CompatibilityEpoch { .. })
+            ));
+            assert!(!LocalMapMarkerProjection::protocol_supported(
+                &generally_compatible
+            ));
+        }
+
+        let mut wrong_definition = current.definition().clone();
+        wrong_definition.pack_id.push_str("-wrong-digest");
+        let wrong_digest = ProtocolPack::build(wrong_definition).unwrap();
+        assert_eq!(
+            wrong_digest.definition().target.build_id,
+            VERIFIED_MARKER_OBSERVER_COMPATIBILITY_BUILD
+        );
+        assert_ne!(wrong_digest.digest(), current.digest());
+        assert!(!LocalMapMarkerProjection::protocol_supported(&wrong_digest));
+    }
+
+    #[test]
+    fn client_to_server_marker_shaped_payload_is_never_observed() {
+        let payload = schema::SyncNearDeltaInfo {
+            deltas: vec![schema::AoiSyncDelta {
+                passive_skill_infos: Some(schema::SeqPassiveSkillInfo {
+                    actor_uuid: None,
+                    passive_infos: vec![schema::PassiveSkillInfo {
+                        uuid: Some(1),
+                        skill_id: Some(1101),
+                        target_position: Some(
+                            schema::Position {
+                                x: Some(1.0),
+                                y: Some(2.0),
+                                z: Some(3.0),
+                                facing_radians: None,
+                            }
+                            .encode_to_vec(),
+                        ),
+                        ..Default::default()
+                    }],
+                }),
+                ..Default::default()
+            }],
+        }
+        .encode_to_vec();
+        let mut outbound = record(45, payload);
+        let CaptureRecordKind::Packet(packet) = &mut outbound.kind else {
+            unreachable!();
+        };
+        packet.direction = PacketDirection::ClientToServer;
+        packet.route.as_mut().unwrap().key = RouteKey::new(
+            PacketDirection::ClientToServer,
+            FragmentKind::Notify,
+            WORLD_NTF,
+            45,
+        );
+        let mut projection = LocalMapMarkerProjection::default();
+        assert!(!projection.observe(
+            &current_observer_pack(VERIFIED_MARKER_OBSERVER_COMPATIBILITY_BUILD),
+            &outbound
+        ));
+        assert_eq!(projection.markers().count(), 0);
+    }
+
+    #[test]
+    fn current_verified_build_projects_all_six_observed_ground_points() {
+        let proof: serde_json::Value = serde_json::from_str(include_str!(
+            "../research/game-file-inventory/global/steam-25247556/inbound-ground-marker-observation-proof.v1.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            proof["observer_gate_build"],
+            VERIFIED_MARKER_OBSERVER_COMPATIBILITY_BUILD
+        );
+        assert_eq!(
+            proof["protocol_identity"]["runtime_derivation"]["derived_pack_semantic_digest"],
+            VERIFIED_MARKER_OBSERVER_COMPATIBILITY_PACK_DIGEST
+        );
+        assert_eq!(
+            proof["protocol_identity"]["source_pack_semantic_digest"],
+            REVIEWED_MARKER_OBSERVER_SOURCE_PACK_DIGEST
+        );
+        assert_eq!(
+            proof["build_identity"]["capture_client_build_verified"],
+            false
+        );
+        assert_eq!(
+            proof["independent_direct_pcap_analysis"]["exact_signature"]["direction"],
+            "server_to_client"
+        );
+        assert_eq!(
+            proof["independent_direct_pcap_analysis"]["exact_signature"]["fragment"],
+            "notify"
+        );
+        assert_eq!(
+            proof["independent_direct_pcap_analysis"]["exact_signature"]["service_id"],
+            WORLD_NTF
+        );
+        assert_eq!(
+            proof["independent_direct_pcap_analysis"]["exact_signature"]["method_id"],
+            45
+        );
+        assert_eq!(
+            proof["independent_direct_pcap_analysis"]["exact_signature"]["marker_skill_id_path"],
+            "1.8.2.6"
+        );
+        assert_eq!(
+            proof["conclusion"]["outbound_placement_route_proven"],
+            false
+        );
+        assert_eq!(
+            proof["conclusion"]["permission_to_send_or_replay_packets"],
+            false
+        );
+        let observed = proof["observations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| {
+                (
+                    row["marker_number"].as_u64().unwrap() as u8,
+                    row["position"]["x"].as_f64().unwrap() as f32,
+                    row["position"]["y"].as_f64().unwrap() as f32,
+                    row["position"]["z"].as_f64().unwrap() as f32,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(observed.len(), 6);
+        let payload = schema::SyncNearDeltaInfo {
+            deltas: observed
+                .iter()
+                .map(|(number, x, y, z)| schema::AoiSyncDelta {
+                    passive_skill_infos: Some(schema::SeqPassiveSkillInfo {
+                        actor_uuid: None,
+                        passive_infos: vec![schema::PassiveSkillInfo {
+                            uuid: Some(i32::from(*number)),
+                            target_uuid: None,
+                            skill_id: Some(1100 + i32::from(*number)),
+                            target_position: Some(
+                                schema::Position {
+                                    x: Some(*x),
+                                    y: Some(*y),
+                                    z: Some(*z),
+                                    facing_radians: None,
+                                }
+                                .encode_to_vec(),
+                            ),
+                            ..Default::default()
+                        }],
+                    }),
+                    ..Default::default()
+                })
+                .collect(),
+        }
+        .encode_to_vec();
+        let mut projection = LocalMapMarkerProjection::default();
+        assert!(projection.observe(
+            &current_observer_pack(VERIFIED_MARKER_OBSERVER_COMPATIBILITY_BUILD),
+            &record(45, payload)
+        ));
+        let snapshot = projection.preset_snapshot().unwrap();
+        assert_eq!(snapshot.len(), 6);
+        for (marker, (number, x, y, z)) in snapshot.iter().zip(observed) {
+            assert_eq!(marker.marker_number, number);
+            assert_eq!((marker.x, marker.y, marker.z), (Some(x), Some(y), Some(z)));
+        }
     }
 
     #[test]

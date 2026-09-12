@@ -1,8 +1,15 @@
 # Native automarker protocol capture plan
 
-Status: **unresolved for global Steam builds 24687926 and 25247556**. RLogs may preview a
-reviewed assignment, but it must not claim or attempt native placement until
-the game protocol below is proven from a controlled capture.
+Status: **the passive inbound numbered ground-marker add schema is observed on
+the live Global service, and a bounded observer runtime tuple is approved for
+Steam build 25247556; native placement remains unresolved**. The capture came
+from a remote client whose exact build was not independently proven. Its live
+wire evidence is triangulated with the exact local build-25247556 registry and
+deterministic derived-pack digest. RLogs may locally project only that exact
+runtime tuple and may preview a reviewed assignment, but it must not claim or
+attempt native placement until the outbound game protocol below is proven.
+Exact build 24687926 retains its reviewed provisional observer support; no
+neighboring or future compatibility build inherits the new observer gate.
 
 Steam build `25247556` was installed on 2026-09-11. Its exact distribution
 snapshot and executable hash may authorize a raw evidence capture. The
@@ -26,6 +33,23 @@ new stream.
   retains `World.SetMapMark` and `World.RemoveMapMark`, but exposes no named
   party/ground-waymark route. The result keeps native placement closed: these
   methods remain personal map-pin candidates, not party-visible automarkers.
+- A focused 300.333-second remote Tina M20 observer capture now proves six
+  passive inbound ground-marker additions on the live Global service. The
+  remote capture client's exact build was not independently proven. Independent
+  direct-PCAP reassembly and the private carry-forward protocol journal agree
+  on exactly six `WorldNtf.SyncNearDeltaInfo` notifications (service
+  `1664308034`, method `45`) whose passive skill field path `1.8.2.6` carries
+  `1101..1106` and whose position path `1.8.2.9` carries six distinct Vector3
+  ground coordinates. The non-leader observer confirmed that the party leader
+  placed markers 1 through 6 during the matching wall-clock interval. The
+  sanitized runtime-targeted proof, private evidence hashes, exact timestamps
+  and positions are recorded in
+  `steam-25247556/inbound-ground-marker-observation-proof.v1.json`.
+  Triangulation with the exact local build registry authorizes only local
+  passive observation on the deterministic build-25247556/digest pair. No
+  update or end was observed, and no outbound request,
+  acknowledgement, permission model, replay, or packet transmission gained
+  authority.
 
 ## Evidence already available
 
@@ -82,22 +106,23 @@ new stream.
 - The canonical `MapEvent` model has add/update/remove shapes, but the current
   BPSR decoder has no producer for it. It is not evidence that the game exposes
   party-visible actor markers.
-- The reviewed `resonance-logs-cn` source provides a strong inbound-observation
-  lead: it interprets `SeqPassiveSkillInfo` entries with skill IDs `1101..=1106`
-  as numbered in-game player markers, retains their passive instance IDs and
-  target positions, removes them when the matching passive instance ends, and
-  clears its projection on scene change. RLogs already decodes the same
-  `SeqPassiveSkillInfo` wire fields (`actor_uuid`, passive `uuid`,
-  `target_uuid`, `skill_id`, and `target_position`), but currently consumes
-  those entries only as specialization evidence and does not emit a marker
-  event.
-- Those passive containers are carried by the current build pack's existing
+- The reviewed `resonance-logs-cn` source supplied the original
+  inbound-observation lead: it interprets `SeqPassiveSkillInfo` entries with
+  skill IDs `1101..=1106` as numbered in-game markers, retains their passive
+  instance IDs and target positions, removes them when the matching passive
+  instance ends, and clears its projection on scene change. The focused Global
+  remote live-service evidence now independently verifies the six add
+  semantics and ground positions, while the local registry and digest bound the
+  build-25247556 runtime gate. Update, end, reconnect, and scene-transition
+  behavior remain carried decoder hypotheses until separately observed.
+- Those passive containers are carried by the reviewed pack's existing
   inbound `WorldNtf` routes: `SyncNearEntities` (service `1664308034`, method
   `6`), `SyncNearDeltaInfo` (method `45`), and `SyncToMeDeltaInfo` (method
-  `46`). This makes packet-only detection plausible without process-memory
-  reading. It does **not** prove that Global Steam build `24687926` uses the
-  same skill IDs or lifecycle, and it says nothing about the outbound placement
-  request.
+  `46`). Packet-only add detection is now live-observed without process-memory
+  reading, and the triangulated evidence supports only the bounded
+  build-25247556 observer identity. The focused evidence says nothing about the
+  outbound placement request and does not grant another compatibility build
+  observation authority.
 - The requested RLogs feature is specifically a save/load system for numbered
   ground markers at exact map locations. It is not actor-targeted and is not a
   DPS, run-clock, or overlay-canvas feature. A controlled capture must resolve
@@ -155,15 +180,16 @@ window. Because the markers were reportedly placed once and then persisted
 through later pulls, start recording **before the first placement**, not at
 boss engagement.
 
-For build `25247556`, the next experiment is one exact-timestamped marker-1
-placement through the normal game UI, with 10-15 seconds of idle traffic before
-the click and at least ten seconds retained after it. Inspect outbound and
-unrouted deltas around the click before applying the `24687926` decoder
-hypothesis, and require a same-client inbound acknowledgement or marker-state
-update before assigning semantics. Do not substitute `SetMapMark`, inject a
-request, or replay traffic. Only after one route is isolated should move,
-individual-clear, clear-all, observer-broadcast, wipe, and reconnect controls
-be captured separately.
+For build `25247556`, the next placement experiment is one exact-timestamped
+marker-1 action from the placing leader's client through the normal game UI,
+with 10-15 seconds of idle traffic before the click and at least ten seconds
+retained after it. The passive inbound add no longer needs rediscovery. Inspect
+outbound and unrouted deltas around the click before applying the `24687926`
+decoder hypothesis, and require the already-proven method-45 marker add on the
+same client as the correlation endpoint before assigning request semantics. Do
+not substitute `SetMapMark`, inject a request, or replay traffic. Only after one
+outbound route is isolated should move, individual-clear, clear-all,
+observer-broadcast, wipe, and reconnect controls be captured separately.
 
 Use `tools/windows/capture-marker-audit.ps1` for this controlled sequence.
 It wraps the explicit-client capture launcher in `marker-audit`/`all-ip` mode,

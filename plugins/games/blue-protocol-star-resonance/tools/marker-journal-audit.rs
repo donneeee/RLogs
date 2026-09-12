@@ -2,8 +2,9 @@ use std::{collections::BTreeMap, env, fs::File, io::BufReader, path::PathBuf};
 
 use prost::Message;
 use rlogs_game_bpsr::{
-    CaptureRecord, CaptureRecordKind, DecodeDisposition, DecoderKind, FragmentKind,
-    JsonlJournalReader, PacketDirection, ProtocolPack, ProtocolPackRouteDisposition, RouteKey,
+    CaptureRecord, CaptureRecordKind, CaptureSession, DecodeDisposition, DecoderKind, FragmentKind,
+    JsonlJournalReader, PacketDirection, ProtocolPack, ProtocolPackJournalAuthority,
+    ProtocolPackRouteDisposition, RouteKey,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -33,22 +34,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let pack = ProtocolPack::from_json(&std::fs::read(&args.pack)?)?;
     let mut stream =
         JsonlJournalReader::new(BufReader::new(File::open(&args.journal)?)).into_record_stream()?;
-    if !pack.matches(&stream.session().game_build) {
-        return Err(format!(
-            "protocol pack does not match journal game build {}",
-            stream.session().game_build.build_id
-        )
-        .into());
-    }
+    validate_pack_authority(stream.session(), &pack)?;
     if stream.session().protocol_pack_digest.as_deref() != Some(pack.digest()) {
         return Err(
-            "journal protocol pack digest does not match the selected exact-build pack".into(),
+            "journal protocol pack digest does not match the selected protocol pack".into(),
         );
     }
     validate_routes(&pack)?;
 
     let capture_id = stream.session().capture_id.clone();
     let game_build = stream.session().game_build.build_id.clone();
+    let protocol_pack_authority = stream.session().protocol_pack_authority.clone();
     let mut state = BTreeMap::new();
     let mut evidence = Vec::new();
     let mut untyped_varint_collisions = Vec::new();
@@ -78,15 +74,54 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         schema_version: 2,
         capture_id,
         game_build,
+        protocol_pack_authority,
         inspected_routes: [route_label(6), route_label(45), route_label(46)],
         inspected_packet_counts,
         first_inspected_wall_clock_unix_micros,
         last_inspected_wall_clock_unix_micros,
         evidence,
+        untyped_varint_scan_scope: "all-server-to-client-notify-routes",
         untyped_varint_collisions,
     };
     println!("{}", serde_json::to_string_pretty(&report)?);
     Ok(())
+}
+
+fn validate_pack_authority(
+    session: &CaptureSession,
+    pack: &ProtocolPack,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match &session.protocol_pack_authority {
+        None if pack.matches(&session.game_build) => Ok(()),
+        None => Err(format!(
+            "protocol pack does not match journal game build {}",
+            session.game_build.build_id
+        )
+        .into()),
+        Some(authority)
+            if authority.kind == "unverified-carry-forward-decoder-hypothesis"
+                && !authority.exact_for_captured_build
+                && !authority.runtime_authority
+                && authority.captured_build == session.game_build.build_id
+                && authority.source_build == pack.definition().target.build_id
+                && authority.source_build != authority.captured_build =>
+        {
+            let target = &pack.definition().target;
+            if target.deployment_id != session.game_build.deployment_id
+                || target.channel != session.game_build.channel
+                || target
+                    .region_id
+                    .as_ref()
+                    .is_some_and(|region| session.game_build.region_id.as_ref() != Some(region))
+            {
+                return Err(
+                    "carry-forward protocol pack deployment does not match journal capture".into(),
+                );
+            }
+            Ok(())
+        }
+        Some(_) => Err("journal protocol-pack authority is invalid for marker audit".into()),
+    }
 }
 
 fn audit_untyped_varint_collisions(
@@ -99,7 +134,9 @@ fn audit_untyped_varint_collisions(
     let Some(routed) = packet.route else {
         return Ok(());
     };
-    if !matches!(routed.key.method_id, 6 | 45 | 46) || routed.key != route(routed.key.method_id) {
+    if routed.key.direction != PacketDirection::ServerToClient
+        || routed.key.fragment != FragmentKind::Notify
+    {
         return Ok(());
     }
     let Some(payload) = packet.payload.decode_input() else {
@@ -114,7 +151,7 @@ fn audit_untyped_varint_collisions(
         output.push(UntypedVarintCollision {
             sequence: record.sequence,
             wall_clock_unix_micros: record.wall_clock_unix_micros,
-            route: route_label(routed.key.method_id),
+            route: route_key_label(routed.key),
             marker_number,
             field_path,
         });
@@ -379,6 +416,24 @@ fn route(method_id: u32) -> RouteKey {
 fn route_label(method_id: u32) -> String {
     format!("server_to_client/notify/{WORLD_NTF}/{method_id}")
 }
+fn route_key_label(key: RouteKey) -> String {
+    format!(
+        "{}/{}/{}/{}",
+        match key.direction {
+            PacketDirection::ClientToServer => "client_to_server",
+            PacketDirection::ServerToClient => "server_to_client",
+            PacketDirection::Unknown => "unknown",
+        },
+        match key.fragment {
+            FragmentKind::Call => "call",
+            FragmentKind::Return => "return",
+            FragmentKind::Notify => "notify",
+            _ => "other",
+        },
+        key.service_id,
+        key.method_id
+    )
+}
 
 #[derive(Debug)]
 struct Arguments {
@@ -413,11 +468,14 @@ struct Report {
     schema_version: u16,
     capture_id: String,
     game_build: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    protocol_pack_authority: Option<ProtocolPackJournalAuthority>,
     inspected_routes: [String; 3],
     inspected_packet_counts: BTreeMap<String, u64>,
     first_inspected_wall_clock_unix_micros: Option<i64>,
     last_inspected_wall_clock_unix_micros: Option<i64>,
     evidence: Vec<MarkerEvidence>,
+    untyped_varint_scan_scope: &'static str,
     untyped_varint_collisions: Vec<UntypedVarintCollision>,
 }
 
@@ -572,7 +630,9 @@ struct SyncToMeDeltaInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rlogs_game_bpsr::{CompressionState, PacketEnvelope, PacketPayload, RoutedMessage};
+    use rlogs_game_bpsr::{
+        CaptureAdapter, CompressionState, GameBuild, PacketEnvelope, PacketPayload, RoutedMessage,
+    };
 
     fn record(method: u32, payload: Vec<u8>) -> CaptureRecord {
         CaptureRecord {
@@ -779,5 +839,70 @@ mod tests {
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].marker_number, 4);
         assert_eq!(candidates[0].field_path, "1.8.2.6");
+    }
+
+    #[test]
+    fn untyped_collision_scan_covers_unmapped_inbound_notify_routes() {
+        let mut candidate = record(45, vec![0x08, 0xcd, 0x08]);
+        let CaptureRecordKind::Packet(packet) = &mut candidate.kind else {
+            unreachable!();
+        };
+        packet.route = Some(RoutedMessage {
+            key: RouteKey::new(
+                PacketDirection::ServerToClient,
+                FragmentKind::Notify,
+                777,
+                999,
+            ),
+            stub_id: 0,
+            call_id: None,
+        });
+        let mut candidates = Vec::new();
+        audit_untyped_varint_collisions(&candidate, &mut candidates).unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].marker_number, 1);
+        assert_eq!(candidates[0].route, "server_to_client/notify/777/999");
+        assert_eq!(candidates[0].field_path, "1");
+    }
+
+    #[test]
+    fn accepts_only_well_formed_unverified_carry_forward_authority() {
+        let pack = ProtocolPack::from_json(include_bytes!(
+            "../protocol-packs/global/steam-24687926/pack.json"
+        ))
+        .unwrap();
+        let authority = ProtocolPackJournalAuthority {
+            kind: "unverified-carry-forward-decoder-hypothesis".into(),
+            source_build: "24687926".into(),
+            captured_build: "25247556".into(),
+            exact_for_captured_build: false,
+            runtime_authority: false,
+        };
+        let session = CaptureSession {
+            format_version: 1,
+            capture_id: "capture".into(),
+            started_unix_micros: None,
+            game_build: GameBuild {
+                deployment_id: "global".into(),
+                region_id: None,
+                channel: "steam".into(),
+                build_id: "25247556".into(),
+                executable_version: None,
+            },
+            adapter: CaptureAdapter {
+                name: "offline-pcap".into(),
+                version: None,
+            },
+            protocol_pack_digest: Some(pack.digest().into()),
+            protocol_pack_authority: Some(authority.clone()),
+        };
+        validate_pack_authority(&session, &pack).unwrap();
+
+        let mut invalid = session;
+        invalid.protocol_pack_authority = Some(ProtocolPackJournalAuthority {
+            runtime_authority: true,
+            ..authority
+        });
+        assert!(validate_pack_authority(&invalid, &pack).is_err());
     }
 }

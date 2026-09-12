@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "observer_gate_build": "25247556",
+  "evidence_kind": "sanitized-runtime-targeted-inbound-ground-marker-observation-triangulation",
+  "scope": {
+    "scene_id": 1633,
+    "activity": "Tina M20",
+    "observer_was_party_leader": false,
+    "markers_were_placed_through_normal_game_ui_by_party_leader": true,
+    "packet_transmission_performed_by_rlogs": false,
+    "packet_replay_performed": false,
+    "process_memory_read": false
+  },
+  "build_identity": {
+    "analysis_host_installed_build": "25247556",
+    "local_distribution_receipt": "steam-distribution-snapshot.v1.json",
+    "local_distribution_receipt_sha256": "0dace506526d8de2dfc407045606ffaf995ed28d6b3ab305cafdbf3a4801cf33",
+    "capture_client_build_verified": false,
+    "capture_client_was_analysis_host": false,
+    "remote_session_build_announced_in_capture": false,
+    "authority_limit": "The exact local Steam receipt identifies only the analysis host installation; it does not identify the remote capture endpoint. The remote endpoint did not independently announce a build. Live-server wire evidence is triangulated with the exact local build registry and deterministic derived-pack digest solely to support the bounded build-25247556 inbound-observer runtime tuple."
+  },
+  "protocol_identity": {
+    "source_pack_build": "24687926",
+    "source_pack_id": "global-steam-24687926-static-candidate-v8",
+    "source_pack_semantic_digest": "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
+    "source_pack_file_sha256": "ab7a1026801999e71805306653b588239c004dd3298a6bced1c491d42a2be17a",
+    "runtime_derivation": {
+      "kind": "compatibility-fallback",
+      "target_deployment": "global",
+      "target_channel": "steam",
+      "target_build": "25247556",
+      "derived_pack_semantic_digest": "sha256:480f928cca6baf19c1ebaf85e8c52f2f1852096167043260503cca6d46133a60"
+    },
+    "authority": "marker-observation-only",
+    "unrelated_compatibility_builds_authorized": false
+  },
+  "private_evidence_identities": {
+    "capture": {
+      "capture_id": "tina-m20-boss-inbound-markers-20260911-204837",
+      "sha256": "072b39bbd64750c0f918aed57a5373a84753ccd591dec6d1946f29b981c2f7fc",
+      "bytes": 3277984,
+      "physical_frames": 17790,
+      "duration_seconds": 300.3325126
+    },
+    "connections_manifest": {
+      "sha256": "60ae4edf356a9c4a254c7c8ad1ec367080989faf46d20a0aa4c3e5ef9f51a81a",
+      "bytes": 416,
+      "endpoint_values_published": false
+    },
+    "protocol_journal": {
+      "sha256": "191b4b5d8d9d343f6f940a0987a792507540d087e3c3244f4f448e05004d9360",
+      "bytes": 40115392,
+      "records": 16887,
+      "published": false
+    },
+    "marker_audit": {
+      "sha256": "41e408e35d4b536f9fb41f0e1afdbbda612130075d48bd924d76c216e2409903",
+      "bytes": 33225,
+      "published": false
+    },
+    "user_confirmation": {
+      "sha256": "171b66dfa7b508efa83b0dc9f48a348890dc7d91d387d481028a13f27570ac3f",
+      "bytes": 732,
+      "confirmation": "The non-leader observer confirmed that the party leader placed markers 1 through 6 during the 20:50:09 through 20:50:51 EDT interval.",
+      "authority": "behavioral-correlation-only"
+    }
+  },
+  "independent_direct_pcap_analysis": {
+    "input_identity": "private_evidence_identities.capture.sha256",
+    "separate_analysis_artifact_exists": false,
+    "methodology": [
+      "Gap-free bidirectional TCP reassembly across the two captured game flows.",
+      "Four-byte big-endian frame length followed by the two-byte BPSR fragment discriminator.",
+      "Recursive FrameDown decoding, including 868 Zstandard containers.",
+      "Recursive protobuf field scan over 11872 logical frames without using the protocol journal or marker decoder output."
+    ],
+    "tcp_reassembly_gap_count": 0,
+    "zstd_frame_down_container_count": 868,
+    "logical_frame_count": 11872,
+    "exact_signature_occurrences": 6,
+    "exact_signature": {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 1664308034,
+      "method_id": 45,
+      "marker_skill_id_path": "1.8.2.6",
+      "marker_skill_id_rule": "1100 + marker_number",
+      "ground_position_path": "1.8.2.9",
+      "ground_position_wire_shape": "Vector3 fixed32 fields 1, 2, and 3"
+    },
+    "same_signature_outside_six_observations": 0
+  },
+  "protocol_journal_cross_check": {
+    "journal_protocol_authority": {
+      "kind": "unverified-carry-forward-decoder-hypothesis",
+      "source_build": "24687926",
+      "captured_build": "25247556",
+      "exact_for_captured_build": false,
+      "runtime_authority": false
+    },
+    "inspected_inbound_notify_packets": 4296,
+    "inspected_inbound_notify_routes": 18,
+    "pack_unmapped_inbound_notify_packets": 34,
+    "pack_unmapped_inbound_notify_routes": 5,
+    "marker_range_values_on_other_inbound_notify_routes": 0,
+    "inspected_route_counts": {
+      "server_to_client/notify/1664308034/6": 374,
+      "server_to_client/notify/1664308034/45": 2365,
+      "server_to_client/notify/1664308034/46": 1266
+    },
+    "typed_marker_lifecycle_counts": {
+      "add": 6,
+      "update": 0,
+      "end": 0
+    }
+  },
+  "observations": [
+    {
+      "marker_number": 1,
+      "passive_skill_id": 1101,
+      "journal_sequence": 3306,
+      "wall_clock_unix_micros": 1789174209074838,
+      "timestamp_utc": "2026-09-12T00:50:09.074838Z",
+      "capture_relative_seconds": 91.856784,
+      "position": { "x": 1.8669852, "y": 110.00002, "z": 17.699286 }
+    },
+    {
+      "marker_number": 2,
+      "passive_skill_id": 1102,
+      "journal_sequence": 3659,
+      "wall_clock_unix_micros": 1789174218759611,
+      "timestamp_utc": "2026-09-12T00:50:18.759611Z",
+      "capture_relative_seconds": 101.541557,
+      "position": { "x": 11.352993, "y": 110.00001, "z": 13.218566 }
+    },
+    {
+      "marker_number": 3,
+      "passive_skill_id": 1103,
+      "journal_sequence": 4253,
+      "wall_clock_unix_micros": 1789174230921624,
+      "timestamp_utc": "2026-09-12T00:50:30.921624Z",
+      "capture_relative_seconds": 113.70357,
+      "position": { "x": 16.131142, "y": 110.00001, "z": 3.1119096 }
+    },
+    {
+      "marker_number": 4,
+      "passive_skill_id": 1104,
+      "journal_sequence": 4804,
+      "wall_clock_unix_micros": 1789174242389742,
+      "timestamp_utc": "2026-09-12T00:50:42.389742Z",
+      "capture_relative_seconds": 125.171688,
+      "position": { "x": 14.323665, "y": 110.00002, "z": -5.955439 }
+    },
+    {
+      "marker_number": 5,
+      "passive_skill_id": 1105,
+      "journal_sequence": 4987,
+      "wall_clock_unix_micros": 1789174247622113,
+      "timestamp_utc": "2026-09-12T00:50:47.622113Z",
+      "capture_relative_seconds": 130.404059,
+      "position": { "x": 5.9726048, "y": 110.00002, "z": -15.009228 }
+    },
+    {
+      "marker_number": 6,
+      "passive_skill_id": 1106,
+      "journal_sequence": 5112,
+      "wall_clock_unix_micros": 1789174251415356,
+      "timestamp_utc": "2026-09-12T00:50:51.415356Z",
+      "capture_relative_seconds": 134.197302,
+      "position": { "x": -4.3912945, "y": 110.00002, "z": -15.824863 }
+    }
+  ],
+  "conclusion": {
+    "live_global_server_numbered_ground_marker_add_schema_observed": true,
+    "capture_client_build_verified": false,
+    "bounded_build_25247556_observer_runtime_tuple_supported_by_triangulation": true,
+    "marker_numbers_proven": [1, 2, 3, 4, 5, 6],
+    "observed_add_route_and_wire_shape_proven": true,
+    "update_or_end_lifecycle_observed": false,
+    "outbound_placement_route_proven": false,
+    "outbound_request_schema_proven": false,
+    "permission_to_send_or_replay_packets": false,
+    "native_place_in_game_gate": "closed",
+    "runtime_scope": "The exact build/digest pair may decode passive inbound marker observations into the local-only projection. It must not enable canonical upload data or any outbound executor."
+  }
+}
