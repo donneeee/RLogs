@@ -91,5 +91,5 @@ if ($ArmReversibleCalibration) {
 }
 
 & $probe @arguments
-if ($LASTEXITCODE -ne 0) { throw 'The exact-build read-only probe failed.' }
+if ($LASTEXITCODE -ne 0) { throw 'The exact-build probe or calibration canary failed closed.' }
 Write-Host "Created sanitized receipt $(Split-Path -Leaf $receipt). Marker confirmation and Place remain disabled."

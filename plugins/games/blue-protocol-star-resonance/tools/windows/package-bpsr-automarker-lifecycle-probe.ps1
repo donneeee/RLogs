@@ -16,4 +16,4 @@ New-Item -ItemType Directory -Path $Destination | Out-Null
 Copy-Item -LiteralPath (Join-Path $repoRoot 'target\release\rlogs-bpsr-automarker-lifecycle-probe.exe') -Destination $Destination
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'run-bpsr-automarker-lifecycle-probe.ps1') -Destination $Destination
 Copy-Item -LiteralPath (Join-Path $repoRoot 'plugins\games\blue-protocol-star-resonance\research\automarker-read-only-runtime-probe.md') -Destination (Join-Path $Destination 'README.md')
-Write-Host 'Built self-contained probe package; default mode is read-only and the reversible nudge requires explicit arming.'
+Write-Host 'Built self-contained probe package; default mode is read-only and the rank-two calibration requires explicit arming.'

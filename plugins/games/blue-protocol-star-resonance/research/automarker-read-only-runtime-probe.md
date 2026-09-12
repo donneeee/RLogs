@@ -66,11 +66,11 @@ palette, manually select Marker 1, keep the game focused, and run:
 ```
 
 After launching it, use the visible five-second countdown to return focus to
-the game. Do not click during the approximately three-second calibration. A passing receipt
-requires both mouse axes to excite the indicator, the symmetric sequence to
-approximately return, and the indicator to become inactive after Escape. The
-old `-ArmReversibleNudge` switch is intentionally rejected rather than treated
-as an alias. A failed-closed receipt is not placement authority.
+the game. Do not click during the approximately three-second calibration. A
+passing receipt requires both mouse axes to excite the indicator, the symmetric
+sequence to approximately return, and the indicator to become inactive after
+Escape. The old `-ArmReversibleNudge` switch is intentionally rejected rather
+than treated as an alias. A failed-closed receipt is not placement authority.
 
 The output is a sanitized JSON receipt containing exact artifact hashes,
 sampling counts, policy assertions, and deduplicated lifecycle transitions.
