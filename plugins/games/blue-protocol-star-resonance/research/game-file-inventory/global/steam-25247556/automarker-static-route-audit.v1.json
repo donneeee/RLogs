@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "build_id": "25247556",
+  "audit_kind": "bounded-read-only-native-automarker-static-route-audit",
+  "scope": {
+    "question": "Does the installed client or the reviewed repository prove a native party-visible numbered ground-marker route and schema?",
+    "packet_transmission_performed": false,
+    "packet_replay_performed": false,
+    "process_memory_read": false,
+    "result": "not_proven"
+  },
+  "current_build_artifacts": [
+    {
+      "relative_path": "bpsr/BPSR_STEAM_Data/resources.assets",
+      "bytes": 5973748,
+      "sha256": "83c9d53f385e5b0eae711af4855c02216ff3224bcf303bcc96bc3f01a21f256d",
+      "authority": "exact-installed-build-static-rpc-registry"
+    },
+    {
+      "relative_path": "bpsr/GameAssembly.dll",
+      "bytes": 218074672,
+      "sha256": "4a079aec0a3e51a8023aa86bbd152e12068907b65b9aafb355d20bb6d6c41fe3",
+      "authority": "exact-installed-build-native-code",
+      "note": "The hash differs from build 24687926; prior-build native RVAs are not current-build authority."
+    },
+    {
+      "relative_path": "bpsr/BPSR_STEAM_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "authority": "unusable-empty-installed-file"
+    }
+  ],
+  "exact_current_build_rpc_evidence": {
+    "source": "bpsr/BPSR_STEAM_Data/resources.assets",
+    "world_service": {
+      "service_id": 103198054,
+      "name": "world",
+      "registry_file_offset_decimal": 742517,
+      "registry_file_offset_hex": "0xB5475"
+    },
+    "methods": [
+      {
+        "name": "SetMapMark",
+        "method_id": 65538,
+        "name_file_offset_decimal": 769189,
+        "name_file_offset_hex": "0xBBCA5",
+        "params": [
+          { "name": "sceneId", "type": "int32" },
+          { "name": "vMark", "type": "markinfo" }
+        ],
+        "return_type": "EErrorCode"
+      },
+      {
+        "name": "RemoveMapMark",
+        "method_id": 65539,
+        "name_file_offset_decimal": 769487,
+        "name_file_offset_hex": "0xBBDCF",
+        "params": [
+          { "name": "sceneId", "type": "int32" },
+          { "name": "vMarkId", "type": "int64" }
+        ],
+        "return_type": "EErrorCode"
+      }
+    ],
+    "bounded_name_census": {
+      "terms": ["mark", "waypoint", "ping", "signal"],
+      "matching_method_or_parameter_names": [
+        "SetMapMark",
+        "vMark",
+        "RemoveMapMark",
+        "vMarkId",
+        "SetFriendRemarks",
+        "SetHobbyMark",
+        "SetTimeMark"
+      ],
+      "party_or_ground_waymark_named_route_found": false,
+      "negative_evidence_limit": "A name census cannot exclude an opaque, differently named, or locally implemented route."
+    }
+  },
+  "personal_map_pin_classification": {
+    "classification": "personal-map-pin-candidate-not-party-ground-automarker",
+    "confidence": "high",
+    "reasons": [
+      "The exact-current-build request is addressed by sceneId and markinfo, not by party, team, actor, or marker-slot identity.",
+      "The carried repository schema contains title, content, icon, map-layer, and two-dimensional map coordinates.",
+      "MapData is carried inside CharSerialize field 14 in the repository schema, consistent with character-owned persisted map state.",
+      "No matching party-broadcast or numbered-ground-waymark method name appears in the exact-current-build registry census."
+    ],
+    "fail_closed_rule": "World.SetMapMark and World.RemoveMapMark must not be used, labeled, or promoted as party-visible ground automarkers without controlled cross-client lifecycle proof."
+  },
+  "carried_prior_build_schema": {
+    "source_build": "24687926",
+    "current_build_authority": false,
+    "sources": [
+      "proto/zproto/serv_world.proto",
+      "proto/zproto/stru_mark_info.proto",
+      "proto/zproto/stru_mark_position.proto",
+      "proto/zproto/stru_mark_data.proto",
+      "proto/zproto/stru_map_data.proto",
+      "proto/zproto/stru_char_serialize.proto",
+      "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/protobuf-native-wire-proof.v1.json"
+    ],
+    "wire_shapes": {
+      "SetMapMark": [
+        { "tag": 1, "name": "scene_id", "type": "int32" },
+        { "tag": 2, "name": "v_mark", "type": "MarkInfo" }
+      ],
+      "RemoveMapMark": [
+        { "tag": 1, "name": "scene_id", "type": "int32" },
+        { "tag": 2, "name": "v_mark_id", "type": "int64" }
+      ],
+      "MarkInfo": [
+        { "tag": 1, "name": "tag_id", "type": "int64" },
+        { "tag": 2, "name": "title", "type": "string" },
+        { "tag": 3, "name": "content", "type": "string" },
+        { "tag": 4, "name": "icon_id", "type": "uint32" },
+        { "tag": 5, "name": "position", "type": "MarkPosition" },
+        { "tag": 6, "name": "map_layer_id", "type": "int32" }
+      ],
+      "MarkPosition": [
+        { "tag": 1, "name": "x", "type": "int32" },
+        { "tag": 2, "name": "y", "type": "int32" }
+      ]
+    },
+    "prior_build_native_layouts": [
+      {
+        "type": "Zproto.MapData",
+        "internal_merge_from_rva_hex": "0x5A0EE90",
+        "field_instance_offsets_hex": ["0x10", "0x18", "0x20"]
+      },
+      {
+        "type": "Zproto.MarkData",
+        "internal_merge_from_rva_hex": "0x5A11AB0",
+        "field_instance_offsets_hex": ["0x10", "0x18", "0x20"]
+      },
+      {
+        "type": "Zproto.MarkInfo",
+        "internal_merge_from_rva_hex": "0x5A12C10",
+        "fields": [
+          { "name": "TagId", "instance_offset_hex": "0x10" },
+          { "name": "Title", "instance_offset_hex": "0x18" },
+          { "name": "Content", "instance_offset_hex": "0x20" },
+          { "name": "IconId", "instance_offset_hex": "0x28" },
+          { "name": "Position", "instance_offset_hex": "0x2C" },
+          { "name": "MapLayerId", "instance_offset_hex": "0x34" }
+        ]
+      }
+    ]
+  },
+  "separate_actor_marker_lead": {
+    "ground_marker_route_proof": false,
+    "description": "A reviewed external implementation interprets passive skill IDs 1101 through 1106 as numbered actor markers. This is an inbound actor-targeted lifecycle hypothesis, not a ground-waymark request schema.",
+    "exact_current_build_container_routes": [
+      { "service_id": 1664308034, "method_id": 6, "name": "SyncNearEntities", "name_file_offset_hex": "0xDE6C5" },
+      { "service_id": 1664308034, "method_id": 45, "name": "SyncNearDeltaInfo", "name_file_offset_hex": "0xE0C57" },
+      { "service_id": 1664308034, "method_id": 46, "name": "SyncToMeDeltaInfo", "name_file_offset_hex": "0xE0D35" }
+    ],
+    "current_build_observation": "The bounded 8.307-second build-25247556 carry-forward probe observed methods 6, 45, and 46, but it was not a marker-placement experiment and proves neither the 1101..1106 interpretation nor ground-marker behavior."
+  },
+  "team_structure_non_proof": [
+    { "service_id": 966773353, "method_id": 1, "name": "NoticeUpdateTeamInfo", "name_file_offset_hex": "0xAE15D" },
+    { "service_id": 966773353, "method_id": 29, "name": "NotifyTeamGroupUpdate", "name_file_offset_hex": "0xAFB96" },
+    {
+      "service_id": 103198054,
+      "method_id": 311333,
+      "name": "UpdateTeamGroup",
+      "name_file_offset_hex": "0xD9B8A",
+      "request_type": "updateteamgrouprequest",
+      "carried_fields": ["group_id", "char_id", "group_index"]
+    }
+  ],
+  "conclusion": {
+    "native_party_visible_ground_marker_route_proven": false,
+    "complete_current_build_request_schema_proven": false,
+    "permission_to_transmit_proven": false,
+    "personal_map_pin_route_present": true,
+    "native_place_in_game_gate": "closed"
+  },
+  "next_experiment": {
+    "kind": "passive-exact-current-build-single-placement-capture",
+    "steps": [
+      "Start an all-IPv4 placing-client capture before dungeon entry so World connection and transport migration are retained.",
+      "Record 10 to 15 seconds of idle traffic, then place marker 1 once through the normal game UI and timestamp the click and visible result exactly.",
+      "Retain at least 10 seconds after placement and the first engagement state.",
+      "Inspect outbound and unrouted deltas around the click before applying the older decoder hypothesis.",
+      "Require a correlated same-client inbound acknowledgement or marker-state update before assigning semantics."
+    ],
+    "prohibited": ["packet injection", "packet replay", "guessing a request from SetMapMark", "promoting a personal pin as a party marker"],
+    "follow_up_only_after_isolation": ["move one marker", "clear one marker", "clear all markers", "observer-client broadcast", "wipe and reconnect lifecycle"]
+  }
+}

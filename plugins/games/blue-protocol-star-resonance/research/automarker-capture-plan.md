@@ -20,6 +20,12 @@ new stream.
   proof of complete current-build routing or marker semantics. The bounded
   aggregate and private-artifact hashes are recorded in
   `steam-25247556/protocol-carry-forward-probe.v1.json`.
+- A bounded read-only static audit of the installed build is recorded in
+  `steam-25247556/automarker-static-route-audit.v1.json`. The exact installed
+  `resources.assets` (`sha256:83c9d53f385e5b0eae711af4855c02216ff3224bcf303bcc96bc3f01a21f256d`)
+  retains `World.SetMapMark` and `World.RemoveMapMark`, but exposes no named
+  party/ground-waymark route. The result keeps native placement closed: these
+  methods remain personal map-pin candidates, not party-visible automarkers.
 
 ## Evidence already available
 
@@ -97,10 +103,24 @@ new stream.
   DPS, run-clock, or overlay-canvas feature. A controlled capture must resolve
   the native ground-marker placement, movement, and removal lifecycle before
   RLogs chooses a canonical event shape or enables native loading.
-- Static game files expose `World.SetMapMark` and `World.RemoveMapMark` at
-  service `103198054`, methods `65538` and `65539`. Their payloads are
-  scene/map coordinates and custom text/icon data, not an actor target. Treat
-  them as personal map-pin candidates, not automarkers.
+- Exact build `25247556` static game files expose `World.SetMapMark` and
+  `World.RemoveMapMark` at service `103198054`, methods `65538` and `65539`.
+  Their names occur in the installed `resources.assets` at file offsets
+  `0xBBCA5` and `0xBBDCF`; the containing `world` service begins at `0xB5475`.
+  `SetMapMark` accepts `sceneId:int32` plus `vMark:markinfo`, while
+  `RemoveMapMark` accepts `sceneId:int32` plus `vMarkId:int64`; both return
+  `EErrorCode`. The carried repository schema describes title/content/icon,
+  map-layer, and two-dimensional map coordinates, and carries `MapData` inside
+  character serialization. That combination is personal map-pin evidence, not
+  actor targeting, party broadcast, or a numbered three-dimensional ground
+  waymark. Fail closed: these methods must not be used or labeled as native
+  automarkers without controlled cross-client lifecycle proof.
+- The current installed `GameAssembly.dll` is
+  `sha256:4a079aec0a3e51a8023aa86bbd152e12068907b65b9aafb355d20bb6d6c41fe3`,
+  and its `global-metadata.dat` is an unusable zero-byte file. Therefore the
+  `24687926` `MarkInfo` merge RVA `0x5A12C10` and its field offsets are useful
+  prior-build worklist evidence only; they are not current-build native
+  offsets. The build-scoped static audit records the complete distinction.
 - Static team files expose leader and group structure. Relevant candidates are
   `GrpcTeamNtf.NoticeUpdateTeamInfo` (service `966773353`, method `1`),
   `GrpcTeamNtf.NotifyTeamGroupUpdate` (method `29`), and
@@ -134,6 +154,16 @@ The first capture should stay short and target the user's reported placement
 window. Because the markers were reportedly placed once and then persisted
 through later pulls, start recording **before the first placement**, not at
 boss engagement.
+
+For build `25247556`, the next experiment is one exact-timestamped marker-1
+placement through the normal game UI, with 10-15 seconds of idle traffic before
+the click and at least ten seconds retained after it. Inspect outbound and
+unrouted deltas around the click before applying the `24687926` decoder
+hypothesis, and require a same-client inbound acknowledgement or marker-state
+update before assigning semantics. Do not substitute `SetMapMark`, inject a
+request, or replay traffic. Only after one route is isolated should move,
+individual-clear, clear-all, observer-broadcast, wipe, and reconnect controls
+be captured separately.
 
 Use `tools/windows/capture-marker-audit.ps1` for this controlled sequence.
 It wraps the explicit-client capture launcher in `marker-audit`/`all-ip` mode,

@@ -77,20 +77,21 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .create_new(true)
         .open(&partial)?;
     let mut writer = JsonlJournalWriter::new(BufWriter::new(file), session)?;
-    let mut pipeline = if arguments.nested_frame_up {
-        ResearchPipeline::try_with_framing_config(
-            connections,
-            BpsrFramerSetConfig {
-                stream: BpsrFramingConfig {
-                    frame_up_layout: BpsrFrameUpLayout::NestedAfterFourBytes,
-                    ..BpsrFramingConfig::default()
-                },
-                ..BpsrFramerSetConfig::default()
-            },
-        )?
+    let frame_up_layout = if arguments.nested_frame_up {
+        BpsrFrameUpLayout::NestedAfterFourBytes
     } else {
-        ResearchPipeline::new(connections)
+        pack.definition().acquisition.frame_up_layout
     };
+    let mut pipeline = ResearchPipeline::try_with_framing_config(
+        connections,
+        BpsrFramerSetConfig {
+            stream: BpsrFramingConfig {
+                frame_up_layout,
+                ..BpsrFramingConfig::default()
+            },
+            ..BpsrFramerSetConfig::default()
+        },
+    )?;
     let mut frames = 0_u64;
     let mut records = 0_u64;
 

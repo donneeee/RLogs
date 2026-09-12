@@ -37,7 +37,10 @@ reassembly. Output creation is non-overwriting and uses a visible partial file
 until processing completes.
 
 By default the selected protocol pack is exact for the capture and supplies the
-journal's `game_build`. To investigate a newer captured build with an older
+journal's `game_build`. The journal also applies the pack's reviewed
+`acquisition.frame_up_layout`; `--nested-frame-up` remains available only as an
+explicit compatibility override for a pack that predates that metadata. To
+investigate a newer captured build with an older
 pack strictly as a decoder hypothesis, both identities must be explicit:
 
 ```text
