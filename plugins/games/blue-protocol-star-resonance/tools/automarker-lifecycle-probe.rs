@@ -25,6 +25,10 @@ mod windows {
         net::TcpStream,
         os::windows::ffi::OsStringExt,
         path::{Path, PathBuf},
+        sync::{
+            atomic::{AtomicU64, Ordering},
+            mpsc,
+        },
         thread,
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
@@ -51,8 +55,8 @@ mod windows {
                 MEM_COMMIT, MEMORY_BASIC_INFORMATION, PAGE_GUARD, PAGE_NOACCESS, VirtualQueryEx,
             },
             Threading::{
-                OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
-                QueryFullProcessImageNameW,
+                GetCurrentThreadId, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION,
+                PROCESS_VM_READ, QueryFullProcessImageNameW,
             },
         },
         UI::{
@@ -60,7 +64,11 @@ mod windows {
                 INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYEVENTF_KEYUP,
                 MOUSEEVENTF_MOVE, MOUSEINPUT, SendInput, VIRTUAL_KEY, VK_ESCAPE,
             },
-            WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId},
+            WindowsAndMessaging::{
+                CallNextHookEx, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId,
+                LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, PM_NOREMOVE, PeekMessageW, PostThreadMessageW,
+                SetWindowsHookExW, UnhookWindowsHookEx, WH_MOUSE_LL, WM_MOUSEMOVE, WM_QUIT,
+            },
         },
     };
 
@@ -119,6 +127,10 @@ mod windows {
     const MAX_USER_ADDRESS: usize = 0x0000_7fff_ffff_ffff;
     const ARMED_MODE_TOKEN: &str = "marker1-reversible-calibration-v1";
     const PLANNER_ARMED_MODE_TOKEN: &str = "marker1-single-planner-step-and-restore-v1";
+    const CLOSED_LOOP_ARMED_MODE_TOKEN: &str = "marker1-closed-loop-aim-and-rollback-v1";
+    const INPUT_OBSERVER_TAG: usize = 0x524C_4F47_5341_4D31;
+    const CLOSED_LOOP_MAX_MOVES: usize = 4;
+    const CLOSED_LOOP_MAX_CUMULATIVE_PIXELS: f64 = 16.0;
     const MARKER_1_SKILL_ID: i32 = 1101;
     const MARKER_1_SLOT_ID: i32 = 201;
     const MARKER_PARAM: f32 = 1.0;
@@ -135,6 +147,9 @@ mod windows {
     const MAX_SETTLED_POSITION_DELTA: f32 = 0.002;
     const MAX_SETTLED_VELOCITY: f32 = 0.02;
     const PROCESS_READ_RIGHTS: u32 = PROCESS_QUERY_INFORMATION | PROCESS_VM_READ;
+
+    static OBSERVED_OWN_MOUSE_MOVES: AtomicU64 = AtomicU64::new(0);
+    static OBSERVED_FOREIGN_MOUSE_MOVES: AtomicU64 = AtomicU64::new(0);
 
     #[derive(Clone, Debug, Eq, PartialEq)]
     struct Roots {
@@ -207,6 +222,7 @@ mod windows {
         outcome: &'static str,
         preflight: Option<PreflightDiagnostic>,
         planner_step: Option<PlannerStepReceipt>,
+        closed_loop: Option<ClosedLoopReceipt>,
     }
 
     #[derive(Clone, Debug, Serialize)]
@@ -245,8 +261,65 @@ mod windows {
 
     #[derive(Clone, Debug)]
     struct PlannerCanaryRequest {
+        mode: PlannerCanaryMode,
         target: Position,
         rlogs_base_url: String,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum PlannerCanaryMode {
+        SingleStep,
+        ClosedLoop,
+    }
+
+    impl PlannerCanaryMode {
+        fn token(self) -> &'static str {
+            match self {
+                Self::SingleStep => PLANNER_ARMED_MODE_TOKEN,
+                Self::ClosedLoop => CLOSED_LOOP_ARMED_MODE_TOKEN,
+            }
+        }
+    }
+
+    #[derive(Clone, Debug, Serialize)]
+    struct ClosedLoopStepReceipt {
+        command_id: u32,
+        emitted_integer_mouse_delta: [i32; 2],
+        distance_before: f32,
+        predicted_distance: f32,
+        observed_distance: Option<f32>,
+        input_ownership_verified: bool,
+    }
+
+    #[derive(Clone, Debug, Serialize)]
+    struct ClosedLoopReceipt {
+        target: Position,
+        player_origin: Option<Position>,
+        target_player_distance: Option<f32>,
+        arrived: bool,
+        arrival_distance: Option<f32>,
+        steps: Vec<ClosedLoopStepReceipt>,
+        emitted_move_count: usize,
+        cumulative_motion_pixels: f64,
+        input_observer_started: bool,
+        foreign_mouse_moves_observed: u64,
+        rollback_attempted: bool,
+        rollback_inverse_count: usize,
+        rollback_not_safe: bool,
+        rollback_cancel_emitted: bool,
+        rollback_return_error: Option<f32>,
+        outcome: &'static str,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    struct MouseObservationCounts {
+        own: u64,
+        foreign: u64,
+    }
+
+    struct MouseInterferenceObserver {
+        thread_id: u32,
+        join: Option<thread::JoinHandle<()>>,
     }
 
     struct PlannerStepRunContext<'a, M: Memory> {
@@ -553,6 +626,79 @@ mod windows {
         }
     }
 
+    unsafe extern "system" fn low_level_mouse_observer(
+        code: i32,
+        wparam: usize,
+        lparam: isize,
+    ) -> isize {
+        if code >= 0 && wparam as u32 == WM_MOUSEMOVE && lparam != 0 {
+            let event = unsafe { &*(lparam as *const MSLLHOOKSTRUCT) };
+            if event.flags & LLMHF_INJECTED != 0 && event.dwExtraInfo == INPUT_OBSERVER_TAG {
+                OBSERVED_OWN_MOUSE_MOVES.fetch_add(1, Ordering::SeqCst);
+            } else {
+                OBSERVED_FOREIGN_MOUSE_MOVES.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        unsafe { CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam) }
+    }
+
+    impl MouseInterferenceObserver {
+        fn start() -> Result<Self, &'static str> {
+            OBSERVED_OWN_MOUSE_MOVES.store(0, Ordering::SeqCst);
+            OBSERVED_FOREIGN_MOUSE_MOVES.store(0, Ordering::SeqCst);
+            let (ready_tx, ready_rx) = mpsc::sync_channel(1);
+            let join = thread::spawn(move || {
+                let thread_id = unsafe { GetCurrentThreadId() };
+                let hook = unsafe {
+                    SetWindowsHookExW(
+                        WH_MOUSE_LL,
+                        Some(low_level_mouse_observer),
+                        std::ptr::null_mut(),
+                        0,
+                    )
+                };
+                if hook.is_null() {
+                    let _ = ready_tx.send(None);
+                    return;
+                }
+                let mut message = MSG::default();
+                unsafe { PeekMessageW(&mut message, std::ptr::null_mut(), 0, 0, PM_NOREMOVE) };
+                if ready_tx.send(Some(thread_id)).is_err() {
+                    unsafe { UnhookWindowsHookEx(hook) };
+                    return;
+                }
+                while unsafe { GetMessageW(&mut message, std::ptr::null_mut(), 0, 0) } > 0 {}
+                unsafe { UnhookWindowsHookEx(hook) };
+            });
+            let thread_id = ready_rx
+                .recv_timeout(Duration::from_secs(2))
+                .map_err(|_| "mouse-interference-observer-start-timeout")?
+                .ok_or("mouse-interference-observer-unavailable")?;
+            Ok(Self {
+                thread_id,
+                join: Some(join),
+            })
+        }
+
+        fn counts(&self) -> MouseObservationCounts {
+            MouseObservationCounts {
+                own: OBSERVED_OWN_MOUSE_MOVES.load(Ordering::SeqCst),
+                foreign: OBSERVED_FOREIGN_MOUSE_MOVES.load(Ordering::SeqCst),
+            }
+        }
+    }
+
+    impl Drop for MouseInterferenceObserver {
+        fn drop(&mut self) {
+            let stopped = unsafe { PostThreadMessageW(self.thread_id, WM_QUIT, 0, 0) } != 0;
+            if let Some(join) = self.join.take()
+                && stopped
+            {
+                let _ = join.join();
+            }
+        }
+    }
+
     pub fn main() -> Result<(), Box<dyn Error>> {
         let options = parse_options(env::args().skip(1))?;
         reject_unknown_options(&options)?;
@@ -564,8 +710,14 @@ mod windows {
         let interval_millis = numeric_option(&options, "interval-ms", 10, 5, 1_000)?;
         let armed_mode = options.get("armed-mode").map(String::as_str);
         let armed = armed_mode.is_some();
-        let planner_request = if armed_mode == Some(PLANNER_ARMED_MODE_TOKEN) {
+        let planner_mode = match armed_mode {
+            Some(PLANNER_ARMED_MODE_TOKEN) => Some(PlannerCanaryMode::SingleStep),
+            Some(CLOSED_LOOP_ARMED_MODE_TOKEN) => Some(PlannerCanaryMode::ClosedLoop),
+            _ => None,
+        };
+        let planner_request = if let Some(mode) = planner_mode {
             Some(PlannerCanaryRequest {
+                mode,
                 target: Position {
                     x: float_option(&options, "target-x")?,
                     y: float_option(&options, "target-y")?,
@@ -651,7 +803,7 @@ mod windows {
             (events, counters, read_only_canary_receipt())
         };
         let receipt = Receipt {
-            schema_version: 5,
+            schema_version: 6,
             generated_by: "rlogs-bpsr-automarker-lifecycle-probe",
             game: "blue-protocol-star-resonance",
             deployment: "global",
@@ -751,6 +903,7 @@ mod windows {
             outcome: "not-armed-read-only",
             preflight: None,
             planner_step: None,
+            closed_loop: None,
         }
     }
 
@@ -763,11 +916,7 @@ mod windows {
         let started = Instant::now();
         let mut receipt = CanaryReceipt {
             armed: true,
-            mode: if planner_request.is_some() {
-                PLANNER_ARMED_MODE_TOKEN
-            } else {
-                ARMED_MODE_TOKEN
-            },
+            mode: planner_request.map_or(ARMED_MODE_TOKEN, |request| request.mode.token()),
             calibration_pixels: CALIBRATION_PIXELS,
             marker_1_state_validated: false,
             foreground_validated_before_every_input: true,
@@ -783,6 +932,7 @@ mod windows {
             outcome: "preflight-rejected-marker-state",
             preflight: None,
             planner_step: None,
+            closed_loop: None,
         };
         let (preflight, baseline) = diagnose_marker_1_preflight(memory, module_base, &started);
         receipt.preflight = Some(preflight);
@@ -822,6 +972,23 @@ mod windows {
         } else {
             None
         };
+
+        let input_observer = if planner_request
+            .is_some_and(|request| request.mode == PlannerCanaryMode::ClosedLoop)
+        {
+            match MouseInterferenceObserver::start() {
+                Ok(observer) => Some(observer),
+                Err(_) => {
+                    receipt.closed_loop = planner_request.map(|request| {
+                        empty_closed_loop_receipt(request, "input-observer-unavailable")
+                    });
+                    return cancel_preflight_receipt(receipt, memory, module_base, process_id);
+                }
+            }
+        } else {
+            None
+        };
+        let mut calibration_moves_emitted = Vec::with_capacity(CALIBRATION_SEQUENCE.len());
 
         for (sequence_index, delta) in CALIBRATION_SEQUENCE.into_iter().enumerate() {
             let pre_input = match stable_marker_1_sample(memory, module_base, &started) {
@@ -867,11 +1034,22 @@ mod windows {
                 }
             }
             let input_elapsed_micros = started.elapsed().as_micros();
+            let ownership_before = input_observer
+                .as_ref()
+                .map(MouseInterferenceObserver::counts);
             if !emit_relative_mouse(delta) {
                 receipt.outcome = "aborted-input";
                 break;
             }
+            calibration_moves_emitted.push(delta);
             thread::sleep(Duration::from_millis(SETTLE_MILLIS));
+            if let (Some(before), Some(observer)) = (ownership_before, input_observer.as_ref()) {
+                let after = observer.counts();
+                if !input_ownership_verified(before, after) {
+                    receipt.outcome = "aborted-input-interference";
+                    break;
+                }
+            }
             let observed = match stable_marker_1_sample(memory, module_base, &started) {
                 Ok(sample) => sample,
                 Err(_) => {
@@ -918,8 +1096,35 @@ mod windows {
             }
         }
 
-        if let Some(request) = planner_request {
-            receipt.planner_step = Some(run_single_planner_step(PlannerStepRunContext {
+        let closed_loop_calibration_failed = planner_request.is_some_and(|request| {
+            request.mode == PlannerCanaryMode::ClosedLoop
+                && receipt.transitions.len() != CALIBRATION_SEQUENCE.len()
+        });
+        if closed_loop_calibration_failed {
+            let request = planner_request.expect("closed-loop request");
+            receipt.closed_loop = Some(rollback_incomplete_calibration(
+                PlannerStepRunContext {
+                    memory,
+                    module_base,
+                    process_id,
+                    started: &started,
+                    baseline_roots: &baseline_roots,
+                    baseline_context,
+                    calibration: &receipt,
+                    request,
+                    initial_live: planner_live
+                        .as_ref()
+                        .expect("planner preflight established"),
+                },
+                input_observer
+                    .as_ref()
+                    .expect("closed-loop observer started"),
+                &calibration_moves_emitted,
+            ));
+        }
+
+        if let Some(request) = planner_request.filter(|_| !closed_loop_calibration_failed) {
+            let context = PlannerStepRunContext {
                 memory,
                 module_base,
                 process_id,
@@ -931,7 +1136,20 @@ mod windows {
                 initial_live: planner_live
                     .as_ref()
                     .expect("planner preflight established"),
-            }));
+            };
+            match request.mode {
+                PlannerCanaryMode::SingleStep => {
+                    receipt.planner_step = Some(run_single_planner_step(context));
+                }
+                PlannerCanaryMode::ClosedLoop => {
+                    receipt.closed_loop = Some(run_closed_loop_aim(
+                        context,
+                        input_observer
+                            .as_ref()
+                            .expect("closed-loop observer started"),
+                    ));
+                }
+            }
         }
 
         let (final_roots_match, final_lifecycle_match) =
@@ -964,6 +1182,10 @@ mod windows {
         let planner_passed = planner_request.is_none()
             || receipt
                 .planner_step
+                .as_ref()
+                .is_some_and(|step| step.outcome == "passed")
+            || receipt
+                .closed_loop
                 .as_ref()
                 .is_some_and(|step| step.outcome == "passed");
         if receipt.transitions.len() == CALIBRATION_SEQUENCE.len()
@@ -1188,6 +1410,376 @@ mod windows {
             result.outcome = "planner-step-validation-failed";
         }
         result
+    }
+
+    fn rollback_incomplete_calibration<M: Memory>(
+        context: PlannerStepRunContext<'_, M>,
+        observer: &MouseInterferenceObserver,
+        emitted: &[[i32; 2]],
+    ) -> ClosedLoopReceipt {
+        let mut result = empty_closed_loop_receipt(context.request, "calibration-failed");
+        result.input_observer_started = true;
+        result.rollback_attempted = !emitted.is_empty();
+        for inverse in reverse_rollback_deltas(emitted) {
+            let sample =
+                stable_marker_1_sample(context.memory, context.module_base, context.started);
+            let context_matches = sample.as_ref().is_ok_and(|value| {
+                value.roots == *context.baseline_roots
+                    && MarkerContext::from(&value.state) == context.baseline_context
+            });
+            match next_planner_rollback_action(
+                inverse,
+                game_is_foreground(context.process_id),
+                context_matches,
+            ) {
+                PlannerRollbackAction::Inverse(exact_inverse) => {
+                    let before = observer.counts();
+                    if !emit_relative_mouse(exact_inverse) {
+                        result.rollback_not_safe = true;
+                        result.outcome = "rollback_not_safe";
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(SETTLE_MILLIS));
+                    let after = observer.counts();
+                    result.foreign_mouse_moves_observed = after.foreign;
+                    if !input_ownership_verified(before, after) {
+                        result.rollback_not_safe = true;
+                        result.outcome = "rollback_not_safe";
+                        break;
+                    }
+                    result.rollback_inverse_count += 1;
+                }
+                PlannerRollbackAction::Escape => {
+                    result.rollback_not_safe = true;
+                    result.rollback_cancel_emitted = emit_escape();
+                    result.outcome = "rollback_not_safe";
+                    break;
+                }
+                PlannerRollbackAction::CannotActWithoutForeground => {
+                    result.rollback_not_safe = true;
+                    result.outcome = "rollback_not_safe";
+                    break;
+                }
+            }
+        }
+        result
+    }
+
+    fn run_closed_loop_aim<M: Memory>(
+        context: PlannerStepRunContext<'_, M>,
+        observer: &MouseInterferenceObserver,
+    ) -> ClosedLoopReceipt {
+        let PlannerStepRunContext {
+            memory,
+            module_base,
+            process_id,
+            started,
+            baseline_roots,
+            baseline_context,
+            calibration,
+            request,
+            initial_live,
+        } = context;
+        let mut result = empty_closed_loop_receipt(request, "preflight-failed");
+        result.input_observer_started = true;
+        let initial_counts = observer.counts();
+        if calibration.transitions.len() != CALIBRATION_SEQUENCE.len()
+            || initial_counts.own != CALIBRATION_SEQUENCE.len() as u64
+            || initial_counts.foreign != 0
+        {
+            result.foreign_mouse_moves_observed = initial_counts.foreign;
+            result.outcome = "calibration-input-ownership-unverified";
+            return result;
+        }
+        let live = match read_live_player_context(&request.rlogs_base_url) {
+            Ok(value) if live_context_matches(initial_live, &value, &request.target) => value,
+            _ => {
+                result.outcome = "live-context-changed-after-calibration";
+                return result;
+            }
+        };
+        result.player_origin = Some(live.origin.clone());
+        result.target_player_distance = Some(position_distance(&request.target, &live.origin));
+
+        let baseline = calibration
+            .baseline
+            .as_ref()
+            .expect("complete calibration has a baseline");
+        let mut observations = vec![planner_observation(&baseline.position, None)];
+        for transition in &calibration.transitions {
+            observations.push(planner_observation(
+                &transition.subsequent_observation.position,
+                Some(CertifiedMouseDelta {
+                    planner_command_id: None,
+                    delta: transition.emitted_integer_mouse_delta,
+                    exclusive_input_ownership: true,
+                }),
+            ));
+        }
+        let mut planner = match CoordinatePlannerSession::new(
+            CoordinatePlannerConfig {
+                maximum_mouse_step: 4.0,
+                maximum_mouse_axis_step: 4,
+                maximum_commands: CLOSED_LOOP_MAX_MOVES as u32,
+                maximum_cumulative_motion: CLOSED_LOOP_MAX_CUMULATIVE_PIXELS,
+                arrival_tolerance: 0.075,
+                ..CoordinatePlannerConfig::default()
+            },
+            1,
+            1,
+            1,
+        ) {
+            Ok(value) => value,
+            Err(_) => {
+                result.outcome = "planner-rejected-calibration";
+                return result;
+            }
+        };
+        let target = [
+            f64::from(request.target.x),
+            f64::from(request.target.y),
+            f64::from(request.target.z),
+        ];
+        let origin = [
+            f64::from(live.origin.x),
+            f64::from(live.origin.y),
+            f64::from(live.origin.z),
+        ];
+        let mut movement_ledger = Vec::with_capacity(CLOSED_LOOP_MAX_MOVES);
+        let mut rollback_reference = None;
+
+        loop {
+            let pre_input = match stable_marker_1_sample(memory, module_base, started) {
+                Ok(value)
+                    if value.roots == *baseline_roots
+                        && MarkerContext::from(&value.state) == baseline_context =>
+                {
+                    value
+                }
+                _ => {
+                    result.outcome = "context-lost-before-closed-loop-step";
+                    break;
+                }
+            };
+            if !game_is_foreground(process_id) {
+                result.outcome = "foreground-lost-before-closed-loop-step";
+                break;
+            }
+            let counts_before = observer.counts();
+            if counts_before.foreign != 0 {
+                result.foreign_mouse_moves_observed = counts_before.foreign;
+                result.outcome = "input-interference-before-closed-loop-step";
+                break;
+            }
+            let current_live = match read_live_player_context(&request.rlogs_base_url) {
+                Ok(value) if live_context_matches(&live, &value, &request.target) => value,
+                _ => {
+                    result.outcome = "live-context-lost-before-closed-loop-step";
+                    break;
+                }
+            };
+            if position_distance(&pre_input.observation.position, &request.target)
+                > MARKER_MAX_DISTANCE * 2.0
+                || position_distance(&request.target, &current_live.origin) > MARKER_MAX_DISTANCE
+            {
+                result.outcome = "closed-loop-range-gate-failed";
+                break;
+            }
+            if movement_ledger.is_empty() {
+                let last = observations.last_mut().expect("calibration observation");
+                last.position = [
+                    f64::from(pre_input.observation.position.x),
+                    f64::from(pre_input.observation.position.y),
+                    f64::from(pre_input.observation.position.z),
+                ];
+                rollback_reference = Some(pre_input.observation.position.clone());
+            } else if position_distance(
+                &pre_input.observation.position,
+                &Position {
+                    x: observations.last().unwrap().position[0] as f32,
+                    y: observations.last().unwrap().position[1] as f32,
+                    z: observations.last().unwrap().position[2] as f32,
+                },
+            ) > MAX_SETTLED_POSITION_DELTA
+            {
+                result.outcome = "indicator-moved-without-certified-input";
+                break;
+            }
+            let proposal =
+                match planner.plan(&observations, target, origin, MARKER_MAX_DISTANCE.into()) {
+                    Ok(PlannerDecision::Arrived { distance }) => {
+                        result.arrived = true;
+                        result.arrival_distance = Some(distance as f32);
+                        result.outcome = "arrived-awaiting-rollback";
+                        break;
+                    }
+                    Ok(PlannerDecision::Move(value))
+                        if movement_ledger.len() < CLOSED_LOOP_MAX_MOVES =>
+                    {
+                        value
+                    }
+                    Ok(PlannerDecision::Move(_)) => {
+                        result.outcome = "closed-loop-command-budget-exhausted";
+                        break;
+                    }
+                    Err(_) => {
+                        result.outcome = "closed-loop-planner-rejected";
+                        break;
+                    }
+                };
+            let delta = proposal.relative_mouse_delta;
+            if delta == [0, 0]
+                || delta.into_iter().any(|axis| axis.abs() > 4)
+                || (f64::from(delta[0]).powi(2) + f64::from(delta[1]).powi(2)).sqrt() > 4.0
+            {
+                result.outcome = "closed-loop-step-out-of-bounds";
+                break;
+            }
+            let distance_before =
+                position_distance(&pre_input.observation.position, &request.target);
+            if !emit_relative_mouse(delta) {
+                result.outcome = "closed-loop-input-failed";
+                break;
+            }
+            movement_ledger.push(delta);
+            thread::sleep(Duration::from_millis(SETTLE_MILLIS));
+            let counts_after = observer.counts();
+            let ownership_verified = input_ownership_verified(counts_before, counts_after);
+            result.foreign_mouse_moves_observed = counts_after.foreign;
+            let observed = stable_marker_1_sample(memory, module_base, started);
+            let observed_distance = observed
+                .as_ref()
+                .ok()
+                .map(|value| position_distance(&value.observation.position, &request.target));
+            result.steps.push(ClosedLoopStepReceipt {
+                command_id: proposal.command_id,
+                emitted_integer_mouse_delta: delta,
+                distance_before,
+                predicted_distance: proposal.predicted_distance as f32,
+                observed_distance,
+                input_ownership_verified: ownership_verified,
+            });
+            if !ownership_verified {
+                result.outcome = "closed-loop-input-interference";
+                break;
+            }
+            let observed = match observed {
+                Ok(value)
+                    if value.roots == *baseline_roots
+                        && MarkerContext::from(&value.state) == baseline_context =>
+                {
+                    value
+                }
+                _ => {
+                    result.outcome = "context-lost-after-closed-loop-step";
+                    break;
+                }
+            };
+            observations.push(planner_observation(
+                &observed.observation.position,
+                Some(CertifiedMouseDelta {
+                    planner_command_id: Some(proposal.command_id),
+                    delta,
+                    exclusive_input_ownership: true,
+                }),
+            ));
+        }
+
+        result.emitted_move_count = movement_ledger.len();
+        result.cumulative_motion_pixels = movement_ledger
+            .iter()
+            .map(|delta| (f64::from(delta[0]).powi(2) + f64::from(delta[1]).powi(2)).sqrt())
+            .sum();
+        result.rollback_attempted = !movement_ledger.is_empty();
+        for inverse in reverse_rollback_deltas(&movement_ledger) {
+            let rollback_sample = stable_marker_1_sample(memory, module_base, started);
+            let context_matches = rollback_sample.as_ref().is_ok_and(|value| {
+                value.roots == *baseline_roots
+                    && MarkerContext::from(&value.state) == baseline_context
+            });
+            match next_planner_rollback_action(
+                inverse,
+                game_is_foreground(process_id),
+                context_matches,
+            ) {
+                PlannerRollbackAction::Inverse(exact_inverse) => {
+                    let before = observer.counts();
+                    if !emit_relative_mouse(exact_inverse) {
+                        result.rollback_not_safe = true;
+                        result.outcome = "rollback_not_safe";
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(SETTLE_MILLIS));
+                    let after = observer.counts();
+                    if !input_ownership_verified(before, after) {
+                        result.foreign_mouse_moves_observed = after.foreign;
+                        result.rollback_not_safe = true;
+                        result.outcome = "rollback_not_safe";
+                        break;
+                    }
+                    result.rollback_inverse_count += 1;
+                }
+                PlannerRollbackAction::Escape => {
+                    result.rollback_not_safe = true;
+                    result.rollback_cancel_emitted = emit_escape();
+                    result.outcome = "rollback_not_safe";
+                    break;
+                }
+                PlannerRollbackAction::CannotActWithoutForeground => {
+                    result.rollback_not_safe = true;
+                    result.outcome = "rollback_not_safe";
+                    break;
+                }
+            }
+        }
+        if result.rollback_inverse_count == movement_ledger.len()
+            && let (Some(reference), Ok(returned)) = (
+                rollback_reference,
+                stable_marker_1_sample(memory, module_base, started),
+            )
+            && returned.roots == *baseline_roots
+            && MarkerContext::from(&returned.state) == baseline_context
+        {
+            result.rollback_return_error = Some(position_distance(
+                &reference,
+                &returned.observation.position,
+            ));
+        }
+        if result.arrived
+            && !result.rollback_not_safe
+            && result.rollback_inverse_count == movement_ledger.len()
+            && result
+                .rollback_return_error
+                .is_some_and(|error| error.is_finite() && error <= 0.01)
+            && result.foreign_mouse_moves_observed == 0
+        {
+            result.outcome = "passed";
+        }
+        result
+    }
+
+    fn empty_closed_loop_receipt(
+        request: &PlannerCanaryRequest,
+        outcome: &'static str,
+    ) -> ClosedLoopReceipt {
+        ClosedLoopReceipt {
+            target: request.target.clone(),
+            player_origin: None,
+            target_player_distance: None,
+            arrived: false,
+            arrival_distance: None,
+            steps: Vec::new(),
+            emitted_move_count: 0,
+            cumulative_motion_pixels: 0.0,
+            input_observer_started: false,
+            foreign_mouse_moves_observed: 0,
+            rollback_attempted: false,
+            rollback_inverse_count: 0,
+            rollback_not_safe: false,
+            rollback_cancel_emitted: false,
+            rollback_return_error: None,
+            outcome,
+        }
     }
 
     fn empty_planner_receipt(
@@ -1482,6 +2074,21 @@ mod windows {
         PlannerRollbackAction::Inverse(inverse)
     }
 
+    fn input_ownership_verified(
+        before: MouseObservationCounts,
+        after: MouseObservationCounts,
+    ) -> bool {
+        after.own == before.own.saturating_add(1) && after.foreign == before.foreign
+    }
+
+    fn reverse_rollback_deltas(movement_ledger: &[[i32; 2]]) -> Vec<[i32; 2]> {
+        movement_ledger
+            .iter()
+            .rev()
+            .map(|delta| [-delta[0], -delta[1]])
+            .collect()
+    }
+
     fn calibration_sequence_is_rank_2() -> bool {
         let xx: i64 = CALIBRATION_SEQUENCE
             .iter()
@@ -1698,7 +2305,7 @@ mod windows {
                     mouseData: 0,
                     dwFlags: MOUSEEVENTF_MOVE,
                     time: 0,
-                    dwExtraInfo: 0,
+                    dwExtraInfo: INPUT_OBSERVER_TAG,
                 },
             },
         };
@@ -2303,14 +2910,18 @@ mod windows {
         if required(options, "build")? != BUILD {
             return Err(format!("this probe supports exact build {BUILD} only").into());
         }
-        if options
-            .get("armed-mode")
-            .is_some_and(|value| value != ARMED_MODE_TOKEN && value != PLANNER_ARMED_MODE_TOKEN)
-        {
+        if options.get("armed-mode").is_some_and(|value| {
+            value != ARMED_MODE_TOKEN
+                && value != PLANNER_ARMED_MODE_TOKEN
+                && value != CLOSED_LOOP_ARMED_MODE_TOKEN
+        }) {
             return Err("unknown armed-mode token".into());
         }
         let planner_options = ["target-x", "target-y", "target-z", "rlogs-base-url"];
-        if options.get("armed-mode").map(String::as_str) == Some(PLANNER_ARMED_MODE_TOKEN) {
+        if matches!(
+            options.get("armed-mode").map(String::as_str),
+            Some(PLANNER_ARMED_MODE_TOKEN | CLOSED_LOOP_ARMED_MODE_TOKEN)
+        ) {
             if planner_options
                 .iter()
                 .any(|key| !options.contains_key(*key))
@@ -2667,6 +3278,8 @@ mod windows {
             options.insert("target-z".into(), "3".into());
             options.insert("rlogs-base-url".into(), "http://127.0.0.1:1".into());
             assert!(reject_unknown_options(&options).is_ok());
+            options.insert("armed-mode".into(), CLOSED_LOOP_ARMED_MODE_TOKEN.into());
+            assert!(reject_unknown_options(&options).is_ok());
         }
 
         #[test]
@@ -2694,6 +3307,47 @@ mod windows {
                 next_planner_rollback_action([-3, 1], false, true),
                 PlannerRollbackAction::CannotActWithoutForeground
             );
+        }
+
+        #[test]
+        fn closed_loop_rollback_is_exact_reverse_order_and_bounded() {
+            let ledger = [[4, 0], [0, -4], [2, 1], [-1, 2]];
+            assert_eq!(
+                reverse_rollback_deltas(&ledger),
+                vec![[1, -2], [-2, -1], [0, 4], [-4, 0]]
+            );
+            assert_eq!(ledger.len(), CLOSED_LOOP_MAX_MOVES);
+            let cumulative = ledger
+                .iter()
+                .map(|delta| (f64::from(delta[0]).powi(2) + f64::from(delta[1]).powi(2)).sqrt())
+                .sum::<f64>();
+            assert!(cumulative <= CLOSED_LOOP_MAX_CUMULATIVE_PIXELS);
+            assert!(
+                ledger
+                    .iter()
+                    .all(|delta| delta.iter().all(|axis| axis.abs() <= 4))
+            );
+        }
+
+        #[test]
+        fn input_ownership_requires_one_tagged_move_and_no_foreign_move() {
+            let before = MouseObservationCounts { own: 4, foreign: 0 };
+            assert!(input_ownership_verified(
+                before,
+                MouseObservationCounts { own: 5, foreign: 0 }
+            ));
+            assert!(!input_ownership_verified(
+                before,
+                MouseObservationCounts { own: 4, foreign: 0 }
+            ));
+            assert!(!input_ownership_verified(
+                before,
+                MouseObservationCounts { own: 6, foreign: 0 }
+            ));
+            assert!(!input_ownership_verified(
+                before,
+                MouseObservationCounts { own: 5, foreign: 1 }
+            ));
         }
 
         #[test]

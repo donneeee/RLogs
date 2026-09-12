@@ -6,6 +6,7 @@ param(
     [ValidateRange(5, 1000)][int]$IntervalMs = 10,
     [switch]$ArmReversibleCalibration,
     [switch]$ArmSinglePlannerStep,
+    [switch]$ArmClosedLoopAim,
     [Nullable[double]]$TargetX,
     [Nullable[double]]$TargetY,
     [Nullable[double]]$TargetZ,
@@ -21,14 +22,14 @@ if (-not (Test-Path -LiteralPath $probe -PathType Leaf)) {
     throw 'The probe executable is missing from this package.'
 }
 if ($DryRun) {
-    if ($ArmReversibleCalibration -or $ArmSinglePlannerStep) {
+    if ($ArmReversibleCalibration -or $ArmSinglePlannerStep -or $ArmClosedLoopAim) {
         throw '-DryRun cannot be combined with an armed mode.'
     }
     $dryStamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
     $dryReceipt = Join-Path $PSScriptRoot "automarker-dry-run-$dryStamp.v1.json"
     $value = [ordered]@{
         schemaVersion = 1
-        evidenceKind = 'automarker-v9-packaged-dry-run'
+        evidenceKind = 'automarker-v10-packaged-dry-run'
         exactBuild = $expectedBuild
         executablePresent = $true
         processOpened = $false
@@ -95,7 +96,7 @@ if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
 }
 
 $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
-$receipt = Join-Path $PSScriptRoot "automarker-lifecycle-$stamp.v5.json"
+$receipt = Join-Path $PSScriptRoot "automarker-lifecycle-$stamp.v6.json"
 if (Test-Path -LiteralPath $receipt) { throw 'Refusing to overwrite an existing receipt.' }
 
 $arguments = @(
@@ -107,7 +108,7 @@ $arguments = @(
     '--interval-ms', $IntervalMs,
     '--output', $receipt
 )
-if ($ArmReversibleCalibration -and $ArmSinglePlannerStep) {
+if (@($ArmReversibleCalibration, $ArmSinglePlannerStep, $ArmClosedLoopAim).Where({ $_ }).Count -gt 1) {
     throw 'Choose only one armed canary mode.'
 }
 if ($ArmReversibleCalibration) {
@@ -119,9 +120,9 @@ if ($ArmReversibleCalibration) {
     }
     $arguments += @('--armed-mode', 'marker1-reversible-calibration-v1')
 }
-if ($ArmSinglePlannerStep) {
+if ($ArmSinglePlannerStep -or $ArmClosedLoopAim) {
     if ($null -eq $TargetX -or $null -eq $TargetY -or $null -eq $TargetZ) {
-        throw '-TargetX, -TargetY, and -TargetZ are required for -ArmSinglePlannerStep.'
+        throw '-TargetX, -TargetY, and -TargetZ are required for planner modes.'
     }
     foreach ($coordinate in @($TargetX.Value, $TargetY.Value, $TargetZ.Value)) {
         if ([double]::IsNaN($coordinate) -or [double]::IsInfinity($coordinate)) {
@@ -131,14 +132,19 @@ if ($ArmSinglePlannerStep) {
     if ([string]::IsNullOrWhiteSpace($RLogsBaseUrl) -or $RLogsBaseUrl -notmatch '^http://127\.0\.0\.1:\d+$') {
         throw '-RLogsBaseUrl must be the active loopback rLogs host, for example http://127.0.0.1:54221.'
     }
-    Write-Warning 'ARMED ONE-STEP CANARY: manually select Marker 1 and keep the game focused. This calibrates, moves at most 4 pixels once, applies the exact inverse, then Escape. It never clicks or places.'
+    if ($ArmClosedLoopAim) {
+        Write-Warning 'ARMED CLOSED-LOOP CANARY: manually select Marker 1 and keep the game focused. This calibrates, makes at most four <=4-pixel moves (<=16 cumulative), reverses every move, then Escape. Do not touch the mouse. It never clicks or places.'
+    } else {
+        Write-Warning 'ARMED ONE-STEP CANARY: manually select Marker 1 and keep the game focused. This calibrates, moves at most 4 pixels once, applies the exact inverse, then Escape. It never clicks or places.'
+    }
     Write-Host 'Return focus to the game now. The fail-closed canary starts in 5 seconds.'
     foreach ($remaining in 5..1) {
         Write-Host "$remaining..."
         Start-Sleep -Seconds 1
     }
+    $armedToken = if ($ArmClosedLoopAim) { 'marker1-closed-loop-aim-and-rollback-v1' } else { 'marker1-single-planner-step-and-restore-v1' }
     $arguments += @(
-        '--armed-mode', 'marker1-single-planner-step-and-restore-v1',
+        '--armed-mode', $armedToken,
         '--target-x', $TargetX.Value.ToString('R', [Globalization.CultureInfo]::InvariantCulture),
         '--target-y', $TargetY.Value.ToString('R', [Globalization.CultureInfo]::InvariantCulture),
         '--target-z', $TargetZ.Value.ToString('R', [Globalization.CultureInfo]::InvariantCulture),

@@ -41,7 +41,7 @@ foreground game. It never emits a mouse button, Enter, Normal Attack, or
 placement confirmation. Its receipt contains no PID, account/session identity,
 raw address, or filesystem path.
 
-Receipt schema v5 retains a sanitized diagnostic even when armed preflight is
+Receipt schema v6 retains a sanitized diagnostic even when armed preflight is
 rejected before input. It reports acquisition/class/coherence status, whether
 the allowlisted roots stayed unchanged, each exact Marker 1 field gate, the
 safe observed scalar flags and IDs, indicator parameters and range, input-slot
@@ -127,6 +127,31 @@ same read-only Marker 1 roots/context can be re-established, the exact inverse
 is attempted. Otherwise the canary emits Escape only while the game remains
 foreground and records `rollback_not_safe`; it never substitutes a click or
 placement action.
+
+Schema v6 also adds the separately armed v10 closed-loop aiming canary:
+
+```powershell
+.\run-bpsr-automarker-lifecycle-probe.ps1 `
+  -ArmClosedLoopAim `
+  -TargetX <saved-x> -TargetY <saved-y> -TargetZ <saved-z> `
+  -RLogsBaseUrl 'http://127.0.0.1:54221'
+```
+
+Marker 1 selection remains manual. Do not touch the mouse after the countdown.
+The canary installs a bounded low-level mouse observer and accepts ownership
+only when every emitted relative move produces exactly one matching injected
+move tagged by this process and no untagged or foreign movement. If that
+observer cannot start, no planner movement is emitted.
+
+After fresh calibration it retains at most four planner moves, each at most
+four pixels and no more than sixteen cumulative pixels. Every step requires a
+fresh advancing Mechanics Map observation and unchanged build, session, local
+actor, scene, map, dungeon family, roots, and Marker 1 state. Arrival means at
+most `0.075 m` from the supplied target. Whether it arrives or fails, all
+emitted moves are inverted in exact reverse order using only foreground and
+read-only root/Marker 1 safety gates. Map API failure cannot suppress rollback.
+The canary then requires return within `0.01 m` and cancels with Escape. It has
+no mouse-button input and cannot place a marker.
 
 The output is a sanitized JSON receipt containing exact artifact hashes,
 sampling counts, policy assertions, and deduplicated lifecycle transitions.
