@@ -83,6 +83,14 @@ mod windows {
     const ASSEMBLY_BYTES: u64 = 218_074_672;
     const ASSEMBLY_SHA256: &str =
         "4a079aec0a3e51a8023aa86bbd152e12068907b65b9aafb355d20bb6d6c41fe3";
+    const SET_INDICATOR_POS_RVA: usize = 0x53E_86A0;
+    const SET_INDICATOR_POS_BYTES: usize = 0x1D0;
+    const SET_INDICATOR_POS_SHA256: &str =
+        "a02f30ee1ee8ecf606fceb964a3428b83fa3ab2aac9c4290d85d0c1454af17e6";
+    const FIRE_PLAY_SKILL_BY_INDICATOR_RVA: usize = 0x52E_09E0;
+    const FIRE_PLAY_SKILL_BY_INDICATOR_BYTES: usize = 0xD0;
+    const FIRE_PLAY_SKILL_BY_INDICATOR_SHA256: &str =
+        "6ae23a6d1f432969dd2d4c9dd4461f80b7ac6ecf5b5382526dbc00a7b6d8b9f6";
 
     // Exact build 25247556 only. This is the reviewed MethodInfo global used by
     // ZEntityMgr's singleton acquisition. It is not accepted from the CLI.
@@ -232,6 +240,59 @@ mod windows {
         preflight: Option<PreflightDiagnostic>,
         planner_step: Option<PlannerStepReceipt>,
         closed_loop: Option<ClosedLoopReceipt>,
+        native_dispatch_preflight: Option<NativeDispatchPreflightReceipt>,
+    }
+
+    #[derive(Clone, Debug, Serialize)]
+    struct NativeDispatchPreflightReceipt {
+        preset_id: String,
+        scene_id: Option<i64>,
+        map_id: Option<u64>,
+        activity_family_id: Option<String>,
+        marker_1_target: Option<Position>,
+        preset_context_failure_reason: Option<&'static str>,
+        exact_image_identity: bool,
+        root_chain_class_valid: bool,
+        root_chain_stable: bool,
+        lifecycle_idle: bool,
+        preset_context_current: bool,
+        reviewed_code: [ReviewedCodeReceipt; 2],
+        dungeon_stage_gate: BoundedGate,
+        leader_gate: BoundedGate,
+        marker_skill_resolution_gate: BoundedGate,
+        main_thread_bridge_gate: BoundedGate,
+        all_resolvable_gates_passed: bool,
+        activation_attempted: bool,
+        outcome: &'static str,
+    }
+
+    #[derive(Clone, Debug, Serialize)]
+    struct ReviewedCodeReceipt {
+        identity: &'static str,
+        rva: &'static str,
+        byte_length: usize,
+        sha256: String,
+        matches_reviewed_image: bool,
+    }
+
+    #[derive(Clone, Debug, Serialize)]
+    struct BoundedGate {
+        proven: bool,
+        reason: &'static str,
+    }
+
+    #[derive(Clone, Debug)]
+    struct NativeDispatchPreflightRequest {
+        preset_id: String,
+        rlogs_base_url: String,
+    }
+
+    #[derive(Clone, Debug)]
+    struct NativeDispatchPresetContext {
+        scene_id: i64,
+        map_id: u64,
+        activity_family_id: String,
+        marker_1_target: Position,
     }
 
     #[derive(Clone, Debug, Serialize)]
@@ -766,6 +827,17 @@ mod windows {
         let interval_millis = numeric_option(&options, "interval-ms", 10, 5, 1_000)?;
         let armed_mode = options.get("armed-mode").map(String::as_str);
         let armed = armed_mode.is_some();
+        let native_dispatch_preflight = options
+            .get("native-dispatch-preflight")
+            .is_some_and(|value| value == "true");
+        let native_dispatch_request = if native_dispatch_preflight {
+            Some(NativeDispatchPreflightRequest {
+                preset_id: required(&options, "preset-id")?.to_owned(),
+                rlogs_base_url: required(&options, "rlogs-base-url")?.to_owned(),
+            })
+        } else {
+            None
+        };
         let planner_mode = match armed_mode {
             Some(PLANNER_ARMED_MODE_TOKEN) => Some(PlannerCanaryMode::SingleStep),
             Some(CLOSED_LOOP_ARMED_MODE_TOKEN) => Some(PlannerCanaryMode::ClosedLoop),
@@ -842,7 +914,13 @@ mod windows {
         require_manifest_identity(std::str::from_utf8(&fs::read(&manifest_path)?)?)?;
 
         let memory = ProcessMemory(handle.0);
-        let (events, counters, canary) = if armed {
+        let (events, counters, canary) = if let Some(request) = native_dispatch_request.as_ref() {
+            (
+                Vec::new(),
+                Counters::default(),
+                run_native_dispatch_preflight(&memory, module.base, module.size, request),
+            )
+        } else if armed {
             let canary = run_reversible_calibration_canary(
                 &memory,
                 module.base,
@@ -865,7 +943,7 @@ mod windows {
             .and_then(|closed| closed.operator_placement.as_ref())
             .is_some_and(|placement| placement.human_click_observed);
         let receipt = Receipt {
-            schema_version: 7,
+            schema_version: 8,
             generated_by: "rlogs-bpsr-automarker-lifecycle-probe",
             game: "blue-protocol-star-resonance",
             deployment: "global",
@@ -966,6 +1044,7 @@ mod windows {
             preflight: None,
             planner_step: None,
             closed_loop: None,
+            native_dispatch_preflight: None,
         }
     }
 
@@ -995,6 +1074,7 @@ mod windows {
             preflight: None,
             planner_step: None,
             closed_loop: None,
+            native_dispatch_preflight: None,
         };
         let (preflight, baseline) = diagnose_marker_1_preflight(memory, module_base, &started);
         receipt.preflight = Some(preflight);
@@ -2612,6 +2692,251 @@ mod windows {
         capture_session_id == Some(map_session_id)
     }
 
+    fn run_native_dispatch_preflight(
+        memory: &impl Memory,
+        module_base: usize,
+        module_size: usize,
+        request: &NativeDispatchPreflightRequest,
+    ) -> CanaryReceipt {
+        let set_position_code = reviewed_code_receipt(
+            memory,
+            module_base,
+            module_size,
+            "Panda.ZGame.EntityAttrExtensions.SetIndicatorPos",
+            "0x53E86A0",
+            SET_INDICATOR_POS_RVA,
+            SET_INDICATOR_POS_BYTES,
+            SET_INDICATOR_POS_SHA256,
+        );
+        let fire_indicator_code = reviewed_code_receipt(
+            memory,
+            module_base,
+            module_size,
+            "Panda.ZGame.ZSkillInputMgr.FirePlaySkillByIndicator",
+            "0x52E09E0",
+            FIRE_PLAY_SKILL_BY_INDICATOR_RVA,
+            FIRE_PLAY_SKILL_BY_INDICATOR_BYTES,
+            FIRE_PLAY_SKILL_BY_INDICATOR_SHA256,
+        );
+        let first = coherent_sample_with_roots(memory, module_base);
+        thread::sleep(Duration::from_millis(STABILITY_SAMPLE_MILLIS));
+        let second = coherent_sample_with_roots(memory, module_base);
+        let root_chain_class_valid = first.is_ok() && second.is_ok();
+        let root_chain_stable = matches!((&first, &second), (Ok((a, _)), Ok((b, _))) if a == b);
+        let lifecycle_idle =
+            matches!(&second, Ok((_, state)) if !state.is_press && !state.indicator.is_enable);
+
+        let (preset, preset_context_failure_reason) = match read_native_dispatch_preset_context(
+            &request.rlogs_base_url,
+            &request.preset_id,
+        ) {
+            Ok(value) => (Some(value), None),
+            Err(reason) => (None, Some(reason)),
+        };
+        let preset_context_current = preset.is_some();
+        let all_resolvable_gates_passed = root_chain_class_valid
+            && root_chain_stable
+            && lifecycle_idle
+            && preset_context_current
+            && set_position_code.matches_reviewed_image
+            && fire_indicator_code.matches_reviewed_image;
+        let (scene_id, map_id, activity_family_id, marker_1_target) =
+            preset.map_or((None, None, None, None), |value| {
+                (
+                    Some(value.scene_id),
+                    Some(value.map_id),
+                    Some(value.activity_family_id),
+                    Some(value.marker_1_target),
+                )
+            });
+        CanaryReceipt {
+            armed: false,
+            mode: "native-dispatch-preflight-v1",
+            calibration_pixels: 0,
+            marker_1_state_validated: false,
+            foreground_validated_before_every_input: false,
+            root_context_unchanged: root_chain_stable,
+            lifecycle_context_unchanged: root_chain_stable,
+            rank_2_input_excitation: false,
+            escape_emitted: false,
+            baseline: None,
+            transitions: Vec::new(),
+            final_return_error: None,
+            approximately_returned: false,
+            cancelled: false,
+            outcome: "blocked-unresolved-native-gates",
+            preflight: None,
+            planner_step: None,
+            closed_loop: None,
+            native_dispatch_preflight: Some(NativeDispatchPreflightReceipt {
+                preset_id: request.preset_id.clone(),
+                scene_id,
+                map_id,
+                activity_family_id,
+                marker_1_target,
+                preset_context_failure_reason,
+                exact_image_identity: set_position_code.matches_reviewed_image
+                    && fire_indicator_code.matches_reviewed_image,
+                root_chain_class_valid,
+                root_chain_stable,
+                lifecycle_idle,
+                preset_context_current,
+                reviewed_code: [set_position_code, fire_indicator_code],
+                dungeon_stage_gate: BoundedGate {
+                    proven: false,
+                    reason: "unresolved-no-reviewed-read-only-dungeon-stage-query",
+                },
+                leader_gate: BoundedGate {
+                    proven: false,
+                    reason: "unresolved-no-reviewed-read-only-party-leader-query",
+                },
+                marker_skill_resolution_gate: BoundedGate {
+                    proven: false,
+                    reason: "unresolved-no-reviewed-non-invoking-live-skill-resolution",
+                },
+                main_thread_bridge_gate: BoundedGate {
+                    proven: false,
+                    reason: "unresolved-no-sanctioned-one-shot-main-thread-bridge",
+                },
+                all_resolvable_gates_passed,
+                activation_attempted: false,
+                outcome: "blocked-unresolved-native-gates",
+            }),
+        }
+    }
+
+    fn reviewed_code_receipt(
+        memory: &impl Memory,
+        module_base: usize,
+        module_size: usize,
+        identity: &'static str,
+        rva_text: &'static str,
+        rva: usize,
+        byte_length: usize,
+        expected_sha256: &str,
+    ) -> ReviewedCodeReceipt {
+        let range_within_module = rva
+            .checked_add(byte_length)
+            .is_some_and(|end| end <= module_size);
+        let sha256 = if range_within_module {
+            checked_add(module_base, rva)
+                .and_then(|address| memory.read_exact(address, byte_length))
+                .map(|bytes| format!("{:x}", Sha256::digest(bytes)))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let matches_reviewed_image = sha256 == expected_sha256;
+        ReviewedCodeReceipt {
+            identity,
+            rva: rva_text,
+            byte_length,
+            sha256,
+            matches_reviewed_image,
+        }
+    }
+
+    fn read_native_dispatch_preset_context(
+        base_url: &str,
+        preset_id: &str,
+    ) -> Result<NativeDispatchPresetContext, &'static str> {
+        if preset_id.len() < 8 || preset_id.len() > 128 || preset_id.chars().any(char::is_control) {
+            return Err("invalid-preflight-preset-id");
+        }
+        let authority = base_url
+            .strip_prefix("http://127.0.0.1:")
+            .ok_or("rlogs-base-url-must-be-loopback-http")?;
+        if authority.is_empty() || !authority.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err("rlogs-base-url-must-be-loopback-http");
+        }
+        let projection = local_json_get(authority, "/api/automarkers/presets")?;
+        if projection
+            .get("schemaVersion")
+            .and_then(serde_json::Value::as_u64)
+            != Some(4)
+        {
+            return Err("invalid-automarker-preset-schema");
+        }
+        let context = projection
+            .get("context")
+            .ok_or("missing-automarker-context")?;
+        if context
+            .get("clientBuild")
+            .and_then(serde_json::Value::as_str)
+            != Some(BUILD)
+        {
+            return Err("automarker-context-not-current-build");
+        }
+        let scene_id = context
+            .get("sceneId")
+            .and_then(serde_json::Value::as_i64)
+            .ok_or("missing-scene")?;
+        let map_id = context
+            .get("mapId")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or("missing-map")?;
+        let activity_family_id = context
+            .get("activityFamilyId")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty() && value.len() <= 128)
+            .ok_or("missing-family")?;
+        let presets = projection
+            .get("presets")
+            .and_then(serde_json::Value::as_array)
+            .ok_or("invalid-automarker-preset-schema")?;
+        let mut matches = presets.iter().filter(|preset| {
+            preset.get("presetId").and_then(serde_json::Value::as_str) == Some(preset_id)
+        });
+        let preset = matches.next().ok_or("preflight-preset-not-found")?;
+        if matches.next().is_some() {
+            return Err("duplicate-preflight-preset-id");
+        }
+        if preset
+            .get("activityFamilyId")
+            .and_then(serde_json::Value::as_str)
+            != Some(activity_family_id)
+        {
+            return Err("preflight-preset-family-mismatch");
+        }
+        let points = preset
+            .get("points")
+            .and_then(serde_json::Value::as_array)
+            .ok_or("invalid-automarker-preset-schema")?;
+        let mut marker_1 = points.iter().filter(|point| {
+            point
+                .get("markerNumber")
+                .and_then(serde_json::Value::as_u64)
+                == Some(1)
+        });
+        let point = marker_1.next().ok_or("preflight-preset-missing-marker-1")?;
+        if marker_1.next().is_some() {
+            return Err("preflight-preset-duplicate-marker-1");
+        }
+        let coordinate = |name| {
+            point
+                .get(name)
+                .and_then(serde_json::Value::as_f64)
+                .filter(|value| value.is_finite())
+                .map(|value| value as f32)
+                .filter(|value| value.is_finite())
+                .ok_or("invalid-preflight-marker-coordinate")
+        };
+        let marker_1_target = Position {
+            x: coordinate("x")?,
+            y: coordinate("y")?,
+            z: coordinate("z")?,
+        };
+        if position_norm(&marker_1_target) == 0.0 {
+            return Err("invalid-zero-target");
+        }
+        Ok(NativeDispatchPresetContext {
+            scene_id,
+            map_id,
+            activity_family_id: activity_family_id.to_owned(),
+            marker_1_target,
+        })
+    }
+
     fn read_live_player_context(base_url: &str) -> Result<LivePlayerContext, &'static str> {
         let authority = base_url
             .strip_prefix("http://127.0.0.1:")
@@ -3233,6 +3558,7 @@ mod windows {
 
     struct ModuleIdentity {
         base: usize,
+        size: usize,
         path: PathBuf,
     }
 
@@ -3253,6 +3579,7 @@ mod windows {
             if names_match(expected, &wide_string(&entry.szModule)) {
                 return Ok(ModuleIdentity {
                     base: entry.modBaseAddr as usize,
+                    size: entry.modBaseSize as usize,
                     path: PathBuf::from(wide_string(&entry.szExePath)),
                 });
             }
@@ -3402,7 +3729,7 @@ mod windows {
     }
 
     fn reject_unknown_options(options: &BTreeMap<String, String>) -> Result<(), Box<dyn Error>> {
-        const ALLOWED: [&str; 11] = [
+        const ALLOWED: [&str; 13] = [
             "build",
             "process-executable",
             "game-assembly",
@@ -3414,6 +3741,8 @@ mod windows {
             "target-y",
             "target-z",
             "rlogs-base-url",
+            "native-dispatch-preflight",
+            "preset-id",
         ];
         for key in options.keys() {
             if key != "interval-ms" && !ALLOWED.contains(&key.as_str()) {
@@ -3431,6 +3760,15 @@ mod windows {
         }) {
             return Err("unknown armed-mode token".into());
         }
+        let native_dispatch_preflight =
+            match options.get("native-dispatch-preflight").map(String::as_str) {
+                Some("true") => true,
+                Some(_) => return Err("--native-dispatch-preflight accepts only true".into()),
+                None => false,
+            };
+        if native_dispatch_preflight && options.contains_key("armed-mode") {
+            return Err("native dispatch preflight cannot be combined with an armed mode".into());
+        }
         let planner_options = ["target-x", "target-y", "target-z", "rlogs-base-url"];
         if matches!(
             options.get("armed-mode").map(String::as_str),
@@ -3446,8 +3784,24 @@ mod windows {
             {
                 return Err("planner mode requires target XYZ and rlogs-base-url".into());
             }
-        } else if planner_options.iter().any(|key| options.contains_key(*key)) {
+        } else if !native_dispatch_preflight
+            && planner_options.iter().any(|key| options.contains_key(*key))
+        {
             return Err("planner-only options require the exact planner armed mode".into());
+        }
+        if native_dispatch_preflight {
+            required(options, "preset-id")?;
+            required(options, "rlogs-base-url")?;
+            if ["target-x", "target-y", "target-z"]
+                .iter()
+                .any(|key| options.contains_key(*key))
+            {
+                return Err(
+                    "native dispatch preflight resolves its target from the selected preset".into(),
+                );
+            }
+        } else if options.contains_key("preset-id") {
+            return Err("--preset-id requires native dispatch preflight".into());
         }
         Ok(())
     }
@@ -3803,6 +4157,107 @@ mod windows {
                 OPERATOR_PLACEMENT_ARMED_MODE_TOKEN.into(),
             );
             assert!(reject_unknown_options(&options).is_ok());
+        }
+
+        #[test]
+        fn native_dispatch_preflight_is_read_only_and_preset_bound() {
+            let mut options = Map::new();
+            options.insert("build".into(), BUILD.into());
+            options.insert("native-dispatch-preflight".into(), "true".into());
+            options.insert("preset-id".into(), "preset-test".into());
+            options.insert("rlogs-base-url".into(), "http://127.0.0.1:1".into());
+            assert!(reject_unknown_options(&options).is_ok());
+
+            options.insert("target-x".into(), "1".into());
+            assert!(reject_unknown_options(&options).is_err());
+            options.remove("target-x");
+            options.insert("armed-mode".into(), ARMED_MODE_TOKEN.into());
+            assert!(reject_unknown_options(&options).is_err());
+            options.remove("armed-mode");
+            options.remove("preset-id");
+            assert!(reject_unknown_options(&options).is_err());
+        }
+
+        #[test]
+        fn native_dispatch_preset_context_requires_exact_build_family_and_marker_one() {
+            use std::net::TcpListener;
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let server = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0u8; 2048];
+                let _ = stream.read(&mut request).unwrap();
+                let body = r#"{"schemaVersion":4,"context":{"clientBuild":"25247556","sceneId":6525,"mapId":6525,"activityFamilyId":"mech-facility"},"presets":[{"presetId":"preset-test","activityFamilyId":"mech-facility","points":[{"markerNumber":1,"x":248.5,"y":118.0,"z":-53.5}]}]}"#;
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .unwrap();
+            });
+            let context = read_native_dispatch_preset_context(
+                &format!("http://127.0.0.1:{port}"),
+                "preset-test",
+            )
+            .unwrap();
+            server.join().unwrap();
+            assert_eq!(context.scene_id, 6525);
+            assert_eq!(context.map_id, 6525);
+            assert_eq!(context.activity_family_id, "mech-facility");
+            assert_eq!(context.marker_1_target.x, 248.5);
+        }
+
+        #[test]
+        fn reviewed_code_evidence_fails_closed_without_exact_loaded_bytes() {
+            let memory = valid_memory();
+            let code = reviewed_code_receipt(
+                &memory,
+                0x10_0000,
+                usize::MAX - 0x10_0000,
+                "Panda.ZGame.EntityAttrExtensions.SetIndicatorPos",
+                "0x53E86A0",
+                SET_INDICATOR_POS_RVA,
+                SET_INDICATOR_POS_BYTES,
+                SET_INDICATOR_POS_SHA256,
+            );
+            assert!(!code.matches_reviewed_image);
+            assert!(code.sha256.is_empty());
+        }
+
+        #[test]
+        fn reviewed_code_evidence_never_reads_past_the_reported_module_image() {
+            let module_base = 0x10_0000;
+            let rva = 0x1000;
+            let bytes = [1u8, 2, 3, 4];
+            let expected = format!("{:x}", Sha256::digest(bytes));
+            let mut memory = FakeMemory::new();
+            memory.put(module_base + rva, &bytes);
+
+            let outside = reviewed_code_receipt(
+                &memory,
+                module_base,
+                rva + bytes.len() - 1,
+                "test",
+                "0x1000",
+                rva,
+                bytes.len(),
+                &expected,
+            );
+            assert!(outside.sha256.is_empty());
+            assert!(!outside.matches_reviewed_image);
+
+            let inside = reviewed_code_receipt(
+                &memory,
+                module_base,
+                rva + bytes.len(),
+                "test",
+                "0x1000",
+                rva,
+                bytes.len(),
+                &expected,
+            );
+            assert_eq!(inside.sha256, expected);
+            assert!(inside.matches_reviewed_image);
         }
 
         fn observed_evidence(

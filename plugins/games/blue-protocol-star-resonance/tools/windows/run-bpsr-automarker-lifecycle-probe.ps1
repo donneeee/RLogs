@@ -8,6 +8,7 @@ param(
     [switch]$ArmSinglePlannerStep,
     [switch]$ArmClosedLoopAim,
     [switch]$ArmOperatorPlacement,
+    [switch]$NativeDispatchPreflight,
     [Nullable[double]]$TargetX,
     [Nullable[double]]$TargetY,
     [Nullable[double]]$TargetZ,
@@ -313,6 +314,7 @@ function Assert-LauncherTargetSelection(
     [bool]$OneStep,
     [bool]$ClosedLoop,
     [bool]$OperatorPlacement,
+    [bool]$NativePreflight,
     [string]$RequestedPresetId,
     [string]$RequestedPresetName,
     [bool]$ListingPresets,
@@ -320,15 +322,15 @@ function Assert-LauncherTargetSelection(
     [Nullable[double]]$Y,
     [Nullable[double]]$Z
 ) {
-    if (@($Calibration, $OneStep, $ClosedLoop, $OperatorPlacement).Where({ $_ }).Count -gt 1) {
-        throw 'Choose only one armed canary mode.'
+    if (@($Calibration, $OneStep, $ClosedLoop, $OperatorPlacement, $NativePreflight).Where({ $_ }).Count -gt 1) {
+        throw 'Choose only one canary or preflight mode.'
     }
     $hasPreset = -not [string]::IsNullOrWhiteSpace($RequestedPresetId)
     $hasPresetName = -not [string]::IsNullOrWhiteSpace($RequestedPresetName)
     $hasAnyCoordinate = ($null -ne $X -or $null -ne $Y -or $null -ne $Z)
     $hasAllCoordinates = ($null -ne $X -and $null -ne $Y -and $null -ne $Z)
-    if (($hasPreset -or $hasPresetName) -and -not ($ClosedLoop -or $OperatorPlacement)) {
-        throw '-PresetId and -PresetName require -ArmClosedLoopAim or -ArmOperatorPlacement.'
+    if (($hasPreset -or $hasPresetName) -and -not ($ClosedLoop -or $OperatorPlacement -or $NativePreflight)) {
+        throw '-PresetId and -PresetName require -ArmClosedLoopAim, -ArmOperatorPlacement, or -NativeDispatchPreflight.'
     }
     if (@($hasPreset, $hasPresetName, $hasAnyCoordinate).Where({ $_ }).Count -gt 1) {
         throw '-PresetId, -PresetName, and explicit -TargetX/-TargetY/-TargetZ are mutually exclusive.'
@@ -342,10 +344,16 @@ function Assert-LauncherTargetSelection(
     if ($OperatorPlacement -and -not ($hasPreset -or $hasPresetName)) {
         throw '-ArmOperatorPlacement requires exactly one of -PresetId or -PresetName; explicit XYZ is not accepted.'
     }
-    if (-not ($OneStep -or $ClosedLoop -or $OperatorPlacement) -and ($hasPreset -or $hasPresetName -or $hasAnyCoordinate)) {
+    if ($NativePreflight -and -not ($hasPreset -or $hasPresetName)) {
+        throw '-NativeDispatchPreflight requires exactly one of -PresetId or -PresetName.'
+    }
+    if ($NativePreflight -and $hasAnyCoordinate) {
+        throw '-NativeDispatchPreflight resolves Marker 1 from the selected preset; explicit XYZ is not accepted.'
+    }
+    if (-not ($OneStep -or $ClosedLoop -or $OperatorPlacement -or $NativePreflight) -and ($hasPreset -or $hasPresetName -or $hasAnyCoordinate)) {
         throw 'Target coordinates and presets require an armed planner mode.'
     }
-    if ($ListingPresets -and ($Calibration -or $OneStep -or $ClosedLoop -or $OperatorPlacement -or $hasPreset -or $hasPresetName -or $hasAnyCoordinate)) {
+    if ($ListingPresets -and ($Calibration -or $OneStep -or $ClosedLoop -or $OperatorPlacement -or $NativePreflight -or $hasPreset -or $hasPresetName -or $hasAnyCoordinate)) {
         throw '-ListPresets cannot be combined with an armed mode or a target selector.'
     }
 }
@@ -586,6 +594,84 @@ function Assert-ArmedModeSuccess($Receipt, [string]$ExpectedMode) {
     }
 }
 
+function Assert-NativeDispatchPreflight($Value) {
+    $fields = @(
+        'preset_id', 'scene_id', 'map_id', 'activity_family_id', 'marker_1_target',
+        'preset_context_failure_reason', 'exact_image_identity', 'root_chain_class_valid',
+        'root_chain_stable', 'lifecycle_idle', 'preset_context_current', 'reviewed_code',
+        'dungeon_stage_gate', 'leader_gate', 'marker_skill_resolution_gate',
+        'main_thread_bridge_gate', 'all_resolvable_gates_passed', 'activation_attempted', 'outcome'
+    )
+    if (-not (Test-ExactPropertySet $Value $fields) -or
+        [string]$Value.preset_id -cnotmatch '^[^\p{C}]{8,128}$' -or
+        [string]$Value.outcome -cne 'blocked-unresolved-native-gates' -or
+        @($Value.reviewed_code).Count -ne 2) {
+        throw 'The sanitized native-dispatch preflight envelope is invalid.'
+    }
+    foreach ($field in @('exact_image_identity', 'root_chain_class_valid', 'root_chain_stable',
+        'lifecycle_idle', 'preset_context_current', 'all_resolvable_gates_passed', 'activation_attempted')) {
+        if ($Value.$field -isnot [bool]) { throw "The sanitized native-dispatch preflight has an invalid $field value." }
+    }
+    Assert-ExactBoolean $Value.activation_attempted $false 'canary.native_dispatch_preflight.activation_attempted'
+    $contextPresent = $null -ne $Value.scene_id -and $null -ne $Value.map_id -and
+        $null -ne $Value.activity_family_id -and $null -ne $Value.marker_1_target
+    if ([bool]$Value.preset_context_current -ne $contextPresent -or
+        $contextPresent -eq ($null -ne $Value.preset_context_failure_reason)) {
+        throw 'The sanitized native-dispatch preflight has inconsistent preset context evidence.'
+    }
+    if ($contextPresent) {
+        foreach ($field in @('scene_id', 'map_id')) {
+            Assert-FiniteNumber $Value.$field "canary.native_dispatch_preflight.$field"
+            if ([decimal]$Value.$field % 1 -ne 0) { throw 'The sanitized native-dispatch preflight has a non-integral context identity.' }
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$Value.activity_family_id) -or
+            ([string]$Value.activity_family_id).Length -gt 128) {
+            throw 'The sanitized native-dispatch preflight has an invalid activity family.'
+        }
+        Assert-ExactPosition $Value.marker_1_target 'canary.native_dispatch_preflight.marker_1_target'
+    } elseif ([string]$Value.preset_context_failure_reason -cnotmatch '^[a-z0-9-]{1,80}$') {
+        throw 'The sanitized native-dispatch preflight has an invalid preset failure reason.'
+    }
+    $expectedCode = @(
+        [ordered]@{ Identity = 'Panda.ZGame.EntityAttrExtensions.SetIndicatorPos'; Rva = '0x53E86A0'; Bytes = 464; Hash = 'a02f30ee1ee8ecf606fceb964a3428b83fa3ab2aac9c4290d85d0c1454af17e6' },
+        [ordered]@{ Identity = 'Panda.ZGame.ZSkillInputMgr.FirePlaySkillByIndicator'; Rva = '0x52E09E0'; Bytes = 208; Hash = '6ae23a6d1f432969dd2d4c9dd4461f80b7ac6ecf5b5382526dbc00a7b6d8b9f6' }
+    )
+    for ($index = 0; $index -lt 2; $index++) {
+        $code = @($Value.reviewed_code)[$index]
+        if (-not (Test-ExactPropertySet $code @('identity', 'rva', 'byte_length', 'sha256', 'matches_reviewed_image')) -or
+            [string]$code.identity -cne $expectedCode[$index].Identity -or
+            [string]$code.rva -cne $expectedCode[$index].Rva -or
+            [int]$code.byte_length -ne $expectedCode[$index].Bytes -or
+            [string]$code.sha256 -cnotmatch '^([0-9a-f]{64})?$' -or
+            $code.matches_reviewed_image -isnot [bool] -or
+            [bool]$code.matches_reviewed_image -ne ([string]$code.sha256 -ceq $expectedCode[$index].Hash)) {
+            throw 'The sanitized native-dispatch preflight has invalid reviewed code evidence.'
+        }
+    }
+    $expectedGates = [ordered]@{
+        dungeon_stage_gate = 'unresolved-no-reviewed-read-only-dungeon-stage-query'
+        leader_gate = 'unresolved-no-reviewed-read-only-party-leader-query'
+        marker_skill_resolution_gate = 'unresolved-no-reviewed-non-invoking-live-skill-resolution'
+        main_thread_bridge_gate = 'unresolved-no-sanctioned-one-shot-main-thread-bridge'
+    }
+    foreach ($field in $expectedGates.Keys) {
+        $gate = $Value.$field
+        if (-not (Test-ExactPropertySet $gate @('proven', 'reason')) -or
+            $gate.proven -isnot [bool] -or $gate.proven -or
+            [string]$gate.reason -cne [string]$expectedGates[$field]) {
+            throw "The sanitized native-dispatch preflight has an invalid $field result."
+        }
+    }
+    $computedResolvable = [bool]$Value.root_chain_class_valid -and [bool]$Value.root_chain_stable -and
+        [bool]$Value.lifecycle_idle -and [bool]$Value.preset_context_current -and
+        [bool]$Value.reviewed_code[0].matches_reviewed_image -and [bool]$Value.reviewed_code[1].matches_reviewed_image
+    if ([bool]$Value.exact_image_identity -ne
+        ([bool]$Value.reviewed_code[0].matches_reviewed_image -and [bool]$Value.reviewed_code[1].matches_reviewed_image) -or
+        [bool]$Value.all_resolvable_gates_passed -ne $computedResolvable) {
+        throw 'The sanitized native-dispatch preflight has inconsistent gate aggregation.'
+    }
+}
+
 function Read-ValidatedLifecycleReceipt(
     [string]$Path,
     [string]$ExpectedMode,
@@ -612,7 +698,7 @@ function Read-ValidatedLifecycleReceipt(
         'distribution_app_id', 'observed_unix_millis', 'duration_millis', 'interval_millis',
         'identities', 'acquisition', 'events', 'summary', 'policy', 'canary'
     )
-    if (-not (Test-ExactPropertySet $receipt $topLevel) -or $receipt.schema_version -ne 7 -or
+    if (-not (Test-ExactPropertySet $receipt $topLevel) -or $receipt.schema_version -ne 8 -or
         [string]$receipt.generated_by -cne 'rlogs-bpsr-automarker-lifecycle-probe' -or
         [string]$receipt.game -cne 'blue-protocol-star-resonance' -or
         [string]$receipt.deployment -cne 'global' -or [string]$receipt.channel -cne 'steam' -or
@@ -704,7 +790,7 @@ function Read-ValidatedLifecycleReceipt(
         'foreground_validated_before_every_input', 'root_context_unchanged',
         'lifecycle_context_unchanged', 'rank_2_input_excitation', 'escape_emitted', 'baseline',
         'transitions', 'final_return_error', 'approximately_returned', 'cancelled', 'outcome',
-        'preflight', 'planner_step', 'closed_loop'
+        'preflight', 'planner_step', 'closed_loop', 'native_dispatch_preflight'
     )
     if (-not (Test-ExactPropertySet $receipt.canary $canaryFields) -or
         $receipt.canary.transitions -isnot [array] -or
@@ -727,7 +813,16 @@ function Read-ValidatedLifecycleReceipt(
         }
     }
     Assert-ExactBoolean $receipt.canary.armed $ExpectedArmed 'canary.armed'
-    if (-not $ExpectedArmed -and [string]$receipt.canary.outcome -cne 'not-armed-read-only') {
+    if ($ExpectedMode -ceq 'native-dispatch-preflight-v1') {
+        if ($ExpectedArmed -or $null -eq $receipt.canary.native_dispatch_preflight -or
+            $null -ne $receipt.canary.preflight -or $null -ne $receipt.canary.planner_step -or
+            $null -ne $receipt.canary.closed_loop -or [string]$receipt.canary.outcome -cne 'blocked-unresolved-native-gates') {
+            throw 'The sanitized lifecycle receipt has an invalid native-dispatch preflight mode.'
+        }
+        Assert-NativeDispatchPreflight $receipt.canary.native_dispatch_preflight
+    } elseif ($null -ne $receipt.canary.native_dispatch_preflight) {
+        throw 'A non-native mode retained native-dispatch preflight evidence.'
+    } elseif (-not $ExpectedArmed -and [string]$receipt.canary.outcome -cne 'not-armed-read-only') {
         throw 'The sanitized lifecycle receipt has an unexpected read-only outcome.'
     }
     if ($ExpectedArmed) { Assert-ArmedModeSuccess $receipt $ExpectedMode }
@@ -745,7 +840,7 @@ function Assert-ArmedCanaryPassed($Receipt) {
 function New-SyntheticLifecycleReceipt([bool]$Armed, [string]$Mode, [string]$Outcome) {
     $identity = [ordered]@{ byte_length = 1; sha256 = ('a' * 64) }
     $receipt = [ordered]@{
-        schema_version = 7; generated_by = 'rlogs-bpsr-automarker-lifecycle-probe'
+        schema_version = 8; generated_by = 'rlogs-bpsr-automarker-lifecycle-probe'
         game = 'blue-protocol-star-resonance'; deployment = 'global'; channel = 'steam'
         game_build = $expectedBuild; distribution_app_id = $expectedAppId
         observed_unix_millis = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
@@ -775,7 +870,7 @@ function New-SyntheticLifecycleReceipt([bool]$Armed, [string]$Mode, [string]$Out
             root_context_unchanged = $false; lifecycle_context_unchanged = $false
             rank_2_input_excitation = $false; escape_emitted = $false; baseline = $null; transitions = @()
             final_return_error = $null; approximately_returned = $false; cancelled = $false; outcome = $Outcome
-            preflight = $null; planner_step = $null; closed_loop = $null
+            preflight = $null; planner_step = $null; closed_loop = $null; native_dispatch_preflight = $null
         }
     }
     if ($Armed -and $Outcome -ceq 'passed') {
@@ -916,15 +1011,16 @@ function Invoke-LauncherSelfTest {
     try { [void](Resolve-MarkerOnePresetTarget $nameJson $null 'Same Name') } catch { $rejected = $true }
     if (-not $rejected) { throw 'Self-test failed: ambiguous exact preset name was accepted.' }
     $rejected = $false
-    try { Assert-LauncherTargetSelection $false $false $true $false 'preset-test' $null $false 1 2 3 } catch { $rejected = $true }
+    try { Assert-LauncherTargetSelection $false $false $true $false $false 'preset-test' $null $false 1 2 3 } catch { $rejected = $true }
     if (-not $rejected) { throw 'Self-test failed: preset and explicit XYZ were accepted together.' }
-    Assert-LauncherTargetSelection $false $false $true $false 'preset-test' $null $false $null $null $null
-    Assert-LauncherTargetSelection $false $false $true $false $null 'Test' $false $null $null $null
-    Assert-LauncherTargetSelection $false $false $true $false $null $null $false 1 2 3
-    Assert-LauncherTargetSelection $false $false $false $false $null $null $true $null $null $null
-    Assert-LauncherTargetSelection $false $false $false $true 'preset-test' $null $false $null $null $null
+    Assert-LauncherTargetSelection $false $false $true $false $false 'preset-test' $null $false $null $null $null
+    Assert-LauncherTargetSelection $false $false $true $false $false $null 'Test' $false $null $null $null
+    Assert-LauncherTargetSelection $false $false $true $false $false $null $null $false 1 2 3
+    Assert-LauncherTargetSelection $false $false $false $false $false $null $null $true $null $null $null
+    Assert-LauncherTargetSelection $false $false $false $true $false 'preset-test' $null $false $null $null $null
+    Assert-LauncherTargetSelection $false $false $false $false $true 'preset-test' $null $false $null $null $null
     $rejected = $false
-    try { Assert-LauncherTargetSelection $false $false $false $true $null $null $false 1 2 3 } catch { $rejected = $true }
+    try { Assert-LauncherTargetSelection $false $false $false $true $false $null $null $false 1 2 3 } catch { $rejected = $true }
     if (-not $rejected) { throw 'Self-test failed: operator placement accepted raw XYZ without a preset.' }
 
     $receiptTestPath = Join-Path ([IO.Path]::GetTempPath()) ("rlogs-lifecycle-launcher-self-test-" + [Guid]::NewGuid().ToString('N') + '.json')
@@ -1015,6 +1111,32 @@ function Invoke-LauncherSelfTest {
         try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'read-only' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
         if (-not $rejected) { throw 'Self-test failed: a mismatched read-only outcome was accepted.' }
 
+        $native = New-SyntheticLifecycleReceipt $false 'native-dispatch-preflight-v1' 'blocked-unresolved-native-gates'
+        $native.canary.root_context_unchanged = $true
+        $native.canary.lifecycle_context_unchanged = $true
+        $native.canary.native_dispatch_preflight = [ordered]@{
+            preset_id = 'preset-test'; scene_id = 100; map_id = 200; activity_family_id = 'tina'
+            marker_1_target = [ordered]@{ x = 50; y = 2; z = 3 }; preset_context_failure_reason = $null
+            exact_image_identity = $true; root_chain_class_valid = $true; root_chain_stable = $true
+            lifecycle_idle = $true; preset_context_current = $true
+            reviewed_code = @(
+                [ordered]@{ identity = 'Panda.ZGame.EntityAttrExtensions.SetIndicatorPos'; rva = '0x53E86A0'; byte_length = 464; sha256 = 'a02f30ee1ee8ecf606fceb964a3428b83fa3ab2aac9c4290d85d0c1454af17e6'; matches_reviewed_image = $true },
+                [ordered]@{ identity = 'Panda.ZGame.ZSkillInputMgr.FirePlaySkillByIndicator'; rva = '0x52E09E0'; byte_length = 208; sha256 = '6ae23a6d1f432969dd2d4c9dd4461f80b7ac6ecf5b5382526dbc00a7b6d8b9f6'; matches_reviewed_image = $true }
+            )
+            dungeon_stage_gate = [ordered]@{ proven = $false; reason = 'unresolved-no-reviewed-read-only-dungeon-stage-query' }
+            leader_gate = [ordered]@{ proven = $false; reason = 'unresolved-no-reviewed-read-only-party-leader-query' }
+            marker_skill_resolution_gate = [ordered]@{ proven = $false; reason = 'unresolved-no-reviewed-non-invoking-live-skill-resolution' }
+            main_thread_bridge_gate = [ordered]@{ proven = $false; reason = 'unresolved-no-sanctioned-one-shot-main-thread-bridge' }
+            all_resolvable_gates_passed = $true; activation_attempted = $false; outcome = 'blocked-unresolved-native-gates'
+        }
+        [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1)))
+        $native.canary.native_dispatch_preflight.activation_attempted = $true
+        [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        $rejected = $false
+        try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
+        if (-not $rejected) { throw 'Self-test failed: an activating native preflight receipt was accepted.' }
+
         foreach ($invalid in @('wrong-schema', 'missing-critical', 'extra-critical', 'mismatched-mode', 'mismatched-invocation', 'stale-receipt', 'unsafe-policy')) {
             $candidate = New-SyntheticLifecycleReceipt $true 'marker1-closed-loop-aim-and-rollback-v1' 'passed'
             switch ($invalid) {
@@ -1043,7 +1165,7 @@ function Invoke-LauncherSelfTest {
 }
 
 if ($SelfTest) {
-    if ($DryRun -or $ListPresets -or $ArmReversibleCalibration -or $ArmSinglePlannerStep -or $ArmClosedLoopAim -or $ArmOperatorPlacement) {
+    if ($DryRun -or $ListPresets -or $ArmReversibleCalibration -or $ArmSinglePlannerStep -or $ArmClosedLoopAim -or $ArmOperatorPlacement -or $NativeDispatchPreflight) {
         throw '-SelfTest cannot be combined with dry-run or armed modes.'
     }
     Invoke-LauncherSelfTest
@@ -1051,7 +1173,7 @@ if ($SelfTest) {
 }
 
 if ($DryRun) {
-    if ($ListPresets -or $ArmReversibleCalibration -or $ArmSinglePlannerStep -or $ArmClosedLoopAim -or $ArmOperatorPlacement) {
+    if ($ListPresets -or $ArmReversibleCalibration -or $ArmSinglePlannerStep -or $ArmClosedLoopAim -or $ArmOperatorPlacement -or $NativeDispatchPreflight) {
         throw '-DryRun cannot be combined with an armed mode.'
     }
     if (-not (Test-Path -LiteralPath $probe -PathType Leaf)) {
@@ -1075,7 +1197,7 @@ if ($DryRun) {
     return
 }
 
-Assert-LauncherTargetSelection $ArmReversibleCalibration $ArmSinglePlannerStep $ArmClosedLoopAim $ArmOperatorPlacement $PresetId $PresetName $ListPresets $TargetX $TargetY $TargetZ
+Assert-LauncherTargetSelection $ArmReversibleCalibration $ArmSinglePlannerStep $ArmClosedLoopAim $ArmOperatorPlacement $NativeDispatchPreflight $PresetId $PresetName $ListPresets $TargetX $TargetY $TargetZ
 
 if ($ListPresets) {
     if ([string]::IsNullOrWhiteSpace($RLogsBaseUrl)) { $RLogsBaseUrl = Find-RLogsLoopbackBaseUrl }
@@ -1135,7 +1257,7 @@ if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
 }
 
 $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
-$receipt = Join-Path $PSScriptRoot "automarker-lifecycle-$stamp.v7.json"
+$receipt = Join-Path $PSScriptRoot "automarker-lifecycle-$stamp.v8.json"
 if (Test-Path -LiteralPath $receipt) { throw 'Refusing to overwrite an existing receipt.' }
 
 $arguments = @(
@@ -1156,7 +1278,7 @@ if ($ArmReversibleCalibration) {
     }
     $arguments += @('--armed-mode', 'marker1-reversible-calibration-v1')
 }
-if ($ArmSinglePlannerStep -or $ArmClosedLoopAim -or $ArmOperatorPlacement) {
+if ($ArmSinglePlannerStep -or $ArmClosedLoopAim -or $ArmOperatorPlacement -or $NativeDispatchPreflight) {
     $hasPreset = -not [string]::IsNullOrWhiteSpace($PresetId)
     $hasPresetName = -not [string]::IsNullOrWhiteSpace($PresetName)
     if ([string]::IsNullOrWhiteSpace($RLogsBaseUrl)) {
@@ -1175,36 +1297,47 @@ if ($ArmSinglePlannerStep -or $ArmClosedLoopAim -or $ArmOperatorPlacement) {
         $resolvedId = [regex]::Replace($resolved.PresetId, '\p{C}', '?')
         Write-Host "Resolved Marker 1 from preset '$resolvedName' ($resolvedId) in the exact active activity family."
     }
-    $targetArguments = @(New-PlannerTargetArguments $TargetX $TargetY $TargetZ $RLogsBaseUrl)
-    if ($ArmOperatorPlacement) {
-        Write-Warning 'ARMED OPERATOR PLACEMENT EVIDENCE: during the countdown, return to the game, open the marker menu, select Marker 1, and leave its reticle active. Do not move the mouse after selecting it. The canary aims without clicking; click exactly once only after the reticle visibly stops moving. It requires newer outbound and authoritative inbound Marker 1 evidence.'
-    } elseif ($ArmClosedLoopAim) {
-        Write-Warning 'ARMED CLOSED-LOOP CANARY: manually select Marker 1 and keep the game focused. This calibrates, makes at most four <=4-pixel moves (<=16 cumulative), reverses every move, then Escape. Do not touch the mouse. It never clicks or places.'
+    if ($NativeDispatchPreflight) {
+        $arguments += @(
+            '--native-dispatch-preflight', 'true',
+            '--preset-id', $resolved.PresetId,
+            '--rlogs-base-url', $RLogsBaseUrl
+        )
+        Write-Host 'Running a read-only native-dispatch preflight. It will not focus the game, emit input, call game methods, write process memory, or send packets.'
     } else {
-        Write-Warning 'ARMED ONE-STEP CANARY: manually select Marker 1 and keep the game focused. This calibrates, moves at most 4 pixels once, applies the exact inverse, then Escape. It never clicks or places.'
+        $targetArguments = @(New-PlannerTargetArguments $TargetX $TargetY $TargetZ $RLogsBaseUrl)
+        if ($ArmOperatorPlacement) {
+            Write-Warning 'ARMED OPERATOR PLACEMENT EVIDENCE: during the countdown, return to the game, open the marker menu, select Marker 1, and leave its reticle active. Do not move the mouse after selecting it. The canary aims without clicking; click exactly once only after the reticle visibly stops moving. It requires newer outbound and authoritative inbound Marker 1 evidence.'
+        } elseif ($ArmClosedLoopAim) {
+            Write-Warning 'ARMED CLOSED-LOOP CANARY: manually select Marker 1 and keep the game focused. This calibrates, makes at most four <=4-pixel moves (<=16 cumulative), reverses every move, then Escape. Do not touch the mouse. It never clicks or places.'
+        } else {
+            Write-Warning 'ARMED ONE-STEP CANARY: manually select Marker 1 and keep the game focused. This calibrates, moves at most 4 pixels once, applies the exact inverse, then Escape. It never clicks or places.'
+        }
+        $preparationSeconds = Get-ArmedPreparationCountdownSeconds ([bool]$ArmOperatorPlacement)
+        if ($ArmOperatorPlacement) {
+            Write-Host "Return to the game and select Marker 1 now. Leave its reticle active; the fail-closed canary starts in $preparationSeconds seconds."
+        } else {
+            Write-Host "Return focus to the game now. The fail-closed canary starts in $preparationSeconds seconds."
+        }
+        foreach ($remaining in $preparationSeconds..1) {
+            Write-Host "$remaining..."
+            Start-Sleep -Seconds 1
+        }
+        $armedToken = if ($ArmOperatorPlacement) {
+            'marker1-operator-click-placement-evidence-v1'
+        } elseif ($ArmClosedLoopAim) {
+            'marker1-closed-loop-aim-and-rollback-v1'
+        } else {
+            'marker1-single-planner-step-and-restore-v1'
+        }
+        $arguments += @('--armed-mode', $armedToken)
+        $arguments += $targetArguments
     }
-    $preparationSeconds = Get-ArmedPreparationCountdownSeconds ([bool]$ArmOperatorPlacement)
-    if ($ArmOperatorPlacement) {
-        Write-Host "Return to the game and select Marker 1 now. Leave its reticle active; the fail-closed canary starts in $preparationSeconds seconds."
-    } else {
-        Write-Host "Return focus to the game now. The fail-closed canary starts in $preparationSeconds seconds."
-    }
-    foreach ($remaining in $preparationSeconds..1) {
-        Write-Host "$remaining..."
-        Start-Sleep -Seconds 1
-    }
-    $armedToken = if ($ArmOperatorPlacement) {
-        'marker1-operator-click-placement-evidence-v1'
-    } elseif ($ArmClosedLoopAim) {
-        'marker1-closed-loop-aim-and-rollback-v1'
-    } else {
-        'marker1-single-planner-step-and-restore-v1'
-    }
-    $arguments += @('--armed-mode', $armedToken)
-    $arguments += $targetArguments
 }
 
-$expectedCanaryMode = if ($ArmOperatorPlacement) {
+$expectedCanaryMode = if ($NativeDispatchPreflight) {
+    'native-dispatch-preflight-v1'
+} elseif ($ArmOperatorPlacement) {
     'marker1-operator-click-placement-evidence-v1'
 } elseif ($ArmClosedLoopAim) {
     'marker1-closed-loop-aim-and-rollback-v1'
@@ -1225,6 +1358,10 @@ $validatedReceipt = Read-ValidatedLifecycleReceipt `
     $receipt $expectedCanaryMode $armedCanary $DurationMs $IntervalMs $probeStartedUtc $probeFinishedUtc
 if ($armedCanary) {
     Assert-ArmedCanaryPassed $validatedReceipt
+} elseif ($NativeDispatchPreflight) {
+    $native = $validatedReceipt.canary.native_dispatch_preflight
+    Write-Host "Created sanitized read-only native-dispatch preflight $(Split-Path -Leaf $receipt)."
+    Write-Host "Resolvable gates passed: $($native.all_resolvable_gates_passed). Activation remains disabled: $($native.outcome)."
 } else {
     Write-Host "Created sanitized receipt $(Split-Path -Leaf $receipt). Marker confirmation and Place remain disabled."
 }

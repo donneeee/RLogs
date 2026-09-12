@@ -296,6 +296,54 @@ retains its existing bounded publication behavior; unrelated high-rate combat
 events are not promoted into map rerenders merely to advance a clock. A stale
 local entity remains a hard failure for the 18 m player-origin requirement.
 
+## Read-only native-dispatch preflight
+
+Receipt schema v8 adds a separate, non-activating preflight for the exact-build
+game-owned dispatch candidate. It does not use the manual reticle planner and
+does not apply the planner's 18-metre range gate:
+
+```powershell
+.\run-bpsr-automarker-lifecycle-probe.ps1 `
+  -NativeDispatchPreflight `
+  -PresetName 'Boss opening'
+```
+
+`-PresetId` is also accepted. The launcher resolves exactly one saved preset
+inside the active scene family and passes only its opaque ID and the literal
+loopback rLogs URL to the native observer. The observer independently fetches
+the schema-v4 preset projection and requires exact build `25247556`, the active
+scene and map, the same activity family, and one finite non-zero Marker 1 point.
+It never accepts explicit XYZ for this mode.
+
+The observer verifies the running executable, Steam manifest, and
+`GameAssembly.dll`; double-reads and class-validates the reviewed
+`PlayerEnt -> PlayerSkillInputComp -> ZSkillInputMgr` chain; requires an idle
+indicator lifecycle; and hashes the loaded exact method bodies for
+`EntityAttrExtensions.SetIndicatorPos` and
+`ZSkillInputMgr.FirePlaySkillByIndicator`. The receipt contains only reviewed
+RVAs, hashes, booleans, bounded reason tokens, preset ID, scene/map/family, and
+the saved Marker 1 coordinate. It contains no runtime address, process ID,
+account/session identity, endpoint, or filesystem path.
+
+This preflight deliberately remains blocked even when every currently
+resolvable gate passes. Exact read-only queries for dungeon-stage state, current
+party leadership, and non-invoking live marker-skill resolution are not yet
+reviewed, and no sanctioned one-shot Unity main-thread bridge exists. Each is
+recorded as a separate false gate with a fixed bounded reason. The mode never
+calls either native method, creates or schedules a delegate, emits input,
+requests write/debug/thread rights, modifies memory, or observes/sends packets.
+It is evidence for the next implementation boundary, not placement authority.
+
+The statically reviewed direct sequence avoids one specific overwrite in the
+normal UI route: `ZIndicatorMgr.FireSkill` copies its reticle position before
+normal dispatch, whereas direct `FirePlaySkillByIndicator` does not call
+`ZIndicatorMgr.FireSkill`, `SetIndicatorPos`, `ResetIndicatorPos`, or
+`SetSelectPoint`. That bypasses reticle selection as the coordinate source; it
+does not prove that downstream client or server validation will accept a saved
+point farther than 18 metres. A later activating canary must require both a
+true game-owned dispatch result and a matching authoritative inbound marker
+notification before distant placement can be claimed.
+
 ## Interpretation limits
 
 A successful receipt proves only that a stable, class-validated read chain was
