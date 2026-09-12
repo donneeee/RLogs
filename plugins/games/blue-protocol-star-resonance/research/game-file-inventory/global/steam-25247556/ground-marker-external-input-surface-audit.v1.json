@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "generated_by": "bounded-read-only-external-input-surface-audit",
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "build_id": "25247556",
+  "scope": {
+    "offline_static_analysis_only": true,
+    "input_generated": false,
+    "process_access": false,
+    "memory_write": false,
+    "game_method_invocation": false,
+    "packet_synthesis_or_transmission": false,
+    "runtime_modified": false
+  },
+  "build_identity": {
+    "game_executable_sha256": "90537dbd0e4c9d4b3ed2af06aa8bf7ffe7219fc94bb2f6963673f7b340288588",
+    "game_assembly_sha256": "4a079aec0a3e51a8023aa86bbd152e12068907b65b9aafb355d20bb6d6c41fe3",
+    "global_metadata_sha256": "2f8213cf2a253d7a99a37b81f796e3a0162d0cf2d1ca6a2d0e0719f8f9a57779",
+    "dump_cs_sha256": "3bbc01c125dc160be85730986ebb40740dc2a078cb4bb4c5a0add00349b47a32",
+    "current_build_package_container_sha256": "1fa2d3d3711f6d3369197ff6c005683ff00f0772cccb0c015feeb6aa24202dbd"
+  },
+  "question": "Can marker slots 1-6 and placement be driven by an existing ordinary foreground keyboard, mouse, controller, chat/console, accessibility, or launcher action without camera movement or menu traversal?",
+  "input_action_registry": {
+    "type": "Panda.ZInput.InputActionIds",
+    "constant_count": 171,
+    "minimum_id": 1,
+    "maximum_id": 187,
+    "marker_named_constant_count": 0,
+    "searched_name_terms": [
+      "marker",
+      "waymark",
+      "flag",
+      "indicator",
+      "punctuate",
+      "scene mask"
+    ],
+    "relevant_generic_actions": [
+      { "name": "MouseLeftButton", "id": 115 },
+      { "name": "MouseXAxis", "id": 117 },
+      { "name": "MouseYAxis", "id": 118 },
+      { "name": "Confirm", "id": 104 },
+      { "name": "Cancel", "id": 105 },
+      { "name": "Chat", "id": 29 },
+      { "name": "OpenChat", "id": 69 }
+    ],
+    "conclusion": "The exact registry has generic pointer, UI, chat, and combat actions but no action that selects numbered scene-mask marker slots or initiates FlagSkill for them."
+  },
+  "normal_game_ui_route": {
+    "lua_chunks_censused": 4833,
+    "view": "ui/view/main_copy_punctuate_view.lua",
+    "table_provider": "ui/view_model/weapon_skill_vm.lua:GetSceneMaskSkillList",
+    "slot_mapping": "scene-mask slots 201-206 map to marker skills 1101-1106",
+    "selection_call": "Z.PlayerInputController.FlagSkill(info.id, true)",
+    "release_call": "Z.PlayerInputController.FlagSkill(info.id, false)",
+    "targeting_axes": [
+      "TouchManager.TouchController.TrySetAxis(\"Skill_Horizontal\", value)",
+      "TouchManager.TouchController.TrySetAxis(\"Skill_Vertical\", value)"
+    ],
+    "position_argument_on_selection": false,
+    "requires_marker_view_or_equivalent_ui_selection": true,
+    "requires_pointer_or_targeting_axis_motion": true,
+    "direct_slot_action_found": false,
+    "conclusion": "Keyboard/mouse/controller can operate the ordinary UI, but the discovered route requires selecting a marker entry and moving the game-owned targeting reticle. It is not a direct slot trigger and does not accept saved XYZ."
+  },
+  "controller_and_accessibility": {
+    "controller_pointer_types": [
+      "Panda.ZInput.NewInputGamepadMousePointer",
+      "Panda.ZInput.RewiredGamepadMousePointer",
+      "Panda.ZInput.PlayerMousePointerAdpter"
+    ],
+    "controller_behavior": "The exact types adapt gamepad axes and buttons into a UI pointer. They provide menu traversal, pointer motion, and click behavior; no numbered marker action is present.",
+    "marker_specific_accessibility_binding_found": false,
+    "accessibility_or_controller_shortcut_to_saved_xyz_found": false
+  },
+  "chat_and_console": {
+    "chat_actions_only_open_or_navigate_chat": true,
+    "marker_chat_command_found": false,
+    "console_framework_present": true,
+    "console_method_attribute_registrations_found": 2,
+    "registered_commands": [
+      "scene.loadasync",
+      "common.framerate"
+    ],
+    "marker_console_command_found": false,
+    "warning": "Presence of the generic IngameDebugConsole library is not evidence that its UI is enabled or public in the production client; neither registered command is a marker command."
+  },
+  "launcher_and_deep_link": {
+    "generic_command_line_surface_present": "Panda.SDK.ZDevices.CommandLineParams",
+    "generic_deep_link_surface_present": "Panda.SDK.ZDeepLinkUtil",
+    "deep_link_semantics_named_in_exact_metadata": "token link registration and handling",
+    "marker_named_command_line_consumer_found": false,
+    "marker_named_deep_link_consumer_found": false,
+    "public_marker_launcher_hook_documented": false,
+    "primary_public_source_checked": "https://store.steampowered.com/app/3681810/Blue_Protocol_Star_Resonance/",
+    "public_source_boundary": "The official Steam product surface documents Play Game and product features but no marker action, URI, command-line switch, or launcher automation contract. Absence from one product page is corroborative only, not standalone proof."
+  },
+  "candidate_confusions": [
+    {
+      "symbol": "PlayerInputController.Indicator(int, bool)",
+      "reason_not_route": "It has no world-position argument and no static connection to numbered scene-mask marker slots 201-206 or skills 1101-1106."
+    },
+    {
+      "symbol": "PlayerInputController.FlagSkill(int, bool)",
+      "reason_not_external_action": "It is the Lua UI boundary after a marker entry is chosen, not an InputActionIds binding, chat command, launcher hook, or saved-XYZ action."
+    },
+    {
+      "symbol": "DebugLogConsole.ExecuteCommand(string)",
+      "reason_not_route": "It is a generic bundled console framework; the exact registered ConsoleMethod attributes contain only scene.loadasync and common.framerate."
+    },
+    {
+      "symbol": "ZDeepLinkUtil.DealDeepLink(string)",
+      "reason_not_route": "The named exact-build API handles token links and has no marker consumer."
+    }
+  ],
+  "decision": {
+    "ordinary_ui_can_place_markers": true,
+    "ordinary_ui_requires_menu_or_marker_view_traversal": true,
+    "ordinary_ui_requires_pointer_or_targeting_axis_motion": true,
+    "direct_numbered_marker_input_action_found": false,
+    "direct_marker_chat_or_console_command_found": false,
+    "direct_marker_controller_or_accessibility_action_found": false,
+    "direct_marker_launcher_or_deep_link_hook_found": false,
+    "direct_saved_xyz_external_action_found": false,
+    "foreground_input_without_camera_or_menu_traversal_proven": false,
+    "external_input_implementation_authorized": false
+  },
+  "limits": [
+    "A static name and Lua-call census cannot prove the absence of a wholly dynamically generated or server-delivered command that leaves no exact-build artifact.",
+    "No runtime keybind enumeration, console activation, input generation, or controller experiment was performed.",
+    "The official Steam page is not a complete control manual and is used only as corroborating public-source evidence.",
+    "A future seasonal build requires a new registry and Lua census."
+  ],
+  "privacy": {
+    "contains_private_paths": false,
+    "contains_absolute_native_addresses": false,
+    "contains_raw_package_bytes": false,
+    "contains_raw_payloads": false,
+    "contains_personal_identity": false
+  }
+}
