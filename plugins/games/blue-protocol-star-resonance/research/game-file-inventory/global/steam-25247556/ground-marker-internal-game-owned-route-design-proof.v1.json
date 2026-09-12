@@ -45,7 +45,7 @@
       "register_contract": {
         "rcx": "managed ZEntity object pointer",
         "rdx": "address of the 12-byte Vector3 aggregate",
-        "r8": "hidden MethodInfo pointer required by the generated ABI contract"
+        "r8": "hidden MethodInfo ABI slot; the exact-build ZIndicatorMgr.FireSkill callsite clears R8 before calling this method, proving that the normal game path passes null"
       },
       "native_observations": [
         "The entry moves RDX to RDI and RCX to RBX.",
@@ -61,7 +61,7 @@
       "register_contract": {
         "rcx": "live ZSkillInputMgr object pointer",
         "edx": "signed 32-bit skill id",
-        "r8": "hidden MethodInfo pointer required by the generated ABI contract",
+        "r8": "hidden MethodInfo ABI slot; no non-null MethodInfo is consumed by the reviewed method body, and its downstream FirePlaySkillEvent call writes null to the hidden stack argument",
         "al": "boolean result"
       },
       "native_observations": [
@@ -105,6 +105,83 @@
     { "from": "CharCtrlCompBase.UseSkill", "rva": "0x54A2370", "to": "CharCtrlCompBase.useSkillByServer", "target_rva": "0x54A3DD0", "callsite_rva": "0x54A3A2D", "status": "statically proven" },
     { "from": "useSkillByServer", "to": "World.UseSlot with fresh client-owned action/session/authentication state", "status": "statically proven" }
   ],
+  "overwrite_reconciliation": {
+    "normal_flag_skill_release": {
+      "sequence": [
+        "PlayerInputController.FlagSkill release",
+        "ZIndicatorMgr.FireSkill",
+        "EntityAttrExtensions.SetIndicatorPos(host, ZIndicatorMgr.indicatorPos_)",
+        "ZSkillInputMgr.FirePlaySkillEvent"
+      ],
+      "set_indicator_pos_callsite_rva": "0x41B80B1",
+      "method_info_observation": "The callsite executes xor r8d,r8d before SetIndicatorPos, so the game supplies a null hidden MethodInfo argument.",
+      "conclusion": "Staging a saved XYZ before normal FlagSkill release is invalid because ZIndicatorMgr.FireSkill overwrites it with the manager-owned reticle position."
+    },
+    "direct_indicator_dispatch_candidate": {
+      "sequence": [
+        "EntityAttrExtensions.SetIndicatorPos(live PlayerEnt, saved XYZ)",
+        "ZSkillInputMgr.FirePlaySkillByIndicator(markerSkillId)"
+      ],
+      "fire_play_skill_by_indicator_range": {
+        "start_rva": "0x52E09E0",
+        "end_rva_exclusive": "0x52E0AB0"
+      },
+      "semantic_direct_calls": [
+        { "callsite_rva": "0x52E0A5D", "target_rva": "0x52BE550", "identity": "SkillControlDataMgr.TryGetSkillControlData" },
+        { "callsite_rva": "0x52E0A83", "target_rva": "0x52E0AB0", "identity": "ZSkillInputMgr.FirePlaySkillEvent" }
+      ],
+      "fire_play_skill_event_arguments": {
+        "clear_slot": true,
+        "is_indicator": true,
+        "is_ai_press": false,
+        "hidden_method_info": null
+      },
+      "calls_z_indicator_mgr_fire_skill": false,
+      "calls_set_indicator_pos": false,
+      "calls_reset_indicator_pos": false,
+      "calls_set_select_point": false,
+      "conclusion": "Direct FirePlaySkillByIndicator bypasses the specific ZIndicatorMgr.FireSkill overwrite. This is statically proven for build 25247556, but it does not by itself prove safe invocation, atomicity, or server acceptance."
+    },
+    "source_artifacts": [
+      { "name": "automarker-direct-calls-indicator-use-skill.v1.json", "sha256": "6775767a34c07d5d6046bb257eab1fc653a3d04179f98842e58490aac811bd3f" },
+      { "name": "automarker-direct-calls-select-point.v1.json", "sha256": "03cf69df47825b26e6302da7806e82b31ede48992d401d4f467ecc032b9e9163" }
+    ]
+  },
+  "remote_coordinate_boundary": {
+    "manual_reticle_limit_bypassed_by_candidate": true,
+    "meaning": "The candidate does not use ZIndicatorMgr reticle motion or its observed 18-meter targeting radius to choose the saved XYZ.",
+    "client_downstream_distance_rejection_excluded": false,
+    "server_distance_rejection_excluded": false,
+    "party_visible_remote_placement_proven": false,
+    "required_runtime_proof": "A later activating canary must use one reviewed saved point beyond 18 meters, require the game-owned dispatch to return true, then require a matching self inbound marker-add notification with the same scene/session, skill, and XYZ."
+  },
+  "next_non_activating_canary": {
+    "kind": "exact-build-read-only-native-dispatch-preflight",
+    "must_prove": [
+      "the selected process and loaded GameAssembly match the reviewed build-25247556 hashes",
+      "the PlayerEnt to PlayerSkillInputComp to ZSkillInputMgr chain is class-valid, stable across two reads, and belongs to one unchanged lifecycle generation",
+      "the loaded bytes for SetIndicatorPos at RVA 0x53E86A0 and FirePlaySkillByIndicator at RVA 0x52E09E0 match the reviewed image",
+      "the marker lifecycle is idle and no normal marker operation is in flight",
+      "the active scene, map, and activity family match the selected saved preset",
+      "the game is in a dungeon stage, is not loading or switching, and the current character is the party leader",
+      "marker skill 1101 resolves through the live ZSkillInputMgr context without invoking it"
+    ],
+    "must_not_do": [
+      "call SetIndicatorPos",
+      "call FirePlaySkillByIndicator",
+      "schedule or allocate a managed delegate",
+      "write process memory",
+      "request PROCESS_VM_WRITE, PROCESS_VM_OPERATION, PROCESS_CREATE_THREAD, or debugger rights",
+      "transmit, inject, replay, or rewrite packets"
+    ],
+    "known_reusable_evidence": "The existing read-only lifecycle probe already proves exact image identity, stable class-validated PlayerEnt and ZSkillInputMgr acquisition, and idle indicator lifecycle observation.",
+    "unresolved_preflight_work": [
+      "resolve a read-only exact-build leader and dungeon-stage query",
+      "resolve a non-invoking live marker-skill lookup observation or equivalent current scene-mask mapping proof",
+      "define and prove the lifecycle generation token shared by queue-time and callback-time validation"
+    ],
+    "activation_after_preflight": false
+  },
   "scheduler_design_constraints": {
     "preferred_candidate_not_proven_safe": {
       "identity": "Cysharp.Threading.Tasks.UniTask.Post(System.Action, PlayerLoopTiming)",
@@ -177,7 +254,7 @@
     ]
   },
   "unresolved_risks": [
-    "No supported in-process entry, IL2CPP thread attachment, delegate allocation/rooting, or MethodInfo acquisition mechanism is proven.",
+    "No supported in-process entry, IL2CPP thread attachment, delegate allocation/rooting, or one-shot main-player-loop execution mechanism is proven. Exact normal callsites show that null hidden MethodInfo arguments are valid for the candidate methods, so MethodInfo acquisition is not the blocker.",
     "No proof establishes that SetIndicatorPos followed by FirePlaySkillByIndicator is atomic against normal input or ZIndicatorMgr updates.",
     "The exact leader, scene-transition, input-blocked, cooldown, and marker-replacement state queries at the internal boundary are not resolved.",
     "The semantic meaning and lifetime of FirePlaySkillByIndicator's boolean result are not runtime-validated.",

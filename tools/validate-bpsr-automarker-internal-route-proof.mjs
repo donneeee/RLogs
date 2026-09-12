@@ -15,6 +15,18 @@ assert.equal(proof.build_identity.global_metadata.sha256, "2f8213cf2a253d7a99a37
 assert.equal(proof.abi_proof.set_indicator_position.rva, "0x53E86A0");
 assert.equal(proof.abi_proof.fire_indicator_skill.rva, "0x52E09E0");
 assert.equal(proof.abi_proof.vector3_layout.size_bytes, 12);
+assert.match(proof.abi_proof.set_indicator_position.register_contract.r8, /passes null/);
+assert.match(proof.abi_proof.fire_indicator_skill.register_contract.r8, /hidden MethodInfo ABI slot/);
+assert.equal(proof.overwrite_reconciliation.normal_flag_skill_release.set_indicator_pos_callsite_rva, "0x41B80B1");
+assert.equal(proof.overwrite_reconciliation.direct_indicator_dispatch_candidate.calls_z_indicator_mgr_fire_skill, false);
+assert.equal(proof.overwrite_reconciliation.direct_indicator_dispatch_candidate.calls_set_indicator_pos, false);
+assert.equal(proof.overwrite_reconciliation.direct_indicator_dispatch_candidate.calls_reset_indicator_pos, false);
+assert.equal(proof.overwrite_reconciliation.direct_indicator_dispatch_candidate.calls_set_select_point, false);
+assert.equal(proof.overwrite_reconciliation.direct_indicator_dispatch_candidate.fire_play_skill_event_arguments.hidden_method_info, null);
+assert.equal(proof.remote_coordinate_boundary.manual_reticle_limit_bypassed_by_candidate, true);
+assert.equal(proof.remote_coordinate_boundary.server_distance_rejection_excluded, false);
+assert.equal(proof.remote_coordinate_boundary.party_visible_remote_placement_proven, false);
+assert.equal(proof.next_non_activating_canary.activation_after_preflight, false);
 assert.deepEqual(proof.pacing_and_acknowledgement.skills, [1101, 1102, 1103, 1104, 1105, 1106]);
 assert.deepEqual(proof.pacing_and_acknowledgement.slots, [201, 202, 203, 204, 205, 206]);
 
