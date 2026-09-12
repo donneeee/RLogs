@@ -5750,20 +5750,6 @@ struct RuntimeController {
     live_combat_control: Arc<Mutex<Option<SyncSender<LiveCombatControl>>>>,
 }
 
-fn automarker_scene_context(
-    snapshot: &mechanics_map::MechanicsMapSnapshot,
-    scene_families: &BTreeMap<i32, String>,
-) -> Option<AutomarkerSceneContext> {
-    let scene_id = snapshot.scene_id?;
-    Some(AutomarkerSceneContext {
-        client_build: snapshot.client_build.clone()?,
-        scene_id,
-        map_id: snapshot.map_id?,
-        activity_family_id: scene_families.get(&scene_id)?.clone(),
-        scene_name: snapshot.scene_name.clone(),
-    })
-}
-
 #[derive(Debug, Default)]
 struct AutomarkerSceneContextFeed {
     context: Mutex<Option<AutomarkerSceneContext>>,
@@ -7009,12 +6995,11 @@ impl RuntimeController {
     }
 
     fn automarker_presets(&self) -> AutomarkerPresetView {
-        let snapshot = self.live_mechanics_map_feed.current().snapshot;
         let store = self
             .automarker_presets
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut view = match automarker_scene_context(&snapshot, &self.automarker_scene_families) {
+        let mut view = match self.live_automarker_scene_context.current() {
             Some(context) => store.compatible(context),
             None => store.unavailable(),
         };
@@ -7044,9 +7029,9 @@ impl RuntimeController {
         &self,
         request: SaveAutomarkerPresetRequest,
     ) -> Result<AutomarkerPresetView, String> {
-        let snapshot = self.live_mechanics_map_feed.current().snapshot;
-        let context = automarker_scene_context(&snapshot, &self.automarker_scene_families).ok_or_else(|| {
-            "a reviewed dungeon family plus packet-observed build, scene, and map are required before saving manual markers".to_owned()
+        let context = self.live_automarker_scene_context.current().ok_or_else(|| {
+            "a current supported automarker scene is required before saving manual markers"
+                .to_owned()
         })?;
         if request.expected_context.client_build != context.client_build
             || request.expected_context.scene_id != context.scene_id
@@ -7068,9 +7053,8 @@ impl RuntimeController {
         &self,
         request: LoadAutomarkerPresetRequest,
     ) -> Result<AutomarkerLocalLoadResult, String> {
-        let snapshot = self.live_mechanics_map_feed.current().snapshot;
-        let context = automarker_scene_context(&snapshot, &self.automarker_scene_families).ok_or_else(|| {
-            "a reviewed dungeon family plus packet-observed build, scene, and map are required before loading markers".to_owned()
+        let context = self.live_automarker_scene_context.current().ok_or_else(|| {
+            "a current supported automarker scene is required before loading markers".to_owned()
         })?;
         self.automarker_presets
             .lock()
@@ -21423,11 +21407,12 @@ developer_only = true
             .unwrap();
         assert!(!package.enabled);
         assert!(!package.active);
-        assert_eq!(catalog.workspaces.len(), 4);
+        assert_eq!(catalog.workspaces.len(), 5);
         assert!(catalog.workspaces.iter().all(|workspace| workspace.id
             == "app.rlogs.combat-meter"
             || workspace.id == "app.rlogs.bpsr.module-optimizer"
             || workspace.id == "app.rlogs.overlay"
+            || workspace.id == "app.rlogs.automarkers"
             || workspace.id == "app.rlogs.custom-triggers"));
         let session_tools = catalog
             .settings_tabs
@@ -21450,7 +21435,7 @@ developer_only = true
             .unwrap();
         assert!(package.enabled);
         assert!(package.active);
-        assert_eq!(catalog.workspaces.len(), 5);
+        assert_eq!(catalog.workspaces.len(), 6);
         let workspace = catalog
             .workspaces
             .iter()
