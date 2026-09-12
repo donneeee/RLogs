@@ -2,8 +2,10 @@
 //!
 //! The observer opens one already-running client with query/read rights only.
 //! It follows one compile-time allowlisted IL2CPP object chain and samples six
-//! reviewed fields. It cannot write, invoke game code, debug, inject, suspend,
-//! place markers, inspect packets, or scan/dump process memory.
+//! reviewed fields. Its default mode cannot emit input. An exact-token armed
+//! canary may emit one tiny relative mouse nudge, its inverse, and Escape; it
+//! never clicks or confirms a marker. It cannot write/invoke game code, debug,
+//! inject, suspend, place markers, inspect packets, or scan/dump process memory.
 
 #[cfg(windows)]
 mod windows {
@@ -42,6 +44,13 @@ mod windows {
                 QueryFullProcessImageNameW,
             },
         },
+        UI::{
+            Input::KeyboardAndMouse::{
+                INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYEVENTF_KEYUP,
+                MOUSEEVENTF_MOVE, MOUSEINPUT, SendInput, VIRTUAL_KEY, VK_ESCAPE,
+            },
+            WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId},
+        },
     };
 
     const BUILD: &str = "25247556";
@@ -58,6 +67,9 @@ mod windows {
     // ZEntityMgr's singleton acquisition. It is not accepted from the CLI.
     const ENTITY_MGR_SINGLETON_METHOD_INFO_RVA: usize = 0x960_BF90;
     const ENTITY_MGR_SINGLETON_TYPE_INFO_RVA: usize = 0x960_BFF8;
+    // Reviewed at three independent native callsites for build 25247556.
+    const INDICATOR_MGR_SINGLETON_METHOD_INFO_RVA: usize = 0x95EA430;
+    const INDICATOR_MGR_SINGLETON_TYPE_INFO_RVA: usize = 0x95EA438;
     const METHOD_INFO_NAME: usize = 0x18;
     const METHOD_INFO_KLASS: usize = 0x20;
     const IL2CPP_CLASS_NAME: usize = 0x10;
@@ -71,6 +83,19 @@ mod windows {
     const PLAYER_ENT_SKILL_INPUT_COMP: usize = 0x128;
     const SKILL_INPUT_COMP_MGR: usize = 0x28;
     const INDICATOR_POS: usize = 0x9C4;
+    const INDICATOR_IS_ENABLE: usize = 0x10;
+    const INDICATOR_IS_PC_UP_RELEASE: usize = 0x11;
+    const INDICATOR_IS_CAN_RELEASE: usize = 0x12;
+    const INDICATOR_DATA_TYPE: usize = 0x48;
+    const INDICATOR_DATA_SKILL_ID: usize = 0x4C;
+    const INDICATOR_DATA_SLOT_ID: usize = 0x50;
+    const INDICATOR_DATA_PARAM_1: usize = 0x54;
+    const INDICATOR_DATA_PARAM_2: usize = 0x58;
+    const INDICATOR_DATA_MAX_DISTANCE: usize = 0x5C;
+    const INDICATOR_MGR_POS: usize = 0x80;
+    const INDICATOR_IS_PC_MODE: usize = 0xD8;
+    const INDICATOR_SKILL_ID: usize = 0xE8;
+    const INDICATOR_SLOT_ID: usize = 0xEC;
     const SKILL_SLOT_ID: usize = 0x18;
     const SKILL_LAST_USED_SLOT_ID: usize = 0x1C;
     const SKILL_LAST_PRESS_SLOT_ID: usize = 0x20;
@@ -78,6 +103,12 @@ mod windows {
     const MAX_C_STRING_BYTES: usize = 96;
     const MIN_USER_ADDRESS: usize = 0x1_0000;
     const MAX_USER_ADDRESS: usize = 0x0000_7fff_ffff_ffff;
+    const ARMED_MODE_TOKEN: &str = "marker1-reversible-nudge-v1";
+    const MARKER_1_SKILL_ID: i32 = 1101;
+    const MARKER_1_SLOT_ID: i32 = 201;
+    const MARKER_MAX_DISTANCE: f32 = 18.0;
+    const NUDGE_PIXELS: i32 = 6;
+    const SETTLE_MILLIS: u64 = 350;
 
     #[derive(Clone, Debug, Eq, PartialEq)]
     struct Roots {
@@ -91,6 +122,7 @@ mod windows {
         pure_components: usize,
         skill_input_comp: usize,
         skill_input_mgr: usize,
+        indicator_mgr: usize,
     }
 
     #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -107,6 +139,45 @@ mod windows {
         last_press_slot_id: i32,
         is_press: bool,
         indicator_pos: Position,
+        indicator: IndicatorState,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Serialize)]
+    struct IndicatorState {
+        is_enable: bool,
+        is_pc_up_release: bool,
+        is_can_release: bool,
+        indicator_type: u8,
+        data_skill_id: i32,
+        data_slot_id: i32,
+        param_1: f32,
+        param_2: f32,
+        max_distance: f32,
+        position: Position,
+        is_pc_mode: bool,
+        skill_id: i32,
+        slot_id: i32,
+    }
+
+    #[derive(Clone, Debug, Serialize)]
+    struct CanaryReceipt {
+        armed: bool,
+        mode: &'static str,
+        nudge_pixels: i32,
+        marker_1_state_validated: bool,
+        game_was_foreground: bool,
+        forward_input_emitted: bool,
+        inverse_input_emitted: bool,
+        escape_emitted: bool,
+        baseline: Option<Position>,
+        nudged: Option<Position>,
+        returned: Option<Position>,
+        forward_distance: Option<f32>,
+        return_error: Option<f32>,
+        changed: bool,
+        approximately_returned: bool,
+        cancelled: bool,
+        outcome: &'static str,
     }
 
     #[derive(Debug, Serialize)]
@@ -138,6 +209,7 @@ mod windows {
         events: Vec<LifecycleEvent>,
         summary: Summary,
         policy: Policy,
+        canary: CanaryReceipt,
     }
 
     #[derive(Debug, Serialize)]
@@ -151,7 +223,7 @@ mod windows {
     struct Acquisition {
         root_kind: &'static str,
         class_identity_validation_required: bool,
-        validated_classes: [&'static str; 6],
+        validated_classes: [&'static str; 7],
         roots_double_read_per_sample: bool,
         lifecycle_state_double_read_per_sample: bool,
     }
@@ -184,6 +256,9 @@ mod windows {
         process_memory_written: bool,
         packets_observed_or_modified: bool,
         place_enabled: bool,
+        mouse_click_emitted: bool,
+        reversible_mouse_move_enabled: bool,
+        escape_cancel_enabled: bool,
     }
 
     #[derive(Default)]
@@ -265,6 +340,9 @@ mod windows {
         }
         let duration_millis = numeric_option(&options, "duration-ms", 15_000, 100, 60_000)?;
         let interval_millis = numeric_option(&options, "interval-ms", 10, 5, 1_000)?;
+        let armed = options
+            .get("armed-mode")
+            .is_some_and(|value| value == ARMED_MODE_TOKEN);
         if interval_millis > duration_millis {
             return Err("--interval-ms must not exceed --duration-ms".into());
         }
@@ -322,14 +400,21 @@ mod windows {
         )?;
         require_manifest_identity(std::str::from_utf8(&fs::read(&manifest_path)?)?)?;
 
-        let (events, counters) = observe(
-            &ProcessMemory(handle.0),
-            module.base,
-            Duration::from_millis(duration_millis),
-            Duration::from_millis(interval_millis),
-        );
+        let memory = ProcessMemory(handle.0);
+        let (events, counters, canary) = if armed {
+            let canary = run_reversible_nudge_canary(&memory, module.base, process_id);
+            (Vec::new(), Counters::default(), canary)
+        } else {
+            let (events, counters) = observe(
+                &memory,
+                module.base,
+                Duration::from_millis(duration_millis),
+                Duration::from_millis(interval_millis),
+            );
+            (events, counters, read_only_canary_receipt())
+        };
         let receipt = Receipt {
-            schema_version: 1,
+            schema_version: 2,
             generated_by: "rlogs-bpsr-automarker-lifecycle-probe",
             game: "blue-protocol-star-resonance",
             deployment: "global",
@@ -354,6 +439,7 @@ mod windows {
                     "Panda.ZGame.PlayerEnt__Storage",
                     "Panda.ZGame.PlayerSkillInputComp",
                     "Panda.ZGame.ZSkillInputMgr",
+                    "Panda.ZGame.ZIndicatorMgr",
                 ],
                 roots_double_read_per_sample: true,
                 lifecycle_state_double_read_per_sample: true,
@@ -384,7 +470,11 @@ mod windows {
                 process_memory_written: false,
                 packets_observed_or_modified: false,
                 place_enabled: false,
+                mouse_click_emitted: false,
+                reversible_mouse_move_enabled: armed,
+                escape_cancel_enabled: armed,
             },
+            canary,
         };
         if let Some(parent) = output.parent() {
             fs::create_dir_all(parent)?;
@@ -392,10 +482,237 @@ mod windows {
         let encoded = serde_json::to_vec_pretty(&receipt)?;
         fs::write(&output, [&encoded[..], b"\n"].concat())?;
         println!(
-            "sanitized lifecycle receipt written: {} transitions, Place disabled",
-            receipt.summary.emitted_transitions
+            "sanitized lifecycle receipt written: {} transitions, Place disabled, canary {}",
+            receipt.summary.emitted_transitions, receipt.canary.outcome,
         );
         Ok(())
+    }
+
+    fn read_only_canary_receipt() -> CanaryReceipt {
+        CanaryReceipt {
+            armed: false,
+            mode: "read-only",
+            nudge_pixels: 0,
+            marker_1_state_validated: false,
+            game_was_foreground: false,
+            forward_input_emitted: false,
+            inverse_input_emitted: false,
+            escape_emitted: false,
+            baseline: None,
+            nudged: None,
+            returned: None,
+            forward_distance: None,
+            return_error: None,
+            changed: false,
+            approximately_returned: false,
+            cancelled: false,
+            outcome: "not-armed-read-only",
+        }
+    }
+
+    fn run_reversible_nudge_canary(
+        memory: &impl Memory,
+        module_base: usize,
+        process_id: u32,
+    ) -> CanaryReceipt {
+        let mut receipt = CanaryReceipt {
+            armed: true,
+            mode: ARMED_MODE_TOKEN,
+            nudge_pixels: NUDGE_PIXELS,
+            marker_1_state_validated: false,
+            game_was_foreground: false,
+            forward_input_emitted: false,
+            inverse_input_emitted: false,
+            escape_emitted: false,
+            baseline: None,
+            nudged: None,
+            returned: None,
+            forward_distance: None,
+            return_error: None,
+            changed: false,
+            approximately_returned: false,
+            cancelled: false,
+            outcome: "preflight-rejected-marker-state",
+        };
+        let baseline_state = match stable_marker_1_state(memory, module_base) {
+            Ok(state) => state,
+            Err(_) => return receipt,
+        };
+        receipt.marker_1_state_validated = true;
+        let baseline = baseline_state.indicator.position.clone();
+        receipt.baseline = Some(baseline.clone());
+        if !game_is_foreground(process_id) {
+            receipt.outcome = "preflight-rejected-foreground";
+            return receipt;
+        }
+        receipt.game_was_foreground = true;
+        receipt.outcome = "failed-closed";
+
+        receipt.forward_input_emitted = emit_relative_mouse(NUDGE_PIXELS);
+        if receipt.forward_input_emitted {
+            thread::sleep(Duration::from_millis(SETTLE_MILLIS));
+            if let Ok(state) = stable_marker_1_state(memory, module_base) {
+                let distance = position_distance(&baseline, &state.indicator.position);
+                receipt.nudged = Some(state.indicator.position);
+                receipt.forward_distance = Some(distance);
+                receipt.changed = distance >= 0.001;
+            }
+        }
+
+        // Never send cleanup input to a different foreground application.
+        if receipt.forward_input_emitted && game_is_foreground(process_id) {
+            receipt.inverse_input_emitted = emit_relative_mouse(-NUDGE_PIXELS);
+            if receipt.inverse_input_emitted {
+                thread::sleep(Duration::from_millis(SETTLE_MILLIS));
+                if let Ok(state) = stable_marker_1_state(memory, module_base) {
+                    let error = position_distance(&baseline, &state.indicator.position);
+                    receipt.returned = Some(state.indicator.position);
+                    receipt.return_error = Some(error);
+                    let tolerance = receipt
+                        .forward_distance
+                        .map_or(0.15, |distance| (distance * 0.35).max(0.15));
+                    receipt.approximately_returned = error <= tolerance;
+                }
+            }
+        }
+
+        if game_is_foreground(process_id) {
+            receipt.escape_emitted = emit_escape();
+            if receipt.escape_emitted {
+                thread::sleep(Duration::from_millis(150));
+                receipt.cancelled = coherent_sample(memory, module_base)
+                    .map(|state| !state.indicator.is_enable)
+                    .unwrap_or(false);
+            }
+        }
+
+        if receipt.forward_input_emitted
+            && receipt.inverse_input_emitted
+            && receipt.escape_emitted
+            && receipt.changed
+            && receipt.approximately_returned
+            && receipt.cancelled
+        {
+            receipt.outcome = "passed";
+        }
+        receipt
+    }
+
+    fn stable_marker_1_state(
+        memory: &impl Memory,
+        module_base: usize,
+    ) -> Result<LifecycleState, Box<dyn Error>> {
+        let first = coherent_sample(memory, module_base)
+            .map_err(|_| "marker state was unavailable or failed identity validation")?;
+        thread::sleep(Duration::from_millis(50));
+        let second = coherent_sample(memory, module_base)
+            .map_err(|_| "marker state was unavailable or failed identity validation")?;
+        require_marker_1_state(&first)?;
+        require_marker_1_state(&second)?;
+        if position_distance(&first.indicator.position, &second.indicator.position) > 0.002 {
+            return Err("Marker 1 indicator was not settled; no input emitted".into());
+        }
+        Ok(second)
+    }
+
+    fn require_marker_1_state(state: &LifecycleState) -> Result<(), Box<dyn Error>> {
+        let indicator = &state.indicator;
+        if !indicator.is_enable
+            || indicator.is_pc_up_release
+            || !indicator.is_can_release
+            || indicator.indicator_type != 1
+            || indicator.data_skill_id != MARKER_1_SKILL_ID
+            || indicator.data_slot_id != MARKER_1_SLOT_ID
+            || !approx(indicator.param_1, 1.0, 0.01)
+            || !approx(indicator.param_2, MARKER_MAX_DISTANCE, 0.01)
+            || !approx(indicator.max_distance, MARKER_MAX_DISTANCE, 0.01)
+            || !indicator.is_pc_mode
+            || indicator.skill_id != MARKER_1_SKILL_ID
+            || indicator.slot_id != MARKER_1_SLOT_ID
+        {
+            return Err(
+                "exact Marker 1 PC indicator state was not active; no input emitted".into(),
+            );
+        }
+        Ok(())
+    }
+
+    fn approx(left: f32, right: f32, epsilon: f32) -> bool {
+        left.is_finite() && right.is_finite() && (left - right).abs() <= epsilon
+    }
+
+    fn position_distance(left: &Position, right: &Position) -> f32 {
+        ((left.x - right.x).powi(2) + (left.y - right.y).powi(2) + (left.z - right.z).powi(2))
+            .sqrt()
+    }
+
+    fn game_is_foreground(process_id: u32) -> bool {
+        let window = unsafe { GetForegroundWindow() };
+        if window.is_null() {
+            return false;
+        }
+        let mut foreground_process_id = 0u32;
+        unsafe { GetWindowThreadProcessId(window, &mut foreground_process_id) };
+        foreground_process_id == process_id
+    }
+
+    fn emit_relative_mouse(dx: i32) -> bool {
+        let input = INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx,
+                    dy: 0,
+                    mouseData: 0,
+                    dwFlags: MOUSEEVENTF_MOVE,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        };
+        let inputs = [input];
+        (unsafe {
+            SendInput(
+                inputs.len() as u32,
+                inputs.as_ptr(),
+                size_of::<INPUT>() as i32,
+            )
+        }) == inputs.len() as u32
+    }
+
+    fn emit_escape() -> bool {
+        let down = INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VK_ESCAPE as VIRTUAL_KEY,
+                    wScan: 0,
+                    dwFlags: 0,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        };
+        let up = INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VK_ESCAPE as VIRTUAL_KEY,
+                    wScan: 0,
+                    dwFlags: KEYEVENTF_KEYUP,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        };
+        let inputs = [down, up];
+        (unsafe {
+            SendInput(
+                inputs.len() as u32,
+                inputs.as_ptr(),
+                size_of::<INPUT>() as i32,
+            )
+        }) == inputs.len() as u32
     }
 
     fn observe(
@@ -514,6 +831,14 @@ mod windows {
             true,
         )?;
         validate_object(memory, skill_input_mgr, "ZSkillInputMgr", "Panda.ZGame")?;
+        let indicator_mgr = acquire_singleton_instance(
+            memory,
+            module_base,
+            INDICATOR_MGR_SINGLETON_METHOD_INFO_RVA,
+            INDICATOR_MGR_SINGLETON_TYPE_INFO_RVA,
+            "ZIndicatorMgr",
+            "Panda.ZGame",
+        )?;
         Ok(Roots {
             method_info,
             declaring_class,
@@ -525,7 +850,48 @@ mod windows {
             pure_components,
             skill_input_comp,
             skill_input_mgr,
+            indicator_mgr,
         })
+    }
+
+    fn acquire_singleton_instance(
+        memory: &impl Memory,
+        module_base: usize,
+        method_info_rva: usize,
+        type_info_rva: usize,
+        instance_name: &str,
+        instance_namespace: &str,
+    ) -> Result<usize, AcquireError> {
+        let method_info = pointer_at(memory, checked_add(module_base, method_info_rva)?, false)?;
+        let method_name = address_at(memory, checked_add(method_info, METHOD_INFO_NAME)?)?;
+        if c_string(memory, method_name)? != "get_Instance" {
+            return Err(AcquireError::Identity);
+        }
+        let declaring_class =
+            pointer_at(memory, checked_add(method_info, METHOD_INFO_KLASS)?, false)?;
+        validate_singleton_class(memory, declaring_class)?;
+        let generic_context = pointer_at(
+            memory,
+            checked_add(declaring_class, IL2CPP_CLASS_GENERIC_CONTEXT)?,
+            false,
+        )?;
+        let singleton_class = pointer_at(
+            memory,
+            checked_add(generic_context, GENERIC_CONTEXT_INFLATED_CLASS)?,
+            false,
+        )?;
+        if singleton_class != pointer_at(memory, checked_add(module_base, type_info_rva)?, false)? {
+            return Err(AcquireError::Identity);
+        }
+        validate_singleton_class(memory, singleton_class)?;
+        let static_fields = pointer_at(
+            memory,
+            checked_add(singleton_class, IL2CPP_CLASS_STATIC_FIELDS)?,
+            false,
+        )?;
+        let instance = pointer_at(memory, static_fields, true)?;
+        validate_object(memory, instance, instance_name, instance_namespace)?;
+        Ok(instance)
     }
 
     fn validate_singleton_class(memory: &impl Memory, class: usize) -> Result<(), AcquireError> {
@@ -551,12 +917,29 @@ mod windows {
         if !position.x.is_finite() || !position.y.is_finite() || !position.z.is_finite() {
             return Err(AcquireError::Identity);
         }
+        let indicator = roots.indicator_mgr;
+        let indicator_state = IndicatorState {
+            is_enable: bool_at(memory, checked_add(indicator, INDICATOR_IS_ENABLE)?)?,
+            is_pc_up_release: bool_at(memory, checked_add(indicator, INDICATOR_IS_PC_UP_RELEASE)?)?,
+            is_can_release: bool_at(memory, checked_add(indicator, INDICATOR_IS_CAN_RELEASE)?)?,
+            indicator_type: byte_at(memory, checked_add(indicator, INDICATOR_DATA_TYPE)?)?,
+            data_skill_id: i32_at(memory, checked_add(indicator, INDICATOR_DATA_SKILL_ID)?)?,
+            data_slot_id: i32_at(memory, checked_add(indicator, INDICATOR_DATA_SLOT_ID)?)?,
+            param_1: f32_at(memory, checked_add(indicator, INDICATOR_DATA_PARAM_1)?)?,
+            param_2: f32_at(memory, checked_add(indicator, INDICATOR_DATA_PARAM_2)?)?,
+            max_distance: f32_at(memory, checked_add(indicator, INDICATOR_DATA_MAX_DISTANCE)?)?,
+            position: position_at(memory, checked_add(indicator, INDICATOR_MGR_POS)?)?,
+            is_pc_mode: bool_at(memory, checked_add(indicator, INDICATOR_IS_PC_MODE)?)?,
+            skill_id: i32_at(memory, checked_add(indicator, INDICATOR_SKILL_ID)?)?,
+            slot_id: i32_at(memory, checked_add(indicator, INDICATOR_SLOT_ID)?)?,
+        };
         Ok(LifecycleState {
             slot_id,
             last_used_slot_id,
             last_press_slot_id,
             is_press,
             indicator_pos: position,
+            indicator: indicator_state,
         })
     }
 
@@ -633,6 +1016,31 @@ mod windows {
 
     fn byte_at(memory: &impl Memory, address: usize) -> Result<u8, AcquireError> {
         Ok(memory.read_exact(address, 1)?[0])
+    }
+
+    fn bool_at(memory: &impl Memory, address: usize) -> Result<bool, AcquireError> {
+        match byte_at(memory, address)? {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err(AcquireError::Identity),
+        }
+    }
+
+    fn f32_at(memory: &impl Memory, address: usize) -> Result<f32, AcquireError> {
+        let bytes = memory.read_exact(address, 4)?;
+        let value = f32::from_le_bytes(bytes.try_into().map_err(|_| AcquireError::Read)?);
+        value
+            .is_finite()
+            .then_some(value)
+            .ok_or(AcquireError::Identity)
+    }
+
+    fn position_at(memory: &impl Memory, address: usize) -> Result<Position, AcquireError> {
+        Ok(Position {
+            x: f32_at(memory, address)?,
+            y: f32_at(memory, checked_add(address, 4)?)?,
+            z: f32_at(memory, checked_add(address, 8)?)?,
+        })
     }
 
     fn checked_add(left: usize, right: usize) -> Result<usize, AcquireError> {
@@ -829,13 +1237,14 @@ mod windows {
     }
 
     fn reject_unknown_options(options: &BTreeMap<String, String>) -> Result<(), Box<dyn Error>> {
-        const ALLOWED: [&str; 6] = [
+        const ALLOWED: [&str; 7] = [
             "build",
             "process-executable",
             "game-assembly",
             "steam-manifest",
             "output",
             "duration-ms",
+            "armed-mode",
         ];
         for key in options.keys() {
             if key != "interval-ms" && !ALLOWED.contains(&key.as_str()) {
@@ -844,6 +1253,12 @@ mod windows {
         }
         if required(options, "build")? != BUILD {
             return Err(format!("this probe supports exact build {BUILD} only").into());
+        }
+        if options
+            .get("armed-mode")
+            .is_some_and(|value| value != ARMED_MODE_TOKEN)
+        {
+            return Err("unknown armed-mode token".into());
         }
         Ok(())
     }
@@ -957,6 +1372,7 @@ mod windows {
             let storage = 0x70_0000;
             let comp = 0x80_0000;
             let mgr = 0x90_0000;
+            let indicator = 0x91_0000;
             let classes = [0x31_0000, 0x32_0000, 0x33_0000, 0x34_0000];
             let names = [
                 "ZEntityMgr",
@@ -1016,6 +1432,89 @@ mod windows {
                 xyz.extend_from_slice(&v.to_le_bytes());
             }
             m.put(storage + INDICATOR_POS, &xyz);
+            let indicator_method = 0x21_0000;
+            let indicator_declaring_class = 0x36_0000;
+            let indicator_singleton_class = 0x36_1000;
+            let indicator_generic_context = 0x36_2000;
+            let indicator_static_fields = 0x41_0000;
+            let indicator_class = 0x37_0000;
+            m.ptr(
+                base + INDICATOR_MGR_SINGLETON_METHOD_INFO_RVA,
+                indicator_method,
+            );
+            m.ptr(
+                base + INDICATOR_MGR_SINGLETON_TYPE_INFO_RVA,
+                indicator_singleton_class,
+            );
+            m.ptr(indicator_method + METHOD_INFO_NAME, 0xA3_0000);
+            m.ptr(
+                indicator_method + METHOD_INFO_KLASS,
+                indicator_declaring_class,
+            );
+            m.text(0xA3_0000, "get_Instance");
+            m.ptr(indicator_declaring_class + IL2CPP_CLASS_NAME, 0xA3_0100);
+            m.ptr(
+                indicator_declaring_class + IL2CPP_CLASS_NAMESPACE,
+                0xA3_0200,
+            );
+            m.text(0xA3_0100, "ZSingleton`1");
+            m.text(0xA3_0200, "ZUtil");
+            m.ptr(
+                indicator_declaring_class + IL2CPP_CLASS_GENERIC_CONTEXT,
+                indicator_generic_context,
+            );
+            m.ptr(
+                indicator_generic_context + GENERIC_CONTEXT_INFLATED_CLASS,
+                indicator_singleton_class,
+            );
+            m.ptr(indicator_singleton_class + IL2CPP_CLASS_NAME, 0xA3_0300);
+            m.ptr(
+                indicator_singleton_class + IL2CPP_CLASS_NAMESPACE,
+                0xA3_0400,
+            );
+            m.text(0xA3_0300, "ZSingleton`1");
+            m.text(0xA3_0400, "ZUtil");
+            m.ptr(
+                indicator_singleton_class + IL2CPP_CLASS_STATIC_FIELDS,
+                indicator_static_fields,
+            );
+            m.ptr(indicator_static_fields, indicator);
+            m.ptr(indicator, indicator_class);
+            m.ptr(indicator_class + IL2CPP_CLASS_NAME, 0xA3_0500);
+            m.ptr(indicator_class + IL2CPP_CLASS_NAMESPACE, 0xA3_0600);
+            m.text(0xA3_0500, "ZIndicatorMgr");
+            m.text(0xA3_0600, "Panda.ZGame");
+            m.put(indicator + INDICATOR_IS_ENABLE, &[1]);
+            m.put(indicator + INDICATOR_IS_PC_UP_RELEASE, &[0]);
+            m.put(indicator + INDICATOR_IS_CAN_RELEASE, &[1]);
+            m.put(indicator + INDICATOR_DATA_TYPE, &[1]);
+            m.put(
+                indicator + INDICATOR_DATA_SKILL_ID,
+                &MARKER_1_SKILL_ID.to_le_bytes(),
+            );
+            m.put(
+                indicator + INDICATOR_DATA_SLOT_ID,
+                &MARKER_1_SLOT_ID.to_le_bytes(),
+            );
+            m.put(indicator + INDICATOR_DATA_PARAM_1, &1.0f32.to_le_bytes());
+            m.put(
+                indicator + INDICATOR_DATA_PARAM_2,
+                &MARKER_MAX_DISTANCE.to_le_bytes(),
+            );
+            m.put(
+                indicator + INDICATOR_DATA_MAX_DISTANCE,
+                &MARKER_MAX_DISTANCE.to_le_bytes(),
+            );
+            m.put(indicator + INDICATOR_MGR_POS, &xyz);
+            m.put(indicator + INDICATOR_IS_PC_MODE, &[1]);
+            m.put(
+                indicator + INDICATOR_SKILL_ID,
+                &MARKER_1_SKILL_ID.to_le_bytes(),
+            );
+            m.put(
+                indicator + INDICATOR_SLOT_ID,
+                &MARKER_1_SLOT_ID.to_le_bytes(),
+            );
             m
         }
 
@@ -1032,6 +1531,7 @@ mod windows {
                     z: 3.75
                 }
             );
+            assert!(require_marker_1_state(&state).is_ok());
         }
 
         #[test]
@@ -1080,6 +1580,41 @@ mod windows {
         }
 
         #[test]
+        fn armed_mode_requires_the_exact_literal_token() {
+            let mut options = Map::new();
+            options.insert("build".into(), BUILD.into());
+            options.insert("armed-mode".into(), "yes".into());
+            assert!(reject_unknown_options(&options).is_err());
+            options.insert("armed-mode".into(), ARMED_MODE_TOKEN.into());
+            assert!(reject_unknown_options(&options).is_ok());
+        }
+
+        #[test]
+        fn marker_gate_rejects_any_non_marker_one_state() {
+            let mut state = coherent_sample(&valid_memory(), 0x10_0000).unwrap();
+            state.indicator.slot_id = 202;
+            assert!(require_marker_1_state(&state).is_err());
+            state.indicator.slot_id = MARKER_1_SLOT_ID;
+            state.indicator.is_can_release = false;
+            assert!(require_marker_1_state(&state).is_err());
+        }
+
+        #[test]
+        fn position_distance_uses_three_dimensions() {
+            let origin = Position {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            };
+            let moved = Position {
+                x: 0.03,
+                y: 0.04,
+                z: 0.0,
+            };
+            assert!(approx(position_distance(&origin, &moved), 0.05, 0.0001));
+        }
+
+        #[test]
         fn receipt_policy_serialization_contains_no_pointer_pid_or_path_fields() {
             let policy = Policy {
                 exact_build_and_hashes_required: true,
@@ -1096,6 +1631,9 @@ mod windows {
                 process_memory_written: false,
                 packets_observed_or_modified: false,
                 place_enabled: false,
+                mouse_click_emitted: false,
+                reversible_mouse_move_enabled: false,
+                escape_cancel_enabled: false,
             };
             let json = serde_json::to_string(&policy).unwrap();
             assert!(!json.contains("pid"));
@@ -1114,6 +1652,7 @@ mod windows {
                 "output",
                 "duration-ms",
                 "interval-ms",
+                "armed-mode",
             ];
             assert!(
                 !allowed

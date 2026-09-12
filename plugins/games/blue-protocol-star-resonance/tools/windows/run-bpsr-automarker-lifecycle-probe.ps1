@@ -3,7 +3,8 @@ param(
     [string]$InstallRoot,
     [string]$SteamManifest,
     [ValidateRange(100, 60000)][int]$DurationMs = 15000,
-    [ValidateRange(5, 1000)][int]$IntervalMs = 10
+    [ValidateRange(5, 1000)][int]$IntervalMs = 10,
+    [switch]$ArmReversibleNudge
 )
 
 $ErrorActionPreference = 'Stop'
@@ -67,16 +68,23 @@ if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
 }
 
 $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
-$receipt = Join-Path $PSScriptRoot "automarker-lifecycle-$stamp.v1.json"
+$receipt = Join-Path $PSScriptRoot "automarker-lifecycle-$stamp.v2.json"
 if (Test-Path -LiteralPath $receipt) { throw 'Refusing to overwrite an existing receipt.' }
 
-& $probe `
-    --build $expectedBuild `
-    --process-executable (Join-Path $InstallRoot 'BPSR_STEAM.exe') `
-    --game-assembly (Join-Path $InstallRoot 'GameAssembly.dll') `
-    --steam-manifest $SteamManifest `
-    --duration-ms $DurationMs `
-    --interval-ms $IntervalMs `
-    --output $receipt
+$arguments = @(
+    '--build', $expectedBuild,
+    '--process-executable', (Join-Path $InstallRoot 'BPSR_STEAM.exe'),
+    '--game-assembly', (Join-Path $InstallRoot 'GameAssembly.dll'),
+    '--steam-manifest', $SteamManifest,
+    '--duration-ms', $DurationMs,
+    '--interval-ms', $IntervalMs,
+    '--output', $receipt
+)
+if ($ArmReversibleNudge) {
+    Write-Warning 'ARMED CANARY: manually select Marker 1 and keep the game focused. This emits only a 6-pixel mouse nudge, its inverse, and Escape. It never clicks.'
+    $arguments += @('--armed-mode', 'marker1-reversible-nudge-v1')
+}
+
+& $probe @arguments
 if ($LASTEXITCODE -ne 0) { throw 'The exact-build read-only probe failed.' }
-Write-Host "Created sanitized receipt $(Split-Path -Leaf $receipt). Place remains disabled."
+Write-Host "Created sanitized receipt $(Split-Path -Leaf $receipt). Marker confirmation and Place remain disabled."
