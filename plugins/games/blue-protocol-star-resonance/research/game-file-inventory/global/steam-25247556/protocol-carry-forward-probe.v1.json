@@ -9,8 +9,8 @@
   "capture_scope": "single-identified-live-game-flow-private-probe",
   "capture_sha256": "c0fb4cedd7df8cd7604c67b282325e9b7ba234ab4426df08205e115c0f67026f",
   "capture_bytes": 7703864,
-  "journal_sha256": "a3f1d063b54c41d30d0e43abba8423e19945c620d850902527a749fa3f987c07",
-  "journal_bytes": 3754697,
+  "journal_sha256": "92cdee0a78995281592673b59cd5a697d4b0b482bf7760dd08df7bff6e4407fd",
+  "journal_bytes": 3754899,
   "executable": {
     "bytes": 808496,
     "sha256": "90537dbd0e4c9d4b3ed2af06aa8bf7ffe7219fc94bb2f6963673f7b340288588"
@@ -36,7 +36,7 @@
       { "direction": "server_to_client", "fragment": "return", "service_id": 103198054, "method_id": 249858, "count": 14 }
     ]
   },
-  "verdict": "The prior-build frame grammar and many route IDs remain observationally compatible with this bounded current-build sample. This supports using the pack as a capture-analysis hypothesis only; it does not prove full route completeness, marker semantics, or permission to transmit any request.",
+  "verdict": "The prior-build frame grammar and many route IDs remain observationally compatible with this bounded current-build sample. The journal records captured build 25247556 separately from the non-authoritative 24687926 pack source. This supports using the pack as a capture-analysis hypothesis only; it does not prove full route completeness, marker semantics, or permission to transmit any request.",
   "privacy": {
     "raw_capture_committed": false,
     "journal_committed": false,
