@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "generated_by": "rlogs-bpsr-use-slot-current-schema-transport-audit",
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "build_id": "25247556",
+  "audit_kind": "sanitized-read-only-current-build-schema-and-transport-proof",
+  "scope": {
+    "packet_transmission_performed": false,
+    "packet_replay_performed": false,
+    "process_memory_read": false,
+    "process_memory_write": false,
+    "input_automation_performed": false
+  },
+  "exact_current_build_descriptor_evidence": {
+    "container": "current_build_package_container_m0",
+    "container_byte_length": 1281657060,
+    "descriptor_file": "stru_use_slot_request.proto",
+    "package": "zproto",
+    "message": "UseSlotRequest",
+    "field": {
+      "number": 5,
+      "proto_name": "sessionSequence",
+      "json_name": "sessionSequence",
+      "proto_type": "uint32",
+      "wire_type": "varint"
+    },
+    "descriptor_name_offset_decimal": 1194940098,
+    "proof_state": "exact_current_build_serialized_file_descriptor"
+  },
+  "sanitized_current_build_observations": {
+    "use_slot_request_count": 132,
+    "ground_marker_request_count": 6,
+    "ordinary_skill_request_count": 126,
+    "session_sequence": {
+      "present_in_every_request": true,
+      "monotonic_within_each_observed_gameplay_session": true,
+      "observed_rates_per_second": [12.52, 11.47, 11.69],
+      "interpretation": "The exact field name is proven. Its varying rate is consistent with a live client session/update sequence and rejects a universal fixed 80 ms generator.",
+      "fresh_request_requirement": "Acquire the current value through the game's live request-construction path; do not replay or extrapolate a captured value."
+    },
+    "authenticated_attribute_plaintext_field_6": {
+      "wire_type": "fixed32",
+      "decoded_float_value": 1.0,
+      "same_value_in_all_observed_requests": true,
+      "semantic_name_proven": false,
+      "native_generation_rule_proven": false,
+      "note": "This aggregate records no envelope bytes or cryptographic key material."
+    },
+    "transport_sequences": {
+      "frame_up_sequence_strictly_increments_for_every_client_frame": true,
+      "rpc_call_id_strictly_increments_for_every_client_call_within_a_connection": true,
+      "marker_calls_share_both_sequence_spaces_with_unrelated_client_traffic": true,
+      "fresh_request_requirement": "Let the live game transport allocate both sequence values."
+    }
+  },
+  "current_build_rpc_proxy_evidence": {
+    "implementation_surface": "generated game Lua RPC proxy",
+    "constants": [
+      "vRequest",
+      "encode",
+      "zproto.World.UseSlot",
+      "LuaProxyCall",
+      "HandleSendMessage",
+      "zproto.World.UseSlot_Ret"
+    ],
+    "meaning": "The game owns request encoding and transport dispatch. This proves a client proxy surface, not an externally callable ABI or permission to invoke it."
+  },
+  "architecture_assessment": [
+    {
+      "architecture": "normal_game_ui_input",
+      "tcp_corruption_risk": "none",
+      "exact_saved_xyz_supported_by_current_evidence": false,
+      "assessment": "Normal UI placement is observed, but no reviewed world-to-screen, camera, navigation, or ground-raycast adapter can deterministically reproduce an arbitrary saved coordinate."
+    },
+    {
+      "architecture": "in_process_normal_marker_action",
+      "tcp_corruption_risk": "low_when_the_game_owns_transport",
+      "exact_saved_xyz_supported_by_current_evidence": "candidate",
+      "assessment": "This is the preferred exact-coordinate architecture because the normal high-level game path can own sessionSequence, action identity, time, authenticated attributes, framing, ordering, and retransmission. Its exact-current-build method ABI and coordinate parameter boundary remain unresolved."
+    },
+    {
+      "architecture": "direct_world_proxy_use_slot",
+      "tcp_corruption_risk": "low_when_invoked_inside_the_game",
+      "exact_saved_xyz_supported_by_current_evidence": "blocked",
+      "assessment": "The proxy would preserve transport allocation, but a caller would still need a complete current request including live session and authenticated action fields."
+    },
+    {
+      "architecture": "external_tcp_stream_injection_or_rewrite",
+      "tcp_corruption_risk": "high",
+      "exact_saved_xyz_supported_by_current_evidence": false,
+      "assessment": "The repository capture path is passive. It has no inline connection owner, sender, retransmission engine, or sequence-safe rewrite layer. Side injection must remain prohibited."
+    }
+  ],
+  "recommendation": {
+    "preferred_exact_coordinate_path": "Resolve and invoke the exact-current-build high-level normal marker action while leaving request construction and transport ownership inside the game.",
+    "ui_fallback": "Use normal UI automation only when approximate placement is acceptable.",
+    "prohibited_path": "Do not synthesize, replay, inject, or rewrite application bytes on the live TCP stream.",
+    "runtime_sender_enabled": false
+  },
+  "remaining_blockers": [
+    "Authenticated attribute plaintext field 6 has no exact-current-build semantic name or native generator proof.",
+    "The exact-current-build high-level marker action method, ABI, and target-position parameter boundary are unresolved.",
+    "The installed metadata file is empty, so prior-build managed RVAs and signatures are not current-build authority.",
+    "No fail-closed in-process placement adapter exists in the repository."
+  ],
+  "privacy": {
+    "contains_cryptographic_keys": false,
+    "contains_raw_payloads": false,
+    "contains_network_endpoints": false,
+    "contains_local_absolute_paths": false,
+    "contains_personal_identity": false
+  }
+}

@@ -563,6 +563,49 @@ mod tests {
     }
 
     #[test]
+    fn current_build_use_slot_session_sequence_schema_is_bound_to_static_proof() {
+        let proof: serde_json::Value = serde_json::from_str(include_str!(
+            "../research/game-file-inventory/global/steam-25247556/use-slot-current-schema-transport-proof.v1.json"
+        ))
+        .unwrap();
+        let field = &proof["exact_current_build_descriptor_evidence"]["field"];
+        assert_eq!(proof["build_id"], "25247556");
+        assert_eq!(field["number"], 5);
+        assert_eq!(field["proto_name"], "sessionSequence");
+        assert_eq!(field["proto_type"], "uint32");
+        assert_eq!(field["wire_type"], "varint");
+        assert_eq!(proof["recommendation"]["runtime_sender_enabled"], false);
+        assert_eq!(proof["privacy"]["contains_cryptographic_keys"], false);
+        assert_eq!(proof["privacy"]["contains_raw_payloads"], false);
+        assert_eq!(proof["privacy"]["contains_network_endpoints"], false);
+        assert_eq!(proof["privacy"]["contains_local_absolute_paths"], false);
+        assert_eq!(proof["privacy"]["contains_personal_identity"], false);
+
+        let outbound: serde_json::Value = serde_json::from_str(include_str!(
+            "../research/game-file-inventory/global/steam-25247556/outbound-ground-marker-request-correlation-proof.v1.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            outbound["exact_current_build_request_schema_proof"]["artifact"],
+            "use-slot-current-schema-transport-proof.v1.json"
+        );
+        assert_eq!(
+            outbound["exact_current_build_request_schema_proof"]["field_5"]["proto_name"],
+            "sessionSequence"
+        );
+        assert_eq!(
+            outbound["exact_current_build_request_schema_proof"]["field_5"]["proto_type"],
+            "uint32"
+        );
+        assert!(
+            outbound["request_schema"]["field_1_5"]
+                .as_str()
+                .unwrap()
+                .contains("sessionSequence")
+        );
+    }
+
+    #[test]
     fn preset_snapshot_requires_unique_complete_finite_points_and_sorts_them() {
         let marker = |instance, number, x, y, z| LocalMapMarker {
             passive_instance_id: instance,

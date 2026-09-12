@@ -92,7 +92,7 @@ function view(sceneId: number, familyId: string, name: string, x: number): Autom
     deploymentId: null,
     protocolPackDigest: null,
     nativeLoadSupported: false,
-    nativeLoadReason: "native_waymark_request_unverified",
+    nativeLoadReason: "native_waymark_transport_unavailable",
     previewSessionId: "preview-test-session",
   };
 }

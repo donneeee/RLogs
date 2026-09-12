@@ -7,10 +7,11 @@ from remote clients whose exact builds were not independently proven. Their
 live wire evidence is triangulated with the exact local build-25247556 registry
 and deterministic derived-pack digest. RLogs may locally project only that
 exact runtime tuple, save observed marker locations, and preview a reviewed
-assignment. It must not attempt native placement: current request field `1.5`
-and authenticated attribute plaintext field `6` still lack proven semantics
-and native generation rules, and no active fail-closed injection transport
-exists.
+assignment. It must not attempt native placement. Current request field `1.5`
+has the exact current-build name and type `uint32 sessionSequence`, but its live
+generator state is owned by the game session. Authenticated attribute plaintext
+field `6` remains semantically unresolved, and no active fail-closed placement
+transport exists.
 Exact build 24687926 retains its reviewed provisional observer support; no
 neighboring or future compatibility build inherits the new observer gate.
 
@@ -36,6 +37,14 @@ new stream.
   retains `World.SetMapMark` and `World.RemoveMapMark`, but exposes no named
   party/ground-waymark route. The result keeps native placement closed: these
   methods remain personal map-pin candidates, not party-visible automarkers.
+- The current package's serialized `stru_use_slot_request.proto` descriptor
+  proves that `UseSlotRequest` field `5` is exactly
+  `uint32 sessionSequence`. A sanitized comparison across 132 current-build
+  marker and ordinary skill requests shows that it is present everywhere and
+  monotonic per gameplay session, while its observed rate varies with the
+  client update cadence. It is therefore live session state, not a universal
+  fixed-80-ms value. The schema and transport proof is recorded in
+  `steam-25247556/use-slot-current-schema-transport-proof.v1.json`.
 - A focused 300.333-second remote Tina M20 observer capture now proves six
   passive inbound ground-marker additions on the live Global service. The
   remote capture client's exact build was not independently proven. Independent
@@ -66,10 +75,29 @@ new stream.
   `steam-25247556/outbound-ground-marker-request-correlation-proof.v1.json`.
   The 80-byte `attr_data` envelopes all authenticate and decrypt with the
   reviewed gameplay-only keys, but current plaintext field `6` is new and its
-  semantics/generation are unresolved. Enclosing request field `1.5` is also
-  present and changing with no proven meaning or native generator. This proves
-  the route/request topology and the local save-location fields; it does not
-  authorize an encoder, sender, replay, or placement adapter.
+  semantics/generation are unresolved. Enclosing request field `1.5` is the
+  exact current-build `uint32 sessionSequence`; its live value must be allocated
+  by the game rather than copied or extrapolated. This proves the route/request
+  topology and the local save-location fields; it does not authorize an
+  encoder, sender, replay, or placement adapter.
+
+## Placement transport architecture
+
+For exact saved XYZ, the preferred future architecture is an in-process call
+through the exact-current-build high-level normal marker action. That keeps
+`sessionSequence`, action identity, synchronized time, authenticated attributes,
+RPC call IDs, `FrameUp` IDs, ordering, and retransmission inside the game. The
+current package proves a generated `zproto.World.UseSlot` Lua proxy that encodes
+`vRequest` and dispatches through `LuaProxyCall`, but it does not expose a
+reviewed external ABI. Calling that lower-level proxy directly remains blocked
+because the caller would still have to construct the complete live request.
+
+Normal game-UI input is the least invasive fallback, but the reviewed code and
+artifacts contain no deterministic saved-world-XYZ to camera/screen/raycast
+adapter. It can reproduce an approximate visible click, not an exact preset
+coordinate. Raw TCP insertion or rewriting is not an acceptable alternative:
+the RLogs network path is passive and owns neither the live connection's
+sequence state nor retransmission. Do not add a stream sender.
 
 ## Evidence already available
 
@@ -205,8 +233,9 @@ normal-UI placements isolate the nested `World.UseSlot` request and the
 placing-client method-`46` add. The next experiments should stay capture-only
 and separately isolate move/replace, individual-clear, clear-all,
 observer-broadcast, failure/permission, wipe, reconnect, and scene-change
-controls. They should also vary conditions needed to resolve request field
-`1.5` and authenticated attribute plaintext field `6`. Do not substitute
+controls. They should also vary reconnect/scene conditions to bound the
+`sessionSequence` lifecycle and vary conditions needed to resolve authenticated
+attribute plaintext field `6`. Do not substitute
 `SetMapMark`, inject a request, replay captured values, or treat the older pack
 as current-build runtime authority.
 

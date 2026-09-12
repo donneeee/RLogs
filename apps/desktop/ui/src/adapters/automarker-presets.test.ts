@@ -30,7 +30,7 @@ function view() {
     deploymentId: null,
     protocolPackDigest: null,
     nativeLoadSupported: false,
-    nativeLoadReason: "native_waymark_request_unverified",
+    nativeLoadReason: "native_waymark_transport_unavailable",
     previewSessionId: "preview-test-session",
   };
 }
@@ -145,7 +145,7 @@ describe("automarker preset catalog", () => {
       context: { ...view().context, activityFamilyId: "mech-facility" },
       preset: view().presets[0],
     })).toThrow(/invalid local automarker preset/i);
-    expect(() => parseAutomarkerLocalLoadResult({ supported: false, reason: "native_waymark_request_unverified" })).toThrow();
+    expect(() => parseAutomarkerLocalLoadResult({ supported: false, reason: "native_waymark_transport_unavailable" })).toThrow();
   });
 
   it("distinguishes Save overwrite from Save As creation", () => {

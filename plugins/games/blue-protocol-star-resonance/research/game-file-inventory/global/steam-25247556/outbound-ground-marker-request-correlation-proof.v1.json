@@ -39,6 +39,19 @@
     "authority": "request-correlation-only",
     "outbound_runtime_authorized": false
   },
+  "exact_current_build_request_schema_proof": {
+    "artifact": "use-slot-current-schema-transport-proof.v1.json",
+    "source": "exact-current-build serialized FileDescriptorProto",
+    "descriptor_file": "stru_use_slot_request.proto",
+    "message": "zproto.UseSlotRequest",
+    "field_5": {
+      "proto_name": "sessionSequence",
+      "field_number": 5,
+      "proto_type": "uint32",
+      "wire_type": "varint"
+    },
+    "authority_limit": "This exact local-build descriptor proves the field name and type. It does not independently verify the remote capture client's build, reveal the live generator state, or authorize transmission."
+  },
   "private_evidence_identities": {
     "capture": {
       "capture_id": "tina-m20-leader-marker1-20260911-212805",
@@ -141,7 +154,7 @@
     "field_1_3_10": "is_passive; observed true",
     "field_1_3_11": "is_activate_roulette; observed true",
     "field_1_4": "attr_data; 80-byte authenticated encrypted gameplay-attribute envelope",
-    "field_1_5": "current-build varint with unresolved semantics and generation rule"
+    "field_1_5": "sessionSequence; exact current-build uint32 varint whose live value is owned by the game session"
   },
   "attr_data_aggregate": {
     "observed_count": 6,
@@ -309,9 +322,9 @@
     "blockers": [
       "The remote capture client's exact build was not independently verified.",
       "The protocol journal used build 24687926 only as an explicitly unverified carry-forward decoder hypothesis.",
-      "UseSlotRequest field 1.5 semantics and native generation rule are unresolved.",
+      "UseSlotRequest field 1.5 is proven as uint32 sessionSequence, but its live generator/current-value acquisition and reconnect or scene-reset lifecycle remain unresolved.",
       "Authenticated attribute plaintext field 6 semantics and native generation rule are unresolved.",
-      "Dynamic frame sequence, call ID, slot ID, skill UUID, begin time, IV, HMAC, ciphertext, current position, and acknowledgment handling cannot be replayed as captured constants.",
+      "Dynamic sessionSequence, frame sequence, call ID, slot ID, skill UUID, begin time, IV, HMAC, ciphertext, current position, and acknowledgment handling cannot be replayed as captured constants.",
       "No active fail-closed packet-injection transport is implemented or authorized.",
       "Move, replace, clear, clear-all, failure, permission, wipe, reconnect, and scene-change lifecycles remain uncaptured."
     ],

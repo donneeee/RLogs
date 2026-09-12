@@ -321,7 +321,7 @@ export function mountAutomarkerPresetsSurface(
     captureCurrent.disabled = busy || !captureAvailability.enabled;
     captureCurrent.title = captureAvailability.reason;
     placeInGame.disabled = true;
-    placeInGame.title = `Unavailable until native party-visible marker placement is protocol-verified (${view?.nativeLoadReason ?? "native_waymark_request_unverified"})`;
+    placeInGame.title = `The marker request is verified, but native placement is unavailable until rLogs can invoke the game's own request path (${view?.nativeLoadReason ?? "native_waymark_transport_unavailable"})`;
     detail.replaceChildren();
     if (context !== null) {
       detail.append(text("p", `${context.activityFamilyId} · Build ${context.clientBuild} · Scene ${context.sceneId} · Map ${context.mapId}`, "card-copy"));
@@ -334,7 +334,7 @@ export function mountAutomarkerPresetsSurface(
       detail.append(list);
     }
     if (view !== null && !view.nativeLoadSupported) {
-      detail.append(text("p", `Place in game is disabled (${view.nativeLoadReason}): rLogs will not emit a guessed game packet.`, "card-copy automarker-safety-note"));
+      detail.append(text("p", `Place in game is disabled (${view.nativeLoadReason}): the request format is verified, but rLogs does not yet have a safe native transport.`, "card-copy automarker-safety-note"));
     }
     if (!captureAvailability.enabled) {
       detail.append(text("p", `Capture current markers is unavailable: ${captureAvailability.reason}`, "card-copy automarker-safety-note"));

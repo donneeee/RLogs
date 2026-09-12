@@ -271,7 +271,10 @@ fn view(
         deployment_id: None,
         protocol_pack_digest: None,
         native_load_supported: false,
-        native_load_reason: "native_waymark_request_unverified",
+        // The current-build request topology is capture-proven. Placement
+        // remains disabled until rLogs has a transport that can ask the game
+        // to allocate its own live counters and authenticated request fields.
+        native_load_reason: "native_waymark_transport_unavailable",
         preview_session_id: String::new(),
     }
 }

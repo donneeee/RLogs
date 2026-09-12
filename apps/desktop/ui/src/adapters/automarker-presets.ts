@@ -34,7 +34,7 @@ export interface AutomarkerPresetView {
   deploymentId: string | null;
   protocolPackDigest: string | null;
   nativeLoadSupported: boolean;
-  nativeLoadReason: "native_waymark_request_unverified";
+  nativeLoadReason: "native_waymark_transport_unavailable";
   previewSessionId: string;
 }
 
@@ -208,7 +208,7 @@ export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView 
       !optionalIdentity(value.deploymentId, 64) ||
       !optionalDigest(value.protocolPackDigest) ||
       typeof value.nativeLoadSupported !== "boolean" ||
-      value.nativeLoadReason !== "native_waymark_request_unverified" ||
+      value.nativeLoadReason !== "native_waymark_transport_unavailable" ||
       typeof value.previewSessionId !== "string" || value.previewSessionId.length < 8 || value.previewSessionId.length > 128) {
     throw new Error("The local host returned an invalid automarker preset catalog.");
   }

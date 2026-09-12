@@ -135,7 +135,7 @@ function catalog(sceneId: number, familyId: string, name: string): AutomarkerPre
     deploymentId: null,
     protocolPackDigest: null,
     nativeLoadSupported: false,
-    nativeLoadReason: "native_waymark_request_unverified",
+    nativeLoadReason: "native_waymark_transport_unavailable",
     previewSessionId: "preview-test-session",
   };
 }
@@ -247,7 +247,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       onInteractivity: async () => () => undefined,
       onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
-      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_transport_unavailable" }),
       loadLayout: async () => layout(),
       saveLayout: async (value) => value,
     }, localizer);
@@ -341,7 +341,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
       loadAutomarkerPreset: async () => ({
         supported: false,
-        reason: "native_waymark_request_unverified",
+        reason: "native_waymark_transport_unavailable",
       }),
       loadLayout: async () => shared,
       saveLayout,
@@ -555,7 +555,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       prepareLocalMaps: async () => undefined, setInteractive: async () => undefined,
       onInteractivity: async () => () => undefined, onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
-      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_transport_unavailable" }),
       loadLayout: async () => shared, saveLayout,
     }, localizer);
     await flushPromises();
@@ -580,7 +580,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       prepareLocalMaps: async () => undefined, setInteractive: async () => undefined,
       onInteractivity: async () => () => undefined, onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
-      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_transport_unavailable" }),
       loadLayout: async () => (++loads === 1 ? initial : fresh), saveLayout,
     }, localizer);
     await flushPromises(); await flushPromises();
@@ -605,7 +605,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       onInteractivity: async (handler) => { interactivity = handler; return () => undefined; },
       onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
-      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_transport_unavailable" }),
       loadLayout: async () => shared,
       saveLayout: async (value) => ({ ...structuredClone(value), revision: value.revision + 1 }),
     }, localizer);
@@ -635,7 +635,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       onLayoutRefresh: async (handler) => { requestRefresh = handler; return () => undefined; },
       onInteractivity: async () => () => undefined, onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
-      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_transport_unavailable" }),
       loadLayout: async () => {
         loads += 1;
         if (loads === 1) return initial;
@@ -673,7 +673,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       prepareLocalMaps: async () => undefined, setInteractive: async () => undefined,
       onInteractivity: async () => () => undefined, onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
-      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_transport_unavailable" }),
       loadLayout: async () => shared, saveLayout,
     }, localizer);
     await flushPromises();
@@ -706,7 +706,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       prepareLocalMaps: async () => undefined, setInteractive: async () => undefined,
       onInteractivity: async () => () => undefined, onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
-      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_transport_unavailable" }),
       loadLayout: async () => shared, saveLayout,
     }, localizer);
     await flushPromises();
@@ -755,7 +755,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       prepareLocalMaps: async () => undefined, setInteractive: async () => undefined,
       onInteractivity: async () => () => undefined, onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
-      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_transport_unavailable" }),
       loadLayout: async () => shared, saveLayout: async (value) => value,
     }, localizer);
     await flushPromises();
@@ -792,7 +792,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       prepareLocalMaps: async () => undefined, setInteractive: async () => undefined,
       onInteractivity: async () => () => undefined, onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
-      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_transport_unavailable" }),
       loadLayout: () => pending.promise, saveLayout: async (value) => value,
     }, localizer);
     const modules = [...container.querySelectorAll<HTMLElement>(
@@ -821,7 +821,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       prepareLocalMaps: async () => undefined, setInteractive: async () => undefined,
       onInteractivity: async () => () => undefined, onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
-      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_transport_unavailable" }),
       loadLayout: async () => shared, saveLayout,
     }, localizer);
     await flushPromises();
@@ -851,7 +851,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       prepareLocalMaps: async () => undefined, setInteractive: async () => undefined,
       onInteractivity: async () => () => undefined, onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: async () => catalog(1_633, "dungeon.1633", "Preset"),
-      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_transport_unavailable" }),
       loadLayout: async () => (++loads === 1 ? initial : fresh), saveLayout,
     }, localizer);
     await flushPromises();
@@ -873,7 +873,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     let waitCount = 0;
     const nativeLoad = vi.fn(async () => ({
       supported: false as const,
-      reason: "native_waymark_request_unverified" as const,
+      reason: "native_waymark_transport_unavailable" as const,
     }));
     const container = document.createElement("div");
     document.body.append(container);
@@ -955,7 +955,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
       onInteractivity: async () => () => undefined,
       onFocusHeld: async () => () => undefined,
       loadAutomarkerPresets: () => catalogs.shift()!.promise,
-      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_request_unverified" }),
+      loadAutomarkerPreset: async () => ({ supported: false, reason: "native_waymark_transport_unavailable" }),
       loadLayout: async () => layout(),
       saveLayout: async (value) => value,
     }, localizer);

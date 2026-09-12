@@ -2,6 +2,7 @@
 
 mod action_correlation;
 mod actor_presentation;
+mod automarker_request;
 mod auxiliary_action_presentation;
 mod battle_imagine_presentation;
 mod behavior;
@@ -82,6 +83,11 @@ pub use action_correlation::{
 pub use actor_presentation::{
     ActorCombatIdentity, ActorCombatPresentation, resolve_actor_combat_identity,
     resolve_actor_combat_presentation, resolve_actor_profile_identity,
+};
+pub use automarker_request::{
+    AUTOMARKER_REQUEST_BUILD, AUTOMARKER_REQUEST_PACK_DIGEST, AutomarkerRequestAttributes,
+    AutomarkerRequestDecodeError, AutomarkerRequestPosition, ObservedAutomarkerRequest,
+    decode_observed_automarker_request_into, supports_observed_automarker_requests,
 };
 pub use auxiliary_action_presentation::{
     AuxiliaryActionPresentation, auxiliary_action_presentation, localized_auxiliary_action_name,
