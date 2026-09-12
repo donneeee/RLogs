@@ -892,6 +892,26 @@ mod tests {
     }
 
     #[test]
+    fn accepts_another_session_generated_action_uuid() {
+        let pack = current_pack(AUTOMARKER_REQUEST_BUILD);
+        let payload = request_with(
+            4,
+            [1.0, 2.0, 3.0, 4.0],
+            [5.0, 6.0, 7.0, 8.0],
+            99,
+            10,
+            0x6abc_def0,
+            1.0,
+        );
+
+        let decoded =
+            decode_observed_automarker_request_into(&pack, &payload, &mut vec![]).unwrap();
+
+        assert_eq!(decoded.marker_number, 4);
+        assert_eq!(decoded.skill_uuid as u32, 0x6abc_def0);
+    }
+
+    #[test]
     fn rejects_nonfinite_or_out_of_bounds_positions_and_headings() {
         let pack = current_pack(AUTOMARKER_REQUEST_BUILD);
         for (target, expected_field) in [

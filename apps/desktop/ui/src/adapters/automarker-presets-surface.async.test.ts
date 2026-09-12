@@ -13,10 +13,14 @@ interface Deferred<T> {
 
 function unavailableObserved(build = "25247556"): ObservedMarkerSnapshot {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     revision: 1,
     captureActive: true,
     protocolSupported: false,
+    requestObserverSupported: false,
+    verifiedRequestCount: 0,
+    lastVerifiedRequestMarkerNumber: null,
+    lastVerifiedRequestObservedMicros: null,
     reason: "marker_protocol_not_verified_for_build_pack",
     sessionId: "capture-test-session",
     deploymentId: "global",
@@ -39,10 +43,14 @@ function capturable(sceneId = 6_525): { catalog: AutomarkerPresetView; snapshot:
   return {
     catalog,
     snapshot: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       revision: 9,
       captureActive: true,
       protocolSupported: true,
+      requestObserverSupported: true,
+      verifiedRequestCount: 2,
+      lastVerifiedRequestMarkerNumber: 2,
+      lastVerifiedRequestObservedMicros: 123_455,
       reason: "observed_markers_available",
       sessionId: catalog.captureSessionId,
       deploymentId: catalog.deploymentId,
@@ -161,6 +169,10 @@ describe("mounted automarker preset editor request ordering", () => {
     const capture = [...container.querySelectorAll("button")]
       .find((button) => button.textContent === "Capture current markers")!;
     expect(capture.disabled).toBe(false);
+    expect(container.querySelector(".automarker-request-diagnostic")?.textContent)
+      .toContain("2 recognized");
+    expect(container.querySelector(".automarker-request-diagnostic")?.textContent)
+      .toContain("marker 2 at 0.123s");
     capture.click();
 
     freshSnapshot.resolve(initial.snapshot);

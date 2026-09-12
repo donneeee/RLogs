@@ -336,6 +336,17 @@ export function mountAutomarkerPresetsSurface(
     if (view !== null && !view.nativeLoadSupported) {
       detail.append(text("p", `Place in game is disabled (${view.nativeLoadReason}): the request format is verified, but rLogs does not yet have a safe native transport.`, "card-copy automarker-safety-note"));
     }
+    if (observedMarkers?.captureActive && observedMarkers.requestObserverSupported) {
+      const last = observedMarkers.lastVerifiedRequestMarkerNumber === null ||
+        observedMarkers.lastVerifiedRequestObservedMicros === null
+        ? "Place a marker through the normal game UI to test recognition."
+        : `Last recognized: marker ${observedMarkers.lastVerifiedRequestMarkerNumber} at ${(observedMarkers.lastVerifiedRequestObservedMicros / 1_000_000).toFixed(3)}s of this capture.`;
+      detail.append(text(
+        "p",
+        `Verified request observer active · ${observedMarkers.verifiedRequestCount} recognized. ${last}`,
+        "card-copy automarker-request-diagnostic",
+      ));
+    }
     if (!captureAvailability.enabled) {
       detail.append(text("p", `Capture current markers is unavailable: ${captureAvailability.reason}`, "card-copy automarker-safety-note"));
     }

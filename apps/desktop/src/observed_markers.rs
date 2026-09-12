@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use rlogs_game_bpsr::{LocalMapMarker, LocalMapMarkerSnapshotError};
 use serde::Serialize;
 
-pub const OBSERVED_MARKER_SNAPSHOT_SCHEMA_VERSION: u16 = 1;
+pub const OBSERVED_MARKER_SNAPSHOT_SCHEMA_VERSION: u16 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObservedMarkerSessionStamp {
@@ -12,6 +12,7 @@ pub struct ObservedMarkerSessionStamp {
     pub client_build: String,
     pub protocol_pack_digest: String,
     pub protocol_supported: bool,
+    pub request_observer_supported: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -30,6 +31,10 @@ pub struct ObservedMarkerSnapshot {
     pub revision: u64,
     pub capture_active: bool,
     pub protocol_supported: bool,
+    pub request_observer_supported: bool,
+    pub verified_request_count: u32,
+    pub last_verified_request_marker_number: Option<u8>,
+    pub last_verified_request_observed_micros: Option<u64>,
     pub reason: &'static str,
     pub session_id: Option<String>,
     pub deployment_id: Option<String>,
@@ -48,6 +53,10 @@ impl Default for ObservedMarkerSnapshot {
             revision: 0,
             capture_active: false,
             protocol_supported: false,
+            request_observer_supported: false,
+            verified_request_count: 0,
+            last_verified_request_marker_number: None,
+            last_verified_request_observed_micros: None,
             reason: "live_capture_not_running",
             session_id: None,
             deployment_id: None,
@@ -84,6 +93,10 @@ impl ObservedMarkerFeed {
             revision: 0,
             capture_active: true,
             protocol_supported: stamp.protocol_supported,
+            request_observer_supported: stamp.request_observer_supported,
+            verified_request_count: 0,
+            last_verified_request_marker_number: None,
+            last_verified_request_observed_micros: None,
             reason,
             session_id: Some(stamp.session_id),
             deployment_id: Some(stamp.deployment_id),
@@ -194,6 +207,10 @@ impl ObservedMarkerFeed {
             revision,
             capture_active: false,
             protocol_supported: false,
+            request_observer_supported: false,
+            verified_request_count: 0,
+            last_verified_request_marker_number: None,
+            last_verified_request_observed_micros: None,
             reason: "live_capture_not_running",
             scene_id: None,
             map_id: None,
@@ -208,6 +225,33 @@ impl ObservedMarkerFeed {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
+    }
+
+    /// Records only a bounded acknowledgement that the exact current-build
+    /// outbound request decoder recognized a normal marker placement. Request
+    /// bytes, encrypted attributes, session sequences, and coordinates never
+    /// cross into this feed.
+    pub fn observe_verified_request(
+        &self,
+        session_id: &str,
+        marker_number: u8,
+        observed_micros: u64,
+    ) {
+        let mut current = self
+            .snapshot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !current.capture_active
+            || !current.request_observer_supported
+            || current.session_id.as_deref() != Some(session_id)
+            || !(1..=6).contains(&marker_number)
+        {
+            return;
+        }
+        current.verified_request_count = current.verified_request_count.saturating_add(1);
+        current.last_verified_request_marker_number = Some(marker_number);
+        current.last_verified_request_observed_micros = Some(observed_micros);
+        current.revision = current.revision.saturating_add(1);
     }
 
     fn replace(&self, mut next: ObservedMarkerSnapshot) {
@@ -231,6 +275,7 @@ mod tests {
             client_build: "24687926".into(),
             protocol_pack_digest: "sha256:reviewed".into(),
             protocol_supported,
+            request_observer_supported: protocol_supported,
         }
     }
 
@@ -317,5 +362,30 @@ mod tests {
         let snapshot = feed.current();
         assert!(snapshot.markers.is_empty());
         assert_eq!(snapshot.reason, "observed_marker_snapshot_invalid");
+    }
+
+    #[test]
+    fn verified_request_diagnostic_is_bounded_to_the_active_session() {
+        let feed = ObservedMarkerFeed::default();
+        feed.begin_session(stamp("one", true));
+        feed.observe_verified_request("stale", 1, 10);
+        feed.observe_verified_request("one", 0, 11);
+        assert_eq!(feed.current().verified_request_count, 0);
+
+        feed.observe_verified_request("one", 3, 12);
+        let snapshot = feed.current();
+        assert_eq!(snapshot.verified_request_count, 1);
+        assert_eq!(snapshot.last_verified_request_marker_number, Some(3));
+        assert_eq!(snapshot.last_verified_request_observed_micros, Some(12));
+
+        feed.begin_session(stamp("two", true));
+        let reset = feed.current();
+        assert_eq!(reset.verified_request_count, 0);
+        assert_eq!(reset.last_verified_request_marker_number, None);
+        assert_eq!(reset.last_verified_request_observed_micros, None);
+        feed.finish_session("two");
+        let finished = feed.current();
+        assert!(!finished.request_observer_supported);
+        assert_eq!(finished.verified_request_count, 0);
     }
 }

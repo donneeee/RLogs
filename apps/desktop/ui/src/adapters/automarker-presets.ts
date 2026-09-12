@@ -69,10 +69,14 @@ export interface AutomarkerLocalLoadResult {
 }
 
 export interface ObservedMarkerSnapshot {
-  schemaVersion: 1;
+  schemaVersion: 2;
   revision: number;
   captureActive: boolean;
   protocolSupported: boolean;
+  requestObserverSupported: boolean;
+  verifiedRequestCount: number;
+  lastVerifiedRequestMarkerNumber: number | null;
+  lastVerifiedRequestObservedMicros: number | null;
   reason: "live_capture_not_running" | "marker_protocol_not_verified_for_build_pack" |
     "waiting_for_packet_observed_scene_and_map" | "no_fully_positioned_markers_observed" |
     "observed_marker_snapshot_invalid" | "observed_markers_available";
@@ -231,8 +235,11 @@ export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView 
 }
 
 export function parseObservedMarkerSnapshot(value: unknown): ObservedMarkerSnapshot {
-  if (!record(value) || value.schemaVersion !== 1 || !integer(value.revision) ||
+  if (!record(value) || value.schemaVersion !== 2 || !integer(value.revision) ||
       typeof value.captureActive !== "boolean" || typeof value.protocolSupported !== "boolean" ||
+      typeof value.requestObserverSupported !== "boolean" || !integer(value.verifiedRequestCount) ||
+      !optionalMarkerNumber(value.lastVerifiedRequestMarkerNumber) ||
+      !optionalInteger(value.lastVerifiedRequestObservedMicros) ||
       !observedReason(value.reason) || !optionalIdentity(value.sessionId, 128) ||
       !optionalIdentity(value.deploymentId, 64) || !optionalBuild(value.clientBuild) ||
       !optionalDigest(value.protocolPackDigest) || !optionalInteger(value.sceneId) ||
@@ -245,6 +252,13 @@ export function parseObservedMarkerSnapshot(value: unknown): ObservedMarkerSnaps
   const fullStamp = snapshot.sessionId !== null && snapshot.deploymentId !== null &&
     snapshot.clientBuild !== null && snapshot.protocolPackDigest !== null;
   const hasContext = snapshot.sceneId !== null && snapshot.mapId !== null;
+  const hasRequestDiagnostic = snapshot.lastVerifiedRequestMarkerNumber !== null &&
+    snapshot.lastVerifiedRequestObservedMicros !== null;
+  const validRequestDiagnostic = snapshot.captureActive
+    ? snapshot.requestObserverSupported
+      ? (snapshot.verifiedRequestCount === 0 ? !hasRequestDiagnostic : hasRequestDiagnostic)
+      : snapshot.verifiedRequestCount === 0 && !hasRequestDiagnostic
+    : !snapshot.requestObserverSupported && snapshot.verifiedRequestCount === 0 && !hasRequestDiagnostic;
   const validState = snapshot.reason === "live_capture_not_running"
     ? !snapshot.captureActive && !snapshot.protocolSupported && !hasContext && snapshot.markers.length === 0
     : snapshot.reason === "marker_protocol_not_verified_for_build_pack"
@@ -255,7 +269,9 @@ export function parseObservedMarkerSnapshot(value: unknown): ObservedMarkerSnaps
           ? snapshot.captureActive && snapshot.protocolSupported && fullStamp && hasContext &&
             snapshot.observedMicros !== null && snapshot.markers.length > 0
           : snapshot.captureActive && snapshot.protocolSupported && fullStamp && hasContext && snapshot.markers.length === 0;
-  if (!validState || (snapshot.sceneId === null) !== (snapshot.mapId === null) ||
+  if (!validState || !validRequestDiagnostic ||
+      (snapshot.lastVerifiedRequestMarkerNumber === null) !== (snapshot.lastVerifiedRequestObservedMicros === null) ||
+      (snapshot.sceneId === null) !== (snapshot.mapId === null) ||
       (!snapshot.captureActive && snapshot.observedMicros !== null)) {
     throw new Error("The local host returned an inconsistent observed-marker snapshot.");
   }
@@ -334,6 +350,10 @@ function optionalDigest(value: unknown): value is string | null {
 
 function optionalInteger(value: unknown): value is number | null {
   return value === null || integer(value);
+}
+
+function optionalMarkerNumber(value: unknown): value is number | null {
+  return value === null || (integer(value) && value >= 1 && value <= 6);
 }
 
 function observedReason(value: unknown): value is ObservedMarkerSnapshot["reason"] {

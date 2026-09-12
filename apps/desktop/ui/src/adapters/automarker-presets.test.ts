@@ -46,10 +46,14 @@ describe("automarker preset catalog", () => {
       protocolPackDigest: `sha256:${"a".repeat(64)}`,
     };
     const snapshot = parseObservedMarkerSnapshot({
-      schemaVersion: 1,
+      schemaVersion: 2,
       revision: 7,
       captureActive: true,
       protocolSupported: true,
+      requestObserverSupported: true,
+      verifiedRequestCount: 1,
+      lastVerifiedRequestMarkerNumber: 1,
+      lastVerifiedRequestObservedMicros: 98,
       reason: "observed_markers_available",
       sessionId: value.captureSessionId,
       deploymentId: value.deploymentId,
@@ -69,10 +73,14 @@ describe("automarker preset catalog", () => {
 
   it("rejects partial identities, duplicate markers, and capability contradictions", () => {
     const base = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       revision: 7,
       captureActive: true,
       protocolSupported: true,
+      requestObserverSupported: true,
+      verifiedRequestCount: 1,
+      lastVerifiedRequestMarkerNumber: 1,
+      lastVerifiedRequestObservedMicros: 98,
       reason: "observed_markers_available",
       sessionId: "capture-session-1",
       deploymentId: "global",
@@ -87,6 +95,8 @@ describe("automarker preset catalog", () => {
     expect(() => parseObservedMarkerSnapshot({ ...base, markers: [...base.markers, { ...base.markers[0] }] }))
       .toThrow(/invalid/i);
     expect(() => parseObservedMarkerSnapshot({ ...base, protocolSupported: false })).toThrow(/inconsistent/i);
+    expect(() => parseObservedMarkerSnapshot({ ...base, verifiedRequestCount: 0 })).toThrow(/inconsistent/i);
+    expect(() => parseObservedMarkerSnapshot({ ...base, lastVerifiedRequestMarkerNumber: 7 })).toThrow(/invalid/i);
 
     const inconsistentView = view();
     inconsistentView.captureSupported = true;

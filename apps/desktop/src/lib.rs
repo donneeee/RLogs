@@ -9063,6 +9063,9 @@ impl RuntimeController {
                 protocol_supported: rlogs_game_bpsr::LocalMapMarkerProjection::protocol_supported(
                     &pack,
                 ),
+                request_observer_supported: rlogs_game_bpsr::supports_observed_automarker_requests(
+                    &pack,
+                ),
             });
         self.live_event_feed.reset(request.session_id.clone());
         self.schedule_automatic_local_game_map_refresh();
@@ -9194,6 +9197,7 @@ impl RuntimeController {
                     let mut live_local_markers =
                         rlogs_game_bpsr::LocalMapMarkerProjection::default();
                     let mut last_local_marker_observed_micros = None;
+                    let mut automarker_request_decode_scratch = Vec::with_capacity(64);
                     let mut training_dummy = TrainingDummyController::default();
                     let mut training_dummy_writer = TrainingDummyLogWriter::new(
                         &output_directory,
@@ -9712,6 +9716,29 @@ impl RuntimeController {
                                     local_markers_dirty = true;
                                     last_local_marker_observed_micros =
                                         Some(record.observed_micros);
+                                }
+                                if let CaptureRecordKind::Packet(packet) = &record.kind
+                                    && packet.route.is_some_and(|routed| {
+                                        routed.key.direction
+                                            == rlogs_game_bpsr::PacketDirection::ClientToServer
+                                            && routed.key.fragment
+                                                == rlogs_game_bpsr::FragmentKind::Call
+                                            && routed.key.service_id == 103_198_054
+                                            && routed.key.method_id == 249_858
+                                    })
+                                    && let Some(payload) = packet.payload.decode_input()
+                                    && let Ok(request) =
+                                        rlogs_game_bpsr::decode_observed_automarker_request_into(
+                                            &pack,
+                                            payload,
+                                            &mut automarker_request_decode_scratch,
+                                        )
+                                {
+                                    live_observed_marker_feed.observe_verified_request(
+                                        &session_id,
+                                        request.marker_number,
+                                        record.observed_micros,
+                                    );
                                 }
                                 frame_protocol_observability
                                     .observe_protocol(&pack, record, status);
