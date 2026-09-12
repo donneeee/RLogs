@@ -335,6 +335,10 @@ name = "rlogs-bpsr-il2cpp-resolved-string-receipt"
 path = "tools/il2cpp-resolved-string-receipt.rs"
 
 [[bin]]
+name = "rlogs-bpsr-automarker-lifecycle-probe"
+path = "tools/automarker-lifecycle-probe.rs"
+
+[[bin]]
 name = "rlogs-bpsr-il2cpp-combat-surface"
 path = "tools/il2cpp-combat-surface.rs"
 

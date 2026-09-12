@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "build_id": "25247556",
+  "proof_kind": "exact-build-read-only-automarker-root-and-field-layout",
+  "inputs": {
+    "process_executable": {
+      "byte_length": 808496,
+      "sha256": "90537dbd0e4c9d4b3ed2af06aa8bf7ffe7219fc94bb2f6963673f7b340288588"
+    },
+    "game_assembly": {
+      "byte_length": 218074672,
+      "sha256": "4a079aec0a3e51a8023aa86bbd152e12068907b65b9aafb355d20bb6d6c41fe3"
+    },
+    "recovered_metadata": {
+      "version": 31,
+      "byte_length": 28697724,
+      "sha256": "2f8213cf2a253d7a99a37b81f796e3a0162d0cf2d1ca6a2d0e0719f8f9a57779"
+    },
+    "dump_cs_sha256": "3bbc01c125dc160be85730986ebb40740dc2a078cb4bb4c5a0add00349b47a32",
+    "il2cpp_h_sha256": "75ce0d79c2995449f7200a9df03bb47e85e39494e6b6098aac64f36a62ed7f91",
+    "script_json_sha256": "84fc7707e91f1eabc4c17ea3735f387da6b9e7a26ee70a34a0c768994e1cbcd4"
+  },
+  "singleton_wrapper": {
+    "method": "ZUtil_ZSingleton_Panda_ZGame_ZEntityMgrWrap.get_Instance",
+    "method_rva_hex": "0x4A7F4D0",
+    "bounded_instructions": [
+      { "rva_hex": "0x4A7F4FC", "bytes_hex": "488d0d8dcab804", "instruction": "lea rcx, [method-info-slot]", "resolved_slot_rva_hex": "0x960BF90" },
+      { "rva_hex": "0x4A7F50D", "bytes_hex": "488d0de4cab804", "instruction": "lea rcx, [type-info-slot]", "resolved_slot_rva_hex": "0x960BFF8" },
+      { "rva_hex": "0x4A7F525", "bytes_hex": "488b0dcccab804", "instruction": "mov rcx, [type-info-slot]", "resolved_slot_rva_hex": "0x960BFF8" },
+      { "rva_hex": "0x4A7F53A", "bytes_hex": "488b0d4fcab804", "instruction": "mov rcx, [method-info-slot]", "resolved_slot_rva_hex": "0x960BF90" },
+      { "rva_hex": "0x4A7F541", "bytes_hex": "e84a7379fe", "instruction": "call ZSingleton<object>.get_Instance", "target_rva_hex": "0x3216890" }
+    ],
+    "statically_validated_probe_chain": [
+      "methodInfo = read_pointer(module + method-info-slot)",
+      "declaringClass = read_pointer(methodInfo + 0x20)",
+      "genericContext = read_pointer(declaringClass + 0xC0)",
+      "inflatedClass = read_pointer(genericContext + 0x10)",
+      "typeInfoClass = read_pointer(module + type-info-slot)",
+      "require inflatedClass == typeInfoClass",
+      "staticFields = read_pointer(inflatedClass + 0xB8)",
+      "entityMgr = read_pointer(staticFields + 0x0)"
+    ],
+    "fail_closed_note": "Raw IL2CPP slots may be encoded metadata tokens before runtime initialization. The observer rejects non-pointer values and never calls an initializer."
+  },
+  "field_layouts": [
+    { "declaring_type": "Panda.ZGame.ZEntityMgr", "field": "playerEnt_", "instance_offset_hex": "0x18", "target_class": "Panda.ZGame.PlayerEnt" },
+    { "declaring_type": "Panda.ZGame.Pure.ZPureEntity", "field": "<PureComponents>k__BackingField", "instance_offset_hex": "0x20", "target_class": "Panda.ZGame.PlayerEnt__Storage" },
+    { "declaring_type": "Panda.ZGame.PlayerEnt", "field": "skillInputComp_", "instance_offset_hex": "0x128", "target_class": "Panda.ZGame.PlayerSkillInputComp" },
+    { "declaring_type": "Panda.ZGame.PlayerSkillInputComp", "field": "skillInputMgr_", "instance_offset_hex": "0x28", "target_class": "Panda.ZGame.ZSkillInputMgr" },
+    { "declaring_type": "Panda.ZGame.PlayerEnt__Storage", "field": "_value105", "meaning": "IndicatorPosComponent", "instance_offset_hex": "0x9C4", "value_shape": "three finite little-endian float32 values" },
+    { "declaring_type": "Panda.ZGame.ZSkillInputMgr", "field": "slotId_", "instance_offset_hex": "0x18" },
+    { "declaring_type": "Panda.ZGame.ZSkillInputMgr", "field": "lastUsedSlotId_", "instance_offset_hex": "0x1C" },
+    { "declaring_type": "Panda.ZGame.ZSkillInputMgr", "field": "lastPressSlotId_", "instance_offset_hex": "0x20" },
+    { "declaring_type": "Panda.ZGame.ZSkillInputMgr", "field": "isPress_", "instance_offset_hex": "0x38" }
+  ],
+  "observer_validation_policy": {
+    "all_managed_object_classes_checked_by_name_and_namespace": true,
+    "root_chain_double_read_per_accepted_sample": true,
+    "lifecycle_state_double_read_per_accepted_sample": true,
+    "pointer_alignment_and_committed_readable_range_checked": true,
+    "raw_addresses_or_process_identifiers_emitted": false,
+    "place_enabled": false
+  }
+}
