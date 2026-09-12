@@ -91,7 +91,7 @@ mod tests {
         let catalog: OptimizerCatalog =
             serde_json::from_str(&catalog_json_impl().unwrap()).unwrap();
         assert_eq!(catalog.attributes.len(), 21);
-        assert_eq!(catalog.client_builds, ["24252055"]);
+        assert_eq!(catalog.client_builds, ["24252055", "24687926"]);
         assert_eq!(catalog.combination_sizes, [4, 5]);
     }
 
