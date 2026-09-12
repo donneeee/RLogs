@@ -92,6 +92,11 @@ function New-PlannerTargetArguments($X, $Y, $Z, [string]$BaseUrl) {
     )
 }
 
+function Get-ArmedPreparationCountdownSeconds([bool]$OperatorPlacement) {
+    if ($OperatorPlacement) { return 10 }
+    return 5
+}
+
 function Assert-PresetProjectionSchema($Projection) {
     $topLevel = @(
         'schemaVersion', 'context', 'presets', 'captureSupported', 'captureReason',
@@ -848,6 +853,10 @@ function Invoke-LauncherSelfTest {
     $rejected = $false
     try { [void](New-PlannerTargetArguments ([double]::NaN) 2 3 'http://127.0.0.1:54221') } catch { $rejected = $true }
     if (-not $rejected) { throw 'Self-test failed: non-finite native target argument was accepted.' }
+    if ((Get-ArmedPreparationCountdownSeconds $true) -ne 10 -or
+        (Get-ArmedPreparationCountdownSeconds $false) -ne 5) {
+        throw 'Self-test failed: armed preparation countdown selection changed.'
+    }
     Assert-LoopbackBaseUrl 'http://127.0.0.1:54221'
     foreach ($acceptedOwner in @('rlogs-app', 'rlogs-app.exe', 'rLogs', 'rLogs.exe')) {
         if (-not (Test-RLogsDesktopOwnerName $acceptedOwner)) {
@@ -1112,7 +1121,7 @@ $arguments = @(
 if ($ArmReversibleCalibration) {
     Write-Warning 'ARMED CALIBRATION: manually select Marker 1 and keep the game focused. This emits +X, -X, +Y, -Y six-pixel mouse moves and Escape. It never clicks.'
     Write-Host 'Return focus to the game now. The fail-closed canary starts in 5 seconds.'
-    foreach ($remaining in 5..1) {
+    foreach ($remaining in (Get-ArmedPreparationCountdownSeconds $false)..1) {
         Write-Host "$remaining..."
         Start-Sleep -Seconds 1
     }
@@ -1139,14 +1148,19 @@ if ($ArmSinglePlannerStep -or $ArmClosedLoopAim -or $ArmOperatorPlacement) {
     }
     $targetArguments = @(New-PlannerTargetArguments $TargetX $TargetY $TargetZ $RLogsBaseUrl)
     if ($ArmOperatorPlacement) {
-        Write-Warning 'ARMED OPERATOR PLACEMENT EVIDENCE: manually select Marker 1 and keep the game focused. The canary aims without clicking, then asks you to click once. Do not move the mouse. It requires newer outbound and authoritative inbound Marker 1 evidence.'
+        Write-Warning 'ARMED OPERATOR PLACEMENT EVIDENCE: during the countdown, return to the game, open the marker menu, select Marker 1, and leave its reticle active. Do not move the mouse after selecting it. The canary aims without clicking; click exactly once only after the reticle visibly stops moving. It requires newer outbound and authoritative inbound Marker 1 evidence.'
     } elseif ($ArmClosedLoopAim) {
         Write-Warning 'ARMED CLOSED-LOOP CANARY: manually select Marker 1 and keep the game focused. This calibrates, makes at most four <=4-pixel moves (<=16 cumulative), reverses every move, then Escape. Do not touch the mouse. It never clicks or places.'
     } else {
         Write-Warning 'ARMED ONE-STEP CANARY: manually select Marker 1 and keep the game focused. This calibrates, moves at most 4 pixels once, applies the exact inverse, then Escape. It never clicks or places.'
     }
-    Write-Host 'Return focus to the game now. The fail-closed canary starts in 5 seconds.'
-    foreach ($remaining in 5..1) {
+    $preparationSeconds = Get-ArmedPreparationCountdownSeconds ([bool]$ArmOperatorPlacement)
+    if ($ArmOperatorPlacement) {
+        Write-Host "Return to the game and select Marker 1 now. Leave its reticle active; the fail-closed canary starts in $preparationSeconds seconds."
+    } else {
+        Write-Host "Return focus to the game now. The fail-closed canary starts in $preparationSeconds seconds."
+    }
+    foreach ($remaining in $preparationSeconds..1) {
         Write-Host "$remaining..."
         Start-Sleep -Seconds 1
     }

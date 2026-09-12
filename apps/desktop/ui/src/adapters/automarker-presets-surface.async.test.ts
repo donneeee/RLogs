@@ -153,6 +153,7 @@ describe("mounted automarker preset editor request ordering", () => {
     const copy = [...container.querySelectorAll("button")]
       .find((candidate) => candidate.textContent === "Copy placement evidence test")!;
     expect(copy.disabled).toBe(false);
+    expect(copy.title).toMatch(/select Marker 1 during its ten-second preparation countdown/i);
     expect(copy.title).toMatch(/one human click after aim settles/i);
     const placeInGame = [...container.querySelectorAll("button")]
       .find((candidate) => candidate.textContent === "Place in game")!;
@@ -169,9 +170,10 @@ describe("mounted automarker preset editor request ordering", () => {
     expect(saveCurrent).not.toHaveBeenCalled();
     expect(loadPreset).not.toHaveBeenCalled();
     expect(openOverlay).not.toHaveBeenCalled();
-    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/manually select Marker 1/i);
-    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/keep the game focused/i);
-    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/do not move the mouse/i);
+    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/start the command first/i);
+    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/during its ten-second preparation countdown return to the game/i);
+    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/open the marker menu, select Marker 1, and leave its reticle active/i);
+    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/do not move the mouse after selecting it/i);
     expect(container.querySelector(".automarker-status")?.textContent).toMatch(/click exactly once after the Marker 1 reticle visibly stops moving/i);
     expect(container.querySelector(".automarker-status")?.textContent).toMatch(/eight-second confirmation window/i);
     expect(container.querySelector(".automarker-status")?.textContent).toMatch(/never synthesizes a click/i);

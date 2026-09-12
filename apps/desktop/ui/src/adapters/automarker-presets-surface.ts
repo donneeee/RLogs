@@ -60,7 +60,7 @@ export function operatorPlacementCanaryCommand(
   const escapedName = preset.name.replaceAll("'", "''");
   return {
     enabled: true,
-    reason: "Copy the external opt-in Marker 1 placement evidence command. It requires one human click after aim settles.",
+    reason: "Copy the external opt-in Marker 1 placement evidence command. Start it, then select Marker 1 during its ten-second preparation countdown; it requires one human click after aim settles.",
     command: `.\\run-bpsr-automarker-lifecycle-probe.ps1 -ArmOperatorPlacement -PresetName '${escapedName}'`,
   };
 }
@@ -401,7 +401,7 @@ export function mountAutomarkerPresetsSurface(
     try {
       await dependencies.copyCanaryCommand(availability.command);
       if (!alive) return;
-      status.textContent = "Copied the external Marker 1 placement evidence test. Manually select Marker 1, keep the game focused, do not move the mouse, and click exactly once after the Marker 1 reticle visibly stops moving, within the eight-second confirmation window. The tool never synthesizes a click.";
+      status.textContent = "Copied the external Marker 1 placement evidence test. Start the command first, then during its ten-second preparation countdown return to the game, open the marker menu, select Marker 1, and leave its reticle active. Do not move the mouse after selecting it. Click exactly once after the Marker 1 reticle visibly stops moving, within the eight-second confirmation window. The tool never synthesizes a click.";
     } catch (error) {
       if (alive) status.textContent = message(error);
     }

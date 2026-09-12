@@ -227,10 +227,14 @@ The next separately armed evidence mode retains manual placement authority:
 ```
 
 `-PresetId` is also accepted; raw XYZ is deliberately rejected for this mode.
-The operator manually selects Marker 1 before launch. The canary performs the
-same bounded calibration and closed-loop aim, then prints a ready message and
-waits up to eight seconds for exactly one physical left click while the game is
-foreground. It never synthesizes a mouse button event.
+Start the command first. After the preset resolves, use the dedicated ten-second
+preparation countdown to return to the game, open the marker menu, select Marker
+1, and leave its reticle active. Do not move the mouse after selecting it. The
+canary performs the same bounded calibration and closed-loop aim, then waits up
+to eight seconds for exactly one physical left click while the game is
+foreground. Click only after the Marker 1 reticle visibly stops moving. It never
+synthesizes a mouse button event. Other armed modes retain their five-second
+focus countdown.
 
 Success requires all of the following on the exact active build and capture
 identity: one human click and no injected/other click or mouse movement; a
