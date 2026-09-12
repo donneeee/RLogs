@@ -4,6 +4,28 @@ This is the immediate offline pipeline after a complete build-25247556
 `global-metadata.dat` has been recovered. It does not authorize process access,
 game modification, or network transmission.
 
+## Recover on the game PC
+
+Build the pinned scanner once, start the exact Steam client, create an empty
+private directory outside the RLogs repository, and run the guarded command:
+
+```powershell
+cargo build -p rlogs-game-bpsr --bin rlogs-bpsr-il2cpp-metadata-scan --release
+
+pwsh -NoProfile -File tools/windows/run-bpsr-il2cpp-metadata-recovery.ps1 `
+  -InstallRoot "<steam-library>\steamapps\common\Blue Protocol Star Resonance" `
+  -SteamManifestPath "<steam-library>\steamapps\appmanifest_3681810.acf" `
+  -PrivateOutputRoot "<private>\il2cpp-25247556"
+```
+
+The runner is locked to the reviewed executable, `GameAssembly.dll`, app, and
+build digests. It runs the no-attach readiness gate before locating or invoking
+the scanner, refuses overwrite, keeps scanner diagnostics private, and emits
+only a path-free receipt. It reads the validated IL2CPP metadata image from the
+running process; it does not write process memory, modify the game, send network
+traffic, or enable automarker placement. Test the complete boundary with
+`tools/windows/test-run-bpsr-il2cpp-metadata-recovery.ps1`.
+
 ## Extraction boundary
 
 The repository can validate exact inputs, parse Il2CppDumper output, route named
