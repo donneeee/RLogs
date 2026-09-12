@@ -129,6 +129,17 @@ validated against occlusion, range, navigation, and ground-raycast rules before
 the existing two skill axes can be considered deterministic. Until then,
 `Place` remains disabled.
 
+A bounded exact-build offline search has exhausted the retained static path.
+The `m0.pkg` marker chunk contains the proven `FlagSkill`, `StopSkill`, and
+skill-axis calls, but no target-position or game-raycast setter. A census of all
+4,833 decoded Lua chunks found no controller/axis and plausible target-setter
+co-occurrence. The exact `GameAssembly.dll` exposes only unrelated Unity
+target/raycast strings, while the installed `global-metadata.dat` is the
+reviewed zero-byte placeholder. Consequently there is no matching-build method
+token, RVA, or callsite bridge that can safely substitute for the runtime
+trace. The sanitized details are retained in
+`steam-25247556/ground-marker-high-level-action-proof.v1.json`.
+
 ## Evidence already available
 
 - The four Tina/M17, scene `1633`, submission artifacts from session

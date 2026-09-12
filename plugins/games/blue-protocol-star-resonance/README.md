@@ -483,11 +483,21 @@ cargo run -p rlogs-game-bpsr --bin rlogs-bpsr-rdps-build-audit -- prepare --plan
 cargo run -p rlogs-game-bpsr --bin rlogs-bpsr-rdps-build-audit -- gate --diff <audit-root>/<new-build>/build-diff.json --proof-manifest <reviewed-proof-manifest.json> --output <audit-root>/<new-build>/promotion-gate.json
 ```
 
+For the exact build-`25247556` automarker investigation, run
+`tools/windows/bpsr-il2cpp-metadata-readiness.ps1` before considering the
+metadata scanner. The readiness command performs no process attach or memory
+read, writes nothing, and grants no scan authority. It rejects a different app
+or build, binary hash drift, a nonempty installed metadata file, an ambiguous
+or wrong-path process, a repository-local private output, and overwrite. Its
+boundary test is `tools/windows/test-bpsr-il2cpp-metadata-readiness.ps1`.
+
 The folder component `<new-build>` must equal the manifest `buildid`. Supplying
 both `--build` and `--steam-manifest` makes the scanner reject a mismatch. This
 prevents a newly recovered binary or formula table from being mislabeled as an
-older packet pack. Reading IL2CPP metadata is an offline research step and does
-not start network capture or inspect login traffic.
+older packet pack. The metadata scanner is an explicit process-memory research
+step: it does not start network capture or inspect login traffic, but it does
+open the running client with read/query access. A readiness result alone never
+authorizes that later scan.
 
 The seasonal-domain diff reports changes by evidence authority. An
 `exact-game-table` change is a client-data change and schedules that domain's

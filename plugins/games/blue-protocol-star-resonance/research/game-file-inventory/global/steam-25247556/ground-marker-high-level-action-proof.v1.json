@@ -17,10 +17,15 @@
   },
   "current_build_lua_evidence": {
     "container": "current_build_package_container_m0",
+    "container_byte_length": 1281657060,
+    "container_sha256": "1fa2d3d3711f6d3369197ff6c005683ff00f0772cccb0c015feeb6aa24202dbd",
+    "decoded_lua_chunk_count": 4833,
     "view": {
       "lua_path": "ui/view/main_copy_punctuate_view.lua",
       "class": "Main_copy_punctuateView",
-      "chunk_offset_decimal": 1143912043,
+      "chunk_header_offset_decimal": 1143912042,
+      "lua_signature_offset_decimal": 1143912043,
+      "decoded_chunk_byte_length": 11488,
       "behavioral_identity": [
         "loads the scene-mask skill list",
         "presents place and delete modes for six numbered dungeon markers",
@@ -69,6 +74,13 @@
       }
     ]
   },
+  "current_build_native_identity": {
+    "game_executable_byte_length": 808496,
+    "game_executable_sha256": "90537dbd0e4c9d4b3ed2af06aa8bf7ffe7219fc94bb2f6963673f7b340288588",
+    "game_assembly_byte_length": 218074672,
+    "game_assembly_sha256": "4a079aec0a3e51a8023aa86bbd152e12068907b65b9aafb355d20bb6d6c41fe3",
+    "steam_manifest_build_id": "25247556"
+  },
   "leader_behavior_boundary": {
     "ui_check": "teamData_.TeamInfo.baseInfo.leaderId is compared with ContainerMgr.CharSerialize.charBase.charId while StageMgr.IsDungeonStage is true",
     "meaning": "This is game UI eligibility behavior for the active character, not an RLogs account, identity, or authorization binding.",
@@ -100,7 +112,16 @@
       "current-build target-position setter above World.UseSlot",
       "deterministic world-to-screen and camera projection for arbitrary saved XYZ",
       "occlusion, range, navigation, and ground-raycast acceptance rules"
-    ]
+    ],
+    "bounded_offline_frontier": {
+      "marker_chunk_targeting_symbol_found": false,
+      "all_lua_chunks_checked": 4833,
+      "controller_and_target_setter_cooccurrence_found": false,
+      "game_specific_native_controller_symbol_found": false,
+      "installed_metadata_byte_length": 0,
+      "installed_metadata_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "conclusion": "Exact current-build offline artifacts cannot name, tokenize, or map an XYZ setter or marker target/raycast handler to a native address."
+    }
   },
   "next_evidence": {
     "least_invasive_step": "Perform one read-only runtime call trace during a normal UI marker placement, beginning at PlayerInputController.FlagSkill and following the native target or raycast handler immediately before World.UseSlot.",
