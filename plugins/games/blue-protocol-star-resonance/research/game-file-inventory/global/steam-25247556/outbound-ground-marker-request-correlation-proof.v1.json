@@ -1,0 +1,320 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "observer_gate_build": "25247556",
+  "evidence_kind": "sanitized-runtime-targeted-outbound-ground-marker-request-correlation",
+  "scope": {
+    "activity": "Tina M20",
+    "captured_player_was_party_leader": true,
+    "markers_were_placed_through_normal_game_ui": true,
+    "reported_marker_order": [1, 2, 3, 4, 5, 6],
+    "packet_transmission_performed_by_rlogs": false,
+    "packet_replay_performed": false,
+    "packet_injection_performed": false,
+    "process_memory_read": false
+  },
+  "build_identity": {
+    "analysis_host_installed_build": "25247556",
+    "local_distribution_receipt": "steam-distribution-snapshot.v1.json",
+    "local_distribution_receipt_sha256": "0dace506526d8de2dfc407045606ffaf995ed28d6b3ab305cafdbf3a4801cf33",
+    "capture_client_build_verified": false,
+    "capture_client_was_analysis_host": false,
+    "remote_session_build_announced_in_capture": false,
+    "authority_limit": "The exact local Steam receipt identifies only the analysis host installation, not the remote capture endpoint. The live-server wire topology is therefore recorded as a bounded build-25247556 correlation supported by local registry triangulation; it is not exact remote-client build proof or send authority."
+  },
+  "protocol_identity": {
+    "source_pack_build": "24687926",
+    "source_pack_id": "global-steam-24687926-static-candidate-v8",
+    "source_pack_semantic_digest": "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
+    "source_pack_file_sha256": "ab7a1026801999e71805306653b588239c004dd3298a6bced1c491d42a2be17a",
+    "journal_authority": {
+      "kind": "unverified-carry-forward-decoder-hypothesis",
+      "source_build": "24687926",
+      "captured_build": "25247556",
+      "exact_for_captured_build": false,
+      "runtime_authority": false
+    },
+    "authority": "request-correlation-only",
+    "outbound_runtime_authorized": false
+  },
+  "private_evidence_identities": {
+    "capture": {
+      "capture_id": "tina-m20-leader-marker1-20260911-212805",
+      "sha256": "aaec858cab104f12d7a5768cffb4853f37c86bf8131a7817301226e4110df501",
+      "bytes": 790068,
+      "physical_frames": 4423,
+      "first_frame_utc": "2026-09-12T01:28:05.395647Z",
+      "last_frame_utc": "2026-09-12T01:29:35.797192Z"
+    },
+    "connections_manifest": {
+      "sha256": "21a042767821ca529c7c6a75984fbec7c32ba986bffef15f465d0ad66ee7bb1a",
+      "bytes": 416,
+      "connection_count": 2,
+      "endpoint_values_published": false
+    },
+    "protocol_journal": {
+      "sha256": "3c50fcddbdbb56776c9ddd5c1a40987c4a435c5e4c9164ba319eb97b732bf75c",
+      "bytes": 6917099,
+      "records": 3813,
+      "published": false
+    },
+    "outbound_marker_audit": {
+      "sha256": "8fc82f886f43f7f99f9558eba798a0872c71517e01c6f39d0a0dfc28514a581c",
+      "bytes": 20407,
+      "published": false
+    },
+    "user_confirmation": {
+      "sha256": "990f205f0e5a0e43eff133e564e220505dc7288bb29f2eb801d9b6e600b9ec68",
+      "bytes": 740,
+      "confirmation_recorded_utc": "2026-09-12T01:29:07.1448919Z",
+      "confirmation": "The placing leader confirmed that markers 1 through 6 were placed through the normal game UI.",
+      "authority": "behavioral-correlation-only"
+    }
+  },
+  "independent_inbound_observer_proof": {
+    "artifact": "inbound-ground-marker-observation-proof.v1.json",
+    "sha256": "f7a02d2b1a1b6c08800f7841d614013979282d86f54c7169979042f569565d6e",
+    "route": {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 1664308034,
+      "method_id": 45
+    },
+    "marker_skill_id_path": "1.8.2.6",
+    "ground_position_path": "1.8.2.9",
+    "marker_skill_id_rule": "1100 + marker_number",
+    "relationship": "This separate non-leader capture proves the shared inbound marker-number and XYZ semantics. The placing leader receives its own six adds through method 46 in the present capture."
+  },
+  "frame_and_route_topology": {
+    "outer_transport": {
+      "fragment": "FrameUp",
+      "fragment_wire_id": 5,
+      "frame_sequence_width_bytes": 4,
+      "routing": "unrouted transport container"
+    },
+    "nested_request": {
+      "direction": "client_to_server",
+      "fragment": "call",
+      "fragment_wire_id": 1,
+      "service_id": 103198054,
+      "service_id_hex": "0x0626AD66",
+      "stub_id": 1,
+      "method_id": 249858,
+      "method_id_hex": "0x0003D002",
+      "carried_forward_name": "World.UseSlot"
+    },
+    "route_reconciliation": "Service 1664308034 is the inbound WorldNtf service and wire value 2 is the Notify fragment discriminator. Neither is the outbound request route. The captured outbound logical Call is nested under FrameUp and uses service 103198054, stub 1, method 249858.",
+    "return": {
+      "direction": "server_to_client",
+      "fragment": "return",
+      "fragment_wire_id": 3,
+      "service_id": 103198054,
+      "stub_id": 1,
+      "method_id": 249858,
+      "payload_length_bytes": 0
+    },
+    "placing_client_add": {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "fragment_wire_id": 2,
+      "service_id": 1664308034,
+      "method_id": 46,
+      "carried_forward_name": "WorldNtf.SyncToMeDeltaInfo",
+      "marker_skill_id_path": "1.1.8.2.6",
+      "ground_position_path": "1.1.8.2.9"
+    }
+  },
+  "request_schema": {
+    "outer_message": "Zproto.World.Types.UseSlot",
+    "field_1": "UseSlotRequest",
+    "field_1_1": "slot_id",
+    "field_1_2": "use_type; observed 1",
+    "field_1_3": "extra_data / UseSkillParam",
+    "field_1_3_1": "skill_uuid",
+    "field_1_3_2": "skill_id; 1101 through 1106",
+    "field_1_3_3": "skill_level; observed 1",
+    "field_1_3_4": "begin_time in milliseconds",
+    "field_1_3_6": "target_position; four fixed32 values, with fields 1 through 3 carrying XYZ",
+    "field_1_3_7": "current_position; four fixed32 values",
+    "field_1_3_10": "is_passive; observed true",
+    "field_1_3_11": "is_activate_roulette; observed true",
+    "field_1_4": "attr_data; 80-byte authenticated encrypted gameplay-attribute envelope",
+    "field_1_5": "current-build varint with unresolved semantics and generation rule"
+  },
+  "attr_data_aggregate": {
+    "observed_count": 6,
+    "envelope_length_bytes": 80,
+    "layout": {
+      "iv_bytes": 16,
+      "hmac_sha256_bytes": 32,
+      "aes_cbc_ciphertext_bytes": 32
+    },
+    "unique_envelopes": 6,
+    "reviewed_24687926_gameplay_key_hmac_verifications": 6,
+    "reviewed_24687926_gameplay_key_successful_decryptions": 6,
+    "decrypted_plaintext_length_bytes": 24,
+    "common_plaintext_fields": {
+      "field_1_varint": "equals the corresponding UseSkillParam.begin_time for all six requests",
+      "field_2_fixed32": 4.0,
+      "field_3_varint": 4493,
+      "field_4_varint": 4168,
+      "field_6_fixed32": 1.0
+    },
+    "schema_limit": "Cryptographic key continuity is observed, but the captured plaintext field 6 is outside the reviewed 24687926 fields-1-through-5 contract. Its semantics and native generation rule are unresolved; no exact-build encoder is authorized."
+  },
+  "observations": [
+    {
+      "marker_number": 1,
+      "frame_up_sequence": 56,
+      "call_id": 2256,
+      "call_journal_sequence": 510,
+      "call_timestamp_utc": "2026-09-12T01:28:18.074998Z",
+      "transport_ack_timestamp_utc": "2026-09-12T01:28:18.084750Z",
+      "return_journal_sequence": 519,
+      "return_timestamp_utc": "2026-09-12T01:28:18.164503Z",
+      "inbound_add_journal_sequence": 522,
+      "inbound_add_timestamp_utc": "2026-09-12T01:28:18.164503Z",
+      "slot_id": 201,
+      "skill_uuid": 1610614694,
+      "skill_id": 1101,
+      "begin_time": 1789176498286,
+      "target_position": {"x": 250.35721, "y": 118.0, "z": -64.2384},
+      "inbound_position": {"x": 250.35721, "y": 118.0, "z": -64.2384},
+      "request_field_1_5": 607,
+      "request_to_return_micros": 89505
+    },
+    {
+      "marker_number": 2,
+      "frame_up_sequence": 70,
+      "call_id": 2258,
+      "call_journal_sequence": 850,
+      "call_timestamp_utc": "2026-09-12T01:28:25.177876Z",
+      "transport_ack_timestamp_utc": "2026-09-12T01:28:25.194673Z",
+      "return_journal_sequence": 853,
+      "return_timestamp_utc": "2026-09-12T01:28:25.216173Z",
+      "inbound_add_journal_sequence": 855,
+      "inbound_add_timestamp_utc": "2026-09-12T01:28:25.216173Z",
+      "slot_id": 202,
+      "skill_uuid": 1610614695,
+      "skill_id": 1102,
+      "begin_time": 1789176505357,
+      "target_position": {"x": 246.87148, "y": 118.0, "z": -64.09218},
+      "inbound_position": {"x": 246.87148, "y": 118.0, "z": -64.09218},
+      "request_field_1_5": 696,
+      "request_to_return_micros": 38297
+    },
+    {
+      "marker_number": 3,
+      "frame_up_sequence": 81,
+      "call_id": 2259,
+      "call_journal_sequence": 1108,
+      "call_timestamp_utc": "2026-09-12T01:28:30.490453Z",
+      "transport_ack_timestamp_utc": "2026-09-12T01:28:30.504618Z",
+      "return_journal_sequence": 1117,
+      "return_timestamp_utc": "2026-09-12T01:28:30.581530Z",
+      "inbound_add_journal_sequence": 1120,
+      "inbound_add_timestamp_utc": "2026-09-12T01:28:30.581530Z",
+      "slot_id": 203,
+      "skill_uuid": 1610614696,
+      "skill_id": 1103,
+      "begin_time": 1789176510696,
+      "target_position": {"x": 242.48721, "y": 118.12358, "z": -63.51843},
+      "inbound_position": {"x": 242.48721, "y": 118.12358, "z": -63.51843},
+      "request_field_1_5": 762,
+      "request_to_return_micros": 91077
+    },
+    {
+      "marker_number": 4,
+      "frame_up_sequence": 92,
+      "call_id": 2261,
+      "call_journal_sequence": 1340,
+      "call_timestamp_utc": "2026-09-12T01:28:35.241484Z",
+      "transport_ack_timestamp_utc": "2026-09-12T01:28:35.254589Z",
+      "return_journal_sequence": 1343,
+      "return_timestamp_utc": "2026-09-12T01:28:35.296465Z",
+      "inbound_add_journal_sequence": 1345,
+      "inbound_add_timestamp_utc": "2026-09-12T01:28:35.296465Z",
+      "slot_id": 204,
+      "skill_uuid": 1610614697,
+      "skill_id": 1104,
+      "begin_time": 1789176515414,
+      "target_position": {"x": 238.84279, "y": 118.0, "z": -63.759544},
+      "inbound_position": {"x": 238.84279, "y": 118.0, "z": -63.759544},
+      "request_field_1_5": 822,
+      "request_to_return_micros": 54981
+    },
+    {
+      "marker_number": 5,
+      "frame_up_sequence": 99,
+      "call_id": 2262,
+      "call_journal_sequence": 1455,
+      "call_timestamp_utc": "2026-09-12T01:28:37.470013Z",
+      "transport_ack_timestamp_utc": "2026-09-12T01:28:37.484930Z",
+      "return_journal_sequence": 1458,
+      "return_timestamp_utc": "2026-09-12T01:28:37.537746Z",
+      "inbound_add_journal_sequence": 1460,
+      "inbound_add_timestamp_utc": "2026-09-12T01:28:37.537746Z",
+      "slot_id": 205,
+      "skill_uuid": 1610614698,
+      "skill_id": 1105,
+      "begin_time": 1789176517633,
+      "target_position": {"x": 235.98499, "y": 118.03505, "z": -63.687},
+      "inbound_position": {"x": 235.98499, "y": 118.03505, "z": -63.687},
+      "request_field_1_5": 850,
+      "request_to_return_micros": 67733
+    },
+    {
+      "marker_number": 6,
+      "frame_up_sequence": 110,
+      "call_id": 2263,
+      "call_journal_sequence": 1619,
+      "call_timestamp_utc": "2026-09-12T01:28:40.446785Z",
+      "transport_ack_timestamp_utc": "2026-09-12T01:28:40.454545Z",
+      "return_journal_sequence": 1625,
+      "return_timestamp_utc": "2026-09-12T01:28:40.495953Z",
+      "inbound_add_journal_sequence": 1628,
+      "inbound_add_timestamp_utc": "2026-09-12T01:28:40.495953Z",
+      "slot_id": 206,
+      "skill_uuid": 1610614699,
+      "skill_id": 1106,
+      "begin_time": 1789176520665,
+      "target_position": {"x": 232.51979, "y": 118.01601, "z": -63.925617},
+      "inbound_position": {"x": 232.51979, "y": 118.01601, "z": -63.925617},
+      "request_field_1_5": 887,
+      "request_to_return_micros": 49168
+    }
+  ],
+  "correlation": {
+    "outbound_calls": 6,
+    "matching_empty_rpc_returns": 6,
+    "matching_frame_up_transport_acknowledgments": 6,
+    "matching_placing_client_method_46_adds": 6,
+    "exact_skill_id_matches": 6,
+    "exact_xyz_matches": 6,
+    "unmatched_candidates": 0,
+    "evidence_strength": "strong six-of-six behavioral and byte-level request/return/self-delta correlation, limited by unverified remote build identity and carried-forward route names"
+  },
+  "conclusion": {
+    "outbound_route_topology_proven": true,
+    "outbound_request_topology_proven": true,
+    "marker_number_and_xyz_pairing_proven": true,
+    "local_location_save_schema_supported": true,
+    "complete_current_build_request_generation_proven": false,
+    "outbound_executor_ready": false,
+    "active_packet_injection_transport_exists": false,
+    "permission_to_send_or_replay_packets": false,
+    "native_place_in_game_gate": "closed",
+    "blockers": [
+      "The remote capture client's exact build was not independently verified.",
+      "The protocol journal used build 24687926 only as an explicitly unverified carry-forward decoder hypothesis.",
+      "UseSlotRequest field 1.5 semantics and native generation rule are unresolved.",
+      "Authenticated attribute plaintext field 6 semantics and native generation rule are unresolved.",
+      "Dynamic frame sequence, call ID, slot ID, skill UUID, begin time, IV, HMAC, ciphertext, current position, and acknowledgment handling cannot be replayed as captured constants.",
+      "No active fail-closed packet-injection transport is implemented or authorized.",
+      "Move, replace, clear, clear-all, failure, permission, wipe, reconnect, and scene-change lifecycles remain uncaptured."
+    ],
+    "runtime_scope": "This proof may support local saving of marker numbers and observed XYZ locations and continued passive correlation research. It must not enable, simulate, or authorize native packet placement."
+  }
+}

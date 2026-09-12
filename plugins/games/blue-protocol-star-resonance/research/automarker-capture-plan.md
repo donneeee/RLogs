@@ -1,13 +1,16 @@
 # Native automarker protocol capture plan
 
-Status: **the passive inbound numbered ground-marker add schema is observed on
-the live Global service, and a bounded observer runtime tuple is approved for
-Steam build 25247556; native placement remains unresolved**. The capture came
-from a remote client whose exact build was not independently proven. Its live
-wire evidence is triangulated with the exact local build-25247556 registry and
-deterministic derived-pack digest. RLogs may locally project only that exact
-runtime tuple and may preview a reviewed assignment, but it must not claim or
-attempt native placement until the outbound game protocol below is proven.
+Status: **the passive inbound numbered ground-marker add schema and the
+outbound placement route/request topology are proven on the live Global
+service, but an executable sender remains blocked**. Both focused captures came
+from remote clients whose exact builds were not independently proven. Their
+live wire evidence is triangulated with the exact local build-25247556 registry
+and deterministic derived-pack digest. RLogs may locally project only that
+exact runtime tuple, save observed marker locations, and preview a reviewed
+assignment. It must not attempt native placement: current request field `1.5`
+and authenticated attribute plaintext field `6` still lack proven semantics
+and native generation rules, and no active fail-closed injection transport
+exists.
 Exact build 24687926 retains its reviewed provisional observer support; no
 neighboring or future compatibility build inherits the new observer gate.
 
@@ -50,6 +53,23 @@ new stream.
   update or end was observed, and no outbound request,
   acknowledgement, permission model, replay, or packet transmission gained
   authority.
+- A focused 90.402-second placing-leader Tina M20 capture now proves six
+  one-to-one outbound request/return/self-delta correlations for normal-UI
+  placements 1 through 6. Each outbound `FrameUp` (fragment `5`) contains a
+  logical `Call` (fragment `1`) to service `103198054`, stub `1`, method
+  `249858` (`World.UseSlot` under the carry-forward naming hypothesis). Request
+  skill IDs `1101..1106` and target-position XYZ values match the leader's six
+  method-`46` passive additions exactly; the separate observer capture proves
+  the same IDs and position shape on method `45`. Every call receives both a
+  matching four-byte FrameUp acknowledgement and an empty RPC return. The
+  sanitized topology, exact timestamps and private-artifact hashes are in
+  `steam-25247556/outbound-ground-marker-request-correlation-proof.v1.json`.
+  The 80-byte `attr_data` envelopes all authenticate and decrypt with the
+  reviewed gameplay-only keys, but current plaintext field `6` is new and its
+  semantics/generation are unresolved. Enclosing request field `1.5` is also
+  present and changing with no proven meaning or native generator. This proves
+  the route/request topology and the local save-location fields; it does not
+  authorize an encoder, sender, replay, or placement adapter.
 
 ## Evidence already available
 
@@ -180,16 +200,15 @@ window. Because the markers were reportedly placed once and then persisted
 through later pulls, start recording **before the first placement**, not at
 boss engagement.
 
-For build `25247556`, the next placement experiment is one exact-timestamped
-marker-1 action from the placing leader's client through the normal game UI,
-with 10-15 seconds of idle traffic before the click and at least ten seconds
-retained after it. The passive inbound add no longer needs rediscovery. Inspect
-outbound and unrouted deltas around the click before applying the `24687926`
-decoder hypothesis, and require the already-proven method-45 marker add on the
-same client as the correlation endpoint before assigning request semantics. Do
-not substitute `SetMapMark`, inject a request, or replay traffic. Only after one
-outbound route is isolated should move, individual-clear, clear-all,
-observer-broadcast, wipe, and reconnect controls be captured separately.
+For build `25247556`, the initial placing-leader experiment is complete: six
+normal-UI placements isolate the nested `World.UseSlot` request and the
+placing-client method-`46` add. The next experiments should stay capture-only
+and separately isolate move/replace, individual-clear, clear-all,
+observer-broadcast, failure/permission, wipe, reconnect, and scene-change
+controls. They should also vary conditions needed to resolve request field
+`1.5` and authenticated attribute plaintext field `6`. Do not substitute
+`SetMapMark`, inject a request, replay captured values, or treat the older pack
+as current-build runtime authority.
 
 Use `tools/windows/capture-marker-audit.ps1` for this controlled sequence.
 It wraps the explicit-client capture launcher in `marker-audit`/`all-ip` mode,
@@ -300,17 +319,21 @@ each action has a clean packet delta:
 
 ## Proof gate for native placement
 
-Do not enable a native placement adapter until the capture proves all of:
+Do not enable a native placement adapter until the remaining proof gates are
+closed. The client-to-server route, request topology, placing-client add, and
+success-path empty return are now captured; outstanding requirements include:
 
-- exact current-build client-to-server route and complete request schema;
+- exact remote-client build identity and a complete current-build request
+  schema, including field `1.5` and authenticated plaintext field `6`;
 - actor addressing (character ID, actor ID, entity UUID, or another lifetime
   identity) without guessing;
-- correlated return/acknowledgement including success and error codes;
-- server-to-client marker-state update observed by the placing client;
+- correlated error/rejection returns and permission behavior;
 - marker slot/icon values, uniqueness and collision behavior;
 - replace, individual-clear, clear-all, despawn, scene-change, wipe, and
   reconnect lifecycles;
 - an idempotency/rate-limit strategy that cannot spam or leave stale marks;
+- an active fail-closed injection transport with exact dynamic frame, call,
+  authentication-envelope, and acknowledgement generation;
 - exact-build routing and a fail-closed response to packet gaps or protocol
   drift.
 
