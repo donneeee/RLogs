@@ -28,6 +28,8 @@ try {
     if ($result.packet_send_available -ne $false -or $result.packet_rewrite_available -ne $false -or $result.process_memory_access -ne $false) { throw 'Read-only boundary changed.' }
 
     $text = Get-Content -LiteralPath $source -Raw
+    if ($text -notmatch '(?s)\$guids\s*=\s*@\(\s*@\(.*?Sort-Object -Unique\s*\)') { throw 'Adapter GUID pipeline results are not force-wrapped as an array for StrictMode.' }
+    if ($text -notmatch '(?s)\$npcapPresent\s*=\s*@\(\s*@\(.*?Where-Object.*?\)') { throw 'Npcap probe pipeline results are not force-wrapped as an array for StrictMode.' }
     foreach ($forbidden in @('WinDivertSend','pcap_sendpacket','WriteProcessMemory','CreateRemoteThread')) {
         if ($text.Contains($forbidden)) { throw "Launcher contains forbidden primitive $forbidden" }
     }

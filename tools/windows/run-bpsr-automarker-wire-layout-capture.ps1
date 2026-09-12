@@ -87,11 +87,13 @@ function Resolve-CaptureInterface([int]$ProcessId) {
         throw 'The game has no established external TCP socket. If a network accelerator exposes only loopback sockets, disable it for this 25-second evidence capture or supply a known process-owned Npcap interface.'
     }
     $guids = @(
-        foreach ($row in $rows) {
-            $ip = Get-NetIPAddress -IPAddress $row.LocalAddress -ErrorAction Stop | Select-Object -First 1
-            (Get-NetAdapter -InterfaceIndex $ip.InterfaceIndex -ErrorAction Stop).InterfaceGuid
-        }
-    ) | Sort-Object -Unique
+        @(
+            foreach ($row in $rows) {
+                $ip = Get-NetIPAddress -IPAddress $row.LocalAddress -ErrorAction Stop | Select-Object -First 1
+                (Get-NetAdapter -InterfaceIndex $ip.InterfaceIndex -ErrorAction Stop).InterfaceGuid
+            }
+        ) | Sort-Object -Unique
+    )
     if ($guids.Count -ne 1) { throw 'The game maps to more than one capture adapter. Supply -Interface explicitly after reviewing the active route.' }
     "\Device\NPF_{$($guids[0].ToString().Trim('{}'))}"
 }
@@ -145,9 +147,11 @@ $gameProcess = $processes[0]
 if (-not $gameProcess.Path.Equals($gameExecutable, [System.StringComparison]::OrdinalIgnoreCase)) { throw 'The running game executable is not the exact hash-gated installation.' }
 
 $npcapPresent = @(
-    (Join-Path $env:WINDIR 'System32\Npcap\wpcap.dll'),
-    (Join-Path $env:WINDIR 'SysWOW64\Npcap\wpcap.dll')
-) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
+    @(
+        (Join-Path $env:WINDIR 'System32\Npcap\wpcap.dll'),
+        (Join-Path $env:WINDIR 'SysWOW64\Npcap\wpcap.dll')
+    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
+)
 $dumpcapAvailable = Test-Path -LiteralPath $DumpcapPath -PathType Leaf
 if ($npcapPresent.Count -eq 0 -and -not $dumpcapAvailable) {
     throw 'Neither a local Npcap runtime nor dumpcap.exe was found. Install Npcap, or install Wireshark/dumpcap and rerun.'
