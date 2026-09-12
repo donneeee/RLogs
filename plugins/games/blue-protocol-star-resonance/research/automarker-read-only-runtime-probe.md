@@ -194,9 +194,17 @@ passed to the existing closed-loop token. Marker selection remains manual and
 there is still no click or placement action.
 
 When `-RLogsBaseUrl` is omitted, the launcher examines only TCP listeners bound
-to `127.0.0.1` and owned by `rlogs-app.exe`. It proceeds only if exactly one of
-those listeners returns the expected preset schema; otherwise pass the loopback
-URL explicitly. It never scans or connects to a non-loopback address. Run
+to `127.0.0.1` and owned by one of the two audited desktop executable names:
+the Cargo/development name `rlogs-app.exe` or the installed Tauri product name
+`rLogs.exe`. It proceeds only if exactly one of those listeners returns the
+expected preset schema; otherwise pass the loopback URL explicitly. A failed
+discovery reports sanitized listener, recognized-owner, endpoint-rejection, and
+unresolved-owner counts without process IDs or paths; endpoint rejections retain
+a safe category such as `http-runtime-unavailable`, `connect-or-timeout`, or
+`schema-rejected`. The launcher explicitly loads `System.Net.Http` before using
+its client types so this route also works in Windows PowerShell 5.1; failure to
+load that framework assembly is reported directly. It never scans or connects
+to a non-loopback address. Run
 `-SelfTest` for the no-process launcher checks, or `-DryRun` for the packaged
 no-process/no-input receipt.
 

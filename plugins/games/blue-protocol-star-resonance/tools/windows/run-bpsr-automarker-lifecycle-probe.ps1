@@ -38,6 +38,18 @@ function Assert-LoopbackBaseUrl([string]$BaseUrl) {
     if ($port -lt 1 -or $port -gt 65535) { throw '-RLogsBaseUrl contains an invalid port.' }
 }
 
+function Initialize-SystemNetHttp {
+    try {
+        Add-Type -AssemblyName System.Net.Http -ErrorAction Stop
+        if ($null -eq ('System.Net.Http.HttpClientHandler' -as [type]) -or
+            $null -eq ('System.Net.Http.HttpClient' -as [type])) {
+            throw 'required HTTP client types were not registered'
+        }
+    } catch {
+        throw 'The required System.Net.Http runtime could not be loaded. Install or repair .NET Framework 4.7.2 or newer, then retry.'
+    }
+}
+
 function Test-ExactPropertySet($Value, [string[]]$Expected) {
     if ($null -eq $Value) { return $false }
     $actualNames = @($Value.PSObject.Properties.Name | Sort-Object)
@@ -104,6 +116,7 @@ function Assert-PresetProjectionSchema($Projection) {
 
 function Get-LoopbackPresetProjection([string]$BaseUrl) {
     Assert-LoopbackBaseUrl $BaseUrl
+    Initialize-SystemNetHttp
     $handler = [Net.Http.HttpClientHandler]::new()
     $handler.AllowAutoRedirect = $false
     $handler.UseProxy = $false
@@ -129,7 +142,28 @@ function Get-LoopbackPresetProjection([string]$BaseUrl) {
     }
 }
 
+function Get-LoopbackEndpointRejectionCategory($Failure) {
+    $message = [string]$Failure.Exception.Message
+    if ($message -like 'The required System.Net.Http runtime could not be loaded.*' -or
+        $message -match '^Unable to find type \[Net\.Http\.') { return 'http-runtime-unavailable' }
+    if ($message -like 'The local rLogs presets endpoint did not respond*') { return 'connect-or-timeout' }
+    if ($message -like 'rLogs presets endpoint returned HTTP *') { return 'http-status' }
+    if ($message -like 'rLogs presets response exceeded *') { return 'response-too-large' }
+    if ($message -like 'The loopback endpoint returned *' -or
+        $message -like 'rLogs does not have an exact active *') { return 'schema-rejected' }
+    return 'unexpected'
+}
+
+function Test-RLogsDesktopOwnerName([string]$Name) {
+    if ([string]::IsNullOrWhiteSpace($Name)) { return $false }
+    $baseName = [IO.Path]::GetFileNameWithoutExtension($Name)
+    return $baseName -ieq 'rlogs-app' -or $baseName -ieq 'rlogs'
+}
+
 function Find-RLogsLoopbackBaseUrl {
+    # Load this before listener enumeration so Windows PowerShell 5.1 reports a
+    # missing framework runtime directly instead of reducing it to zero matches.
+    Initialize-SystemNetHttp
     try {
         $listeners = @(Get-NetTCPConnection -State Listen -ErrorAction Stop |
             Where-Object { $_.LocalAddress -eq '127.0.0.1' } |
@@ -138,25 +172,44 @@ function Find-RLogsLoopbackBaseUrl {
         throw 'Could not enumerate loopback listeners. Supply -RLogsBaseUrl http://127.0.0.1:<port>.'
     }
     $matches = @()
+    $ownedListenerCount = 0
+    $unresolvedOwnerCount = 0
+    $rejectedEndpointCount = 0
+    $rejectionCategories = @{}
     foreach ($listener in $listeners) {
         $owner = Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue
-        if ($null -eq $owner) { continue }
-        $ownerName = $owner.ProcessName
+        if ($null -eq $owner) {
+            $unresolvedOwnerCount += 1
+            continue
+        }
+        $ownerNames = @([string]$owner.ProcessName)
         try {
-            if ($owner.Path) { $ownerName = [IO.Path]::GetFileNameWithoutExtension($owner.Path) }
+            if ($owner.Path) { $ownerNames += [IO.Path]::GetFileNameWithoutExtension($owner.Path) }
         } catch {
             # ProcessName still comes from the owning PID even when Windows
             # denies querying the executable path across an integrity boundary.
         }
-        if ($ownerName -ine 'rlogs-app') { continue }
+        if (@($ownerNames | Where-Object { Test-RLogsDesktopOwnerName $_ }).Count -eq 0) { continue }
+        $ownedListenerCount += 1
         $candidate = "http://127.0.0.1:$($listener.LocalPort)"
         try {
             [void](Get-LoopbackPresetProjection $candidate)
             $matches += $candidate
-        } catch { continue }
+        } catch {
+            $rejectedEndpointCount += 1
+            $category = Get-LoopbackEndpointRejectionCategory $_
+            if (-not $rejectionCategories.ContainsKey($category)) { $rejectionCategories[$category] = 0 }
+            $rejectionCategories[$category] += 1
+            continue
+        }
     }
     if ($matches.Count -ne 1) {
-        throw "Expected exactly one valid rLogs loopback host but found $($matches.Count). Supply -RLogsBaseUrl http://127.0.0.1:<port>."
+        $categorySummary = if ($rejectionCategories.Count -eq 0) {
+            'none'
+        } else {
+            (@($rejectionCategories.Keys | Sort-Object | ForEach-Object { "$_=$($rejectionCategories[$_])" }) -join ',')
+        }
+        throw "Expected exactly one valid rLogs loopback host but found $($matches.Count). Discovery inspected $($listeners.Count) literal-loopback listener(s); $ownedListenerCount belonged to an audited rLogs desktop executable, $rejectedEndpointCount rLogs endpoint(s) failed the schema/response gate (categories: $categorySummary), and $unresolvedOwnerCount listener owner(s) could not be resolved. Supply -RLogsBaseUrl http://127.0.0.1:<port>."
     }
     return $matches[0]
 }
@@ -747,7 +800,28 @@ function New-SyntheticLifecycleReceipt([bool]$Armed, [string]$Mode, [string]$Out
 }
 
 function Invoke-LauncherSelfTest {
+    Initialize-SystemNetHttp
+    $httpHandler = [Net.Http.HttpClientHandler]::new()
+    $httpClient = [Net.Http.HttpClient]::new($httpHandler)
+    $httpClient.Dispose()
+    $httpHandler.Dispose()
+    $syntheticHttpRuntimeFailure = [pscustomobject]@{
+        Exception = [InvalidOperationException]::new('Unable to find type [Net.Http.HttpClientHandler].')
+    }
+    if ((Get-LoopbackEndpointRejectionCategory $syntheticHttpRuntimeFailure) -cne 'http-runtime-unavailable') {
+        throw 'Self-test failed: missing System.Net.Http was not classified distinctly.'
+    }
     Assert-LoopbackBaseUrl 'http://127.0.0.1:54221'
+    foreach ($acceptedOwner in @('rlogs-app', 'rlogs-app.exe', 'rLogs', 'rLogs.exe')) {
+        if (-not (Test-RLogsDesktopOwnerName $acceptedOwner)) {
+            throw "Self-test failed: audited desktop owner '$acceptedOwner' was rejected."
+        }
+    }
+    foreach ($rejectedOwner in @('', 'rlogs-app-helper', 'rlogs-desktop-host', 'not-rlogs.exe')) {
+        if (Test-RLogsDesktopOwnerName $rejectedOwner) {
+            throw "Self-test failed: unaudited desktop owner '$rejectedOwner' was accepted."
+        }
+    }
     $rejected = $false
     try { Assert-LoopbackBaseUrl 'http://localhost:54221' } catch { $rejected = $true }
     if (-not $rejected) { throw 'Self-test failed: non-literal loopback host was accepted.' }
