@@ -113,12 +113,18 @@ The offline receipt generated from the retained private capture publishes only:
   synthetic replay buffer.
 
 That receipt settles the sampled wire-layout uncertainty without new live
-traffic or packet modification. The narrowest next step remains offline: verify
-that the `FrameUp` begins and ends on the same reconstructed TCP chunk and that
-a synthetic marker/XYZ change preserves the 161/187/197-byte length stack while
-all game-owned identifiers and the authenticated attribute envelope remain
-byte-identical. This still would not establish server acceptance, anti-cheat
-safety, permission to transmit, or an inline suppression mechanism.
+traffic or packet modification. The offline substitution verifier completes
+the next structural proof on a synthetic 161-byte request. It changes exactly
+16 permitted value bytes: the paired slot/skill varints and target XYZ's three
+`fixed32` values. It preserves target heading, the complete game-owned current
+position, UUID, skill level, begin time, session sequence, authenticated
+attribute envelope, tags, and length prefixes byte-for-byte. The changed copy
+decodes under the exact build gate and remains 161/187/197 bytes when wrapped
+in the observed uncompressed layout. The verifier does not return the changed
+bytes and has no packet API or transport access.
+
+This still does not establish server acceptance, anti-cheat safety, permission
+to transmit, or an inline suppression mechanism.
 
 The offline-only sanitizer is now available for that retained evidence:
 

@@ -1,4 +1,5 @@
-//! Read-only decoding of the observed current-build ground-marker request.
+//! Read-only decoding and offline copied-buffer verification of the observed
+//! current-build ground-marker request.
 //!
 //! This boundary exists only to preserve evidence from already captured
 //! `World.UseSlot` requests. It is intentionally separate from combat action
@@ -9,6 +10,7 @@ use cbc::cipher::{BlockDecryptMut, KeyIvInit, block_padding::Pkcs7};
 use hmac::{Hmac, Mac};
 use serde::Serialize;
 use sha2::Sha256;
+use std::ops::Range;
 use thiserror::Error;
 
 use crate::ProtocolPack;
@@ -50,6 +52,17 @@ pub struct AutomarkerRequestPosition {
     pub heading_degrees: f32,
 }
 
+/// XYZ-only input accepted by the offline substitution verifier.
+///
+/// Heading is deliberately absent so the target heading and the complete
+/// game-owned current position remain byte-identical to the carrier request.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct AutomarkerRequestXyz {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+}
+
 /// Authenticated plaintext attached to a current-build marker request.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct AutomarkerRequestAttributes {
@@ -77,6 +90,41 @@ pub struct ObservedAutomarkerRequest {
     /// state only; the decoder does not manufacture a session sequence.
     pub session_sequence: u32,
     pub attributes: AutomarkerRequestAttributes,
+}
+
+/// Result of a pure, offline substitution proof over a copied application body.
+///
+/// The verifier does not return the changed bytes and has no transport access.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct OfflineAutomarkerSubstitutionProof {
+    pub original_application_length_bytes: usize,
+    pub substituted_application_length_bytes: usize,
+    pub nested_call_length_bytes: usize,
+    pub outer_frame_up_length_bytes: usize,
+    pub allowed_mutable_bytes: usize,
+    pub all_other_bytes_identical: bool,
+    pub game_owned_values_identical: bool,
+    pub authenticated_envelope_bytes_identical: bool,
+    pub target_heading_bytes_identical: bool,
+    pub current_position_bytes_identical: bool,
+    pub exact_build_decode_succeeded: bool,
+    pub packet_transmission_performed: bool,
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum OfflineAutomarkerSubstitutionError {
+    #[error(transparent)]
+    Decode(#[from] AutomarkerRequestDecodeError),
+    #[error("offline substitution proof requires a 161-byte application body, got {actual}")]
+    UnexpectedApplicationLength { actual: usize },
+    #[error("replacement marker must be between 1 and 6")]
+    InvalidReplacementMarker,
+    #[error("observed protobuf field width is not stable for the requested replacement")]
+    UnstableFieldWidth,
+    #[error("offline substitution changed a byte outside the approved field spans")]
+    UnexpectedByteChange,
+    #[error("offline substitution did not decode to the requested marker and positions")]
+    SubstitutedDecodeMismatch,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -143,6 +191,281 @@ pub fn decode_observed_automarker_request_into(
     }
     let request = one_message(payload, "Zproto.World.Types.UseSlot", 1)?;
     decode_request(request, scratch)
+}
+
+/// Verifies a marker/position substitution entirely offline in a copied
+/// 161-byte application body.
+///
+/// Only the paired slot/skill varint value bytes and target XYZ `fixed32` value
+/// bytes are writable. Target heading, the complete current position, tags,
+/// length prefixes, game-owned IDs, timing/session values, and the authenticated
+/// envelope must remain identical.
+pub fn verify_offline_automarker_substitution(
+    pack: &ProtocolPack,
+    original: &[u8],
+    replacement_marker: u8,
+    target_position: AutomarkerRequestXyz,
+) -> Result<OfflineAutomarkerSubstitutionProof, OfflineAutomarkerSubstitutionError> {
+    if original.len() != 161 {
+        return Err(
+            OfflineAutomarkerSubstitutionError::UnexpectedApplicationLength {
+                actual: original.len(),
+            },
+        );
+    }
+    if !(1..=6).contains(&replacement_marker) {
+        return Err(OfflineAutomarkerSubstitutionError::InvalidReplacementMarker);
+    }
+
+    let mut scratch = Vec::new();
+    let original_decoded = decode_observed_automarker_request_into(pack, original, &mut scratch)?;
+    let spans = substitution_spans(original)?;
+    let mut substituted = original.to_vec();
+    write_same_width_varint(
+        &mut substituted[spans.slot_id.clone()],
+        200 + u64::from(replacement_marker),
+    )?;
+    write_same_width_varint(
+        &mut substituted[spans.skill_id.clone()],
+        1100 + u64::from(replacement_marker),
+    )?;
+    for (range, value) in spans
+        .target_position
+        .iter()
+        .take(3)
+        .zip(xyz_values(target_position))
+    {
+        substituted[range.clone()].copy_from_slice(&value.to_bits().to_le_bytes());
+    }
+
+    let mut mutable = vec![false; original.len()];
+    for range in spans.mutable_ranges() {
+        mutable[range].fill(true);
+    }
+    if original
+        .iter()
+        .zip(&substituted)
+        .zip(&mutable)
+        .any(|((&before, &after), &allowed)| before != after && !allowed)
+    {
+        return Err(OfflineAutomarkerSubstitutionError::UnexpectedByteChange);
+    }
+
+    let substituted_decoded =
+        decode_observed_automarker_request_into(pack, &substituted, &mut scratch)?;
+    if substituted_decoded.marker_number != replacement_marker
+        || position_xyz(substituted_decoded.target_position) != target_position
+        || substituted_decoded.target_position.heading_degrees
+            != original_decoded.target_position.heading_degrees
+        || substituted_decoded.current_position != original_decoded.current_position
+    {
+        return Err(OfflineAutomarkerSubstitutionError::SubstitutedDecodeMismatch);
+    }
+    let game_owned_values_identical = original_decoded.skill_uuid == substituted_decoded.skill_uuid
+        && original_decoded.skill_level == substituted_decoded.skill_level
+        && original_decoded.begin_time == substituted_decoded.begin_time
+        && original_decoded.session_sequence == substituted_decoded.session_sequence
+        && original_decoded.attributes == substituted_decoded.attributes;
+    let target_heading_bytes_identical =
+        original[spans.target_position[3].clone()] == substituted[spans.target_position[3].clone()];
+    let current_position_bytes_identical = spans
+        .current_position
+        .iter()
+        .all(|range| original[range.clone()] == substituted[range.clone()]);
+    if !game_owned_values_identical
+        || !target_heading_bytes_identical
+        || !current_position_bytes_identical
+        || original[spans.authenticated_envelope.clone()]
+            != substituted[spans.authenticated_envelope.clone()]
+    {
+        return Err(OfflineAutomarkerSubstitutionError::UnexpectedByteChange);
+    }
+
+    let (nested_call_length_bytes, outer_frame_up_length_bytes) =
+        synthetic_uncompressed_observed_lengths(&substituted);
+    Ok(OfflineAutomarkerSubstitutionProof {
+        original_application_length_bytes: original.len(),
+        substituted_application_length_bytes: substituted.len(),
+        nested_call_length_bytes,
+        outer_frame_up_length_bytes,
+        allowed_mutable_bytes: mutable.into_iter().filter(|allowed| *allowed).count(),
+        all_other_bytes_identical: true,
+        game_owned_values_identical,
+        authenticated_envelope_bytes_identical: true,
+        target_heading_bytes_identical,
+        current_position_bytes_identical,
+        exact_build_decode_succeeded: true,
+        packet_transmission_performed: false,
+    })
+}
+
+#[derive(Debug)]
+struct SubstitutionSpans {
+    slot_id: Range<usize>,
+    skill_id: Range<usize>,
+    target_position: [Range<usize>; 4],
+    current_position: [Range<usize>; 4],
+    authenticated_envelope: Range<usize>,
+}
+
+impl SubstitutionSpans {
+    fn mutable_ranges(&self) -> impl Iterator<Item = Range<usize>> + '_ {
+        std::iter::once(self.slot_id.clone())
+            .chain(std::iter::once(self.skill_id.clone()))
+            .chain(self.target_position.iter().take(3).cloned())
+    }
+}
+
+fn substitution_spans(
+    application: &[u8],
+) -> Result<SubstitutionSpans, AutomarkerRequestDecodeError> {
+    let request = field_value_range(application, 1, 2, "Zproto.World.Types.UseSlot")?;
+    let request_bytes = &application[request.clone()];
+    let slot_id = absolute(
+        &request,
+        field_value_range(request_bytes, 1, 0, "Zproto.UseSlotRequest")?,
+    );
+    let param = field_value_range(request_bytes, 3, 2, "Zproto.UseSlotRequest")?;
+    let envelope = field_value_range(request_bytes, 4, 2, "Zproto.UseSlotRequest")?;
+    let param_bytes = &request_bytes[param.clone()];
+    let skill_id = absolute(
+        &request,
+        absolute(
+            &param,
+            field_value_range(param_bytes, 2, 0, "Zproto.UseSkillParam")?,
+        ),
+    );
+    let target = field_value_range(param_bytes, 6, 2, "Zproto.UseSkillParam")?;
+    let current = field_value_range(param_bytes, 7, 2, "Zproto.UseSkillParam")?;
+    Ok(SubstitutionSpans {
+        slot_id,
+        skill_id,
+        target_position: position_spans(application, absolute(&request, absolute(&param, target)))?,
+        current_position: position_spans(
+            application,
+            absolute(&request, absolute(&param, current)),
+        )?,
+        authenticated_envelope: absolute(&request, envelope),
+    })
+}
+
+fn position_spans(
+    application: &[u8],
+    position: Range<usize>,
+) -> Result<[Range<usize>; 4], AutomarkerRequestDecodeError> {
+    let bytes = &application[position.clone()];
+    Ok([
+        absolute(
+            &position,
+            field_value_range(bytes, 1, 5, "Zproto.Position")?,
+        ),
+        absolute(
+            &position,
+            field_value_range(bytes, 2, 5, "Zproto.Position")?,
+        ),
+        absolute(
+            &position,
+            field_value_range(bytes, 3, 5, "Zproto.Position")?,
+        ),
+        absolute(
+            &position,
+            field_value_range(bytes, 4, 5, "Zproto.Position")?,
+        ),
+    ])
+}
+
+fn field_value_range(
+    raw: &[u8],
+    expected_field: u32,
+    expected_wire: u8,
+    message: &'static str,
+) -> Result<Range<usize>, AutomarkerRequestDecodeError> {
+    let mut cursor = 0;
+    while cursor < raw.len() {
+        let (field, wire) = tag(raw, &mut cursor, message)?;
+        let value_range = match wire {
+            0 => {
+                let start = cursor;
+                let _ = varint(raw, &mut cursor, message)?;
+                start..cursor
+            }
+            2 => {
+                let value = bytes(raw, &mut cursor, message)?;
+                let start = value.as_ptr() as usize - raw.as_ptr() as usize;
+                start..start + value.len()
+            }
+            5 => {
+                let start = cursor;
+                let _ = fixed32(raw, &mut cursor, message)?;
+                start..cursor
+            }
+            _ => {
+                return Err(AutomarkerRequestDecodeError::WrongWireType {
+                    message,
+                    field,
+                    observed: wire,
+                    expected: expected_wire,
+                });
+            }
+        };
+        if field == expected_field {
+            require_wire(message, field, wire, expected_wire)?;
+            return Ok(value_range);
+        }
+    }
+    Err(AutomarkerRequestDecodeError::MissingField {
+        message,
+        field: expected_field,
+    })
+}
+
+fn absolute(parent: &Range<usize>, child: Range<usize>) -> Range<usize> {
+    parent.start + child.start..parent.start + child.end
+}
+
+fn write_same_width_varint(
+    output: &mut [u8],
+    mut value: u64,
+) -> Result<(), OfflineAutomarkerSubstitutionError> {
+    for (index, byte) in output.iter_mut().enumerate() {
+        let remaining = value >> 7;
+        *byte = (value as u8 & 0x7f) | (u8::from(remaining != 0) * 0x80);
+        value = remaining;
+        if value == 0 {
+            return if index + 1 == output.len() {
+                Ok(())
+            } else {
+                Err(OfflineAutomarkerSubstitutionError::UnstableFieldWidth)
+            };
+        }
+    }
+    Err(OfflineAutomarkerSubstitutionError::UnstableFieldWidth)
+}
+
+fn xyz_values(position: AutomarkerRequestXyz) -> [f32; 3] {
+    [position.x, position.y, position.z]
+}
+
+fn position_xyz(position: AutomarkerRequestPosition) -> AutomarkerRequestXyz {
+    AutomarkerRequestXyz {
+        x: position.x,
+        y: position.y,
+        z: position.z,
+    }
+}
+
+fn synthetic_uncompressed_observed_lengths(application: &[u8]) -> (usize, usize) {
+    let mut nested = Vec::with_capacity(6 + 20 + application.len());
+    nested.extend_from_slice(&(6_u32 + 20 + application.len() as u32).to_be_bytes());
+    nested.extend_from_slice(&1_u16.to_be_bytes());
+    nested.extend_from_slice(&[0_u8; 20]);
+    nested.extend_from_slice(application);
+    let mut outer = Vec::with_capacity(6 + 4 + nested.len());
+    outer.extend_from_slice(&(6_u32 + 4 + nested.len() as u32).to_be_bytes());
+    outer.extend_from_slice(&5_u16.to_be_bytes());
+    outer.extend_from_slice(&[0_u8; 4]);
+    outer.extend_from_slice(&nested);
+    (nested.len(), outer.len())
 }
 
 fn decode_request(
@@ -884,13 +1207,11 @@ mod tests {
             161
         );
         assert_eq!(
-            proof["length_preservation"]
-                ["complete_wire_length_preservation_proven_for_observed_request"],
+            proof["length_preservation"]["complete_wire_length_preservation_proven_for_observed_request"],
             true
         );
         assert_eq!(
-            proof["length_preservation"]
-                ["complete_wire_length_preservation_all_requests_proven"],
+            proof["length_preservation"]["complete_wire_length_preservation_all_requests_proven"],
             false
         );
         assert_eq!(proof["conclusion"]["runtime_sender_enabled"], false);
@@ -898,6 +1219,81 @@ mod tests {
             proof["conclusion"]["permission_to_replay_inject_or_rewrite"],
             false
         );
+    }
+
+    #[test]
+    fn offline_target_xyz_substitution_preserves_heading_and_current_position() {
+        let pack = current_pack(AUTOMARKER_REQUEST_BUILD);
+        let original = request(
+            1,
+            [250.35721, 118.0, -64.2384, 250.49268],
+            [250.44351, 118.02, -61.48509, 250.49268],
+            1_789_176_498_286,
+            607,
+        );
+        let target = AutomarkerRequestXyz {
+            x: -999_999.0,
+            y: 0.125,
+            z: 999_999.0,
+        };
+
+        // The caller has no heading or current-position input. Exercise every
+        // valid paired marker identity while those carrier values stay fixed.
+        for replacement_marker in 1..=6 {
+            let proof = verify_offline_automarker_substitution(
+                &pack,
+                &original,
+                replacement_marker,
+                target,
+            )
+            .unwrap();
+
+            assert_eq!(proof.original_application_length_bytes, 161);
+            assert_eq!(proof.substituted_application_length_bytes, 161);
+            assert_eq!(proof.nested_call_length_bytes, 187);
+            assert_eq!(proof.outer_frame_up_length_bytes, 197);
+            assert_eq!(proof.allowed_mutable_bytes, 16);
+            assert!(proof.all_other_bytes_identical);
+            assert!(proof.game_owned_values_identical);
+            assert!(proof.authenticated_envelope_bytes_identical);
+            assert!(proof.target_heading_bytes_identical);
+            assert!(proof.current_position_bytes_identical);
+            assert!(proof.exact_build_decode_succeeded);
+            assert!(!proof.packet_transmission_performed);
+        }
+    }
+
+    #[test]
+    fn offline_substitution_verifier_keeps_exact_build_and_length_gates() {
+        let current = current_pack(AUTOMARKER_REQUEST_BUILD);
+        let neighbor = current_pack("25247557");
+        let original = request(
+            1,
+            [1.0, 2.0, 3.0, 4.0],
+            [5.0, 6.0, 7.0, 8.0],
+            1_789_176_498_286,
+            607,
+        );
+        let target = AutomarkerRequestXyz {
+            x: 9.0,
+            y: 10.0,
+            z: 11.0,
+        };
+
+        assert!(matches!(
+            verify_offline_automarker_substitution(&neighbor, &original, 2, target),
+            Err(OfflineAutomarkerSubstitutionError::Decode(
+                AutomarkerRequestDecodeError::UnsupportedProtocolIdentity
+            ))
+        ));
+        assert!(matches!(
+            verify_offline_automarker_substitution(&current, &original[..160], 2, target),
+            Err(OfflineAutomarkerSubstitutionError::UnexpectedApplicationLength { actual: 160 })
+        ));
+        assert!(matches!(
+            verify_offline_automarker_substitution(&current, &original, 7, target),
+            Err(OfflineAutomarkerSubstitutionError::InvalidReplacementMarker)
+        ));
     }
 
     #[test]

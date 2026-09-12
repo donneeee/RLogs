@@ -181,6 +181,7 @@
   },
   "conclusion": {
     "application_level_equal_length_substitution_proven_for_marker_and_xyz": true,
+    "offline_verifier_narrowed_to_paired_marker_identity_and_target_xyz_only": true,
     "sampled_uncompressed_container_length_preservation_proven": true,
     "sampled_equal_length_change_requires_tcp_sequence_translation": false,
     "live_wire_substitution_feasible": "structurally_same-length-for-observed-layout-only; inline-safety-unproven",
@@ -189,10 +190,32 @@
     "runtime_sender_enabled": false,
     "permission_to_replay_inject_or_rewrite": false
   },
+  "offline_substitution_verifier": {
+    "implemented": true,
+    "input_fixture": "synthetic exact-schema 161-byte request",
+    "returns_substituted_bytes": false,
+    "mutable_fields": [
+      "UseSlotRequest.slot_id value bytes",
+      "UseSkillParam.skill_id value bytes",
+      "UseSkillParam.target_position x/y/z fixed32 value bytes"
+    ],
+    "allowed_mutable_bytes": 16,
+    "target_heading_byte_identical": true,
+    "complete_current_position_byte_identical": true,
+    "uuid_skill_level_begin_time_session_sequence_byte_identical": true,
+    "authenticated_attribute_envelope_byte_identical": true,
+    "all_other_application_bytes_identical": true,
+    "exact_build_decode_after_substitution": true,
+    "verified_length_stack_bytes": [161, 187, 197],
+    "network_capture_dependency": false,
+    "packet_api_dependency": false,
+    "transport_or_sender_available": false
+  },
   "next_non_invasive_evidence": {
     "source": "already-retained private current-build capture only",
     "completed_action": "Generated a sanitized offline frame-layout receipt without network endpoints, raw payloads, identifiers, timestamps, or exact TCP sequence numbers.",
-    "next_action": "Offline-only verification that candidate marker/XYZ field-width changes preserve the 161/187/197-byte stack while every game-owned identifier and authenticated attribute byte remains unchanged.",
+    "next_action_status": "completed",
+    "next_action": "Completed offline-only verification that paired marker identity and target XYZ changes preserve the 161/187/197-byte stack while target heading, current position, every game-owned identifier, and authenticated attributes remain byte-identical.",
     "implemented_offline_tool": "rlogs-bpsr-automarker-wire-layout-receipt",
     "required_aggregates": [
       "outer and nested compression flags and frame lengths",
