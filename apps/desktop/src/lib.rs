@@ -33,8 +33,9 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use automarker_presets::{
-    AutomarkerLocalLoadResult, AutomarkerPresetStore, AutomarkerPresetView, AutomarkerSceneContext,
-    LoadAutomarkerPresetRequest, SaveAutomarkerPresetRequest,
+    ActivateAutomarkerPresetRequest, AutomarkerActivationLiveContext, AutomarkerLocalLoadResult,
+    AutomarkerNativeActivationResult, AutomarkerPresetStore, AutomarkerPresetView,
+    AutomarkerSceneContext, LoadAutomarkerPresetRequest, SaveAutomarkerPresetRequest,
 };
 use character_identities::{
     CaptureTimeCharacterIdentityStore, CharacterIdentityResolver, CharacterIdentityStore,
@@ -7013,6 +7014,43 @@ impl RuntimeController {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .load(request, context)
+    }
+
+    fn activate_automarker_preset(
+        &self,
+        request: ActivateAutomarkerPresetRequest,
+    ) -> Result<AutomarkerNativeActivationResult, String> {
+        // Reacquire both feeds at request time. A second map read closes the
+        // transition window between the two snapshots without retaining any
+        // actor, action, position, sequence, or payload state.
+        let first_map = self.live_mechanics_map_feed.current().snapshot;
+        let observed = self.live_observed_marker_feed.current();
+        let current_map = self.live_mechanics_map_feed.current().snapshot;
+        if first_map.revision != current_map.revision
+            || first_map.session_id != current_map.session_id
+            || first_map.client_build != current_map.client_build
+            || first_map.scene_id != current_map.scene_id
+            || first_map.map_id != current_map.map_id
+        {
+            return Err("the Mechanics Map changed while validating automarker activation; refresh before retrying".into());
+        }
+        let context = automarker_scene_context(&current_map, &self.automarker_scene_families);
+        let live = AutomarkerActivationLiveContext {
+            mechanics_session_id: current_map.session_id,
+            context,
+            capture_active: observed.capture_active,
+            protocol_supported: observed.protocol_supported,
+            observed_session_id: observed.session_id,
+            deployment_id: observed.deployment_id,
+            observed_client_build: observed.client_build,
+            protocol_pack_digest: observed.protocol_pack_digest,
+            observed_scene_id: observed.scene_id,
+            observed_map_id: observed.map_id,
+        };
+        self.automarker_presets
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .activate_native_unavailable(request, live)
     }
 
     #[cfg(windows)]
@@ -14894,6 +14932,20 @@ fn handle_connection(
             match controller.load_automarker_preset(request) {
                 Ok(result) => write_json(&mut stream, 200, &result)?,
                 Err(error) => write_api_error(&mut stream, 400, error)?,
+            }
+        }
+        ("POST", "/api/automarkers/presets/activate") => {
+            let request: ActivateAutomarkerPresetRequest =
+                match serde_json::from_slice(&request.body) {
+                    Ok(request) => request,
+                    Err(error) => {
+                        write_api_error(&mut stream, 400, format!("invalid request: {error}"))?;
+                        return Ok(());
+                    }
+                };
+            match controller.activate_automarker_preset(request) {
+                Ok(result) => write_json(&mut stream, 200, &result)?,
+                Err(error) => write_api_error(&mut stream, 409, error)?,
             }
         }
         ("POST", "/api/runtime/local-game-assets/prepare") => {

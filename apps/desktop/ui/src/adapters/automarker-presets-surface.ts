@@ -1,6 +1,8 @@
 import type { MountedSurface } from "../shell/types";
 import type {
   AutomarkerLocalLoadResult,
+  ActivateAutomarkerPresetRequest,
+  AutomarkerNativeActivationResult,
   AutomarkerPoint,
   AutomarkerPresetView,
   LoadAutomarkerPresetRequest,
@@ -14,6 +16,8 @@ export interface AutomarkerPresetDependencies {
   loadObservedMarkers(): Promise<ObservedMarkerSnapshot>;
   saveCurrent(request: SaveAutomarkerPresetRequest): Promise<AutomarkerPresetView>;
   loadPreset(request: LoadAutomarkerPresetRequest): Promise<AutomarkerLocalLoadResult>;
+  // Deliberately not called while Place in game remains disabled.
+  activatePreset?(request: ActivateAutomarkerPresetRequest): Promise<AutomarkerNativeActivationResult>;
   openOverlay(): Promise<void>;
 }
 

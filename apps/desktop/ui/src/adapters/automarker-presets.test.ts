@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   AUTOMARKER_EXCHANGE_MAX_BYTES,
   automarkerExportFilename,
+  automarkerActivationRequest,
   automarkerPresetExchange,
   automarkerSaveRequest,
   activeAutomarkerPreview,
   automarkerResponseIsCurrent,
   newlyCreatedPresetId,
   parseAutomarkerLocalLoadResult,
+  parseAutomarkerNativeActivationResult,
   parseAutomarkerPreview,
   parseAutomarkerPresetExchange,
   parseAutomarkerPresetView,
@@ -41,6 +43,35 @@ function view() {
 }
 
 describe("automarker preset catalog", () => {
+  it("builds the exact bounded native activation request and rejects response expansion", () => {
+    const catalog = parseAutomarkerPresetView(view());
+    if (catalog.context === null) throw new Error("fixture context missing");
+    catalog.captureSupported = true;
+    catalog.captureReason = "observed_waymark_state_verified";
+    catalog.captureSessionId = "capture-session-current";
+    catalog.deploymentId = "global";
+    catalog.protocolPackDigest = `sha256:${"a".repeat(64)}`;
+    const observed = parseObservedMarkerSnapshot({
+      schemaVersion: 2, revision: 1, captureActive: true, protocolSupported: true,
+      requestObserverSupported: true, verifiedRequestCount: 0,
+      lastVerifiedRequestMarkerNumber: null, lastVerifiedRequestObservedMicros: null,
+      reason: "no_fully_positioned_markers_observed", sessionId: catalog.captureSessionId,
+      deploymentId: catalog.deploymentId, clientBuild: catalog.context.clientBuild,
+      protocolPackDigest: catalog.protocolPackDigest, sceneId: catalog.context.sceneId,
+      mapId: catalog.context.mapId, observedMicros: 1, markers: [],
+    });
+    const request = automarkerActivationRequest(catalog.presets[0]!.presetId, parseAutomarkerPresetView(catalog), observed);
+    expect(Object.keys(request).sort()).toEqual(["presetId", "stamp"]);
+    expect(Object.keys(request.stamp).sort()).toEqual(["captureSessionId", "context", "deploymentId", "protocolPackDigest"]);
+    expect(JSON.stringify(request)).not.toMatch(/account|character|player|entity|actionUuid|skillUuid|sequence|timestamp|auth|positionSource|rawPayload/i);
+    expect(parseAutomarkerNativeActivationResult({ activated: false, reason: "native_waymark_transport_unavailable" }))
+      .toEqual({ activated: false, reason: "native_waymark_transport_unavailable" });
+    expect(() => parseAutomarkerNativeActivationResult({ activated: false, reason: "native_waymark_transport_unavailable", sequence: 7 }))
+      .toThrow(/invalid automarker activation result/i);
+    expect(() => automarkerActivationRequest(catalog.presets[0]!.presetId, parseAutomarkerPresetView(catalog), { ...observed, sessionId: "restarted" }))
+      .toThrow(/matching live automarker capture/i);
+  });
+
   it("round-trips an identity-free portable exchange document", () => {
     const preset = view().presets[0]!;
     const serialized = serializeAutomarkerPresetExchange(preset);

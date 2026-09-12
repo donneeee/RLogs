@@ -57,6 +57,23 @@ export interface LoadAutomarkerPresetRequest {
   expectedContext: AutomarkerSceneContext;
 }
 
+export interface AutomarkerActivationStamp {
+  captureSessionId: string;
+  deploymentId: string;
+  protocolPackDigest: string;
+  context: AutomarkerSceneContext;
+}
+
+export interface ActivateAutomarkerPresetRequest {
+  presetId: string;
+  stamp: AutomarkerActivationStamp;
+}
+
+export interface AutomarkerNativeActivationResult {
+  activated: false;
+  reason: "native_waymark_transport_unavailable";
+}
+
 export interface AutomarkerPreview {
   schemaVersion: 1;
   context: AutomarkerSceneContext;
@@ -118,6 +135,38 @@ export function automarkerSaveRequest(
     points: points.map((point) => ({ ...point })),
     expectedContext: { ...expectedContext },
   };
+}
+
+export function automarkerActivationRequest(
+  presetId: string,
+  view: AutomarkerPresetView,
+  observed: ObservedMarkerSnapshot,
+): ActivateAutomarkerPresetRequest {
+  if (presetId.length < 8 || !view.presets.some((preset) => preset.presetId === presetId) ||
+      view.context === null || !view.captureSupported ||
+      view.captureSessionId === null || view.deploymentId === null || view.protocolPackDigest === null ||
+      observed.sessionId !== view.captureSessionId || observed.deploymentId !== view.deploymentId ||
+      observed.protocolPackDigest !== view.protocolPackDigest || observed.clientBuild !== view.context.clientBuild ||
+      observed.sceneId !== view.context.sceneId || observed.mapId !== view.context.mapId) {
+    throw new Error("A matching live automarker capture and scene are required before activation.");
+  }
+  return {
+    presetId,
+    stamp: {
+      captureSessionId: view.captureSessionId,
+      deploymentId: view.deploymentId,
+      protocolPackDigest: view.protocolPackDigest,
+      context: { ...view.context },
+    },
+  };
+}
+
+export function parseAutomarkerNativeActivationResult(value: unknown): AutomarkerNativeActivationResult {
+  if (!record(value) || !exactKeys(value, ["activated", "reason"]) || value.activated !== false ||
+      value.reason !== "native_waymark_transport_unavailable") {
+    throw new Error("The local host returned an invalid automarker activation result.");
+  }
+  return value as unknown as AutomarkerNativeActivationResult;
 }
 
 export function automarkerPresetExchange(preset: AutomarkerPreset): AutomarkerPresetExchange {
@@ -379,7 +428,8 @@ export function automarkerResponseIsCurrent(
 }
 
 function validContext(value: unknown): value is AutomarkerSceneContext {
-  return record(value) && validBuild(value.clientBuild) && integer(value.sceneId) && integer(value.mapId) &&
+  return record(value) && exactKeys(value, ["clientBuild", "sceneId", "mapId", "activityFamilyId", "sceneName"]) &&
+    validBuild(value.clientBuild) && integer(value.sceneId) && integer(value.mapId) &&
     validFamily(value.activityFamilyId) && (value.sceneName === null || typeof value.sceneName === "string");
 }
 

@@ -85,7 +85,7 @@ struct LegacyAutomarkerPresetFileV3 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AutomarkerSceneContext {
     pub client_build: String,
     pub scene_id: i32,
@@ -124,6 +124,47 @@ pub struct SaveAutomarkerPresetRequest {
 pub struct LoadAutomarkerPresetRequest {
     pub preset_id: String,
     pub expected_context: AutomarkerSceneContext,
+}
+
+/// Optimistic identity captured from the live read-only snapshots immediately
+/// before an activation request. It intentionally contains no gameplay actor,
+/// action, transport-sequence, timestamp, authentication, position-source, or
+/// raw-payload material.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AutomarkerActivationStamp {
+    pub capture_session_id: String,
+    pub deployment_id: String,
+    pub protocol_pack_digest: String,
+    pub context: AutomarkerSceneContext,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActivateAutomarkerPresetRequest {
+    pub preset_id: String,
+    pub stamp: AutomarkerActivationStamp,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AutomarkerActivationLiveContext {
+    pub mechanics_session_id: Option<String>,
+    pub context: Option<AutomarkerSceneContext>,
+    pub capture_active: bool,
+    pub protocol_supported: bool,
+    pub observed_session_id: Option<String>,
+    pub deployment_id: Option<String>,
+    pub observed_client_build: Option<String>,
+    pub protocol_pack_digest: Option<String>,
+    pub observed_scene_id: Option<i32>,
+    pub observed_map_id: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomarkerNativeActivationResult {
+    pub activated: bool,
+    pub reason: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -254,6 +295,66 @@ impl AutomarkerPresetStore {
         Ok(AutomarkerLocalLoadResult {
             context,
             preset: preset.clone(),
+        })
+    }
+
+    /// Resolves a preset only after every optimistic live identity has been
+    /// revalidated. The terminal result is deliberately unavailable: there is
+    /// no native transport call or send hook in this contract.
+    pub fn activate_native_unavailable(
+        &self,
+        request: ActivateAutomarkerPresetRequest,
+        live: AutomarkerActivationLiveContext,
+    ) -> Result<AutomarkerNativeActivationResult, String> {
+        let current = live.context.as_ref().ok_or_else(|| {
+            "a current packet-observed automarker scene is required before activation".to_owned()
+        })?;
+        if !live.capture_active || !live.protocol_supported {
+            return Err(
+                "the current capture does not have reviewed automarker protocol authority".into(),
+            );
+        }
+        if live.mechanics_session_id.as_deref() != Some(request.stamp.capture_session_id.as_str())
+            || live.observed_session_id.as_deref()
+                != Some(request.stamp.capture_session_id.as_str())
+        {
+            return Err(
+                "the automarker capture session changed or restarted; refresh before activation"
+                    .into(),
+            );
+        }
+        if live.deployment_id.as_deref() != Some(request.stamp.deployment_id.as_str()) {
+            return Err("the automarker deployment changed; refresh before activation".into());
+        }
+        if live.protocol_pack_digest.as_deref() != Some(request.stamp.protocol_pack_digest.as_str())
+        {
+            return Err("the automarker protocol pack changed; refresh before activation".into());
+        }
+        if live.observed_client_build.as_deref() != Some(current.client_build.as_str())
+            || live.observed_scene_id != Some(current.scene_id)
+            || live.observed_map_id != Some(current.map_id)
+        {
+            return Err("the Mechanics Map and observed-marker snapshots no longer describe the same build and scene".into());
+        }
+        if &request.stamp.context != current {
+            return Err("the live automarker build, scene, map, or dungeon family changed; refresh before activation".into());
+        }
+
+        // Preset resolution happens only after all live identity gates pass.
+        validate_id(&request.preset_id)?;
+        let preset = self
+            .presets
+            .iter()
+            .find(|preset| preset.preset_id == request.preset_id)
+            .ok_or_else(|| "the selected automarker preset no longer exists".to_owned())?;
+        if !compatible(preset, current) {
+            return Err(
+                "the selected automarker preset belongs to a different dungeon family".into(),
+            );
+        }
+        Ok(AutomarkerNativeActivationResult {
+            activated: false,
+            reason: "native_waymark_transport_unavailable",
         })
     }
 
@@ -625,6 +726,223 @@ mod tests {
             y: 2.0,
             z: 3.0,
         }]
+    }
+
+    fn activation_stamp() -> AutomarkerActivationStamp {
+        AutomarkerActivationStamp {
+            capture_session_id: "capture-session-current".into(),
+            deployment_id: "global".into(),
+            protocol_pack_digest: format!("sha256:{}", "a".repeat(64)),
+            context: mech(),
+        }
+    }
+
+    fn activation_live() -> AutomarkerActivationLiveContext {
+        let stamp = activation_stamp();
+        AutomarkerActivationLiveContext {
+            mechanics_session_id: Some(stamp.capture_session_id.clone()),
+            context: Some(stamp.context.clone()),
+            capture_active: true,
+            protocol_supported: true,
+            observed_session_id: Some(stamp.capture_session_id),
+            deployment_id: Some(stamp.deployment_id),
+            observed_client_build: Some(stamp.context.client_build.clone()),
+            protocol_pack_digest: Some(stamp.protocol_pack_digest),
+            observed_scene_id: Some(stamp.context.scene_id),
+            observed_map_id: Some(stamp.context.map_id),
+        }
+    }
+
+    fn saved_for_activation(path: &Path) -> (AutomarkerPresetStore, String) {
+        let mut store = open(path);
+        let view = store
+            .save(
+                SaveAutomarkerPresetRequest {
+                    preset_id: None,
+                    name: "Native contract fixture".into(),
+                    points: points(1.0),
+                    expected_context: mech(),
+                },
+                mech(),
+                10,
+            )
+            .unwrap();
+        let id = view.presets[0].preset_id.clone();
+        (store, id)
+    }
+
+    #[test]
+    fn native_activation_request_has_exact_bounded_schema() {
+        let value = serde_json::json!({
+            "presetId": "preset-activation",
+            "stamp": {
+                "captureSessionId": "capture-session-current",
+                "deploymentId": "global",
+                "protocolPackDigest": format!("sha256:{}", "a".repeat(64)),
+                "context": {
+                    "clientBuild": "24687926",
+                    "sceneId": 1100,
+                    "mapId": 1100,
+                    "activityFamilyId": "mech-facility",
+                    "sceneName": "Scene 1100"
+                }
+            }
+        });
+        let decoded: ActivateAutomarkerPresetRequest =
+            serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(decoded.stamp, activation_stamp());
+        assert_eq!(
+            value.as_object().unwrap().keys().collect::<Vec<_>>(),
+            vec!["presetId", "stamp"]
+        );
+        for forbidden in [
+            "accountUuid",
+            "characterUuid",
+            "playerUuid",
+            "entityUuid",
+            "actionUuid",
+            "skillUuid",
+            "sequence",
+            "timestamp",
+            "auth",
+            "positionSource",
+            "rawPayload",
+        ] {
+            let mut rejected = value.clone();
+            rejected
+                .as_object_mut()
+                .unwrap()
+                .insert(forbidden.into(), serde_json::json!("forbidden"));
+            assert!(
+                serde_json::from_value::<ActivateAutomarkerPresetRequest>(rejected).is_err(),
+                "accepted forbidden field {forbidden}"
+            );
+        }
+        let mut nested = value;
+        nested["stamp"]["sessionSequence"] = serde_json::json!(7);
+        assert!(serde_json::from_value::<ActivateAutomarkerPresetRequest>(nested).is_err());
+    }
+
+    #[test]
+    fn native_activation_rejects_stale_session_context_pack_and_family_before_resolution() {
+        let path = temporary_path("activate-stale");
+        let (store, _preset_id) = saved_for_activation(&path);
+        let request = || ActivateAutomarkerPresetRequest {
+            // Deliberately unresolved: every stale-live error below must win
+            // before the store attempts preset resolution.
+            preset_id: "preset-missing".into(),
+            stamp: activation_stamp(),
+        };
+        let mut stale = activation_live();
+        stale.mechanics_session_id = Some("capture-session-restarted".into());
+        assert!(
+            store
+                .activate_native_unavailable(request(), stale)
+                .unwrap_err()
+                .contains("session")
+        );
+        let mut stale = activation_live();
+        stale.observed_session_id = Some("capture-session-restarted".into());
+        assert!(
+            store
+                .activate_native_unavailable(request(), stale)
+                .unwrap_err()
+                .contains("session")
+        );
+        let mut stale = activation_live();
+        stale.deployment_id = Some("another-deployment".into());
+        assert!(
+            store
+                .activate_native_unavailable(request(), stale)
+                .unwrap_err()
+                .contains("deployment")
+        );
+        let mut stale = activation_live();
+        stale.observed_client_build = Some("stale-build".into());
+        assert!(
+            store
+                .activate_native_unavailable(request(), stale)
+                .unwrap_err()
+                .contains("same build and scene")
+        );
+        let mut stale = activation_live();
+        stale.observed_scene_id = Some(9_999);
+        assert!(
+            store
+                .activate_native_unavailable(request(), stale)
+                .unwrap_err()
+                .contains("same build and scene")
+        );
+        let mut stale = activation_live();
+        stale.observed_map_id = Some(9_999);
+        assert!(
+            store
+                .activate_native_unavailable(request(), stale)
+                .unwrap_err()
+                .contains("same build and scene")
+        );
+        let mut stale = activation_live();
+        stale.protocol_pack_digest = Some(format!("sha256:{}", "b".repeat(64)));
+        assert!(
+            store
+                .activate_native_unavailable(request(), stale)
+                .unwrap_err()
+                .contains("protocol pack")
+        );
+        for mutate in [
+            |context: &mut AutomarkerSceneContext| context.client_build = "stale-build".into(),
+            |context: &mut AutomarkerSceneContext| context.scene_id = 9_999,
+            |context: &mut AutomarkerSceneContext| context.map_id = 9_999,
+            |context: &mut AutomarkerSceneContext| {
+                context.activity_family_id = "another-family".into()
+            },
+        ] {
+            let mut stale_request = request();
+            mutate(&mut stale_request.stamp.context);
+            assert!(
+                store
+                    .activate_native_unavailable(stale_request, activation_live())
+                    .unwrap_err()
+                    .contains("dungeon family")
+            );
+        }
+        assert!(
+            store
+                .activate_native_unavailable(request(), activation_live())
+                .unwrap_err()
+                .contains("no longer exists")
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn native_activation_returns_unavailable_without_mutating_or_sending() {
+        let path = temporary_path("activate-no-send");
+        let (store, preset_id) = saved_for_activation(&path);
+        let before = std::fs::read(&path).unwrap();
+        let result = store
+            .activate_native_unavailable(
+                ActivateAutomarkerPresetRequest {
+                    preset_id,
+                    stamp: activation_stamp(),
+                },
+                activation_live(),
+            )
+            .unwrap();
+        assert_eq!(
+            result,
+            AutomarkerNativeActivationResult {
+                activated: false,
+                reason: "native_waymark_transport_unavailable"
+            }
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        let encoded = serde_json::to_value(result).unwrap();
+        assert_eq!(
+            encoded,
+            serde_json::json!({"activated": false, "reason": "native_waymark_transport_unavailable"})
+        );
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
