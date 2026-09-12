@@ -10,16 +10,45 @@ import os
 import re
 import shutil
 import struct
+import sys
 import tempfile
+import types
 from pathlib import Path
 from typing import Optional
+
+
+def _install_texture_only_audio_guard() -> None:
+    """Keep UnityPy's optional FMOD backend out of this texture-only helper.
+
+    UnityPy 1.25 imports its audio converter while initializing the export
+    package used by ``Texture2D.image``. The converter only needs
+    ``fmod_toolkit`` when an AudioClip is actually decoded, but importing the
+    native package eagerly tries to load fmod.dll. This dedicated helper never
+    decodes audio, so provide the narrow interface UnityPy imports and fail
+    closed if a future code path ever attempts to use it.
+    """
+
+    guard = types.ModuleType("fmod_toolkit")
+
+    def reject_audio_conversion(*_args: object, **_kwargs: object) -> bytes:
+        raise RuntimeError(
+            "Audio conversion is intentionally disabled in the texture-only "
+            "rLogs map compiler"
+        )
+
+    guard.raw_to_wav = reject_audio_conversion  # type: ignore[attr-defined]
+    guard.__rlogs_texture_only_guard__ = True  # type: ignore[attr-defined]
+    sys.modules["fmod_toolkit"] = guard
+
+
+_install_texture_only_audio_guard()
 
 import UnityPy  # type: ignore
 from PIL import __version__ as pillow_version  # type: ignore
 
 DEFAULT_ADDRESS = "ui/textures/map/dungeon_map_bg"
 DEFAULT_OBJECT_NAME = "dungeon_map_bg"
-COMPILER_VERSION = "4"
+COMPILER_VERSION = "5"
 MAXIMUM_LOCALIZATION_PAYLOAD_BYTES = 64 * 1024 * 1024
 MAXIMUM_LOCALIZATION_ENTRIES = 1_000_000
 MAXIMUM_META_ENTRIES = 1_000_000
@@ -852,6 +881,24 @@ def validate_localization_payload(payload: bytes) -> dict:
 
 def run_self_check() -> None:
     """Exercise packaged imports and the binary parser without reading game files."""
+    # Texture2D.image imports UnityPy.export, whose package initializer also
+    # imports AudioClipConverter. Exercise that exact formerly failing import in
+    # the packaged executable and prove the native FMOD module was not loaded.
+    from UnityPy.export import Texture2DConverter  # type: ignore
+
+    audio_guard = sys.modules.get("fmod_toolkit")
+    if not getattr(audio_guard, "__rlogs_texture_only_guard__", False):
+        raise SystemExit("self-check texture-only audio guard is not active")
+    if Texture2DConverter is None:
+        raise SystemExit("self-check Texture2D converter import failed")
+    try:
+        audio_guard.raw_to_wav(b"", 0, 0, 0)  # type: ignore[union-attr]
+    except RuntimeError as error:
+        if "intentionally disabled" not in str(error):
+            raise
+    else:
+        raise SystemExit("self-check unexpectedly enabled audio conversion")
+
     fixture = bytearray()
     fixture.extend(struct.pack("<iii", 1, 2, 3))
     fixture.extend(b"\0" * 8)

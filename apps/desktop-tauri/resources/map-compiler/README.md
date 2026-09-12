@@ -10,6 +10,13 @@ versions in `tools/bpsr-map-compiler-requirements.txt`. UnityPy and its runtime
 dependencies retain their respective upstream licenses; PyInstaller's bootloader
 is distributed under its GPL exception for bundled applications.
 
+This texture-only helper deliberately replaces UnityPy's optional audio adapter
+with a fail-closed in-process guard before UnityPy is imported. UnityPy's export
+package otherwise loads FMOD while resolving `Texture2D.image`, even though map
+extraction never decodes audio. The build excludes `fmod_toolkit` and its native
+DLLs; the packaged self-check imports the Texture2D converter through that exact
+path and fails if the guard is absent or permits audio conversion.
+
 `reviewed-map-assets.v1.json` is the fail-closed allowlist used by batch mode.
 Every entry binds a reviewed numeric client build to scene IDs, game addresses,
 bundle hashes, texture dimensions, and the game-authored region transform. When

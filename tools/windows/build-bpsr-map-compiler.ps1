@@ -13,7 +13,10 @@ $work = Join-Path $buildTempRoot "rlogs-map-compiler-work"
 $spec = Join-Path $buildTempRoot "rlogs-map-compiler-spec"
 
 New-Item -ItemType Directory -Force -Path $output, $work, $spec | Out-Null
-python -m pip install --disable-pip-version-check -r $requirements
+# Every transitive runtime/build dependency is pinned in the requirements file.
+# --no-deps is intentional: UnityPy declares the optional FMOD audio backend as
+# mandatory even though this dedicated helper only decodes Texture2D assets.
+python -m pip install --disable-pip-version-check --no-deps -r $requirements
 if ($LASTEXITCODE -ne 0) {
     throw "Failed to install the pinned map-compiler build environment"
 }
@@ -27,6 +30,8 @@ python -m PyInstaller `
     --workpath $work `
     --specpath $spec `
     --collect-all UnityPy `
+    --collect-data archspec `
+    --exclude-module fmod_toolkit `
     $source
 if ($LASTEXITCODE -ne 0) {
     throw "Failed to build the local game-map compiler"
