@@ -90,12 +90,32 @@ Required chain:
    build-25247556 `GameAssembly.dll`; retain `dump.cs` and `script.json` together.
 3. Run the repository router below. It pins the GameAssembly digest, validates
    the metadata header, hashes all inputs, checks dump VAs against the PE image
-   base, and emits candidates for `PlayerInputController.FlagSkill`,
-   `TouchController.TrySetAxis`, the `World.UseSlot`/async bridge, and targeting
-   or raycast names.
+   base, and emits candidates for `PlayerInputController.FlagSkill`, the
+   current-build `CustomPadDevice.TrySetAxis`, the `World.UseSlot`/async bridge,
+   `ZBattleUtils.SetSelectPoint`, `EntityAttrExtensions.SetIndicatorPos`,
+   `ZSkillInputMgr.FirePlaySkillByIndicator`, and targeting or raycast names.
 4. Treat targeting/raycast rows as candidates only. Prove the handler through a
    bounded native call graph/disassembly from `FlagSkill` toward `World.UseSlot`;
    names alone do not establish call ordering or position ownership.
+
+The recovered build proves useful exact-position primitives, but not a safe
+activation ABI. A non-default `SetSelectPoint(..., forcePos, ...)` writes the
+supplied `Vector3` into the host selection/indicator-position component. The
+normal `FlagSkill` release does not preserve a point staged this way:
+`ZIndicatorMgr.FireSkill` first copies its private `indicatorPos_` into the host,
+then dispatches `FirePlaySkillEvent(..., isIndicator: true)`, whose normal
+`PlayerCtrlComp`/`CharCtrlCompBase.UseSkill` path resolves the point from that
+component. `SetIndicatorPos(host, xyz)` followed by the internal
+`FirePlaySkillByIndicator(skillId)` is therefore only a static candidate. The
+repository has no proven fail-closed way to acquire the live internal
+`ZSkillInputMgr` instance on the game main thread, validate its
+ownership/lifetime and exact IL2CPP ABI, or invoke that pair atomically. The
+indicator path does retain the normal skill checks and copies the selected XYZ
+into `UseSkillParam.TargetPos` before the game generates fresh action and
+transport state. The all-zero world vector is a selection sentinel and remains
+unsupported without runtime proof. None of these exact-position methods is
+registered in the reviewed Lua wrappers. Keep native activation and Place
+disabled pending runtime-safe object acquisition and call-order proof.
 
 Use the guarded orchestrator for steps 1–3. It verifies the schema-2 recovery
 receipt, all 199 files in the pinned source-built extractor, and the exact input
@@ -136,7 +156,10 @@ python tools/il2cpp-direct-callsite-audit.py `
   --binary "<install>\bpsr\GameAssembly.dll" `
   --dump "<private>\il2cpp-25247556\dump.cs" `
   --target "PlayerInputController.FlagSkill" `
-  --target "TouchController.TrySetAxis" `
+  --target "CustomPadDevice.TrySetAxis" `
+  --target "ZBattleUtils.SetSelectPoint" `
+  --target "EntityAttrExtensions.SetIndicatorPos" `
+  --target "ZSkillInputMgr.FirePlaySkillByIndicator" `
   --target "UseSlot" `
   --game-build 25247556 `
   --output "<private>\automarker-direct-calls.v1.json"

@@ -97,10 +97,18 @@ export function routeMethods(methods, imageBase = 0x180000000n) {
     return { ...row, computed_va: computed, dump_va_matches_image: row.dump_va === null ? null : same(row.dump_va, computed) };
   });
   const flagSkill = native(methods.filter((m) => same(m.type, "PlayerInputController") && same(m.method, "FlagSkill")));
-  const trySetAxis = native(methods.filter((m) => same(m.method, "TrySetAxis") && (same(m.type, "TouchController") || contains(m.type, "Touch"))));
+  const trySetAxis = native(methods.filter((m) => same(m.method, "TrySetAxis") &&
+    (same(m.type, "CustomPadDevice") || same(m.type, "TouchController") || contains(m.type, "Touch"))));
   const useSlot = native(methods.filter((m) =>
     (same(m.method, "UseSlot") && contains(m.type, "World")) ||
     (same(m.method, "MoveNext") && /<UseSlot>d__\d+/i.test(m.type))));
+  const setSelectPoint = native(methods.filter((m) =>
+    same(m.type, "ZBattleUtils") && same(m.method, "SetSelectPoint")));
+  const setIndicatorPos = native(methods.filter((m) =>
+    same(m.type, "EntityAttrExtensions") && same(m.method, "SetIndicatorPos") &&
+    contains(m.namespace, "ZGame")));
+  const firePlaySkillByIndicator = native(methods.filter((m) =>
+    same(m.type, "ZSkillInputMgr") && same(m.method, "FirePlaySkillByIndicator")));
   const targeting = native(methods.filter((m) => {
     const identity = `${m.namespace}.${m.type}.${m.method}`;
     return /(raycast|ground.*target|target.*ground|skill.*target|target.*position|aim.*point|place.*position)/i.test(identity);
@@ -108,15 +116,23 @@ export function routeMethods(methods, imageBase = 0x180000000n) {
   return {
     exact: {
       player_input_controller_flag_skill: flagSkill,
-      touch_controller_try_set_axis: trySetAxis,
+      axis_input_try_set_axis: trySetAxis,
       world_use_slot_bridge: useSlot,
+      z_battle_utils_set_select_point: setSelectPoint,
+      entity_attr_extensions_set_indicator_pos: setIndicatorPos,
+      z_skill_input_mgr_fire_play_skill_by_indicator: firePlaySkillByIndicator,
     },
     discovery: { target_or_raycast_candidates: targeting },
     gates: {
       flag_skill_unique_native: flagSkill.length === 1 && flagSkill[0].rva !== null,
       try_set_axis_unique_native: trySetAxis.length === 1 && trySetAxis[0].rva !== null,
       use_slot_bridge_present: useSlot.some((m) => m.rva !== null),
+      exact_position_primitives_present:
+        setSelectPoint.length === 1 && setSelectPoint[0].rva !== null &&
+        setIndicatorPos.length === 1 && setIndicatorPos[0].rva !== null &&
+        firePlaySkillByIndicator.length === 1 && firePlaySkillByIndicator[0].rva !== null,
       target_or_raycast_handler_proven: false,
+      executable_native_activation_proven: false,
     },
   };
 }
@@ -131,11 +147,12 @@ function parseArgs(argv) {
 }
 
 function selfTest() {
-  const fixture = `// Namespace: Game.Input\npublic class PlayerInputController // TypeDefIndex: 10\n{\n// Methods\n// RVA: 0x1234 Offset: 0x1034 VA: 0x180001234\npublic void FlagSkill(int slot, bool pressed) { }\n}\n// Namespace: Game.Touch\npublic class TouchController // TypeDefIndex: 11\n{\n// RVA: 0x2345 Offset: 0x2045 VA: 0x180002345\npublic bool TrySetAxis(string axis, float value) { }\n}\n// Namespace: Zservice\nprivate struct WorldProxy.<UseSlot>d__19 // TypeDefIndex: 12\n{\n// RVA: 0x3456 Offset: 0x3056 VA: 0x180003456\nprivate void MoveNext() { }\n}\n// Namespace: Game.Targeting\npublic class GroundRaycastController // TypeDefIndex: 13\n{\n// RVA: 0x4567 Offset: 0x4057 VA: 0x180004567\nprivate bool RaycastGroundPosition() { }\n}`;
+  const fixture = `// Namespace: Game.Input\npublic class PlayerInputController // TypeDefIndex: 10\n{\n// Methods\n// RVA: 0x1234 Offset: 0x1034 VA: 0x180001234\npublic void FlagSkill(int slot, bool pressed) { }\n}\n// Namespace: Game.Input\ninternal class CustomPadDevice // TypeDefIndex: 11\n{\n// RVA: 0x2345 Offset: 0x2045 VA: 0x180002345\npublic bool TrySetAxis(int elementId, float value) { }\n}\n// Namespace: Zservice\nprivate struct WorldProxy.<UseSlot>d__19 // TypeDefIndex: 12\n{\n// RVA: 0x3456 Offset: 0x3056 VA: 0x180003456\nprivate void MoveNext() { }\n}\n// Namespace: Panda.ZGame\npublic static class ZBattleUtils // TypeDefIndex: 13\n{\n// RVA: 0x4567 Offset: 0x4057 VA: 0x180004567\npublic static void SetSelectPoint(ZEntity host, ESelectPosSource source, ESkillTargetRangeType rangeType, ESkillSelectPointType selectPointType, int skillEffectId, Quaternion targetRot, Vector3 forcePos, bool isIndicator = False) { }\n}\n// Namespace: Panda.ZGame\npublic static class EntityAttrExtensions // TypeDefIndex: 14\n{\n// RVA: 0x5678 Offset: 0x5058 VA: 0x180005678\npublic static void SetIndicatorPos(ZEntity entity, Vector3 position) { }\n}\n// Namespace: Panda.ZGame\ninternal class ZSkillInputMgr // TypeDefIndex: 15\n{\n// RVA: 0x6789 Offset: 0x6069 VA: 0x180006789\npublic bool FirePlaySkillByIndicator(int skillID) { }\n}\n// Namespace: Game.Targeting\npublic class GroundRaycastController // TypeDefIndex: 16\n{\n// RVA: 0x789A Offset: 0x707A VA: 0x18000789A\nprivate bool RaycastGroundPosition() { }\n}`;
   const methods = parseDump(fixture);
   const route = routeMethods(methods);
-  if (methods.length !== 4 || !route.gates.flag_skill_unique_native || !route.gates.try_set_axis_unique_native || !route.gates.use_slot_bridge_present) throw new Error("self-test exact routing failed");
+  if (methods.length !== 7 || !route.gates.flag_skill_unique_native || !route.gates.try_set_axis_unique_native || !route.gates.use_slot_bridge_present || !route.gates.exact_position_primitives_present) throw new Error("self-test exact routing failed");
   if (route.discovery.target_or_raycast_candidates.length !== 1 || route.gates.target_or_raycast_handler_proven) throw new Error("self-test discovery gate failed");
+  if (route.gates.executable_native_activation_proven) throw new Error("self-test opened native activation without runtime proof");
   const metadata = { byte_length: 1234, sha256: "a".repeat(64) };
   const assembly = { byte_length: 218074672, sha256: GAME_ASSEMBLY_SHA256 };
   const identity = {
@@ -194,7 +211,9 @@ function main() {
     conclusion: {
       exact_named_entry_points_resolved: routes.gates.flag_skill_unique_native && routes.gates.try_set_axis_unique_native && routes.gates.use_slot_bridge_present,
       target_or_raycast_handler_resolved: false,
-      note: "Name matches are routing evidence only. A target/raycast handler requires bounded call-graph or disassembly proof before promotion.",
+      exact_position_primitives_resolved: routes.gates.exact_position_primitives_present,
+      executable_native_activation_enabled: false,
+      note: "Name matches are routing evidence only. The exact-position primitives do not prove safe object acquisition or a FlagSkill-compatible activation sequence; native activation remains closed.",
     },
   };
   writeFileSync(args.output, `${JSON.stringify(result, null, 2)}\n`, { flag: "wx" });

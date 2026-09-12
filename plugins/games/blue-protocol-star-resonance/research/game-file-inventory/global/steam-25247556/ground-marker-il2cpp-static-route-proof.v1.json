@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "generated_by": "bounded-manual-il2cpp-static-route-audit",
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "build_id": "25247556",
+  "game_assembly_sha256": "4a079aec0a3e51a8023aa86bbd152e12068907b65b9aafb355d20bb6d6c41fe3",
+  "metadata_sha256": "2f8213cf2a253d7a99a37b81f796e3a0162d0cf2d1ca6a2d0e0719f8f9a57779",
+  "scope": {
+    "offline_static_analysis_only": true,
+    "process_access": false,
+    "game_method_invocation": false,
+    "memory_write": false,
+    "packet_transmission": false,
+    "runtime_activation_enabled": false
+  },
+  "managed_identities": {
+    "exact_position_writer": "Panda.ZGame.ZBattleUtils.SetSelectPoint(ZEntity, ESelectPosSource, ESkillTargetRangeType, ESkillSelectPointType, int, Quaternion, Vector3, bool)",
+    "indicator_position_writer": "Panda.ZGame.EntityAttrExtensions.SetIndicatorPos(ZEntity, Vector3)",
+    "indicator_skill_dispatch": "Panda.ZGame.ZSkillInputMgr.FirePlaySkillByIndicator(int)",
+    "normal_ui_entry": "Panda.ZInput.PlayerInputController.FlagSkill(int, bool)",
+    "normal_skill_consumer": "Panda.ZGame.CharCtrlCompBase.UseSkill(int, SkillControlData, bool, bool, bool, bool, bool)"
+  },
+  "proven_static_flow": [
+    "A non-default SetSelectPoint forcePos is written verbatim into host component id 0x6A, consistent with IndicatorPosComponent.",
+    "PlayerCtrlComp.onInputSkill forwards isIndicator into CharCtrlCompBase.UseSkill.",
+    "The normal UseSkill path supplies a default forcePos to SetSelectPoint and consumes the resulting host component position.",
+    "ZIndicatorMgr.FireSkill writes its private indicatorPos_ to the host before dispatching FirePlaySkillEvent with isIndicator true.",
+    "FirePlaySkillByIndicator resolves current SkillControlData and dispatches FirePlaySkillEvent with clearSlot true, isIndicator true, and isAIPress false without the ZIndicatorMgr.FireSkill position copy.",
+    "The indicator UseSkill path reads IndicatorPos, writes the selected XYZ into UseSkillParam.TargetPos, generates fresh action state, and continues through the normal server-owned skill path."
+  ],
+  "overwrite_hazard": {
+    "sequence": [
+      "SetSelectPoint(host, ..., exactForcePos, ...)",
+      "normal PlayerInputController.FlagSkill release",
+      "ZIndicatorMgr.FireSkill",
+      "EntityAttrExtensions.SetIndicatorPos(host, ZIndicatorMgr.indicatorPos_)"
+    ],
+    "conclusion": "Staging exactForcePos before normal FlagSkill release is not preserved; the manager-owned indicator position overwrites it before skill dispatch."
+  },
+  "candidate_not_activation_contract": {
+    "sequence": [
+      "EntityAttrExtensions.SetIndicatorPos(liveHost, exactWorldVector3)",
+      "ZSkillInputMgr.FirePlaySkillByIndicator(markerSkillId)"
+    ],
+    "benefit": "The downstream normal skill path remains responsible for fresh skill/request/authentication/session/transport state.",
+    "blockers": [
+      "ZSkillInputMgr is internal and no reviewed Lua wrapper exposes this method.",
+      "Safe acquisition, ownership, lifetime, and scene validation for the live internal instance are unproven.",
+      "A sanctioned main-thread bridge with the exact IL2CPP ABI and current PlayerEnt/PlayerSkillInputComp instances is unproven.",
+      "Atomicity and failure behavior between the position write and skill dispatch are unproven.",
+      "The all-zero world vector is treated as a selection sentinel and cannot be accepted as a portable exact marker until runtime behavior is proven.",
+      "No repository native bridge implements this sequence."
+    ]
+  },
+  "lua_surface": {
+    "exact_target_position_method_found": false,
+    "reviewed_z_battle_utils_exports": [
+      "StopSkill",
+      "TryGetCDData",
+      "StopPlayerAIBattle",
+      "CheckSkillCanLongPressAttack"
+    ]
+  },
+  "decision": {
+    "exact_position_primitive_proven": true,
+    "flag_skill_exact_position_sequence_proven": false,
+    "safe_internal_object_acquisition_proven": false,
+    "native_activation_enabled": false,
+    "place_must_remain_disabled": true
+  },
+  "privacy": {
+    "contains_native_addresses": false,
+    "contains_private_paths": false,
+    "contains_raw_dump_or_script": false,
+    "contains_raw_payloads": false,
+    "contains_personal_identity": false
+  }
+}
