@@ -1,54 +1,98 @@
-//! Pure coordinate-convergence planning for a future automarker canary.
+//! Pure, fail-closed coordinate planning for a future automarker canary.
 //!
-//! This module deliberately has no process, input, packet, window, or timing
-//! access. It consumes observations supplied by a caller and returns at most a
-//! relative mouse-motion proposal. Applying that proposal is outside this
-//! module's authority.
+//! Positions are game-world `[x, y, z]` coordinates in one caller-certified
+//! frame. The player origin, saved target, and every indicator observation must
+//! share that frame; this planner never transforms coordinates. Range checks
+//! use Euclidean 3D distance, which is deliberately conservative on slopes.
+//! A foreground loss or lifecycle, root, or scene-context change invalidates
+//! the session; callers must discard it and construct a new calibrated session.
+//!
+//! This module has no OS, process, packet, input, click, confirmation, timing,
+//! or activation authority. It may only return one bounded integer relative-
+//! mouse delta. The caller must report the exact emitted delta and command ID
+//! before another proposal can be issued.
+
+use std::collections::VecDeque;
+
+pub const HARD_PLAYER_TARGET_LIMIT: f64 = 18.0;
+pub const HARD_INDICATOR_TARGET_LIMIT: f64 = 36.0;
+const RANGE_EPSILON: f64 = 1.0e-6;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CertifiedMouseDelta {
+    /// None is reserved for caller-owned symmetric calibration moves.
+    pub planner_command_id: Option<u32>,
+    /// Exact integer delta that the caller certifies was emitted.
+    pub delta: [i32; 2],
+    /// True only when no competing/user mouse input was observed.
+    pub exclusive_input_ownership: bool,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct IndicatorObservation {
-    /// The indicator position observed after `applied_mouse_delta`.
+pub struct SettledIndicatorObservation {
     pub position: [f64; 3],
-    /// Relative mouse motion applied after the preceding observation.
-    /// The first observation must use `None`; later observations use `Some`.
-    pub applied_mouse_delta: Option<[f64; 2]>,
+    /// Motion applied after the preceding observation; the first sample is None.
+    pub applied_mouse_delta: Option<CertifiedMouseDelta>,
+    pub lifecycle_generation: u64,
+    pub root_generation: u64,
+    pub context_identity: u64,
+    pub settled: bool,
+    pub foreground: bool,
+    pub context_continuous: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CoordinatePlannerConfig {
-    pub damping: f64,
-    pub maximum_target_distance: f64,
+    pub normalized_fit_damping: f64,
+    pub normalized_solve_damping: f64,
     pub maximum_mouse_step: f64,
-    pub maximum_mouse_axis_step: f64,
+    pub maximum_mouse_axis_step: i32,
     pub minimum_excitation_energy: f64,
     pub maximum_condition_number: f64,
     pub minimum_predicted_improvement: f64,
-    pub maximum_unreachable_fraction: f64,
+    pub maximum_tangent_residual_fraction: f64,
     pub absolute_model_tolerance: f64,
     pub relative_model_tolerance: f64,
-    pub no_improvement_patience: usize,
-    pub minimum_observed_improvement: f64,
     pub arrival_tolerance: f64,
     pub maximum_transitions: usize,
+    pub maximum_commands: u32,
+    pub maximum_cumulative_motion: f64,
+    pub minimum_improvement_ratio: f64,
+    pub poor_ratio_limit: u8,
+    pub trust_shrink_factor: f64,
+    pub trust_growth_factor: f64,
+    pub monotonic_regression_tolerance: f64,
+    pub best_distance_regression_tolerance: f64,
+    pub no_improvement_limit: u8,
+    pub cycle_position_tolerance: f64,
 }
 
 impl Default for CoordinatePlannerConfig {
     fn default() -> Self {
         Self {
-            damping: 1.0e-4,
-            maximum_target_distance: 100.0,
-            maximum_mouse_step: 12.0,
-            maximum_mouse_axis_step: 10.0,
-            minimum_excitation_energy: 1.0e-6,
-            maximum_condition_number: 10_000.0,
-            minimum_predicted_improvement: 1.0e-5,
-            maximum_unreachable_fraction: 0.98,
-            absolute_model_tolerance: 0.04,
-            relative_model_tolerance: 0.30,
-            no_improvement_patience: 4,
-            minimum_observed_improvement: 1.0e-3,
-            arrival_tolerance: 1.0e-3,
-            maximum_transitions: 16,
+            normalized_fit_damping: 1.0e-6,
+            normalized_solve_damping: 1.0e-4,
+            maximum_mouse_step: 8.0,
+            maximum_mouse_axis_step: 8,
+            minimum_excitation_energy: 1.0e-3,
+            maximum_condition_number: 5_000.0,
+            minimum_predicted_improvement: 0.005,
+            maximum_tangent_residual_fraction: 0.98,
+            absolute_model_tolerance: 0.035,
+            relative_model_tolerance: 0.15,
+            // Indicator observations have a realistic 5–10 cm noise floor.
+            arrival_tolerance: 0.075,
+            maximum_transitions: 20,
+            maximum_commands: 24,
+            maximum_cumulative_motion: 120.0,
+            minimum_improvement_ratio: 0.20,
+            poor_ratio_limit: 2,
+            trust_shrink_factor: 0.5,
+            trust_growth_factor: 1.15,
+            monotonic_regression_tolerance: 0.05,
+            best_distance_regression_tolerance: 0.15,
+            no_improvement_limit: 3,
+            cycle_position_tolerance: 0.04,
         }
     }
 }
@@ -57,14 +101,27 @@ impl Default for CoordinatePlannerConfig {
 pub enum PlannerAbort {
     InvalidConfiguration,
     NonFiniteInput,
+    ZeroSavedTargetSentinel,
+    TargetOutsidePlayerRange,
+    IndicatorTargetOutsidePlanningRange,
     InsufficientObservations,
+    UnsettledSample,
+    ForegroundLost,
+    InputOwnershipLost,
+    ContextDiscontinuity,
+    CalibrationNotSymmetricOrthogonal,
     InsufficientExcitation,
     IllConditionedGeometry,
-    TargetOutOfRange,
     TargetLocallyUnreachable,
     ModelInconsistent,
-    UserInterference,
+    ResolutionLimited,
+    CommandReceiptMismatch,
+    CommandBudgetExhausted,
+    CumulativeMotionBudgetExhausted,
     NoImprovement,
+    Diverging,
+    CycleDetected,
+    RecalibrationRequired,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -75,100 +132,292 @@ pub enum PlannerDecision {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CoordinateMoveProposal {
-    pub relative_mouse_delta: [f64; 2],
+    pub command_id: u32,
+    /// The only actionable datum; deliberately no click or confirmation field.
+    pub relative_mouse_delta: [i32; 2],
     pub current_distance: f64,
     pub predicted_distance: f64,
     pub condition_number: f64,
+    pub trust_region_radius: f64,
     pub trust_region_clamped: bool,
 }
 
-/// Estimates a local 3x2 indicator-position Jacobian and proposes one bounded
-/// relative mouse move. The function has no side effects and fails closed when
-/// its local model is not trustworthy.
-pub fn plan_coordinate_move(
-    observations: &[IndicatorObservation],
-    target: [f64; 3],
+#[derive(Clone, Copy, Debug)]
+struct PendingCommand {
+    command_id: u32,
+    delta: [i32; 2],
+    position_before: [f64; 3],
+    distance_before: f64,
+    predicted_improvement: f64,
+}
+
+#[derive(Debug)]
+pub struct CoordinatePlannerSession {
     config: CoordinatePlannerConfig,
-) -> Result<PlannerDecision, PlannerAbort> {
-    validate_config(config)?;
-    if !finite3(target)
-        || observations.iter().any(|sample| {
-            !finite3(sample.position)
-                || sample
-                    .applied_mouse_delta
-                    .is_some_and(|delta| !finite2(delta))
+    lifecycle_generation: u64,
+    root_generation: u64,
+    context_identity: u64,
+    next_command_id: u32,
+    command_count: u32,
+    cumulative_motion: f64,
+    trust_radius: f64,
+    pending: Option<PendingCommand>,
+    best_distance: Option<f64>,
+    previous_distance: Option<f64>,
+    poor_ratio_count: u8,
+    no_improvement_count: u8,
+    completed_positions: VecDeque<[f64; 3]>,
+}
+
+impl CoordinatePlannerSession {
+    pub fn new(
+        config: CoordinatePlannerConfig,
+        lifecycle_generation: u64,
+        root_generation: u64,
+        context_identity: u64,
+    ) -> Result<Self, PlannerAbort> {
+        validate_config(config)?;
+        Ok(Self {
+            config,
+            lifecycle_generation,
+            root_generation,
+            context_identity,
+            next_command_id: 1,
+            command_count: 0,
+            cumulative_motion: 0.0,
+            trust_radius: config.maximum_mouse_step,
+            pending: None,
+            best_distance: None,
+            previous_distance: None,
+            poor_ratio_count: 0,
+            no_improvement_count: 0,
+            completed_positions: VecDeque::with_capacity(8),
         })
-    {
-        return Err(PlannerAbort::NonFiniteInput);
-    }
-    if observations.len() < 3 || observations[0].applied_mouse_delta.is_some() {
-        return Err(PlannerAbort::InsufficientObservations);
-    }
-    if observations[1..]
-        .iter()
-        .any(|sample| sample.applied_mouse_delta.is_none())
-    {
-        return Err(PlannerAbort::InsufficientObservations);
     }
 
-    let current = observations.last().expect("length checked").position;
-    let error = subtract3(target, current);
-    let current_distance = norm3(error);
-    if current_distance <= config.arrival_tolerance {
-        return Ok(PlannerDecision::Arrived {
-            distance: current_distance,
-        });
-    }
-    if current_distance > config.maximum_target_distance {
-        return Err(PlannerAbort::TargetOutOfRange);
+    pub fn command_count(&self) -> u32 {
+        self.command_count
     }
 
-    detect_no_improvement(observations, target, config)?;
+    pub fn cumulative_motion(&self) -> f64 {
+        self.cumulative_motion
+    }
 
-    let start = observations
-        .len()
-        .saturating_sub(config.maximum_transitions + 1);
-    let window = &observations[start..];
-    detect_latest_interference(window, config)?;
-    let model = fit_jacobian(window, config)?;
+    pub fn plan(
+        &mut self,
+        observations: &[SettledIndicatorObservation],
+        saved_target: [f64; 3],
+        player_origin: [f64; 3],
+        live_max_distance: f64,
+    ) -> Result<PlannerDecision, PlannerAbort> {
+        validate_inputs(
+            observations,
+            saved_target,
+            player_origin,
+            live_max_distance,
+            self.lifecycle_generation,
+            self.root_generation,
+            self.context_identity,
+        )?;
+        require_symmetric_orthogonal_calibration(observations)?;
 
-    let mut mouse_delta = solve_damped(model.jacobian, error, config.damping)
+        let current = observations
+            .last()
+            .expect("validated observations")
+            .position;
+        let current_distance = norm3(subtract3(saved_target, current));
+        let player_distance = norm3(subtract3(saved_target, player_origin));
+        if player_distance > live_max_distance.min(HARD_PLAYER_TARGET_LIMIT) + RANGE_EPSILON {
+            return Err(PlannerAbort::TargetOutsidePlayerRange);
+        }
+        if current_distance > HARD_INDICATOR_TARGET_LIMIT + RANGE_EPSILON {
+            return Err(PlannerAbort::IndicatorTargetOutsidePlanningRange);
+        }
+
+        self.evaluate_pending(observations, current_distance)?;
+        self.guard_progress(current, current_distance)?;
+        if current_distance <= self.config.arrival_tolerance {
+            return Ok(PlannerDecision::Arrived {
+                distance: current_distance,
+            });
+        }
+        if self.command_count >= self.config.maximum_commands {
+            return Err(PlannerAbort::CommandBudgetExhausted);
+        }
+
+        let fit_observations = if self.poor_ratio_count > 0 {
+            // Once a response underperforms, do not contaminate the model with
+            // any canary response until a fresh symmetric calibration occurs.
+            &observations[..5]
+        } else {
+            observations
+        };
+        let start = fit_observations
+            .len()
+            .saturating_sub(self.config.maximum_transitions + 1);
+        let model = fit_normalized_jacobian(&fit_observations[start..], self.config)?;
+        let error = subtract3(saved_target, current);
+        // Reachability uses an undamped tangent projection. Solve damping cannot
+        // alter the reachable/unreachable classification.
+        let tangent_delta =
+            solve_normal(model.jacobian, error, 0.0).ok_or(PlannerAbort::IllConditionedGeometry)?;
+        let tangent_residual = norm3(subtract3(
+            error,
+            multiply_jacobian(model.jacobian, tangent_delta),
+        ));
+        if tangent_residual / current_distance > self.config.maximum_tangent_residual_fraction {
+            return Err(PlannerAbort::TargetLocallyUnreachable);
+        }
+
+        let gram = jacobian_gram(model.jacobian);
+        let solve_scale = ((gram[0][0] + gram[1][1]) * 0.5).max(f64::EPSILON);
+        let continuous = solve_normal(
+            model.jacobian,
+            error,
+            self.config.normalized_solve_damping * solve_scale,
+        )
         .ok_or(PlannerAbort::IllConditionedGeometry)?;
-    let unconstrained = mouse_delta;
-    for value in &mut mouse_delta {
-        *value = value.clamp(
-            -config.maximum_mouse_axis_step,
-            config.maximum_mouse_axis_step,
+        let bounded = bound_delta(
+            continuous,
+            self.trust_radius,
+            self.config.maximum_mouse_axis_step,
         );
-    }
-    let length = norm2(mouse_delta);
-    if length > config.maximum_mouse_step {
-        let scale = config.maximum_mouse_step / length;
-        mouse_delta[0] *= scale;
-        mouse_delta[1] *= scale;
-    }
-    let trust_region_clamped = squared_distance2(mouse_delta, unconstrained) > 1.0e-18;
+        let discrete = best_feasible_integer_delta(
+            bounded.delta,
+            model.jacobian,
+            error,
+            self.trust_radius,
+            self.config.maximum_mouse_axis_step,
+        )
+        .ok_or(PlannerAbort::ResolutionLimited)?;
+        let discrete_norm = norm2_i32(discrete);
+        if discrete == [0, 0]
+            || discrete_norm > self.trust_radius + RANGE_EPSILON
+            || discrete
+                .into_iter()
+                .any(|value| value.abs() > self.config.maximum_mouse_axis_step)
+        {
+            return Err(PlannerAbort::ResolutionLimited);
+        }
+        let predicted_distance = norm3(subtract3(
+            error,
+            multiply_jacobian(
+                model.jacobian,
+                [f64::from(discrete[0]), f64::from(discrete[1])],
+            ),
+        ));
+        let predicted_improvement = current_distance - predicted_distance;
+        if !predicted_distance.is_finite()
+            || predicted_improvement < self.config.minimum_predicted_improvement
+        {
+            return Err(PlannerAbort::ResolutionLimited);
+        }
+        if self.cumulative_motion + discrete_norm
+            > self.config.maximum_cumulative_motion + RANGE_EPSILON
+        {
+            return Err(PlannerAbort::CumulativeMotionBudgetExhausted);
+        }
 
-    let predicted_change = multiply_jacobian(model.jacobian, mouse_delta);
-    let predicted_distance = norm3(subtract3(error, predicted_change));
-    let full_change = multiply_jacobian(model.jacobian, unconstrained);
-    let full_residual = norm3(subtract3(error, full_change));
-    if full_residual / current_distance > config.maximum_unreachable_fraction {
-        return Err(PlannerAbort::TargetLocallyUnreachable);
-    }
-    if !predicted_distance.is_finite()
-        || current_distance - predicted_distance < config.minimum_predicted_improvement
-    {
-        return Err(PlannerAbort::TargetLocallyUnreachable);
+        let command_id = self.next_command_id;
+        self.next_command_id = self.next_command_id.saturating_add(1);
+        self.command_count += 1;
+        self.cumulative_motion += discrete_norm;
+        self.pending = Some(PendingCommand {
+            command_id,
+            delta: discrete,
+            position_before: current,
+            distance_before: current_distance,
+            predicted_improvement,
+        });
+        Ok(PlannerDecision::Move(CoordinateMoveProposal {
+            command_id,
+            relative_mouse_delta: discrete,
+            current_distance,
+            predicted_distance,
+            condition_number: model.condition_number,
+            trust_region_radius: self.trust_radius,
+            trust_region_clamped: bounded.clamped
+                || squared_distance2(continuous, discrete.map(f64::from)) > 1.0e-18,
+        }))
     }
 
-    Ok(PlannerDecision::Move(CoordinateMoveProposal {
-        relative_mouse_delta: mouse_delta,
-        current_distance,
-        predicted_distance,
-        condition_number: model.condition_number,
-        trust_region_clamped,
-    }))
+    fn evaluate_pending(
+        &mut self,
+        observations: &[SettledIndicatorObservation],
+        current_distance: f64,
+    ) -> Result<(), PlannerAbort> {
+        let Some(pending) = self.pending.take() else {
+            return Ok(());
+        };
+        let prior = observations
+            .get(observations.len().saturating_sub(2))
+            .ok_or(PlannerAbort::CommandReceiptMismatch)?
+            .position;
+        let receipt = observations.last().unwrap().applied_mouse_delta;
+        if squared_distance3(prior, pending.position_before) > 1.0e-10
+            || receipt.map(|value| value.planner_command_id) != Some(Some(pending.command_id))
+            || receipt.map(|value| value.delta) != Some(pending.delta)
+        {
+            return Err(PlannerAbort::CommandReceiptMismatch);
+        }
+
+        let actual_improvement = pending.distance_before - current_distance;
+        if actual_improvement < -self.config.monotonic_regression_tolerance {
+            return Err(PlannerAbort::Diverging);
+        }
+        let ratio = actual_improvement / pending.predicted_improvement.max(f64::EPSILON);
+        if ratio < self.config.minimum_improvement_ratio {
+            self.poor_ratio_count = self.poor_ratio_count.saturating_add(1);
+            self.trust_radius = (self.trust_radius * self.config.trust_shrink_factor).max(1.0);
+            if self.poor_ratio_count >= self.config.poor_ratio_limit {
+                return Err(PlannerAbort::RecalibrationRequired);
+            }
+        } else {
+            self.poor_ratio_count = 0;
+            self.trust_radius = (self.trust_radius * self.config.trust_growth_factor)
+                .min(self.config.maximum_mouse_step);
+        }
+        if actual_improvement <= self.config.minimum_predicted_improvement {
+            self.no_improvement_count = self.no_improvement_count.saturating_add(1);
+            if self.no_improvement_count >= self.config.no_improvement_limit {
+                return Err(PlannerAbort::NoImprovement);
+            }
+        } else {
+            self.no_improvement_count = 0;
+        }
+        Ok(())
+    }
+
+    fn guard_progress(
+        &mut self,
+        current: [f64; 3],
+        current_distance: f64,
+    ) -> Result<(), PlannerAbort> {
+        if self.previous_distance.is_some_and(|previous| {
+            current_distance > previous + self.config.monotonic_regression_tolerance
+        }) || self.best_distance.is_some_and(|best| {
+            current_distance > best + self.config.best_distance_regression_tolerance
+        }) {
+            return Err(PlannerAbort::Diverging);
+        }
+        if self.completed_positions.iter().any(|position| {
+            norm3(subtract3(current, *position)) <= self.config.cycle_position_tolerance
+        }) && self.best_distance.is_some_and(|best| {
+            current_distance >= best - self.config.minimum_predicted_improvement
+        }) {
+            return Err(PlannerAbort::CycleDetected);
+        }
+        self.previous_distance = Some(current_distance);
+        self.best_distance = Some(
+            self.best_distance
+                .map_or(current_distance, |best| best.min(current_distance)),
+        );
+        self.completed_positions.push_back(current);
+        while self.completed_positions.len() > 8 {
+            self.completed_positions.pop_front();
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -177,48 +426,282 @@ struct LocalModel {
     condition_number: f64,
 }
 
-fn fit_jacobian(
-    observations: &[IndicatorObservation],
-    config: CoordinatePlannerConfig,
-) -> Result<LocalModel, PlannerAbort> {
-    let mut gram = [[0.0; 2]; 2];
-    let mut cross = [[0.0; 2]; 3];
-    let mut observed_energy = 0.0;
-    for pair in observations.windows(2) {
-        let delta = pair[1]
+fn validate_inputs(
+    observations: &[SettledIndicatorObservation],
+    target: [f64; 3],
+    player: [f64; 3],
+    live_max_distance: f64,
+    lifecycle: u64,
+    root: u64,
+    context: u64,
+) -> Result<(), PlannerAbort> {
+    if !finite3(target)
+        || !finite3(player)
+        || !live_max_distance.is_finite()
+        || live_max_distance <= 0.0
+        || observations.iter().any(|sample| !finite3(sample.position))
+    {
+        return Err(PlannerAbort::NonFiniteInput);
+    }
+    if target == [0.0; 3] {
+        return Err(PlannerAbort::ZeroSavedTargetSentinel);
+    }
+    if observations.len() < 5
+        || observations[0].applied_mouse_delta.is_some()
+        || observations[1..]
+            .iter()
+            .any(|sample| sample.applied_mouse_delta.is_none())
+    {
+        return Err(PlannerAbort::InsufficientObservations);
+    }
+    for sample in observations {
+        if !sample.settled {
+            return Err(PlannerAbort::UnsettledSample);
+        }
+        if !sample.foreground {
+            return Err(PlannerAbort::ForegroundLost);
+        }
+        if !sample.context_continuous
+            || sample.lifecycle_generation != lifecycle
+            || sample.root_generation != root
+            || sample.context_identity != context
+        {
+            return Err(PlannerAbort::ContextDiscontinuity);
+        }
+        if sample
             .applied_mouse_delta
-            .ok_or(PlannerAbort::InsufficientObservations)?;
-        let change = subtract3(pair[1].position, pair[0].position);
-        gram[0][0] += delta[0] * delta[0];
-        gram[0][1] += delta[0] * delta[1];
-        gram[1][0] += delta[1] * delta[0];
-        gram[1][1] += delta[1] * delta[1];
-        observed_energy += dot3(change, change);
-        for axis in 0..3 {
-            cross[axis][0] += change[axis] * delta[0];
-            cross[axis][1] += change[axis] * delta[1];
+            .is_some_and(|delta| !delta.exclusive_input_ownership)
+        {
+            return Err(PlannerAbort::InputOwnershipLost);
         }
     }
-    let (minimum_eigenvalue, maximum_eigenvalue) = symmetric_eigenvalues(gram);
-    if minimum_eigenvalue < config.minimum_excitation_energy || observed_energy <= f64::EPSILON {
+    Ok(())
+}
+
+fn require_symmetric_orthogonal_calibration(
+    observations: &[SettledIndicatorObservation],
+) -> Result<(), PlannerAbort> {
+    let calibration = observations[1..5]
+        .iter()
+        .map(|sample| sample.applied_mouse_delta.unwrap())
+        .collect::<Vec<_>>();
+    if calibration
+        .iter()
+        .any(|sample| sample.planner_command_id.is_some())
+    {
+        return Err(PlannerAbort::CalibrationNotSymmetricOrthogonal);
+    }
+    let vectors = calibration
+        .iter()
+        .map(|sample| sample.delta)
+        .collect::<Vec<_>>();
+    let mut pairs = Vec::new();
+    let mut used = [false; 4];
+    for index in 0..4 {
+        if used[index] {
+            continue;
+        }
+        let Some(opposite) = (index + 1..4).find(|candidate| {
+            !used[*candidate]
+                && vectors[*candidate][0] == -vectors[index][0]
+                && vectors[*candidate][1] == -vectors[index][1]
+        }) else {
+            return Err(PlannerAbort::CalibrationNotSymmetricOrthogonal);
+        };
+        used[index] = true;
+        used[opposite] = true;
+        pairs.push(vectors[index]);
+    }
+    let dot = i64::from(pairs[0][0]) * i64::from(pairs[1][0])
+        + i64::from(pairs[0][1]) * i64::from(pairs[1][1]);
+    if pairs.len() != 2 || pairs.contains(&[0, 0]) || dot != 0 {
+        return Err(PlannerAbort::CalibrationNotSymmetricOrthogonal);
+    }
+    Ok(())
+}
+
+fn fit_normalized_jacobian(
+    observations: &[SettledIndicatorObservation],
+    config: CoordinatePlannerConfig,
+) -> Result<LocalModel, PlannerAbort> {
+    let transitions = observations.len() - 1;
+    let input_scale = (observations[1..]
+        .iter()
+        .map(|sample| {
+            let delta = sample.applied_mouse_delta.unwrap().delta;
+            f64::from(delta[0]).powi(2) + f64::from(delta[1]).powi(2)
+        })
+        .sum::<f64>()
+        / transitions as f64)
+        .sqrt();
+    let output_energy = observations
+        .windows(2)
+        .map(|pair| {
+            let change = subtract3(pair[1].position, pair[0].position);
+            dot3(change, change)
+        })
+        .sum::<f64>();
+    let output_scale = (output_energy / transitions as f64).sqrt();
+    if input_scale <= f64::EPSILON || output_scale <= f64::EPSILON {
         return Err(PlannerAbort::InsufficientExcitation);
     }
-    let condition_number = maximum_eigenvalue / minimum_eigenvalue;
-    if !condition_number.is_finite() || condition_number > config.maximum_condition_number {
+
+    let mut gram = [[0.0; 2]; 2];
+    let mut cross = [[0.0; 2]; 3];
+    for pair in observations.windows(2) {
+        let raw = pair[1].applied_mouse_delta.unwrap().delta;
+        let input = [
+            f64::from(raw[0]) / input_scale,
+            f64::from(raw[1]) / input_scale,
+        ];
+        let change =
+            subtract3(pair[1].position, pair[0].position).map(|value| value / output_scale);
+        gram[0][0] += input[0] * input[0];
+        gram[0][1] += input[0] * input[1];
+        gram[1][0] += input[1] * input[0];
+        gram[1][1] += input[1] * input[1];
+        for axis in 0..3 {
+            cross[axis][0] += change[axis] * input[0];
+            cross[axis][1] += change[axis] * input[1];
+        }
+    }
+    let (input_minimum, input_maximum) = symmetric_eigenvalues(gram);
+    if input_minimum < config.minimum_excitation_energy {
+        return Err(PlannerAbort::InsufficientExcitation);
+    }
+    let input_condition = input_maximum / input_minimum;
+    if !input_condition.is_finite() || input_condition > config.maximum_condition_number {
         return Err(PlannerAbort::IllConditionedGeometry);
     }
-
-    let regularized = [
-        [gram[0][0] + config.damping, gram[0][1]],
-        [gram[1][0], gram[1][1] + config.damping],
-    ];
-    let inverse = inverse2(regularized).ok_or(PlannerAbort::IllConditionedGeometry)?;
+    let inverse = inverse2([
+        [gram[0][0] + config.normalized_fit_damping, gram[0][1]],
+        [gram[1][0], gram[1][1] + config.normalized_fit_damping],
+    ])
+    .ok_or(PlannerAbort::IllConditionedGeometry)?;
+    let scale = output_scale / input_scale;
     let mut jacobian = [[0.0; 2]; 3];
     for axis in 0..3 {
-        jacobian[axis][0] = cross[axis][0] * inverse[0][0] + cross[axis][1] * inverse[1][0];
-        jacobian[axis][1] = cross[axis][0] * inverse[0][1] + cross[axis][1] * inverse[1][1];
+        jacobian[axis][0] =
+            (cross[axis][0] * inverse[0][0] + cross[axis][1] * inverse[1][0]) * scale;
+        jacobian[axis][1] =
+            (cross[axis][0] * inverse[0][1] + cross[axis][1] * inverse[1][1]) * scale;
     }
-    let output_gram = [
+    let (output_minimum, output_maximum) = symmetric_eigenvalues(jacobian_gram(jacobian));
+    if output_minimum <= f64::EPSILON {
+        return Err(PlannerAbort::IllConditionedGeometry);
+    }
+    let output_condition = output_maximum / output_minimum;
+    if !output_condition.is_finite() || output_condition > config.maximum_condition_number {
+        return Err(PlannerAbort::IllConditionedGeometry);
+    }
+    let residual_rms = (observations
+        .windows(2)
+        .map(|pair| {
+            let raw = pair[1].applied_mouse_delta.unwrap().delta;
+            let actual = subtract3(pair[1].position, pair[0].position);
+            let predicted = multiply_jacobian(jacobian, [f64::from(raw[0]), f64::from(raw[1])]);
+            let residual = subtract3(actual, predicted);
+            dot3(residual, residual)
+        })
+        .sum::<f64>()
+        / transitions as f64)
+        .sqrt();
+    if residual_rms
+        > config.absolute_model_tolerance + config.relative_model_tolerance * output_scale
+    {
+        return Err(PlannerAbort::ModelInconsistent);
+    }
+    Ok(LocalModel {
+        jacobian,
+        condition_number: input_condition.max(output_condition),
+    })
+}
+
+#[derive(Clone, Copy)]
+struct BoundedDelta {
+    delta: [f64; 2],
+    clamped: bool,
+}
+
+fn best_feasible_integer_delta(
+    bounded: [f64; 2],
+    jacobian: [[f64; 2]; 3],
+    error: [f64; 3],
+    radius: f64,
+    axis_limit: i32,
+) -> Option<[i32; 2]> {
+    let axis_candidates = |value: f64| {
+        [
+            value.floor() as i32,
+            value.ceil() as i32,
+            value.round() as i32,
+            value.trunc() as i32,
+            0,
+        ]
+    };
+    let xs = axis_candidates(bounded[0]);
+    let ys = axis_candidates(bounded[1]);
+    let mut best: Option<([i32; 2], f64)> = None;
+    for x in xs {
+        for y in ys {
+            let candidate = [x, y];
+            if candidate == [0, 0]
+                || x.abs() > axis_limit
+                || y.abs() > axis_limit
+                || norm2_i32(candidate) > radius + RANGE_EPSILON
+            {
+                continue;
+            }
+            let residual = subtract3(error, multiply_jacobian(jacobian, candidate.map(f64::from)));
+            let score = dot3(residual, residual);
+            if best.is_none_or(|(_, best_score)| score < best_score) {
+                best = Some((candidate, score));
+            }
+        }
+    }
+    best.map(|(candidate, _)| candidate)
+}
+
+fn bound_delta(value: [f64; 2], radius: f64, axis_limit: i32) -> BoundedDelta {
+    let mut delta =
+        value.map(|component| component.clamp(-f64::from(axis_limit), f64::from(axis_limit)));
+    let length = norm2(delta);
+    if length > radius {
+        let scale = radius / length;
+        delta[0] *= scale;
+        delta[1] *= scale;
+    }
+    BoundedDelta {
+        delta,
+        clamped: squared_distance2(delta, value) > 1.0e-18,
+    }
+}
+
+fn solve_normal(jacobian: [[f64; 2]; 3], error: [f64; 3], damping: f64) -> Option<[f64; 2]> {
+    let mut normal = jacobian_gram(jacobian);
+    normal[0][0] += damping;
+    normal[1][1] += damping;
+    let inverse = inverse2(normal)?;
+    let rhs: [f64; 2] = [
+        jacobian
+            .iter()
+            .zip(error)
+            .map(|(row, value)| row[0] * value)
+            .sum(),
+        jacobian
+            .iter()
+            .zip(error)
+            .map(|(row, value)| row[1] * value)
+            .sum(),
+    ];
+    Some([
+        inverse[0][0] * rhs[0] + inverse[0][1] * rhs[1],
+        inverse[1][0] * rhs[0] + inverse[1][1] * rhs[1],
+    ])
+}
+
+fn jacobian_gram(jacobian: [[f64; 2]; 3]) -> [[f64; 2]; 2] {
+    [
         [
             jacobian.iter().map(|row| row[0] * row[0]).sum(),
             jacobian.iter().map(|row| row[0] * row[1]).sum(),
@@ -227,122 +710,39 @@ fn fit_jacobian(
             jacobian.iter().map(|row| row[1] * row[0]).sum(),
             jacobian.iter().map(|row| row[1] * row[1]).sum(),
         ],
-    ];
-    let (output_minimum, output_maximum) = symmetric_eigenvalues(output_gram);
-    if output_minimum <= f64::EPSILON {
-        return Err(PlannerAbort::IllConditionedGeometry);
-    }
-    let output_condition = output_maximum / output_minimum;
-    if !output_condition.is_finite() || output_condition > config.maximum_condition_number {
-        return Err(PlannerAbort::IllConditionedGeometry);
-    }
-
-    let mut residual_energy = 0.0;
-    let transitions = observations.len() - 1;
-    for pair in observations.windows(2) {
-        let delta = pair[1].applied_mouse_delta.expect("validated above");
-        let actual = subtract3(pair[1].position, pair[0].position);
-        let residual = subtract3(actual, multiply_jacobian(jacobian, delta));
-        residual_energy += dot3(residual, residual);
-    }
-    let residual_rms = (residual_energy / transitions as f64).sqrt();
-    let motion_rms = (observed_energy / transitions as f64).sqrt();
-    if residual_rms > config.absolute_model_tolerance + config.relative_model_tolerance * motion_rms
-    {
-        return Err(PlannerAbort::ModelInconsistent);
-    }
-
-    Ok(LocalModel {
-        jacobian,
-        condition_number: condition_number.max(output_condition),
-    })
-}
-
-fn detect_latest_interference(
-    observations: &[IndicatorObservation],
-    config: CoordinatePlannerConfig,
-) -> Result<(), PlannerAbort> {
-    if observations.len() < 5 {
-        return Ok(());
-    }
-    let prior = fit_jacobian(&observations[..observations.len() - 1], config)?;
-    let pair = &observations[observations.len() - 2..];
-    let input = pair[1]
-        .applied_mouse_delta
-        .ok_or(PlannerAbort::InsufficientObservations)?;
-    let actual = subtract3(pair[1].position, pair[0].position);
-    let predicted = multiply_jacobian(prior.jacobian, input);
-    let residual = norm3(subtract3(actual, predicted));
-    let tolerance = config.absolute_model_tolerance
-        + config.relative_model_tolerance * norm3(predicted).max(config.absolute_model_tolerance);
-    if residual > tolerance {
-        return Err(PlannerAbort::UserInterference);
-    }
-    Ok(())
-}
-
-fn detect_no_improvement(
-    observations: &[IndicatorObservation],
-    target: [f64; 3],
-    config: CoordinatePlannerConfig,
-) -> Result<(), PlannerAbort> {
-    let patience = config.no_improvement_patience;
-    if patience == 0 || observations.len() <= patience {
-        return Ok(());
-    }
-    let recent = &observations[observations.len() - patience - 1..];
-    let starting_distance = norm3(subtract3(target, recent[0].position));
-    let best_later_distance = recent[1..]
-        .iter()
-        .map(|sample| norm3(subtract3(target, sample.position)))
-        .fold(f64::INFINITY, f64::min);
-    if starting_distance - best_later_distance < config.minimum_observed_improvement {
-        return Err(PlannerAbort::NoImprovement);
-    }
-    Ok(())
-}
-
-fn solve_damped(jacobian: [[f64; 2]; 3], error: [f64; 3], damping: f64) -> Option<[f64; 2]> {
-    let mut normal = [[0.0; 2]; 2];
-    let mut rhs = [0.0; 2];
-    for axis in 0..3 {
-        normal[0][0] += jacobian[axis][0] * jacobian[axis][0];
-        normal[0][1] += jacobian[axis][0] * jacobian[axis][1];
-        normal[1][0] += jacobian[axis][1] * jacobian[axis][0];
-        normal[1][1] += jacobian[axis][1] * jacobian[axis][1];
-        rhs[0] += jacobian[axis][0] * error[axis];
-        rhs[1] += jacobian[axis][1] * error[axis];
-    }
-    normal[0][0] += damping;
-    normal[1][1] += damping;
-    let inverse = inverse2(normal)?;
-    Some([
-        inverse[0][0] * rhs[0] + inverse[0][1] * rhs[1],
-        inverse[1][0] * rhs[0] + inverse[1][1] * rhs[1],
-    ])
+    ]
 }
 
 fn validate_config(config: CoordinatePlannerConfig) -> Result<(), PlannerAbort> {
-    let finite_positive = [
-        config.damping,
-        config.maximum_target_distance,
+    let positive = [
+        config.normalized_fit_damping,
+        config.normalized_solve_damping,
         config.maximum_mouse_step,
-        config.maximum_mouse_axis_step,
         config.minimum_excitation_energy,
         config.maximum_condition_number,
         config.minimum_predicted_improvement,
         config.absolute_model_tolerance,
-        config.minimum_observed_improvement,
-        config.arrival_tolerance,
+        config.maximum_cumulative_motion,
+        config.monotonic_regression_tolerance,
+        config.best_distance_regression_tolerance,
+        config.cycle_position_tolerance,
     ]
     .into_iter()
     .all(|value| value.is_finite() && value > 0.0);
-    if !finite_positive
+    if !positive
+        || config.maximum_mouse_axis_step < 1
+        || config.maximum_transitions < 4
+        || config.maximum_commands == 0
+        || config.poor_ratio_limit == 0
+        || config.no_improvement_limit == 0
         || !config.relative_model_tolerance.is_finite()
         || config.relative_model_tolerance < 0.0
-        || !config.maximum_unreachable_fraction.is_finite()
-        || !(0.0..1.0).contains(&config.maximum_unreachable_fraction)
-        || config.maximum_transitions < 2
+        || !(0.0..=1.0).contains(&config.minimum_improvement_ratio)
+        || !(0.0..1.0).contains(&config.maximum_tangent_residual_fraction)
+        || !(0.0..1.0).contains(&config.trust_shrink_factor)
+        || !config.trust_growth_factor.is_finite()
+        || config.trust_growth_factor < 1.0
+        || !(0.05..=0.10).contains(&config.arrival_tolerance)
     {
         return Err(PlannerAbort::InvalidConfiguration);
     }
@@ -388,6 +788,10 @@ fn norm2(value: [f64; 2]) -> f64 {
     (value[0] * value[0] + value[1] * value[1]).sqrt()
 }
 
+fn norm2_i32(value: [i32; 2]) -> f64 {
+    norm2(value.map(f64::from))
+}
+
 fn norm3(value: [f64; 3]) -> f64 {
     dot3(value, value).sqrt()
 }
@@ -396,8 +800,8 @@ fn squared_distance2(left: [f64; 2], right: [f64; 2]) -> f64 {
     (left[0] - right[0]).powi(2) + (left[1] - right[1]).powi(2)
 }
 
-fn finite2(value: [f64; 2]) -> bool {
-    value.into_iter().all(f64::is_finite)
+fn squared_distance3(left: [f64; 3], right: [f64; 3]) -> f64 {
+    dot3(subtract3(left, right), subtract3(left, right))
 }
 
 fn finite3(value: [f64; 3]) -> bool {
@@ -408,190 +812,504 @@ fn finite3(value: [f64; 3]) -> bool {
 mod tests {
     use super::*;
 
-    const JACOBIAN: [[f64; 2]; 3] = [[0.8, 0.1], [0.0, 0.0], [-0.2, 0.6]];
+    const LIFE: u64 = 7;
+    const ROOT: u64 = 11;
+    const CONTEXT: u64 = 13;
+    const FLAT: [[f64; 2]; 3] = [[0.40, 0.05], [0.0, 0.0], [-0.10, 0.30]];
+    const SLOPED: [[f64; 2]; 3] = [[0.35, 0.02], [0.08, -0.06], [-0.04, 0.28]];
 
-    fn calibration(jacobian: [[f64; 2]; 3]) -> Vec<IndicatorObservation> {
-        let inputs = [[1.0, 0.0], [0.0, 1.0], [-0.75, 0.4], [0.35, -0.8]];
-        let mut position = [0.0; 3];
-        let mut observations = vec![IndicatorObservation {
+    fn sample(
+        position: [f64; 3],
+        delta: Option<CertifiedMouseDelta>,
+    ) -> SettledIndicatorObservation {
+        SettledIndicatorObservation {
             position,
-            applied_mouse_delta: None,
-        }];
+            applied_mouse_delta: delta,
+            lifecycle_generation: LIFE,
+            root_generation: ROOT,
+            context_identity: CONTEXT,
+            settled: true,
+            foreground: true,
+            context_continuous: true,
+        }
+    }
+
+    fn calibration(jacobian: [[f64; 2]; 3], scale: i32) -> Vec<SettledIndicatorObservation> {
+        let inputs = [[scale, 0], [-scale, 0], [0, scale], [0, -scale]];
+        let mut position = [1.0, 0.5, 1.0];
+        let mut observations = vec![sample(position, None)];
         for input in inputs {
-            let change = multiply_jacobian(jacobian, input);
-            for axis in 0..3 {
-                position[axis] += change[axis];
-            }
-            observations.push(IndicatorObservation {
+            let change = multiply_jacobian(jacobian, input.map(f64::from));
+            position = [
+                position[0] + change[0],
+                position[1] + change[1],
+                position[2] + change[2],
+            ];
+            observations.push(sample(
                 position,
-                applied_mouse_delta: Some(input),
-            });
+                Some(CertifiedMouseDelta {
+                    planner_command_id: None,
+                    delta: input,
+                    exclusive_input_ownership: true,
+                }),
+            ));
         }
         observations
     }
 
-    fn permissive_no_progress() -> CoordinatePlannerConfig {
-        CoordinatePlannerConfig {
-            no_improvement_patience: 100,
-            ..CoordinatePlannerConfig::default()
+    fn session(config: CoordinatePlannerConfig) -> CoordinatePlannerSession {
+        CoordinatePlannerSession::new(config, LIFE, ROOT, CONTEXT).unwrap()
+    }
+
+    fn proposal(decision: PlannerDecision) -> CoordinateMoveProposal {
+        match decision {
+            PlannerDecision::Move(value) => value,
+            PlannerDecision::Arrived { .. } => panic!("expected a move"),
         }
     }
 
+    fn apply(
+        observations: &mut Vec<SettledIndicatorObservation>,
+        jacobian: [[f64; 2]; 3],
+        proposal: CoordinateMoveProposal,
+        effectiveness: f64,
+    ) {
+        let input = proposal.relative_mouse_delta;
+        let change = multiply_jacobian(
+            jacobian,
+            input.map(|value| f64::from(value) * effectiveness),
+        );
+        let previous = observations.last().unwrap().position;
+        observations.push(sample(
+            [
+                previous[0] + change[0],
+                previous[1] + change[1],
+                previous[2] + change[2],
+            ],
+            Some(CertifiedMouseDelta {
+                planner_command_id: Some(proposal.command_id),
+                delta: input,
+                exclusive_input_ownership: true,
+            }),
+        ));
+    }
+
     #[test]
-    fn converges_deterministically_on_a_reachable_saved_position() {
-        let target = [5.0, 0.0, -3.0];
-        let config = CoordinatePlannerConfig {
-            maximum_mouse_step: 2.0,
-            maximum_mouse_axis_step: 2.0,
-            no_improvement_patience: 100,
-            ..CoordinatePlannerConfig::default()
-        };
-        let mut observations = calibration(JACOBIAN);
-        for _ in 0..12 {
-            match plan_coordinate_move(&observations, target, config).unwrap() {
-                PlannerDecision::Arrived { .. } => break,
-                PlannerDecision::Move(proposal) => {
-                    let mut position = observations.last().unwrap().position;
-                    let change = multiply_jacobian(JACOBIAN, proposal.relative_mouse_delta);
-                    for axis in 0..3 {
-                        position[axis] += change[axis];
-                    }
-                    observations.push(IndicatorObservation {
-                        position,
-                        applied_mouse_delta: Some(proposal.relative_mouse_delta),
-                    });
+    fn converges_on_flat_and_sloped_ground_with_integer_commands() {
+        for jacobian in [FLAT, SLOPED] {
+            let exact_change = multiply_jacobian(jacobian, [5.0, -4.0]);
+            let target = [
+                1.0 + exact_change[0],
+                0.5 + exact_change[1],
+                1.0 + exact_change[2],
+            ];
+            let mut observations = calibration(jacobian, 4);
+            let mut planner = session(CoordinatePlannerConfig::default());
+            for _ in 0..20 {
+                match planner.plan(&observations, target, target, 18.0).unwrap() {
+                    PlannerDecision::Arrived { .. } => break,
+                    PlannerDecision::Move(value) => apply(&mut observations, jacobian, value, 1.0),
                 }
             }
+            assert!(norm3(subtract3(target, observations.last().unwrap().position)) <= 0.10);
         }
-        assert!(norm3(subtract3(target, observations.last().unwrap().position)) < 0.002);
     }
 
     #[test]
-    fn rejects_out_of_range_and_locally_unreachable_targets() {
-        let observations = calibration(JACOBIAN);
-        let config = permissive_no_progress();
+    fn enforces_zero_sentinel_player_epsilon_and_indicator_limits() {
+        let observations = calibration(FLAT, 4);
         assert_eq!(
-            plan_coordinate_move(&observations, [200.0, 0.0, 0.0], config),
-            Err(PlannerAbort::TargetOutOfRange)
+            session(CoordinatePlannerConfig::default()).plan(
+                &observations,
+                [0.0; 3],
+                [0.0; 3],
+                18.0
+            ),
+            Err(PlannerAbort::ZeroSavedTargetSentinel)
+        );
+        assert!(
+            session(CoordinatePlannerConfig::default())
+                .plan(
+                    &observations,
+                    [18.0 + RANGE_EPSILON * 0.5, 0.5, 1.0],
+                    [0.0, 0.5, 1.0],
+                    18.0
+                )
+                .is_ok()
         );
         assert_eq!(
-            plan_coordinate_move(&observations, [0.0, 5.0, 0.0], config),
-            Err(PlannerAbort::TargetLocallyUnreachable)
+            session(CoordinatePlannerConfig::default()).plan(
+                &observations,
+                [18.0 + RANGE_EPSILON * 2.0, 0.5, 1.0],
+                [0.0, 0.5, 1.0],
+                18.0
+            ),
+            Err(PlannerAbort::TargetOutsidePlayerRange)
+        );
+        let far = calibration(FLAT, 4)
+            .into_iter()
+            .map(|mut value| {
+                value.position[0] -= 36.1;
+                value
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            session(CoordinatePlannerConfig::default()).plan(
+                &far,
+                [1.0, 0.5, 1.0],
+                [1.0, 0.5, 1.0],
+                18.0
+            ),
+            Err(PlannerAbort::IndicatorTargetOutsidePlanningRange)
         );
     }
 
     #[test]
-    fn supports_vertical_motion_but_rejects_degenerate_geometry() {
-        let vertical = [[0.7, 0.0], [0.0, 0.5], [0.0, 0.0]];
-        let decision = plan_coordinate_move(
-            &calibration(vertical),
-            [2.0, 3.0, 0.0],
-            permissive_no_progress(),
-        )
-        .unwrap();
-        assert!(matches!(decision, PlannerDecision::Move(_)));
-
-        let degenerate = [[1.0, 2.0], [0.0, 0.0], [0.0, 0.0]];
+    fn requires_symmetric_orthogonal_full_rank_calibration() {
+        let target = [3.0, 0.5, 2.0];
+        let mut asymmetric = calibration(FLAT, 4);
+        asymmetric[2].applied_mouse_delta.as_mut().unwrap().delta = [-3, 0];
         assert_eq!(
-            plan_coordinate_move(
-                &calibration(degenerate),
-                [2.0, 0.0, 0.0],
-                permissive_no_progress(),
+            session(CoordinatePlannerConfig::default()).plan(&asymmetric, target, target, 18.0),
+            Err(PlannerAbort::CalibrationNotSymmetricOrthogonal)
+        );
+        let rank_one = [[0.4, 0.8], [0.0, 0.0], [0.1, 0.2]];
+        assert_eq!(
+            session(CoordinatePlannerConfig::default()).plan(
+                &calibration(rank_one, 4),
+                target,
+                target,
+                18.0
             ),
             Err(PlannerAbort::IllConditionedGeometry)
         );
     }
 
     #[test]
-    fn tolerates_bounded_measurement_noise() {
-        let mut observations = calibration(JACOBIAN);
-        for (index, sample) in observations.iter_mut().enumerate().skip(1) {
-            let sign = if index % 2 == 0 { 1.0 } else { -1.0 };
-            sample.position[0] += sign * 0.004;
-            sample.position[2] -= sign * 0.003;
-        }
-        let proposal =
-            match plan_coordinate_move(&observations, [3.0, 0.0, 2.0], permissive_no_progress())
-                .unwrap()
-            {
-                PlannerDecision::Move(proposal) => proposal,
-                PlannerDecision::Arrived { .. } => panic!("fixture should require movement"),
+    fn unreachable_normal_component_is_independent_of_solve_damping() {
+        let observations = calibration(FLAT, 4);
+        let target = [1.0, 1.5, 1.0];
+        for damping in [1.0e-8, 1.0e-1] {
+            let config = CoordinatePlannerConfig {
+                normalized_solve_damping: damping,
+                ..CoordinatePlannerConfig::default()
             };
-        assert!(proposal.predicted_distance < proposal.current_distance);
+            assert_eq!(
+                session(config).plan(&observations, target, target, 18.0),
+                Err(PlannerAbort::TargetLocallyUnreachable)
+            );
+        }
     }
 
     #[test]
-    fn clamps_every_proposal_to_the_trust_region() {
-        let config = CoordinatePlannerConfig {
-            maximum_target_distance: 1_000.0,
-            maximum_mouse_step: 1.0,
-            maximum_mouse_axis_step: 0.8,
-            no_improvement_patience: 100,
-            ..CoordinatePlannerConfig::default()
-        };
-        let proposal = match plan_coordinate_move(&calibration(JACOBIAN), [50.0, 0.0, 40.0], config)
-            .unwrap()
-        {
-            PlannerDecision::Move(proposal) => proposal,
-            PlannerDecision::Arrived { .. } => panic!("fixture should require movement"),
-        };
-        assert!(proposal.trust_region_clamped);
-        assert!(norm2(proposal.relative_mouse_delta) <= 1.0 + 1.0e-12);
-        assert!(
-            proposal
-                .relative_mouse_delta
-                .into_iter()
-                .all(|value| value.abs() <= 0.8)
-        );
+    fn arrival_uses_the_certified_seven_and_a_half_centimeter_noise_floor() {
+        let observations = calibration(FLAT, 4);
+        let target = [1.06, 0.5, 1.0];
+        assert!(matches!(
+            session(CoordinatePlannerConfig::default())
+                .plan(&observations, target, target, 18.0)
+                .unwrap(),
+            PlannerDecision::Arrived { distance } if distance <= 0.075
+        ));
     }
 
     #[test]
-    fn aborts_on_non_finite_input_user_interference_and_no_improvement() {
-        let mut non_finite = calibration(JACOBIAN);
-        non_finite[2].position[0] = f64::NAN;
+    fn rejects_foreground_input_context_lifecycle_and_root_discontinuity() {
+        let target = [3.0, 0.5, 2.0];
+        let cases = [
+            (|sample: &mut SettledIndicatorObservation| sample.foreground = false)
+                as fn(&mut SettledIndicatorObservation),
+            |sample| {
+                sample
+                    .applied_mouse_delta
+                    .as_mut()
+                    .unwrap()
+                    .exclusive_input_ownership = false
+            },
+            |sample| sample.context_identity += 1,
+            |sample| sample.lifecycle_generation += 1,
+            |sample| sample.root_generation += 1,
+            |sample| sample.settled = false,
+        ];
+        let expected = [
+            PlannerAbort::ForegroundLost,
+            PlannerAbort::InputOwnershipLost,
+            PlannerAbort::ContextDiscontinuity,
+            PlannerAbort::ContextDiscontinuity,
+            PlannerAbort::ContextDiscontinuity,
+            PlannerAbort::UnsettledSample,
+        ];
+        for (mutate, expected) in cases.into_iter().zip(expected) {
+            let mut observations = calibration(FLAT, 4);
+            mutate(&mut observations[2]);
+            assert_eq!(
+                session(CoordinatePlannerConfig::default()).plan(
+                    &observations,
+                    target,
+                    target,
+                    18.0
+                ),
+                Err(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_non_finite_coordinates_and_live_range_narrower_than_hard_cap() {
+        let target = [3.0, 0.5, 2.0];
+        let mut observations = calibration(FLAT, 4);
+        observations[2].position[0] = f64::NAN;
         assert_eq!(
-            plan_coordinate_move(&non_finite, [1.0, 0.0, 1.0], permissive_no_progress()),
+            session(CoordinatePlannerConfig::default()).plan(&observations, target, target, 18.0),
             Err(PlannerAbort::NonFiniteInput)
         );
-
-        let mut interference = calibration(JACOBIAN);
-        let last = interference.last_mut().unwrap();
-        last.position[0] += 3.0;
-        last.position[2] -= 2.0;
         assert_eq!(
-            plan_coordinate_move(&interference, [5.0, 0.0, 5.0], permissive_no_progress()),
-            Err(PlannerAbort::UserInterference)
+            session(CoordinatePlannerConfig::default()).plan(
+                &calibration(FLAT, 4),
+                [6.1, 0.5, 1.0],
+                [1.0, 0.5, 1.0],
+                5.0
+            ),
+            Err(PlannerAbort::TargetOutsidePlayerRange)
         );
+    }
 
-        let stationary = vec![
-            IndicatorObservation {
-                position: [0.0, 0.0, 0.0],
-                applied_mouse_delta: None,
-            },
-            IndicatorObservation {
-                position: [1.0, 0.0, 0.0],
-                applied_mouse_delta: Some([1.0, 0.0]),
-            },
-            IndicatorObservation {
-                position: [1.0, 0.0, 1.0],
-                applied_mouse_delta: Some([0.0, 1.0]),
-            },
-            IndicatorObservation {
-                position: [1.0, 0.0, 1.0],
-                applied_mouse_delta: Some([0.2, 0.0]),
-            },
-            IndicatorObservation {
-                position: [1.0, 0.0, 1.0],
-                applied_mouse_delta: Some([0.0, 0.2]),
-            },
-        ];
+    #[test]
+    fn exact_integer_receipt_is_mandatory_and_no_confirmation_authority_exists() {
+        let target = [4.0, 0.5, 2.0];
+        let mut observations = calibration(FLAT, 4);
+        let mut planner = session(CoordinatePlannerConfig::default());
+        let movement = proposal(planner.plan(&observations, target, target, 18.0).unwrap());
+        let _: [i32; 2] = movement.relative_mouse_delta;
+        apply(&mut observations, FLAT, movement, 1.0);
+        observations
+            .last_mut()
+            .unwrap()
+            .applied_mouse_delta
+            .as_mut()
+            .unwrap()
+            .delta[0] += 1;
+        assert_eq!(
+            planner.plan(&observations, target, target, 18.0),
+            Err(PlannerAbort::CommandReceiptMismatch)
+        );
+        // Compile-time shape contract: proposal exposes motion only; there is
+        // no click or confirmation API to invoke.
+    }
+
+    #[test]
+    fn quantization_fails_closed_and_post_quantization_bounds_hold() {
+        let tiny = [[0.20, 0.0], [0.0, 0.0], [0.0, 0.20]];
+        let target = [1.06, 0.5, 1.06];
+        assert_eq!(
+            session(CoordinatePlannerConfig::default()).plan(
+                &calibration(tiny, 4),
+                target,
+                target,
+                18.0
+            ),
+            Err(PlannerAbort::ResolutionLimited)
+        );
         let config = CoordinatePlannerConfig {
-            no_improvement_patience: 2,
+            maximum_mouse_step: 2.1,
+            maximum_mouse_axis_step: 2,
+            ..CoordinatePlannerConfig::default()
+        };
+        let movement = proposal(
+            session(config)
+                .plan(
+                    &calibration(FLAT, 4),
+                    [8.0, 0.5, 5.0],
+                    [8.0, 0.5, 5.0],
+                    18.0,
+                )
+                .unwrap(),
+        );
+        assert!(norm2_i32(movement.relative_mouse_delta) <= 2.1 + RANGE_EPSILON);
+        assert!(
+            movement
+                .relative_mouse_delta
+                .into_iter()
+                .all(|value| value.abs() <= 2)
+        );
+    }
+
+    #[test]
+    fn normalized_fit_is_scale_invariant_and_low_sensitivity_is_reachable() {
+        let target = [3.0, 0.5, 2.0];
+        let first = proposal(
+            session(CoordinatePlannerConfig::default())
+                .plan(&calibration(FLAT, 2), target, target, 18.0)
+                .unwrap(),
+        );
+        let second = proposal(
+            session(CoordinatePlannerConfig::default())
+                .plan(&calibration(FLAT, 8), target, target, 18.0)
+                .unwrap(),
+        );
+        assert_eq!(first.relative_mouse_delta, second.relative_mouse_delta);
+        let low = [[0.015, 0.0], [0.0, 0.0], [0.0, 0.012]];
+        assert!(
+            session(CoordinatePlannerConfig::default())
+                .plan(
+                    &calibration(low, 20),
+                    [1.3, 0.5, 1.24],
+                    [1.3, 0.5, 1.24],
+                    18.0
+                )
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn bounded_noise_passes_but_large_residual_is_model_inconsistent() {
+        let mut noisy = calibration(SLOPED, 5);
+        for (index, value) in noisy.iter_mut().enumerate().skip(1) {
+            let sign = if index % 2 == 0 { 1.0 } else { -1.0 };
+            value.position[0] += sign * 0.012;
+            value.position[2] -= sign * 0.009;
+        }
+        let target = [3.0, 0.8, 2.0];
+        assert!(
+            session(CoordinatePlannerConfig::default())
+                .plan(&noisy, target, target, 18.0)
+                .is_ok()
+        );
+        noisy[4].position[0] += 3.0;
+        assert_eq!(
+            session(CoordinatePlannerConfig::default()).plan(&noisy, target, target, 18.0),
+            Err(PlannerAbort::ModelInconsistent)
+        );
+    }
+
+    #[test]
+    fn poor_ratio_shrinks_trust_then_requires_recalibration() {
+        let config = CoordinatePlannerConfig {
+            monotonic_regression_tolerance: 1.0,
+            ..CoordinatePlannerConfig::default()
+        };
+        let target = [6.0, 0.5, 2.0];
+        let mut observations = calibration(FLAT, 4);
+        let mut planner = session(config);
+        let first = proposal(planner.plan(&observations, target, target, 18.0).unwrap());
+        apply(&mut observations, FLAT, first, 0.05);
+        let second = proposal(planner.plan(&observations, target, target, 18.0).unwrap());
+        assert!(second.trust_region_radius < config.maximum_mouse_step);
+        apply(&mut observations, FLAT, second, 0.05);
+        assert_eq!(
+            planner.plan(&observations, target, target, 18.0),
+            Err(PlannerAbort::RecalibrationRequired)
+        );
+    }
+
+    #[test]
+    fn command_and_cumulative_motion_budgets_fail_closed() {
+        let target = [8.0, 0.5, 4.0];
+        let mut observations = calibration(FLAT, 4);
+        let config = CoordinatePlannerConfig {
+            maximum_commands: 1,
+            ..CoordinatePlannerConfig::default()
+        };
+        let mut planner = session(config);
+        let first = proposal(planner.plan(&observations, target, target, 18.0).unwrap());
+        apply(&mut observations, FLAT, first, 1.0);
+        assert_eq!(
+            planner.plan(&observations, target, target, 18.0),
+            Err(PlannerAbort::CommandBudgetExhausted)
+        );
+        let config = CoordinatePlannerConfig {
+            maximum_cumulative_motion: 1.0,
             ..CoordinatePlannerConfig::default()
         };
         assert_eq!(
-            plan_coordinate_move(&stationary, [4.0, 0.0, 4.0], config),
-            Err(PlannerAbort::NoImprovement)
+            session(config).plan(&calibration(FLAT, 4), target, target, 18.0),
+            Err(PlannerAbort::CumulativeMotionBudgetExhausted)
         );
+    }
+
+    #[test]
+    fn monotonic_guard_aborts_divergence() {
+        let target = [5.0, 0.5, 2.0];
+        let mut observations = calibration(FLAT, 4);
+        let mut planner = session(CoordinatePlannerConfig::default());
+        let first = proposal(planner.plan(&observations, target, target, 18.0).unwrap());
+        apply(&mut observations, FLAT, first, -1.0);
+        assert_eq!(
+            planner.plan(&observations, target, target, 18.0),
+            Err(PlannerAbort::Diverging)
+        );
+    }
+
+    #[test]
+    fn best_distance_guard_catches_cumulative_regression() {
+        let config = CoordinatePlannerConfig {
+            monotonic_regression_tolerance: 0.20,
+            best_distance_regression_tolerance: 0.10,
+            poor_ratio_limit: 100,
+            ..CoordinatePlannerConfig::default()
+        };
+        let target = [5.0, 0.5, 2.0];
+        let mut observations = calibration(FLAT, 4);
+        let mut planner = session(config);
+        let movement = proposal(planner.plan(&observations, target, target, 18.0).unwrap());
+        let current = observations.last().unwrap().position;
+        let away = subtract3(current, target);
+        let scale = 0.12 / norm3(away);
+        observations.push(sample(
+            [
+                current[0] + away[0] * scale,
+                current[1] + away[1] * scale,
+                current[2] + away[2] * scale,
+            ],
+            Some(CertifiedMouseDelta {
+                planner_command_id: Some(movement.command_id),
+                delta: movement.relative_mouse_delta,
+                exclusive_input_ownership: true,
+            }),
+        ));
+        assert_eq!(
+            planner.plan(&observations, target, target, 18.0),
+            Err(PlannerAbort::Diverging)
+        );
+    }
+
+    #[test]
+    fn cycle_and_repeated_no_improvement_abort_separately() {
+        let target = [5.0, 0.5, 2.0];
+        let mut observations = calibration(FLAT, 4);
+        let mut cycle_planner = session(CoordinatePlannerConfig::default());
+        let movement = proposal(
+            cycle_planner
+                .plan(&observations, target, target, 18.0)
+                .unwrap(),
+        );
+        apply(&mut observations, FLAT, movement, 0.0);
+        assert_eq!(
+            cycle_planner.plan(&observations, target, target, 18.0),
+            Err(PlannerAbort::CycleDetected)
+        );
+
+        let config = CoordinatePlannerConfig {
+            poor_ratio_limit: 100,
+            no_improvement_limit: 2,
+            cycle_position_tolerance: 1.0e-9,
+            ..CoordinatePlannerConfig::default()
+        };
+        let mut observations = calibration(FLAT, 4);
+        let mut no_progress_planner = session(config);
+        for attempt in 0..2 {
+            let movement = proposal(
+                no_progress_planner
+                    .plan(&observations, target, target, 18.0)
+                    .unwrap(),
+            );
+            apply(&mut observations, FLAT, movement, 0.001);
+            if attempt == 1 {
+                assert_eq!(
+                    no_progress_planner.plan(&observations, target, target, 18.0),
+                    Err(PlannerAbort::NoImprovement)
+                );
+            }
+        }
     }
 }
