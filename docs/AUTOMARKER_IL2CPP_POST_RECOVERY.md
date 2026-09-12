@@ -75,6 +75,28 @@ Required chain:
    bounded native call graph/disassembly from `FlagSkill` toward `World.UseSlot`;
    names alone do not establish call ordering or position ownership.
 
+Use the guarded orchestrator for steps 1–3. It verifies the schema-2 recovery
+receipt, all 199 files in the pinned source-built extractor, and the exact input
+hashes before making a fresh private copy. It changes only `GenerateStruct` and
+`RequireAnyKey` in that copy, then validates and hashes `dump.cs`, `script.json`,
+and the routed method report. Neither the inputs nor their absolute paths enter
+the repository or the sanitized receipt.
+
+```powershell
+pwsh -NoProfile -File tools/bpsr-automarker-il2cpp-post-recovery.ps1 `
+  -IdentityReceiptPath "<private>\client-binary-identity.json" `
+  -MetadataPath "<private>\global-metadata.dat" `
+  -GameAssemblyPath "<install>\bpsr\GameAssembly.dll" `
+  -ExtractorBundlePath "<private>\Il2CppDumper-4741d46-net8-win-x64" `
+  -PrivateRoot "<private>\automarker-runs" `
+  -OutputReceiptPath "<private>\automarker-post-recovery-receipt.json"
+```
+
+Add `-DryRun` to validate the complete identity, toolchain, copy, and private
+configuration boundary without invoking Il2CppDumper or the route tool. Every
+output path is create-only; an existing receipt or generated run is never
+overwritten.
+
 ```powershell
 node tools/bpsr-automarker-il2cpp-route.mjs build `
   --build 25247556 `
