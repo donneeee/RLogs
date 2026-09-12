@@ -13,7 +13,8 @@ mod windows {
         env,
         error::Error,
         ffi::{OsString, c_void},
-        fs, io,
+        fs,
+        io::{self, Write},
         mem::size_of,
         os::windows::ffi::OsStringExt,
         path::{Path, PathBuf},
@@ -36,7 +37,10 @@ mod windows {
                 MEM_COMMIT, MEM_MAPPED, MEM_PRIVATE, MEMORY_BASIC_INFORMATION, PAGE_GUARD,
                 PAGE_NOACCESS, VirtualQueryEx,
             },
-            Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ},
+            Threading::{
+                OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
+                QueryFullProcessImageNameW,
+            },
         },
     };
 
@@ -101,6 +105,8 @@ mod windows {
         distribution_app_id: Option<String>,
         metadata: ArtifactDigest,
         game_assembly: ArtifactDigest,
+        process_executable: ArtifactDigest,
+        steam_manifest: ArtifactDigest,
     }
 
     #[derive(Debug, Serialize)]
@@ -109,6 +115,15 @@ mod windows {
         sha256: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         metadata_version: Option<i32>,
+    }
+
+    struct ExactIdentity {
+        process_executable: PathBuf,
+        process_executable_identity: FileIdentity,
+        game_assembly: FileIdentity,
+        steam_manifest: FileIdentity,
+        game_build: String,
+        distribution_app_id: String,
     }
 
     struct ProcessHandle(HANDLE);
@@ -125,7 +140,6 @@ mod windows {
 
     pub fn main() -> Result<(), Box<dyn Error>> {
         let options = parse_options(env::args().skip(1))?;
-        let (process_id, process_name) = resolve_process(&options)?;
         let output = PathBuf::from(required(&options, "output")?);
         let chunk_mib = options
             .get("chunk-mib")
@@ -141,12 +155,28 @@ mod windows {
             Some(_) => return Err("--scope must be private or private-and-mapped".into()),
         };
 
+        // Exact identity must be fully established from static files before a
+        // handle with VM_READ rights is opened. This also moves every
+        // identity-report validation failure ahead of process-memory access.
+        let exact_identity = validate_exact_identity(&options)?;
+        if exact_identity.is_some() {
+            require_absent_exact_outputs(&options, &output)?;
+        } else {
+            eprintln!(
+                "warning: legacy scan has no exact identity gate and cannot produce an identity report"
+            );
+        }
+        let (process_id, process_name) = resolve_process(&options)?;
+
         let handle =
             unsafe { OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, 0, process_id) };
         if handle.is_null() {
             return Err(io::Error::last_os_error().into());
         }
         let handle = ProcessHandle(handle);
+        if let Some(identity) = &exact_identity {
+            require_process_image(handle.0, &identity.process_executable)?;
+        }
         let started = Instant::now();
         let mut candidates = Vec::new();
         let mut queried_regions = 0u64;
@@ -217,6 +247,9 @@ mod windows {
         }
 
         let candidate = candidates[0];
+        if let Some(identity) = &exact_identity {
+            require_process_image(handle.0, &identity.process_executable)?;
+        }
         let bytes = read_exact_process(handle.0, candidate.address, candidate.length)?;
         let final_header = validate_metadata_header(&bytes[..HEADER_LENGTH]);
         if final_header.is_none_or(|header| {
@@ -226,18 +259,19 @@ mod windows {
         }) {
             return Err("metadata header changed between discovery and final read".into());
         }
-        if let Some(parent) = output.parent() {
-            fs::create_dir_all(parent)?;
-        }
         let metadata_sha256 = sha256_bytes(&bytes);
-        fs::write(&output, bytes)?;
-        let game_assembly = options
-            .get("game-assembly")
-            .map(|path| file_identity(Path::new(path)))
-            .transpose()?;
-        if options.contains_key("identity-report") && game_assembly.is_none() {
-            return Err("--identity-report requires --game-assembly".into());
-        }
+        let final_exact_identity = if exact_identity.is_some() {
+            validate_exact_identity(&options)?
+        } else {
+            None
+        };
+        let game_assembly = match &final_exact_identity {
+            Some(identity) => Some(identity.game_assembly.clone()),
+            None => options
+                .get("game-assembly")
+                .map(|path| file_identity(Path::new(path)))
+                .transpose()?,
+        };
         let report = ScanReport {
             process_id,
             process_name,
@@ -260,37 +294,23 @@ mod windows {
             elapsed_ms: started.elapsed().as_millis(),
         };
         let report_json = serde_json::to_string_pretty(&report)?;
-        if let Some(report_path) = options.get("report") {
-            let report_path = Path::new(report_path);
-            if let Some(parent) = report_path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::write(report_path, report_json.as_bytes())?;
-        }
-        if let Some(identity_path) = options.get("identity-report") {
+        let identity_json = if options.contains_key("identity-report") {
             let deployment = required(&options, "deployment")?.to_owned();
             let channel = required(&options, "channel")?.to_owned();
-            let (game_build, distribution_app_id) = resolve_build_identity(&options)?;
-            for (name, value) in [
-                ("deployment", deployment.as_str()),
-                ("channel", channel.as_str()),
-                ("build", game_build.as_str()),
-            ] {
-                if value.trim().is_empty() {
-                    return Err(format!("--{name} must not be empty").into());
-                }
-            }
+            let identity = final_exact_identity
+                .as_ref()
+                .expect("identity-report requires prevalidated exact identity");
             let assembly = game_assembly
                 .as_ref()
                 .expect("--identity-report requires a validated assembly identity");
             let identity = BuildIdentityReport {
-                schema_version: 1,
+                schema_version: 2,
                 generated_by: "rlogs-bpsr-il2cpp-metadata-scan",
                 game: "blue-protocol-star-resonance",
                 deployment,
                 channel,
-                game_build,
-                distribution_app_id,
+                game_build: identity.game_build.clone(),
+                distribution_app_id: Some(identity.distribution_app_id.clone()),
                 metadata: ArtifactDigest {
                     byte_length: candidate.length as u64,
                     sha256: report.metadata_sha256.clone(),
@@ -301,41 +321,221 @@ mod windows {
                     sha256: assembly.sha256.clone(),
                     metadata_version: None,
                 },
+                process_executable: ArtifactDigest {
+                    byte_length: identity.process_executable_identity.byte_length,
+                    sha256: identity.process_executable_identity.sha256.clone(),
+                    metadata_version: None,
+                },
+                steam_manifest: ArtifactDigest {
+                    byte_length: identity.steam_manifest.byte_length,
+                    sha256: identity.steam_manifest.sha256.clone(),
+                    metadata_version: None,
+                },
             };
-            let identity_json = serde_json::to_string_pretty(&identity)?;
-            let identity_path = Path::new(identity_path);
-            if let Some(parent) = identity_path.parent() {
-                fs::create_dir_all(parent)?;
+            Some(serde_json::to_string_pretty(&identity)?)
+        } else {
+            None
+        };
+
+        if final_exact_identity.is_some() {
+            let mut artifacts = vec![(output.as_path(), bytes.as_slice())];
+            if let Some(report_path) = options.get("report") {
+                artifacts.push((Path::new(report_path), report_json.as_bytes()));
             }
-            fs::write(identity_path, identity_json.as_bytes())?;
+            if let (Some(identity_path), Some(identity_json)) =
+                (options.get("identity-report"), identity_json.as_ref())
+            {
+                artifacts.push((Path::new(identity_path), identity_json.as_bytes()));
+            }
+            write_exact_bundle(&artifacts)?;
+        } else {
+            write_file(&output, &bytes)?;
+            if let Some(report_path) = options.get("report") {
+                write_file(Path::new(report_path), report_json.as_bytes())?;
+            }
         }
         println!("{report_json}");
         Ok(())
     }
 
-    fn resolve_build_identity(
+    fn require_absent_exact_outputs(
         options: &BTreeMap<String, String>,
-    ) -> Result<(String, Option<String>), Box<dyn Error>> {
-        let manifest_identity = options
-            .get("steam-manifest")
-            .map(|path| {
-                let contents = fs::read_to_string(path)?;
-                let build = acf_value(&contents, "buildid")
-                    .ok_or("Steam manifest does not contain buildid")?;
-                let app_id = acf_value(&contents, "appid");
-                Ok::<_, Box<dyn Error>>((build, app_id))
-            })
-            .transpose()?;
-        match (options.get("build"), manifest_identity) {
-            (Some(explicit), Some((manifest, _app_id))) if explicit != &manifest => Err(format!(
-                "--build {explicit:?} does not match Steam manifest buildid {manifest:?}"
-            )
-            .into()),
-            (Some(explicit), Some((_, app_id))) => Ok((explicit.clone(), app_id)),
-            (Some(explicit), None) => Ok((explicit.clone(), None)),
-            (None, Some(identity)) => Ok(identity),
-            (None, None) => Err("--identity-report requires --build or --steam-manifest".into()),
+        output: &Path,
+    ) -> Result<(), Box<dyn Error>> {
+        let targets = [
+            ("metadata output", Some(output)),
+            ("scan report", options.get("report").map(Path::new)),
+            (
+                "identity report",
+                options.get("identity-report").map(Path::new),
+            ),
+        ];
+        let present: Vec<_> = targets
+            .iter()
+            .filter_map(|(description, path)| path.map(|path| (*description, path)))
+            .collect();
+        require_distinct_paths(&present)?;
+        for (description, path) in present {
+            if path.exists() {
+                return Err(
+                    format!("exact-mode {description} already exists; refusing overwrite").into(),
+                );
+            }
         }
+        Ok(())
+    }
+
+    fn require_distinct_paths(paths: &[(&str, &Path)]) -> Result<(), Box<dyn Error>> {
+        for (index, (left_description, left_path)) in paths.iter().enumerate() {
+            for (right_description, right_path) in paths.iter().skip(index + 1) {
+                if windows_paths_match(&absolute_path(left_path)?, &absolute_path(right_path)?) {
+                    return Err(format!(
+                        "exact-mode {left_description} and {right_description} paths must be distinct"
+                    )
+                    .into());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn write_file(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(path, bytes)?;
+        Ok(())
+    }
+
+    fn write_exact_bundle(artifacts: &[(&Path, &[u8])]) -> Result<(), Box<dyn Error>> {
+        let mut created = Vec::<PathBuf>::new();
+        let result = (|| -> Result<(), Box<dyn Error>> {
+            for (path, bytes) in artifacts {
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                let mut file = fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(path)?;
+                created.push((*path).to_owned());
+                file.write_all(bytes)?;
+                file.flush()?;
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            for path in created.iter().rev() {
+                let _ = fs::remove_file(path);
+            }
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    fn validate_exact_identity(
+        options: &BTreeMap<String, String>,
+    ) -> Result<Option<ExactIdentity>, Box<dyn Error>> {
+        let explicitly_requested = match options.get("exact-identity").map(String::as_str) {
+            None => false,
+            Some("true") => true,
+            Some(_) => return Err("--exact-identity, when supplied, must be true".into()),
+        };
+        let required_for_report = options.contains_key("identity-report");
+        let exact_option_present = [
+            "process-executable",
+            "expected-process-executable-sha256",
+            "expected-game-assembly-sha256",
+            "expected-app-id",
+        ]
+        .iter()
+        .any(|key| options.contains_key(*key));
+        if !explicitly_requested && !required_for_report && !exact_option_present {
+            return Ok(None);
+        }
+
+        let process_executable =
+            absolute_path(Path::new(required(options, "process-executable")?))?;
+        let process_executable_identity = file_identity(&process_executable)?;
+        require_sha256(
+            &process_executable_identity.sha256,
+            required(options, "expected-process-executable-sha256")?,
+            "process executable",
+        )?;
+
+        let game_assembly_path = Path::new(required(options, "game-assembly")?);
+        let game_assembly = file_identity(game_assembly_path)?;
+        require_sha256(
+            &game_assembly.sha256,
+            required(options, "expected-game-assembly-sha256")?,
+            "GameAssembly.dll",
+        )?;
+
+        let expected_build = required(options, "build")?;
+        let expected_app_id = required(options, "expected-app-id")?;
+        let manifest_path = required(options, "steam-manifest")?;
+        let manifest_bytes = fs::read(manifest_path)?;
+        let manifest = std::str::from_utf8(&manifest_bytes)?;
+        require_manifest_identity(manifest, expected_build, expected_app_id)?;
+        let steam_manifest = file_identity_from_bytes(Path::new(manifest_path), &manifest_bytes)?;
+
+        if required_for_report {
+            for key in ["deployment", "channel"] {
+                if required(options, key)?.trim().is_empty() {
+                    return Err(format!("--{key} must not be empty").into());
+                }
+            }
+        }
+
+        Ok(Some(ExactIdentity {
+            process_executable,
+            process_executable_identity,
+            game_assembly,
+            steam_manifest,
+            game_build: expected_build.to_owned(),
+            distribution_app_id: expected_app_id.to_owned(),
+        }))
+    }
+
+    fn require_manifest_identity(
+        manifest: &str,
+        expected_build: &str,
+        expected_app_id: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let manifest_build =
+            acf_value(manifest, "buildid").ok_or("Steam manifest does not contain buildid")?;
+        let manifest_app_id =
+            acf_value(manifest, "appid").ok_or("Steam manifest does not contain appid")?;
+        if manifest_build != expected_build {
+            return Err(format!(
+                "--build {expected_build:?} does not match Steam manifest buildid {manifest_build:?}"
+            )
+            .into());
+        }
+        if manifest_app_id != expected_app_id {
+            return Err(format!(
+                "--expected-app-id {expected_app_id:?} does not match Steam manifest appid {manifest_app_id:?}"
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    fn require_sha256(
+        actual: &str,
+        expected: &str,
+        description: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        if expected.len() != 64 || !expected.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err(format!(
+                "expected {description} SHA-256 must be 64 hexadecimal characters"
+            )
+            .into());
+        }
+        if !actual.eq_ignore_ascii_case(expected) {
+            return Err(format!("{description} SHA-256 does not match the expected digest").into());
+        }
+        Ok(())
     }
 
     fn acf_value(contents: &str, key: &str) -> Option<String> {
@@ -400,6 +600,43 @@ mod windows {
         Ok(matches)
     }
 
+    fn process_image_path(handle: HANDLE) -> Result<PathBuf, Box<dyn Error>> {
+        let mut buffer = vec![0u16; 32_768];
+        let mut length = buffer.len() as u32;
+        let succeeded = unsafe {
+            QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, buffer.as_mut_ptr(), &mut length)
+        };
+        if succeeded == 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        buffer.truncate(length as usize);
+        Ok(PathBuf::from(OsString::from_wide(&buffer)))
+    }
+
+    fn require_process_image(handle: HANDLE, expected: &Path) -> Result<(), Box<dyn Error>> {
+        let actual = process_image_path(handle)?;
+        if !windows_paths_match(&actual, expected) {
+            return Err("selected process image path does not match --process-executable".into());
+        }
+        Ok(())
+    }
+
+    fn windows_paths_match(actual: &Path, expected: &Path) -> bool {
+        fn normalized(path: &Path) -> String {
+            let value = path
+                .to_string_lossy()
+                .replace('/', "\\")
+                .trim_end_matches('\\')
+                .to_ascii_lowercase();
+            if let Some(rest) = value.strip_prefix(r"\\?\unc\") {
+                format!(r"\\{rest}")
+            } else {
+                value.strip_prefix(r"\\?\").unwrap_or(&value).to_owned()
+            }
+        }
+        normalized(actual) == normalized(expected)
+    }
+
     fn process_names_match(expected: &str, actual: &str) -> bool {
         fn normalized(value: &str) -> String {
             let lower = value.to_ascii_lowercase();
@@ -410,10 +647,14 @@ mod windows {
 
     fn file_identity(path: &Path) -> Result<FileIdentity, Box<dyn Error>> {
         let bytes = fs::read(path)?;
+        file_identity_from_bytes(path, &bytes)
+    }
+
+    fn file_identity_from_bytes(path: &Path, bytes: &[u8]) -> Result<FileIdentity, Box<dyn Error>> {
         Ok(FileIdentity {
             path: absolute_path(path)?.display().to_string(),
             byte_length: bytes.len() as u64,
-            sha256: sha256_bytes(&bytes),
+            sha256: sha256_bytes(bytes),
         })
     }
 
@@ -669,6 +910,104 @@ mod windows {
             "#;
             assert_eq!(acf_value(manifest, "appid").as_deref(), Some("3681810"));
             assert_eq!(acf_value(manifest, "buildid").as_deref(), Some("24568685"));
+        }
+
+        #[test]
+        fn requires_exact_manifest_build_and_app_without_process_access() {
+            let manifest = r#"
+                "appid" "3681810"
+                "buildid" "25247556"
+            "#;
+            require_manifest_identity(manifest, "25247556", "3681810")
+                .expect("exact manifest identity");
+            assert!(require_manifest_identity(manifest, "24687926", "3681810").is_err());
+            assert!(require_manifest_identity(manifest, "25247556", "wrong-app").is_err());
+        }
+
+        #[test]
+        fn exact_identity_is_fail_closed_when_any_gate_is_partially_supplied() {
+            let options =
+                BTreeMap::from([("expected-game-assembly-sha256".to_owned(), "0".repeat(64))]);
+            let error = validate_exact_identity(&options)
+                .err()
+                .expect("partial identity must fail");
+            assert!(error.to_string().contains("--process-executable"));
+
+            let false_gate = BTreeMap::from([("exact-identity".to_owned(), "false".to_owned())]);
+            let error = validate_exact_identity(&false_gate)
+                .err()
+                .expect("false spelling must not silently disable exact mode");
+            assert!(error.to_string().contains("must be true"));
+        }
+
+        #[test]
+        fn exact_output_paths_must_be_pairwise_distinct_without_process_access() {
+            let distinct = [
+                ("metadata", Path::new(r"C:\private\metadata.dat")),
+                ("scan report", Path::new(r"C:\private\scan.json")),
+                ("identity report", Path::new(r"C:\private\identity.json")),
+            ];
+            require_distinct_paths(&distinct).expect("distinct outputs");
+
+            let duplicate = [
+                ("metadata", Path::new(r"C:\private\metadata.dat")),
+                ("identity report", Path::new(r"c:/PRIVATE/METADATA.dat")),
+            ];
+            assert!(require_distinct_paths(&duplicate).is_err());
+        }
+
+        #[test]
+        fn exact_bundle_rolls_back_only_files_created_before_a_later_failure() {
+            let root = env::temp_dir().join(format!(
+                "rlogs-il2cpp-bundle-test-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("system clock after epoch")
+                    .as_nanos()
+            ));
+            let first = root.join("metadata.dat");
+            let blocked = root.join("preexisting-directory");
+            fs::create_dir_all(&blocked).expect("create isolated blocked target");
+
+            let error = write_exact_bundle(&[
+                (first.as_path(), b"metadata"),
+                (blocked.as_path(), b"identity"),
+            ])
+            .expect_err("a directory cannot be opened as an output file");
+
+            assert!(!first.exists(), "partial output must be rolled back");
+            assert!(blocked.is_dir(), "preexisting targets must remain intact");
+            fs::remove_dir_all(&root).expect("remove isolated test directory");
+            assert!(!error.to_string().is_empty());
+        }
+
+        #[test]
+        fn validates_sha256_syntax_and_value_without_process_access() {
+            let digest = "4a079aec0a3e51a8023aa86bbd152e12068907b65b9aafb355d20bb6d6c41fe3";
+            require_sha256(digest, &digest.to_ascii_uppercase(), "fixture").expect("same digest");
+            assert!(require_sha256(digest, "not-a-digest", "fixture").is_err());
+            assert!(require_sha256(digest, &"0".repeat(64), "fixture").is_err());
+        }
+
+        #[test]
+        fn compares_windows_paths_case_insensitively_and_accepts_win32_prefix() {
+            assert!(windows_paths_match(
+                Path::new(r"C:\Games\BPSR_STEAM.exe"),
+                Path::new(r"c:/games/bpsr_steam.EXE")
+            ));
+            assert!(windows_paths_match(
+                Path::new(r"\\?\C:\Games\BPSR_STEAM.exe"),
+                Path::new(r"C:\Games\BPSR_STEAM.exe")
+            ));
+            assert!(!windows_paths_match(
+                Path::new(r"C:\Other\BPSR_STEAM.exe"),
+                Path::new(r"C:\Games\BPSR_STEAM.exe")
+            ));
+            assert!(windows_paths_match(
+                Path::new(r"\\?\UNC\server\share\BPSR_STEAM.exe"),
+                Path::new(r"\\server\share\bpsr_steam.exe")
+            ));
         }
     }
 }

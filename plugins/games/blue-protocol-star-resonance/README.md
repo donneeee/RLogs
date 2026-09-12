@@ -470,7 +470,7 @@ cargo run -p rlogs-game-bpsr --bin rlogs-bpsr-decoded-table-diff -- --baseline "
 
 cargo run -p rlogs-game-bpsr --bin rlogs-bpsr-decoded-row-field-diff -- --baseline-root "<private-prior-decoded-table-root>" --candidate-root "<private-current-decoded-table-root>" --diff "plugins\games\blue-protocol-star-resonance\research\game-file-inventory\global\steam-<new-build>\decoded-direct-table-diff.json" --output "plugins\games\blue-protocol-star-resonance\research\game-file-inventory\global\steam-<new-build>\decoded-row-field-diff.v1.json"
 
-cargo run -p rlogs-game-bpsr --bin rlogs-bpsr-il2cpp-metadata-scan -- --process-name BPSR_STEAM --output <private-build-root>\global-metadata.dat --game-assembly "<steam-library>\steamapps\common\Blue Protocol Star Resonance\bpsr\GameAssembly.dll" --steam-manifest "<steam-library>\steamapps\appmanifest_3681810.acf" --identity-report <candidate-root>\plugins\games\blue-protocol-star-resonance\research\game-file-inventory\global\steam-<new-build>\client-binary-identity.json --scope private --chunk-mib 8
+cargo run -p rlogs-game-bpsr --bin rlogs-bpsr-il2cpp-metadata-scan -- --process-name BPSR_STEAM --process-executable "<steam-library>\steamapps\common\Blue Protocol Star Resonance\bpsr\BPSR_STEAM.exe" --expected-process-executable-sha256 <reviewed-executable-sha256> --output <private-build-root>\global-metadata.dat --game-assembly "<steam-library>\steamapps\common\Blue Protocol Star Resonance\bpsr\GameAssembly.dll" --expected-game-assembly-sha256 <reviewed-game-assembly-sha256> --steam-manifest "<steam-library>\steamapps\appmanifest_3681810.acf" --build <new-build> --expected-app-id 3681810 --deployment global --channel steam --identity-report <candidate-root>\plugins\games\blue-protocol-star-resonance\research\game-file-inventory\global\steam-<new-build>\client-binary-identity.json --scope private --chunk-mib 8
 
 node tools\bpsr-seasonal-domain-scan.mjs scan --build <prior-build> --extractor-root "<private-prior-extractor-output>" --decoded-root "<private-prior-decoded-table-root>"
 
@@ -497,7 +497,20 @@ prevents a newly recovered binary or formula table from being mislabeled as an
 older packet pack. The metadata scanner is an explicit process-memory research
 step: it does not start network capture or inspect login traffic, but it does
 open the running client with read/query access. A readiness result alone never
-authorizes that later scan.
+authorizes that later scan. Requesting `--identity-report` activates the
+scanner's exact-identity gate: it verifies the manifest build/app identity and
+both reviewed executable digests before opening the process, requires the
+selected handle's image path to equal `--process-executable` before reading,
+revalidates the static identity before writing, and refuses output overwrite.
+Omitting `--identity-report` and all exact-identity options retains the warned
+legacy generic research mode and cannot produce an authoritative identity
+report. `--exact-identity true` applies the same pre-scan gates without itself
+creating evidence; only an explicitly requested `--identity-report` writes the
+sanitized identity receipt. The schema-2 receipt adds the validated process
+executable and Steam app-manifest byte lengths and SHA-256 digests without
+including their absolute paths. Exact-mode metadata, scan-report, and identity
+targets must be pairwise distinct and are published as one exclusive,
+cleanup-on-error bundle.
 
 The seasonal-domain diff reports changes by evidence authority. An
 `exact-game-table` change is a client-data change and schedules that domain's
