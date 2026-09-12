@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "build_id": "25247556",
+  "audit_kind": "sanitized-read-only-ground-marker-wire-layout-observation",
+  "input_scope": {
+    "retained_private_capture_read_offline": true,
+    "retained_private_protocol_journal_read_offline": true,
+    "observed_marker_request_count": 1,
+    "packet_transmission_performed": false,
+    "packet_replay_performed": false,
+    "packet_modification_performed": false
+  },
+  "observed_layout": {
+    "application_length_bytes": 161,
+    "nested_call": {
+      "compressed_on_wire": false,
+      "frame_length_bytes": 187,
+      "application_offset_bytes": 26,
+      "application_wire_offset_known": true
+    },
+    "outer_frame_up": {
+      "compressed_on_wire": false,
+      "frame_length_bytes": 197,
+      "nested_frame_count": 1,
+      "nested_frame_lengths_bytes": [187],
+      "unique_reconstructed_tcp_stream_chunks_spanned": 1,
+      "starts_at_reconstructed_tcp_stream_chunk_boundary": true,
+      "ends_at_reconstructed_tcp_stream_chunk_boundary": true,
+      "single_reconstructed_tcp_stream_chunk_length_bytes": 197,
+      "exactly_matches_one_reconstructed_tcp_stream_chunk": true
+    }
+  },
+  "implications": {
+    "sampled_bpsr_length_stack_preserved_by_same_width_application_change": true,
+    "tcp_sequence_translation_required_for_equal_length_change": false,
+    "bpsr_length_field_change_required_for_equal_length_change": false,
+    "reconstructed_tcp_chunk_is_physical_wire_packet_proven": false,
+    "inline_original_suppression_proven": false,
+    "tcp_checksum_handling_proven": false,
+    "retransmission_and_offload_handling_proven": false,
+    "server_acceptance_proven": false,
+    "client_server_reconciliation_proven": false,
+    "anti_cheat_safety_proven": false,
+    "runtime_sender_enabled": false
+  },
+  "privacy": {
+    "contains_raw_payloads": false,
+    "contains_network_endpoints": false,
+    "contains_ports": false,
+    "contains_tcp_sequence_numbers": false,
+    "contains_rpc_call_ids": false,
+    "contains_session_or_action_identifiers": false,
+    "contains_timestamps": false,
+    "contains_local_absolute_paths": false,
+    "contains_personal_identity": false
+  }
+}

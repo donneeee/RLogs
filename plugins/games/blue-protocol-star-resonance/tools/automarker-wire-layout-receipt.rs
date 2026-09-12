@@ -40,7 +40,12 @@ fn main() {
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let args = Arguments::parse(env::args_os().skip(1))?;
+    let raw_args = env::args_os().skip(1).collect::<Vec<_>>();
+    if raw_args.as_slice() == [OsStr::new("--offline-schema-check")] {
+        println!("{}", serde_json::to_string(&schema_capabilities())?);
+        return Ok(());
+    }
+    let args = Arguments::parse(raw_args)?;
     if args.output.exists() {
         return Err(format!("refusing to overwrite {}", args.output.display()).into());
     }
@@ -131,6 +136,28 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     writer.get_ref().sync_all()?;
     println!("wrote sanitized offline layout receipt");
     Ok(())
+}
+
+#[derive(Serialize)]
+struct SchemaCapabilities {
+    schema_version: u16,
+    tcp_chunk_boundary_fields: [&'static str; 4],
+    packet_transmission_available: bool,
+    packet_modification_available: bool,
+}
+
+fn schema_capabilities() -> SchemaCapabilities {
+    SchemaCapabilities {
+        schema_version: 1,
+        tcp_chunk_boundary_fields: [
+            "starts_at_tcp_stream_chunk_boundary",
+            "ends_at_tcp_stream_chunk_boundary",
+            "single_tcp_stream_chunk_length_bytes",
+            "exactly_matches_one_tcp_stream_chunk",
+        ],
+        packet_transmission_available: false,
+        packet_modification_available: false,
+    }
 }
 
 fn derive_capture_pack(
@@ -244,6 +271,10 @@ struct OuterLayout {
     nested_frame_count: Option<usize>,
     nested_frame_lengths_bytes: Option<Vec<usize>>,
     unique_tcp_stream_chunks_spanned: usize,
+    starts_at_tcp_stream_chunk_boundary: bool,
+    ends_at_tcp_stream_chunk_boundary: bool,
+    single_tcp_stream_chunk_length_bytes: Option<usize>,
+    exactly_matches_one_tcp_stream_chunk: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -378,12 +409,26 @@ fn collect_frame(
         let frame_end = frame
             .stream_offset
             .saturating_add(frame.wire_bytes.len() as u64);
-        let unique_tcp_stream_chunks_spanned = chunks
+        let overlapping_chunks = chunks
             .get(&frame.flow)
             .into_iter()
             .flatten()
             .filter(|span| span.start < frame_end && span.end > frame.stream_offset)
-            .count();
+            .copied()
+            .collect::<Vec<_>>();
+        let unique_tcp_stream_chunks_spanned = overlapping_chunks.len();
+        let starts_at_tcp_stream_chunk_boundary = overlapping_chunks
+            .first()
+            .is_some_and(|span| span.start == frame.stream_offset);
+        let ends_at_tcp_stream_chunk_boundary = overlapping_chunks
+            .last()
+            .is_some_and(|span| span.end == frame_end);
+        let single_tcp_stream_chunk_length_bytes = (overlapping_chunks.len() == 1)
+            .then(|| usize::try_from(overlapping_chunks[0].end - overlapping_chunks[0].start).ok())
+            .flatten();
+        let exactly_matches_one_tcp_stream_chunk = unique_tcp_stream_chunks_spanned == 1
+            && starts_at_tcp_stream_chunk_boundary
+            && ends_at_tcp_stream_chunk_boundary;
         let nested_lengths = frame
             .application_bytes
             .as_deref()
@@ -397,6 +442,10 @@ fn collect_frame(
                 nested_frame_count: nested_lengths.as_ref().map(Vec::len),
                 nested_frame_lengths_bytes: nested_lengths,
                 unique_tcp_stream_chunks_spanned,
+                starts_at_tcp_stream_chunk_boundary,
+                ends_at_tcp_stream_chunk_boundary,
+                single_tcp_stream_chunk_length_bytes,
+                exactly_matches_one_tcp_stream_chunk,
             },
         );
         return;
@@ -678,6 +727,10 @@ mod tests {
         assert_eq!(outer.nested_frame_count, Some(1));
         assert_eq!(outer.nested_frame_lengths_bytes, Some(vec![187]));
         assert_eq!(outer.unique_tcp_stream_chunks_spanned, 2);
+        assert!(outer.starts_at_tcp_stream_chunk_boundary);
+        assert!(outer.ends_at_tcp_stream_chunk_boundary);
+        assert_eq!(outer.single_tcp_stream_chunk_length_bytes, None);
+        assert!(!outer.exactly_matches_one_tcp_stream_chunk);
         assert_eq!(analysis.metrics.duplicate_segments, 1);
         assert_eq!(analysis.metrics.retransmitted_bytes, 100);
 
@@ -688,6 +741,41 @@ mod tests {
         assert!(!json.contains("31000"));
         assert!(!json.contains("249858"));
         assert!(!json.contains("77"));
+    }
+
+    #[test]
+    fn synthetic_frame_reports_exact_single_chunk_boundary_without_payload_output() {
+        let client = endpoint(1, 31_000);
+        let server = endpoint(2, 32_000);
+        let mut nested_payload = Vec::new();
+        nested_payload.extend_from_slice(&WORLD_SERVICE.to_be_bytes());
+        nested_payload.extend_from_slice(&1_u32.to_be_bytes());
+        nested_payload.extend_from_slice(&77_u32.to_be_bytes());
+        nested_payload.extend_from_slice(&USE_SLOT_METHOD.to_be_bytes());
+        nested_payload.extend_from_slice(&[0_u8; 161]);
+        let nested = bpsr_frame(1, &nested_payload);
+        let mut outer_payload = 56_u32.to_be_bytes().to_vec();
+        outer_payload.extend_from_slice(&nested);
+        let outer_bytes = bpsr_frame(5, &outer_payload);
+
+        let filter =
+            GameConnectionFilter::try_new(vec![GameConnection { client, server }]).unwrap();
+        let mut analyzer =
+            WireAnalyzer::new(filter, BpsrFrameUpLayout::NestedAfterFourBytes, |body| {
+                (body.len() == 161).then_some(1)
+            })
+            .unwrap();
+        analyzer
+            .process_frame(&tcp_frame(1, client, server, 100, &outer_bytes))
+            .unwrap();
+        let analysis = analyzer.finish();
+        let outer = analysis.markers[0].outer_frame_up.as_ref().unwrap();
+
+        assert_eq!(outer.unique_tcp_stream_chunks_spanned, 1);
+        assert!(outer.starts_at_tcp_stream_chunk_boundary);
+        assert!(outer.ends_at_tcp_stream_chunk_boundary);
+        assert_eq!(outer.single_tcp_stream_chunk_length_bytes, Some(197));
+        assert!(outer.exactly_matches_one_tcp_stream_chunk);
     }
 
     #[test]
@@ -711,6 +799,15 @@ mod tests {
         ))
         .unwrap();
         assert!(derive_capture_pack(source, Some("25247556"), None).is_err());
+    }
+
+    #[test]
+    fn offline_schema_check_names_chunk_boundary_fields_and_no_sender() {
+        let schema = schema_capabilities();
+        assert_eq!(schema.schema_version, 1);
+        assert_eq!(schema.tcp_chunk_boundary_fields.len(), 4);
+        assert!(!schema.packet_transmission_available);
+        assert!(!schema.packet_modification_available);
     }
 
     fn endpoint(last: u8, port: u16) -> IpEndpoint {

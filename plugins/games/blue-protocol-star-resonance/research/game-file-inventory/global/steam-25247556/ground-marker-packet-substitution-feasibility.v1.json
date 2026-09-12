@@ -6,7 +6,8 @@
   "build_id": "25247556",
   "audit_kind": "sanitized-read-only-offline-ground-marker-packet-substitution-feasibility",
   "scope": {
-    "new_traffic_captured": false,
+    "new_traffic_captured": true,
+    "new_traffic_capture_mode": "read-only-process-owned",
     "packet_transmission_performed": false,
     "packet_replay_performed": false,
     "packet_modification_performed": false,
@@ -17,7 +18,8 @@
       "use-slot-current-schema-transport-proof.v1.json",
       "src/automarker_request.rs",
       "src/framing.rs",
-      "engine/capture/src/npcap.rs"
+      "engine/capture/src/npcap.rs",
+      "ground-marker-wire-layout-observation.v1.json"
     ]
   },
   "envelope_layers": [
@@ -113,12 +115,19 @@
     "marker_1_through_6_at_application_layer": true,
     "xyz_fixed32_at_application_layer": true,
     "authenticated_attribute_hmac_directly_covers_marker_or_position_fields": false,
-    "complete_wire_length_preservation_proven": false,
-    "reasons_complete_wire_length_is_unproven": [
-      "The sanitized proof does not retain outer or nested zstd flags.",
-      "The sanitized proof does not retain complete outer/nested frame lengths or batching.",
-      "Equal protobuf length does not guarantee equal compressed length.",
-      "The sanitized proof does not retain TCP segmentation, overlap, or retransmission layout."
+    "complete_wire_length_preservation_proven_for_observed_request": true,
+    "complete_wire_length_preservation_all_requests_proven": false,
+    "observed_length_stack_bytes": {
+      "application": 161,
+      "nested_call": 187,
+      "outer_frame_up": 197
+    },
+    "observed_outer_and_nested_frames_uncompressed": true,
+    "observed_outer_exactly_matches_one_reconstructed_tcp_stream_chunk": true,
+    "remaining_scope_limits": [
+      "Only one current-build marker request has retained physical-capture evidence.",
+      "Future requests may use compression, batching, or different segmentation.",
+      "A reconstructed TCP stream chunk is not proof of the physical wire or inline interception boundary."
     ]
   },
   "checksum_and_sequence_assessment": {
@@ -172,15 +181,18 @@
   },
   "conclusion": {
     "application_level_equal_length_substitution_proven_for_marker_and_xyz": true,
-    "live_wire_substitution_feasible": "unproven",
+    "sampled_uncompressed_container_length_preservation_proven": true,
+    "sampled_equal_length_change_requires_tcp_sequence_translation": false,
+    "live_wire_substitution_feasible": "structurally_same-length-for-observed-layout-only; inline-safety-unproven",
     "server_acceptance_proven": false,
     "anti_cheat_safety_proven": false,
     "runtime_sender_enabled": false,
     "permission_to_replay_inject_or_rewrite": false
   },
   "next_non_invasive_evidence": {
-    "source": "already-retained private six-marker capture only",
-    "action": "Generate a sanitized offline frame-layout receipt without network endpoints, raw payloads, identifiers, or exact TCP sequence numbers.",
+    "source": "already-retained private current-build capture only",
+    "completed_action": "Generated a sanitized offline frame-layout receipt without network endpoints, raw payloads, identifiers, timestamps, or exact TCP sequence numbers.",
+    "next_action": "Offline-only verification that candidate marker/XYZ field-width changes preserve the 161/187/197-byte stack while every game-owned identifier and authenticated attribute byte remains unchanged.",
     "implemented_offline_tool": "rlogs-bpsr-automarker-wire-layout-receipt",
     "required_aggregates": [
       "outer and nested compression flags and frame lengths",

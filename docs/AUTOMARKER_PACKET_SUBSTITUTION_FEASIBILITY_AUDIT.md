@@ -46,19 +46,24 @@ a nested `Call` under `FrameUp`:
 5. Twenty-byte big-endian route header: service, stub, call ID, and method.
 6. The 161-byte protobuf application message for the observed width band.
 
-The sanitized correlation proof does not retain the outer or nested compression
-flags, complete frame lengths, batching, TCP segmentation, or retransmission
-layout. Consequently it does not prove that the 161 application bytes appear
-uncompressed at stable wire offsets. If either applicable zstd flag is set,
-recompression can change wire length even when protobuf length is unchanged.
+The first retained build-25247556 private capture closes the compression and
+container-length question for its one observed request: both applicable frames
+are uncompressed, the 161-byte application begins at byte 26 of a 187-byte
+nested `Call`, and that is the only nested frame in a 197-byte `FrameUp`. The
+outer frame spans one reconstructed TCP stream chunk. These facts prove that a
+same-width application change would preserve both BPSR container lengths for
+this observed layout. They do not prove that every request uses this layout or
+that the reconstructed chunk is an interceptable physical-packet boundary.
 
 The parser exposes no BPSR frame checksum. That is evidence only about the
 decoded grammar, not proof that no validation exists elsewhere. At the network
-layer, any raw-byte rewrite would at minimum require correct IP/TCP checksums,
+layer, any raw-byte rewrite would at minimum require a corrected TCP checksum,
 suppression of the original packet, and consistent treatment of retransmitted
-bytes. Equal payload length would avoid shifting subsequent TCP sequence and
-acknowledgement numbers; it would not supply those missing inline-transport
-capabilities.
+bytes. A payload-only, equal-length edit does not itself change the IPv4 header
+checksum because that checksum excludes the payload; an inline API may still
+require other checksum/offload handling. Equal payload length would avoid
+shifting subsequent TCP sequence and acknowledgement numbers; it would not
+supply those missing inline-transport capabilities.
 
 ## Fresh state and divergence risks
 
@@ -86,12 +91,17 @@ implementation and no inline drop, rewrite, retransmission, or checksum engine.
 ## Verdict and next evidence
 
 Application-level byte-length preservation is proven for changing marker
-1–6 and fixed32 XYZ within the observed value-width bands. Live one-for-one
-substitution is not proven safe or feasible at the wire boundary, and no sender
-should be enabled from this result.
+1–6 and fixed32 XYZ within the observed value-width bands. For this single
+request, a sequence-neutral, same-length byte replacement is structurally
+possible: no TCP sequence-number translation or BPSR length-field change would
+be required. Live one-for-one substitution is still not proven safe, and no
+sender should be enabled from this result. An inline implementation would have
+to suppress the original bytes, update the TCP checksum, handle checksum and
+segmentation offload, retransmission, and races consistently, and demonstrate
+coherent client prediction
+and server acceptance. None of that is supplied by the passive capture.
 
-The next non-invasive step is an offline receipt generated from the already
-retained private capture. For each of the six requests it should publish only:
+The offline receipt generated from the retained private capture publishes only:
 
 - outer and nested compression flags and frame lengths;
 - the number and lengths of nested frames in each `FrameUp` container;
@@ -102,9 +112,13 @@ retained private capture. For each of the six requests it should publish only:
   be demonstrated to preserve each uncompressed container length in a purely
   synthetic replay buffer.
 
-That receipt would settle wire-layout uncertainty without new live traffic or
-packet modification. It still would not establish server acceptance,
-anti-cheat safety, or permission to transmit.
+That receipt settles the sampled wire-layout uncertainty without new live
+traffic or packet modification. The narrowest next step remains offline: verify
+that the `FrameUp` begins and ends on the same reconstructed TCP chunk and that
+a synthetic marker/XYZ change preserves the 161/187/197-byte length stack while
+all game-owned identifiers and the authenticated attribute envelope remain
+byte-identical. This still would not establish server acceptance, anti-cheat
+safety, permission to transmit, or an inline suppression mechanism.
 
 The offline-only sanitizer is now available for that retained evidence:
 
