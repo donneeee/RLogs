@@ -111,7 +111,9 @@ The offline-only sanitizer is now available for that retained evidence:
 ```powershell
 cargo run -p rlogs-game-bpsr --bin rlogs-bpsr-automarker-wire-layout-receipt -- `
   --private-research `
-  --pack plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-25247556/pack.json `
+  --captured-build 25247556 `
+  --unverified-carry-forward-pack-source-build 24687926 `
+  --pack plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24687926/pack.json `
   --connections "<private>\connections.json" `
   --journal "<private>\protocol.jsonl" `
   --output "<private>\wire-layout-receipt.json" `

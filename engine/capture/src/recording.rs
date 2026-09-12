@@ -7,7 +7,7 @@ use thiserror::Error;
 
 use crate::{
     CaptureError, CaptureSource, OwnedProcessCaptureMetrics, PcapWriteError, PcapWriter,
-    TcpConnection, WindowsOwnedDumpcapCapture,
+    TcpConnection, WindowsOwnedLiveCapture,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -21,7 +21,7 @@ pub struct OwnedCaptureRecordingResult {
 /// Persists only frames that have already crossed the process-ownership
 /// boundary, then atomically publishes the PCAP and exact connection evidence.
 pub fn record_owned_capture_to_files(
-    mut capture: WindowsOwnedDumpcapCapture,
+    mut capture: WindowsOwnedLiveCapture,
     output_directory: &Path,
     capture_id: &str,
 ) -> Result<OwnedCaptureRecordingResult, OwnedCaptureRecordingError> {

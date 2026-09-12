@@ -18,7 +18,7 @@ use rlogs_core::{GameConnectionFilter, ResearchConnectionFile, TransportDirectio
 use rlogs_game_bpsr::{
     BpsrFrame, BpsrFrameUpLayout, BpsrFramerSet, BpsrFramerSetConfig, BpsrFramingConfig,
     BpsrFramingEvent, CaptureRecordKind, CompressionState, FragmentKind, JsonlJournalReader,
-    PacketDirection, ProtocolPack, decode_observed_automarker_request_into,
+    MappingProvenance, PacketDirection, ProtocolPack, decode_observed_automarker_request_into,
     supports_observed_automarker_requests,
 };
 use rlogs_network::{
@@ -45,7 +45,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("refusing to overwrite {}", args.output.display()).into());
     }
 
-    let pack = ProtocolPack::from_json(&std::fs::read(&args.pack)?)?;
+    let source_pack = ProtocolPack::from_json(&std::fs::read(&args.pack)?)?;
+    let pack = derive_capture_pack(
+        source_pack,
+        args.captured_build.as_deref(),
+        args.carry_forward_source_build.as_deref(),
+    )?;
     if !supports_observed_automarker_requests(&pack) {
         return Err("pack is not the exact reviewed automarker request identity".into());
     }
@@ -126,6 +131,38 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     writer.get_ref().sync_all()?;
     println!("wrote sanitized offline layout receipt");
     Ok(())
+}
+
+fn derive_capture_pack(
+    pack: ProtocolPack,
+    captured_build: Option<&str>,
+    carry_forward_source_build: Option<&str>,
+) -> Result<ProtocolPack, Box<dyn std::error::Error>> {
+    match (captured_build, carry_forward_source_build) {
+        (None, None) => Ok(pack),
+        (Some(captured), Some(source)) => {
+            if pack.definition().target.build_id != source {
+                return Err("carry-forward source build does not match the selected pack".into());
+            }
+            if source == captured {
+                return Err("carry-forward source and captured builds must differ".into());
+            }
+            let mut definition = pack.definition().clone();
+            definition.pack_id = format!("{}-compatibility-fallback-steam", definition.pack_id);
+            definition.target.deployment_id = "global".into();
+            definition.target.region_id = None;
+            definition.target.channel = "steam".into();
+            definition.target.build_id = captured.into();
+            definition.provenance.push(MappingProvenance {
+                source: "provisional-compatibility-fallback".into(),
+                reference: format!(
+                    "pack_build={source};client_deployment=global;client_channel=steam;client_build={captured}"
+                ),
+            });
+            Ok(ProtocolPack::build(definition)?)
+        }
+        _ => Err("captured-build and carry-forward-source-build must be supplied together".into()),
+    }
 }
 
 fn audit_journal(path: &PathBuf, pack: &ProtocolPack) -> Result<usize, Box<dyn std::error::Error>> {
@@ -496,6 +533,8 @@ struct Arguments {
     journal: PathBuf,
     capture: PathBuf,
     output: PathBuf,
+    captured_build: Option<String>,
+    carry_forward_source_build: Option<String>,
 }
 
 impl Arguments {
@@ -504,6 +543,8 @@ impl Arguments {
         let mut connections = None;
         let mut journal = None;
         let mut output = None;
+        let mut captured_build = None;
+        let mut carry_forward_source_build = None;
         let mut private_research = false;
         let mut positional = Vec::new();
         let mut arguments = arguments.into_iter();
@@ -518,6 +559,14 @@ impl Arguments {
                 journal = unique(journal, arguments.next(), "--journal")?;
             } else if argument == OsStr::new("--output") {
                 output = unique(output, arguments.next(), "--output")?;
+            } else if argument == OsStr::new("--captured-build") {
+                captured_build = unique(captured_build, arguments.next(), "--captured-build")?;
+            } else if argument == OsStr::new("--unverified-carry-forward-pack-source-build") {
+                carry_forward_source_build = unique(
+                    carry_forward_source_build,
+                    arguments.next(),
+                    "--unverified-carry-forward-pack-source-build",
+                )?;
             } else if argument.to_string_lossy().starts_with('-') {
                 return Err(Self::usage());
             } else {
@@ -533,12 +582,34 @@ impl Arguments {
             journal: journal.map(PathBuf::from).ok_or_else(Self::usage)?,
             capture: positional.remove(0),
             output: output.map(PathBuf::from).ok_or_else(Self::usage)?,
+            captured_build: optional_ascii_build(captured_build, "captured build")?,
+            carry_forward_source_build: optional_ascii_build(
+                carry_forward_source_build,
+                "carry-forward source build",
+            )?,
         })
     }
 
     fn usage() -> String {
-        "usage: rlogs-bpsr-automarker-wire-layout-receipt --private-research --pack <pack.json> --connections <connections.json> --journal <protocol.jsonl> --output <receipt.json> <capture.pcap|capture.pcapng>".into()
+        "usage: rlogs-bpsr-automarker-wire-layout-receipt --private-research [--captured-build <id> --unverified-carry-forward-pack-source-build <id>] --pack <pack.json> --connections <connections.json> --journal <protocol.jsonl> --output <receipt.json> <capture.pcap|capture.pcapng>".into()
     }
+}
+
+fn optional_ascii_build(value: Option<OsString>, label: &str) -> Result<Option<String>, String> {
+    value
+        .map(|value| {
+            let value = value
+                .into_string()
+                .map_err(|_| format!("{label} must be valid UTF-8"))?;
+            if value.is_empty()
+                || value.len() > 128
+                || !value.bytes().all(|byte| byte.is_ascii_alphanumeric())
+            {
+                return Err(format!("{label} must use 1-128 ASCII letters or digits"));
+            }
+            Ok(value)
+        })
+        .transpose()
 }
 
 fn unique(
@@ -624,6 +695,22 @@ mod tests {
         let valid = bpsr_frame(4, b"abc");
         assert_eq!(nested_frame_lengths(&valid), Some(vec![9]));
         assert_eq!(nested_frame_lengths(&valid[..8]), None);
+    }
+
+    #[test]
+    fn explicit_carry_forward_derives_only_the_reviewed_marker_identity() {
+        let source = ProtocolPack::from_json(include_bytes!(
+            "../protocol-packs/global/steam-24687926/pack.json"
+        ))
+        .unwrap();
+        let derived = derive_capture_pack(source, Some("25247556"), Some("24687926")).unwrap();
+        assert!(supports_observed_automarker_requests(&derived));
+
+        let source = ProtocolPack::from_json(include_bytes!(
+            "../protocol-packs/global/steam-24687926/pack.json"
+        ))
+        .unwrap();
+        assert!(derive_capture_pack(source, Some("25247556"), None).is_err());
     }
 
     fn endpoint(last: u8, port: u16) -> IpEndpoint {

@@ -1,6 +1,6 @@
 #[cfg(windows)]
 use rlogs_capture::{
-    DumpcapLiveConfig, OwnedProcessCaptureConfig, WindowsOwnedDumpcapCapture,
+    DumpcapLiveConfig, OwnedProcessCaptureConfig, WindowsOwnedLiveCapture,
     record_owned_capture_to_files,
 };
 #[cfg(any(windows, test))]
@@ -23,13 +23,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(windows)]
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let arguments = arguments()?;
-    let capture = WindowsOwnedDumpcapCapture::spawn(
+    let dumpcap = arguments
+        .dumpcap
+        .as_ref()
+        .map(|path| DumpcapLiveConfig::new(path, &arguments.interface, arguments.duration_seconds))
+        .transpose()?;
+    let capture = WindowsOwnedLiveCapture::open(
         arguments.process_id,
-        DumpcapLiveConfig::new(
-            &arguments.dumpcap,
-            arguments.interface,
-            arguments.duration_seconds,
-        )?,
+        &arguments.interface,
+        arguments.duration_seconds,
+        dumpcap,
         OwnedProcessCaptureConfig::default(),
     )?;
     let recording =
@@ -72,7 +75,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 struct Arguments {
     process_id: u32,
     interface: String,
-    dumpcap: PathBuf,
+    dumpcap: Option<PathBuf>,
     capture_id: String,
     duration_seconds: u32,
     output_directory: PathBuf,
@@ -133,7 +136,7 @@ fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Argu
     Ok(Arguments {
         process_id,
         interface,
-        dumpcap: PathBuf::from(dumpcap.ok_or_else(usage)?),
+        dumpcap: dumpcap.map(PathBuf::from),
         capture_id,
         duration_seconds,
         output_directory: PathBuf::from(output_directory.ok_or_else(usage)?),
@@ -189,7 +192,7 @@ fn valid_capture_id(value: &str) -> bool {
 
 #[cfg(any(windows, test))]
 fn usage() -> String {
-    "usage: rlogs-process-capture --private-research --process-id <pid> --interface <npcap-interface> --dumpcap <dumpcap.exe> --capture-id <id> --duration-seconds <1-3600> --output-directory <directory>".into()
+    "usage: rlogs-process-capture --private-research --process-id <pid> --interface <npcap-interface> [--dumpcap <dumpcap.exe>] --capture-id <id> --duration-seconds <1-3600> --output-directory <directory>".into()
 }
 
 #[cfg(test)]
@@ -245,5 +248,29 @@ mod tests {
         assert_eq!(parsed.process_id, 10);
         assert_eq!(parsed.duration_seconds, 180);
         assert_eq!(parsed.capture_id, "world-load-process-001");
+        assert_eq!(
+            parsed.dumpcap,
+            Some(PathBuf::from(r"C:\Wireshark\dumpcap.exe"))
+        );
+    }
+
+    #[test]
+    fn native_npcap_mode_does_not_require_dumpcap() {
+        let parsed = parse_arguments(args(&[
+            "--private-research",
+            "--process-id",
+            "10",
+            "--interface",
+            r"\Device\NPF_test",
+            "--capture-id",
+            "native-npcap-001",
+            "--duration-seconds",
+            "25",
+            "--output-directory",
+            r"C:\private",
+        ]))
+        .unwrap();
+
+        assert_eq!(parsed.dumpcap, None);
     }
 }
