@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+pub mod automarker_coordinate_planner;
 mod automarker_presets;
 mod character_identities;
 mod combat_history;
