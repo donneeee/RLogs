@@ -92,6 +92,15 @@ pub struct ObservedAutomarkerRequest {
     pub attributes: AutomarkerRequestAttributes,
 }
 
+/// Sanitized local-player position carried by one already-observed outbound
+/// `World.UseSlot` skill request. This type has no encoder or transport API.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct ObservedUseSlotCurrentPosition {
+    pub current_position: AutomarkerRequestXyz,
+    /// Game-owned `UseSlotRequest.sessionSequence` observed on the wire.
+    pub session_sequence: u32,
+}
+
 /// Result of a pure, offline substitution proof over a copied application body.
 ///
 /// The verifier does not return the changed bytes and has no transport access.
@@ -191,6 +200,25 @@ pub fn decode_observed_automarker_request_into(
     }
     let request = one_message(payload, "Zproto.World.Types.UseSlot", 1)?;
     decode_request(request, scratch)
+}
+
+/// Decodes only the current local-player XYZ and game-owned session sequence
+/// from an already-observed exact-build `World.UseSlot` skill request.
+///
+/// The request route, exact build/pack identity, authenticated gameplay
+/// envelope, required action identity, and finite coordinate domain are all
+/// checked. No request bytes, action identity, cryptographic material, encoder,
+/// or transport capability cross this boundary.
+pub fn decode_observed_use_slot_current_position_into(
+    pack: &ProtocolPack,
+    payload: &[u8],
+    scratch: &mut Vec<u8>,
+) -> Result<ObservedUseSlotCurrentPosition, AutomarkerRequestDecodeError> {
+    if !supports_observed_automarker_requests(pack) {
+        return Err(AutomarkerRequestDecodeError::UnsupportedProtocolIdentity);
+    }
+    let request = one_message(payload, "Zproto.World.Types.UseSlot", 1)?;
+    decode_use_slot_current_position(request, scratch)
 }
 
 /// Verifies a marker/position substitution entirely offline in a copied
@@ -561,6 +589,196 @@ fn decode_request(
         session_sequence: required(session_sequence, MESSAGE, 5)?,
         attributes,
     })
+}
+
+fn decode_use_slot_current_position(
+    raw: &[u8],
+    scratch: &mut Vec<u8>,
+) -> Result<ObservedUseSlotCurrentPosition, AutomarkerRequestDecodeError> {
+    const MESSAGE: &str = "Zproto.UseSlotRequest";
+    let mut cursor = 0;
+    let mut slot_id = None;
+    let mut use_type = None;
+    let mut extra_data = None;
+    let mut attr_data = None;
+    let mut session_sequence = None;
+    while cursor < raw.len() {
+        let (field, wire) = tag(raw, &mut cursor, MESSAGE)?;
+        match field {
+            1 | 2 | 5 => {
+                require_wire(MESSAGE, field, wire, 0)?;
+                let value = varint(raw, &mut cursor, MESSAGE)?;
+                match field {
+                    1 => set_once(&mut slot_id, as_i32(value, MESSAGE, field)?, MESSAGE, field)?,
+                    2 => set_once(
+                        &mut use_type,
+                        as_i32(value, MESSAGE, field)?,
+                        MESSAGE,
+                        field,
+                    )?,
+                    5 => set_once(
+                        &mut session_sequence,
+                        u32::try_from(value).map_err(|_| {
+                            AutomarkerRequestDecodeError::UnsupportedValue {
+                                field,
+                                value: value as i64,
+                            }
+                        })?,
+                        MESSAGE,
+                        field,
+                    )?,
+                    _ => unreachable!(),
+                }
+            }
+            3 | 4 => {
+                require_wire(MESSAGE, field, wire, 2)?;
+                let value = bytes(raw, &mut cursor, MESSAGE)?;
+                if field == 3 {
+                    set_once(&mut extra_data, value, MESSAGE, field)?;
+                } else {
+                    set_once(&mut attr_data, value, MESSAGE, field)?;
+                }
+            }
+            _ => {
+                return Err(AutomarkerRequestDecodeError::UnknownField {
+                    message: MESSAGE,
+                    field,
+                });
+            }
+        }
+    }
+    let slot_id = required(slot_id, MESSAGE, 1)?;
+    if slot_id <= 0 {
+        return Err(AutomarkerRequestDecodeError::UnsupportedValue {
+            field: 1,
+            value: i64::from(slot_id),
+        });
+    }
+    let use_type = required(use_type, MESSAGE, 2)?;
+    if use_type != 1 {
+        return Err(AutomarkerRequestDecodeError::UnsupportedValue {
+            field: 2,
+            value: i64::from(use_type),
+        });
+    }
+    let (begin_time, current_position) =
+        decode_use_slot_position_param(required(extra_data, MESSAGE, 3)?)?;
+    let attributes = decode_attributes(required(attr_data, MESSAGE, 4)?, scratch)?;
+    if begin_time < 0 || attributes.timestamp != begin_time as u64 {
+        return Err(AutomarkerRequestDecodeError::UnsupportedValue {
+            field: 4,
+            value: begin_time,
+        });
+    }
+    Ok(ObservedUseSlotCurrentPosition {
+        current_position: position_xyz(current_position),
+        session_sequence: required(session_sequence, MESSAGE, 5)?,
+    })
+}
+
+fn decode_use_slot_position_param(
+    raw: &[u8],
+) -> Result<(i64, AutomarkerRequestPosition), AutomarkerRequestDecodeError> {
+    const MESSAGE: &str = "Zproto.UseSkillParam";
+    let mut cursor = 0;
+    let mut skill_uuid = None;
+    let mut skill_id = None;
+    let mut begin_time = None;
+    let mut current_position = None;
+    let mut seen = [false; 12];
+    while cursor < raw.len() {
+        let (field, wire) = tag(raw, &mut cursor, MESSAGE)?;
+        if !(1..=11).contains(&field) {
+            return Err(AutomarkerRequestDecodeError::UnknownField {
+                message: MESSAGE,
+                field,
+            });
+        }
+        if seen[field as usize] {
+            return Err(AutomarkerRequestDecodeError::DuplicateField {
+                message: MESSAGE,
+                field,
+            });
+        }
+        seen[field as usize] = true;
+        match field {
+            1 | 2 | 3 | 4 | 5 | 8 | 10 | 11 => {
+                require_wire(MESSAGE, field, wire, 0)?;
+                let value = varint(raw, &mut cursor, MESSAGE)?;
+                match field {
+                    1 => skill_uuid = Some(as_i32(value, MESSAGE, field)?),
+                    2 => skill_id = Some(as_i32(value, MESSAGE, field)?),
+                    4 => begin_time = Some(value as i64),
+                    _ => {}
+                }
+            }
+            6 | 7 | 9 => {
+                require_wire(MESSAGE, field, wire, 2)?;
+                let value = decode_position_with_proto_defaults(bytes(raw, &mut cursor, MESSAGE)?)?;
+                if field == 7 {
+                    current_position = Some(value);
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+    let uuid = required(skill_uuid, MESSAGE, 1)?;
+    if uuid <= 0 {
+        return Err(AutomarkerRequestDecodeError::UnsupportedValue {
+            field: 1,
+            value: i64::from(uuid),
+        });
+    }
+    let skill = required(skill_id, MESSAGE, 2)?;
+    if skill <= 0 {
+        return Err(AutomarkerRequestDecodeError::UnsupportedValue {
+            field: 2,
+            value: i64::from(skill),
+        });
+    }
+    Ok((
+        required(begin_time, MESSAGE, 4)?,
+        required(current_position, MESSAGE, 7)?,
+    ))
+}
+
+fn decode_position_with_proto_defaults(
+    raw: &[u8],
+) -> Result<AutomarkerRequestPosition, AutomarkerRequestDecodeError> {
+    const MESSAGE: &str = "Zproto.Position";
+    let mut cursor = 0;
+    let mut values = [None; 4];
+    while cursor < raw.len() {
+        let (field, wire) = tag(raw, &mut cursor, MESSAGE)?;
+        if !(1..=4).contains(&field) {
+            return Err(AutomarkerRequestDecodeError::UnknownField {
+                message: MESSAGE,
+                field,
+            });
+        }
+        require_wire(MESSAGE, field, wire, 5)?;
+        set_once(
+            &mut values[field as usize - 1],
+            fixed32(raw, &mut cursor, MESSAGE)?,
+            MESSAGE,
+            field,
+        )?;
+    }
+    let position = AutomarkerRequestPosition {
+        x: values[0].unwrap_or_default(),
+        y: values[1].unwrap_or_default(),
+        z: values[2].unwrap_or_default(),
+        heading_degrees: values[3].unwrap_or_default(),
+    };
+    for (field, coordinate) in [(1, position.x), (2, position.y), (3, position.z)] {
+        if !coordinate.is_finite() || coordinate.abs() > MAX_ABS_MARKER_COORDINATE {
+            return Err(AutomarkerRequestDecodeError::InvalidPosition { field });
+        }
+    }
+    if !position.heading_degrees.is_finite() {
+        return Err(AutomarkerRequestDecodeError::InvalidPosition { field: 4 });
+    }
+    Ok(position)
 }
 
 #[derive(Clone, Copy)]
@@ -1165,6 +1383,68 @@ mod tests {
             assert_eq!(decoded.attributes.charge_speed_pct, None);
             assert!(scratch.is_empty());
         }
+    }
+
+    #[test]
+    fn position_only_decoder_projects_sanitized_current_xyz_and_sequence() {
+        let pack = current_pack(AUTOMARKER_REQUEST_BUILD);
+        let payload = request(
+            1,
+            [250.35721, 118.0, -64.2384, 250.49268],
+            [250.44351, 118.02, -61.48509, 250.49268],
+            1_789_176_498_286,
+            607,
+        );
+        let mut scratch = Vec::new();
+        let observed =
+            decode_observed_use_slot_current_position_into(&pack, &payload, &mut scratch).unwrap();
+        assert_eq!(
+            observed,
+            ObservedUseSlotCurrentPosition {
+                current_position: AutomarkerRequestXyz {
+                    x: 250.44351,
+                    y: 118.02,
+                    z: -61.48509,
+                },
+                session_sequence: 607,
+            }
+        );
+        assert!(scratch.is_empty());
+    }
+
+    #[test]
+    fn position_only_decoder_keeps_exact_identity_and_authentication_gates() {
+        let payload = request(
+            1,
+            [1.0, 2.0, 3.0, 4.0],
+            [5.0, 6.0, 7.0, 8.0],
+            1_789_176_498_286,
+            607,
+        );
+        let mut scratch = Vec::new();
+        assert!(matches!(
+            decode_observed_use_slot_current_position_into(
+                &current_pack("25247557"),
+                &payload,
+                &mut scratch,
+            ),
+            Err(AutomarkerRequestDecodeError::UnsupportedProtocolIdentity)
+        ));
+
+        let mut tampered = payload;
+        let iv = tampered
+            .windows(16)
+            .position(|window| window == [0x5a; 16])
+            .unwrap();
+        tampered[iv] ^= 1;
+        assert!(matches!(
+            decode_observed_use_slot_current_position_into(
+                &current_pack(AUTOMARKER_REQUEST_BUILD),
+                &tampered,
+                &mut scratch,
+            ),
+            Err(AutomarkerRequestDecodeError::MacMismatch)
+        ));
     }
 
     #[test]

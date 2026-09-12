@@ -59,7 +59,10 @@ use mechanics_map::{
 };
 use module_optimizer::{LocalModuleInventoryView, load_local_module_inventories};
 use native_plugin_processes::{NativePluginLaunch, NativePluginProcesses};
-use observed_markers::{ObservedMarkerFeed, ObservedMarkerSessionStamp, ObservedMarkerSnapshot};
+use observed_markers::{
+    ObservedLocalPlayerPosition, ObservedMarkerFeed, ObservedMarkerSessionStamp,
+    ObservedMarkerSnapshot,
+};
 use overlay_layout_settings::{
     OverlayLayoutSettings, OverlayLayoutSettingsStore, OverlayLayoutUpdateError,
 };
@@ -9838,18 +9841,39 @@ impl RuntimeController {
                                             && routed.key.method_id == 249_858
                                     })
                                     && let Some(payload) = packet.payload.decode_input()
-                                    && let Ok(request) =
+                                {
+                                    if let Ok(position) = rlogs_game_bpsr::
+                                        decode_observed_use_slot_current_position_into(
+                                            &pack,
+                                            payload,
+                                            &mut automarker_request_decode_scratch,
+                                        )
+                                    {
+                                        live_observed_marker_feed.observe_local_player_position(
+                                            &session_id,
+                                            ObservedLocalPlayerPosition {
+                                                x: position.current_position.x,
+                                                y: position.current_position.y,
+                                                z: position.current_position.z,
+                                                session_sequence: position.session_sequence,
+                                                observed_micros: record.observed_micros,
+                                                host_received_unix_millis: unix_millis(),
+                                            },
+                                        );
+                                    }
+                                    if let Ok(request) =
                                         rlogs_game_bpsr::decode_observed_automarker_request_into(
                                             &pack,
                                             payload,
                                             &mut automarker_request_decode_scratch,
                                         )
-                                {
-                                    live_observed_marker_feed.observe_verified_request(
-                                        &session_id,
-                                        request.marker_number,
-                                        record.observed_micros,
-                                    );
+                                    {
+                                        live_observed_marker_feed.observe_verified_request(
+                                            &session_id,
+                                            request.marker_number,
+                                            record.observed_micros,
+                                        );
+                                    }
                                 }
                                 frame_protocol_observability
                                     .observe_protocol(&pack, record, status);

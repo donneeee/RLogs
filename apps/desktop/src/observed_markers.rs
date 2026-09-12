@@ -6,7 +6,7 @@ use std::{
 use rlogs_game_bpsr::{LocalMapMarker, LocalMapMarkerSnapshotError};
 use serde::Serialize;
 
-pub const OBSERVED_MARKER_SNAPSHOT_SCHEMA_VERSION: u16 = 3;
+pub const OBSERVED_MARKER_SNAPSHOT_SCHEMA_VERSION: u16 = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObservedMarkerSessionStamp {
@@ -38,6 +38,19 @@ pub struct ObservedMarkerRequest {
     pub observed_micros: u64,
 }
 
+/// Sanitized, read-only local-player position from a verified outbound
+/// `World.UseSlot` request in this exact capture session and scene/map.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservedLocalPlayerPosition {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub session_sequence: u32,
+    pub observed_micros: u64,
+    pub host_received_unix_millis: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ObservedMarkerSnapshot {
@@ -50,6 +63,7 @@ pub struct ObservedMarkerSnapshot {
     pub last_verified_request_marker_number: Option<u8>,
     pub last_verified_request_observed_micros: Option<u64>,
     pub verified_requests: Vec<ObservedMarkerRequest>,
+    pub latest_local_player_position: Option<ObservedLocalPlayerPosition>,
     pub reason: &'static str,
     pub session_id: Option<String>,
     pub deployment_id: Option<String>,
@@ -73,6 +87,7 @@ impl Default for ObservedMarkerSnapshot {
             last_verified_request_marker_number: None,
             last_verified_request_observed_micros: None,
             verified_requests: Vec::new(),
+            latest_local_player_position: None,
             reason: "live_capture_not_running",
             session_id: None,
             deployment_id: None,
@@ -115,6 +130,7 @@ impl ObservedMarkerFeed {
             last_verified_request_marker_number: None,
             last_verified_request_observed_micros: None,
             verified_requests: Vec::new(),
+            latest_local_player_position: None,
             reason,
             session_id: Some(stamp.session_id),
             deployment_id: Some(stamp.deployment_id),
@@ -199,6 +215,7 @@ impl ObservedMarkerFeed {
             });
         }
         points.sort_by_key(|point| point.marker_number);
+        let identity_changed = current.scene_id != Some(scene_id) || current.map_id != Some(map_id);
         let next = ObservedMarkerSnapshot {
             revision: current.revision,
             reason,
@@ -206,6 +223,11 @@ impl ObservedMarkerFeed {
             map_id: Some(map_id),
             observed_micros,
             markers: points,
+            latest_local_player_position: if identity_changed {
+                None
+            } else {
+                current.latest_local_player_position.clone()
+            },
             ..current.clone()
         };
         if *current != next {
@@ -235,6 +257,7 @@ impl ObservedMarkerFeed {
             last_verified_request_marker_number: None,
             last_verified_request_observed_micros: None,
             verified_requests: Vec::new(),
+            latest_local_player_position: None,
             reason: "live_capture_not_running",
             scene_id: None,
             map_id: None,
@@ -313,6 +336,43 @@ impl ObservedMarkerFeed {
                 .verified_requests
                 .sort_by_key(|request| request.marker_number);
         }
+        current.revision = current.revision.saturating_add(1);
+        drop(current);
+        self.changed.notify_all();
+    }
+
+    /// Publishes a sanitized local-player position from an already verified
+    /// outbound `World.UseSlot` request. The exact decoder remains outside this
+    /// feed; this method only enforces active-session, scene/map, ordering, and
+    /// finite-value invariants. It grants no planner or transport authority.
+    pub fn observe_local_player_position(
+        &self,
+        session_id: &str,
+        position: ObservedLocalPlayerPosition,
+    ) {
+        let mut current = self
+            .snapshot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !current.capture_active
+            || !current.request_observer_supported
+            || current.session_id.as_deref() != Some(session_id)
+            || current.scene_id.is_none()
+            || current.map_id.is_none()
+            || !position.x.is_finite()
+            || !position.y.is_finite()
+            || !position.z.is_finite()
+        {
+            return;
+        }
+        if let Some(previous) = current.latest_local_player_position.as_ref() {
+            if position.session_sequence < previous.session_sequence
+                || position.observed_micros <= previous.observed_micros
+            {
+                return;
+            }
+        }
+        current.latest_local_player_position = Some(position);
         current.revision = current.revision.saturating_add(1);
         drop(current);
         self.changed.notify_all();
@@ -519,6 +579,63 @@ mod tests {
         let finished = feed.current();
         assert!(!finished.request_observer_supported);
         assert_eq!(finished.verified_request_count, 0);
+    }
+
+    #[test]
+    fn local_player_position_is_session_scene_and_sequence_bound() {
+        let feed = ObservedMarkerFeed::default();
+        feed.begin_session(stamp("one", true));
+        let point = |x, sequence, observed| ObservedLocalPlayerPosition {
+            x,
+            y: 2.0,
+            z: 3.0,
+            session_sequence: sequence,
+            observed_micros: observed,
+            host_received_unix_millis: 1_000,
+        };
+        feed.observe_local_player_position("one", point(1.0, 10, 100));
+        assert!(feed.current().latest_local_player_position.is_none());
+
+        feed.publish("one", Some(100), Some(200), Some(90), Ok(Vec::new()));
+        feed.observe_local_player_position("stale", point(1.0, 10, 100));
+        feed.observe_local_player_position("one", point(f32::NAN, 10, 100));
+        assert!(feed.current().latest_local_player_position.is_none());
+
+        feed.observe_local_player_position("one", point(1.0, 10, 100));
+        let first = feed.current();
+        assert_eq!(
+            first.latest_local_player_position,
+            Some(ObservedLocalPlayerPosition {
+                x: 1.0,
+                y: 2.0,
+                z: 3.0,
+                session_sequence: 10,
+                observed_micros: 100,
+                host_received_unix_millis: 1_000,
+            })
+        );
+
+        feed.observe_local_player_position("one", point(9.0, 9, 101));
+        feed.observe_local_player_position("one", point(9.0, 11, 100));
+        assert_eq!(feed.current(), first);
+
+        feed.observe_local_player_position(
+            "one",
+            ObservedLocalPlayerPosition {
+                x: 4.0,
+                y: 5.0,
+                z: 6.0,
+                session_sequence: 11,
+                observed_micros: 101,
+                host_received_unix_millis: 1_001,
+            },
+        );
+        assert_eq!(feed.current().latest_local_player_position.unwrap().x, 4.0);
+
+        feed.publish("one", Some(101), Some(201), Some(102), Ok(Vec::new()));
+        assert!(feed.current().latest_local_player_position.is_none());
+        feed.finish_session("one");
+        assert!(feed.current().latest_local_player_position.is_none());
     }
 
     #[test]

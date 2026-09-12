@@ -67,6 +67,19 @@ calibration is limited to ordinary foreground Windows mouse movement and Escape
 after all read-only gates pass. Source and receipt-policy tests enforce this
 boundary.
 
+The desktop capture path also exposes a diagnostic-only local-player position
+from legitimate outbound `World.UseSlot` requests on exact build `25247556`.
+It strictly verifies the reviewed route and pack, the authenticated gameplay
+envelope, required action identity, finite XYZ values, and the game-owned
+`sessionSequence`. Only XYZ, sequence, capture time, and a host receipt time are
+published. The observation is bound to the active capture session and an
+already packet-observed scene/map, rejects sequence or capture-time regression,
+and is erased on session or scene/map change. It is intentionally not wired to
+the planner, any input path, or a distance policy. It exists only as evidence
+for the game-owned request reconstruction boundary: ordinary skill traffic is
+activity-driven and cannot guarantee a fresh pre-pull position, while a marker
+request arrives only after the click it could not safely authorize.
+
 ## Package and run
 
 The delivery package contains the native probe, a launcher, and this README;
