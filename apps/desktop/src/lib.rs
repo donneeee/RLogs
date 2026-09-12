@@ -7029,10 +7029,13 @@ impl RuntimeController {
         &self,
         request: SaveAutomarkerPresetRequest,
     ) -> Result<AutomarkerPresetView, String> {
-        let context = self.live_automarker_scene_context.current().ok_or_else(|| {
-            "a current supported automarker scene is required before saving manual markers"
-                .to_owned()
-        })?;
+        let context = self
+            .live_automarker_scene_context
+            .current()
+            .ok_or_else(|| {
+                "a current supported automarker scene is required before saving manual markers"
+                    .to_owned()
+            })?;
         if request.expected_context.client_build != context.client_build
             || request.expected_context.scene_id != context.scene_id
             || request.expected_context.map_id != context.map_id
@@ -7053,9 +7056,12 @@ impl RuntimeController {
         &self,
         request: LoadAutomarkerPresetRequest,
     ) -> Result<AutomarkerLocalLoadResult, String> {
-        let context = self.live_automarker_scene_context.current().ok_or_else(|| {
-            "a current supported automarker scene is required before loading markers".to_owned()
-        })?;
+        let context = self
+            .live_automarker_scene_context
+            .current()
+            .ok_or_else(|| {
+                "a current supported automarker scene is required before loading markers".to_owned()
+            })?;
         self.automarker_presets
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -21059,6 +21065,28 @@ kind = "content"
                 .any(|workspace| workspace.id == "app.rlogs.overlay"),
             "the usable overlay workspace must remain available outside developer mode"
         );
+        let overlay = catalog
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.id == "app.rlogs.overlay")
+            .expect("the overlay workspace must be present");
+        assert!(
+            overlay
+                .tabs
+                .iter()
+                .all(|tab| tab.id != "app.rlogs.overlay:automarkers")
+        );
+        let automarkers = catalog
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.id == "app.rlogs.automarkers")
+            .expect("automarkers must publish an independent built-in workspace");
+        assert_eq!(automarkers.tabs.len(), 1);
+        assert_eq!(automarkers.tabs[0].id, "app.rlogs.automarkers:automarkers");
+        assert_eq!(
+            automarkers.tabs[0].entrypoint,
+            "builtin://app.rlogs.automarkers/automarkers"
+        );
 
         let developer_catalog = manager.snapshot(true);
         for plugin_id in DEVELOPER_ONLY_PLUGIN_IDS {
@@ -21456,7 +21484,7 @@ developer_only = true
             .unwrap();
         assert!(package.enabled);
         assert!(package.active);
-        assert_eq!(catalog.workspaces.len(), 5);
+        assert_eq!(catalog.workspaces.len(), 6);
 
         std::fs::remove_dir_all(root).unwrap();
     }

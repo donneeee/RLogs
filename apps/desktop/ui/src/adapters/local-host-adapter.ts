@@ -163,6 +163,7 @@ const SESSION_RECORDER_PLUGIN_ID = "app.rlogs.session-recorder";
 const DEVELOPER_TOOLS_ENABLED = import.meta.env.DEV;
 const COMBAT_METER_PLUGIN_ID = "app.rlogs.combat-meter";
 const COMBAT_OVERLAY_PLUGIN_ID = "app.rlogs.combat-overlay";
+const AUTOMARKERS_PLUGIN_ID = "app.rlogs.automarkers";
 const CUSTOM_TRIGGERS_PLUGIN_ID = "app.rlogs.custom-triggers";
 const LOG_UPLOADER_PLUGIN_ID = "app.rlogs.log-uploader";
 const PROFILE_SYNC_PLUGIN_ID = "app.rlogs.bpsr.profile-sync";
@@ -729,7 +730,7 @@ function createLocalHostAdapter(localizer: UiLocalizer): DesktopHostAdapter {
               await openEditableOverlayCanvas(invoke);
             },
           }, localizer);
-        case `builtin://${OVERLAY_PLUGIN_ID}/automarkers`:
+        case `builtin://${AUTOMARKERS_PLUGIN_ID}/automarkers`:
           return mountAutomarkerPresetsSurface(container, {
             async loadPresets() {
               return parseAutomarkerPresetView(await apiJson<unknown>("/api/automarkers/presets"));

@@ -1,0 +1,20 @@
+schema_version = 1
+id = "app.rlogs.automarkers"
+name = "Automarkers"
+version = "0.1.0"
+api_version = 1
+runtime = "browser_overlay"
+entrypoint = "ui/automarkers.html"
+capabilities = ["ui_workspace_publish"]
+subscriptions = []
+allowed_network_domains = []
+
+[workspace]
+default_order = -91
+
+[[workspace.tabs]]
+id = "automarkers"
+label = "Presets"
+entrypoint = "ui/automarkers.html"
+section = "markers"
+default_order = 100

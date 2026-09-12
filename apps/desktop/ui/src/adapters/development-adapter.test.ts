@@ -6,10 +6,11 @@ import { customTriggerRuleMenuGroups } from "./custom-triggers-workspace-surface
 describe("development desktop workspaces", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("keeps the Overlay and design-only Custom Triggers menus locally testable", async () => {
+  it("keeps Automarkers independent from Overlay and the design-only Custom Triggers menu locally testable", async () => {
     vi.stubGlobal("window", { location: { search: "" } });
     const workspaces = await createDevelopmentAdapter().loadWorkspaces();
     const overlay = workspaces.find(({ id }) => id === "app.rlogs.overlay");
+    const automarkers = workspaces.find(({ id }) => id === "app.rlogs.automarkers");
     const triggers = workspaces.find(({ id }) => id === "app.rlogs.custom-triggers");
 
     expect(overlay?.tabs.map(({ label }) => label)).toEqual([
@@ -18,9 +19,12 @@ describe("development desktop workspaces", () => {
       "Editor",
       "Trackers",
       "Map",
-      "Automarkers",
       "Settings",
     ]);
+    expect(automarkers?.tabs.map(({ label }) => label)).toEqual(["Presets"]);
+    expect(automarkers?.tabs[0]?.entrypoint).toBe(
+      "builtin://app.rlogs.automarkers/automarkers",
+    );
     expect(triggers?.tabs.map(({ label }) => label)).toEqual([
       "Overview",
       "Rules",

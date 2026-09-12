@@ -48,13 +48,6 @@ section = "tools"
 default_order = 210
 
 [[workspace.tabs]]
-id = "automarkers"
-label = "Automarkers"
-entrypoint = "ui/automarkers.html"
-section = "tools"
-default_order = 220
-
-[[workspace.tabs]]
 id = "settings"
 label = "Settings"
 entrypoint = "ui/settings.html"

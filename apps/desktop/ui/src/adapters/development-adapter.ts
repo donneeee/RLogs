@@ -20,6 +20,11 @@ import type {
   OptimizeResponse,
   OptimizerCatalog,
 } from "./module-optimizer";
+import { mountAutomarkerPresetsSurface } from "./automarker-presets-surface";
+import type {
+  AutomarkerPresetView,
+  ObservedMarkerSnapshot,
+} from "./automarker-presets";
 
 const PREFERENCES_KEY = "rlogs.desktop-shell.preferences.v1";
 const EXAMPLES_KEY = "rlogs.desktop-shell.examples-enabled.v1";
@@ -138,8 +143,19 @@ const SAMPLE_WORKSPACES: readonly WorkspaceDescriptor[] = [
       developmentTab("app.rlogs.overlay", "editor", "Editor", "setup", 2),
       developmentTab("app.rlogs.overlay", "trackers", "Trackers", "tools", 100),
       developmentTab("app.rlogs.overlay", "mechanics-map", "Map", "tools", 101),
-      developmentTab("app.rlogs.overlay", "automarkers", "Automarkers", "tools", 102),
       developmentTab("app.rlogs.overlay", "settings", "Settings", "configuration", 200, "options"),
+    ],
+  },
+  {
+    id: "app.rlogs.automarkers",
+    name: "Automarkers",
+    description: "Save and load scene-specific numbered ground-marker setups independently from overlays and combat.",
+    version: "0.1.0",
+    iconUrl: null,
+    iconFallback: "AM",
+    defaultOrder: 45,
+    tabs: [
+      developmentTab("app.rlogs.automarkers", "automarkers", "Presets", "markers", 0),
     ],
   },
   {
@@ -203,6 +219,9 @@ export function createDevelopmentAdapter(): DesktopHostAdapter {
           developmentSurfacePage(tab.entrypoint) as OverlayWorkspacePage,
         );
       }
+      if (tab.entrypoint === "builtin://app.rlogs.automarkers/automarkers") {
+        return mountDevelopmentAutomarkers(container);
+      }
       if (tab.entrypoint.startsWith("builtin://app.rlogs.custom-triggers/")) {
         return mountCustomTriggersWorkspaceSurface(
           container,
@@ -221,6 +240,55 @@ export function createDevelopmentAdapter(): DesktopHostAdapter {
         // The query string still provides a deterministic blank-shell route.
       }
     },
+  };
+}
+
+function mountDevelopmentAutomarkers(container: HTMLElement): MountedSurface {
+  const presets = developmentAutomarkerPresetView();
+  return mountAutomarkerPresetsSurface(container, {
+    loadPresets: async () => presets,
+    loadObservedMarkers: async () => developmentObservedMarkers(),
+    saveCurrent: async () => presets,
+    loadPreset: async () => { throw new Error("Enter a live scene to load an automarker preset."); },
+    openOverlay: async () => undefined,
+  });
+}
+
+function developmentAutomarkerPresetView(): AutomarkerPresetView {
+  return {
+    schemaVersion: 4,
+    context: null,
+    presets: [],
+    captureSupported: false,
+    captureReason: "native_waymark_state_unverified",
+    captureSessionId: null,
+    deploymentId: null,
+    protocolPackDigest: null,
+    nativeLoadSupported: false,
+    nativeLoadReason: "native_waymark_transport_unavailable",
+    previewSessionId: "development-preview",
+  };
+}
+
+function developmentObservedMarkers(): ObservedMarkerSnapshot {
+  return {
+    schemaVersion: 2,
+    revision: 0,
+    captureActive: false,
+    protocolSupported: false,
+    requestObserverSupported: false,
+    verifiedRequestCount: 0,
+    lastVerifiedRequestMarkerNumber: null,
+    lastVerifiedRequestObservedMicros: null,
+    reason: "live_capture_not_running",
+    sessionId: null,
+    deploymentId: null,
+    clientBuild: null,
+    protocolPackDigest: null,
+    sceneId: null,
+    mapId: null,
+    observedMicros: null,
+    markers: [],
   };
 }
 
