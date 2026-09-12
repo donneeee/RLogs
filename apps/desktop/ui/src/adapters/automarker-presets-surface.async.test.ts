@@ -124,6 +124,117 @@ afterEach(() => {
 });
 
 describe("mounted automarker preset editor request ordering", () => {
+  it("exports the selected preset as a safe identity-free JSON download", async () => {
+    const catalog = view(6_525, "mech-facility", "../../Méch: opener?", 7);
+    let exportedBlob: Blob | null = null;
+    let downloadedAs = "";
+    vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+      exportedBlob = blob as Blob;
+      return "blob:test";
+    });
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      downloadedAs = this.download;
+    });
+    const container = document.createElement("div");
+    document.body.append(container);
+    const mounted = mountAutomarkerPresetsSurface(container, {
+      loadPresets: async () => catalog,
+      loadObservedMarkers: async () => unavailableObserved(),
+      saveCurrent: async () => { throw new Error("not used"); },
+      loadPreset: async () => { throw new Error("not used"); },
+      openOverlay: async () => undefined,
+    });
+    await flushPromises();
+
+    [...container.querySelectorAll("button")].find((button) => button.textContent === "Export")!.click();
+    const exported = JSON.parse(await exportedBlob!.text()) as Record<string, unknown>;
+    expect(downloadedAs).toBe("Mech-opener.rlogs-automarker.json");
+    expect(Object.keys(exported).sort()).toEqual(["activityFamilyId", "kind", "name", "points", "version"]);
+    expect(JSON.stringify(exported)).not.toMatch(/presetId|savedAt|clientBuild|sceneId|mapId|session|uuid/i);
+    expect(container.querySelector(".automarker-status")?.textContent).toContain("without account, character, session, or build identity");
+    mounted.dispose();
+  });
+
+  it("imports matching-family JSON as dirty new content that only Save As can persist", async () => {
+    const catalog = view(6_525, "mech-facility", "Existing", 1);
+    const saveCurrent = vi.fn(async () => catalog);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const mounted = mountAutomarkerPresetsSurface(container, {
+      loadPresets: async () => catalog,
+      loadObservedMarkers: async () => unavailableObserved(),
+      saveCurrent,
+      loadPreset: async () => { throw new Error("not used"); },
+      openOverlay: async () => undefined,
+    });
+    await flushPromises();
+    const input = container.querySelector<HTMLInputElement>(".automarker-import-file")!;
+    const portable = JSON.stringify({
+      kind: "rlogs-automarker-preset", version: 1, name: "Shared setup",
+      activityFamilyId: "mech-facility",
+      points: [{ markerNumber: 2, x: 9, y: 8, z: 7 }],
+    });
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [{ size: portable.length, text: async () => portable }],
+    });
+    input.dispatchEvent(new Event("change"));
+    await flushPromises();
+
+    expect((container.querySelector('input[placeholder="M1 opener"]') as HTMLInputElement).value).toBe("Shared setup");
+    expect((container.querySelector('input[data-coordinate="x"]') as HTMLInputElement).value).toBe("9");
+    expect(container.querySelector("select")?.textContent).toContain("Save As required");
+    const save = [...container.querySelectorAll("button")].find((button) => button.textContent === "Save")!;
+    expect(save.disabled).toBe(true);
+    expect([...container.querySelectorAll("button")].find((button) => button.textContent === "Place in game")!.disabled).toBe(true);
+    [...container.querySelectorAll("button")].find((button) => button.textContent === "Save As…")!.click();
+    await flushPromises();
+    expect(saveCurrent).toHaveBeenCalledWith({
+      presetId: null,
+      name: "Shared setup",
+      points: [{ markerNumber: 2, x: 9, y: 8, z: 7 }],
+      expectedContext: catalog.context,
+    });
+    mounted.dispose();
+  });
+
+  it("rejects cross-family, malformed, and oversized imports without changing the editor", async () => {
+    const catalog = view(6_525, "mech-facility", "Existing", 1);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const mounted = mountAutomarkerPresetsSurface(container, {
+      loadPresets: async () => catalog,
+      loadObservedMarkers: async () => unavailableObserved(),
+      saveCurrent: async () => { throw new Error("not used"); },
+      loadPreset: async () => { throw new Error("not used"); },
+      openOverlay: async () => undefined,
+    });
+    await flushPromises();
+    const input = container.querySelector<HTMLInputElement>(".automarker-import-file")!;
+    const dispatchFile = async (size: number, contents: string) => {
+      Object.defineProperty(input, "files", {
+        configurable: true,
+        value: [{ size, text: async () => contents }],
+      });
+      input.dispatchEvent(new Event("change"));
+      await flushPromises();
+    };
+    const otherFamily = JSON.stringify({
+      kind: "rlogs-automarker-preset", version: 1, name: "Wrong",
+      activityFamilyId: "dungeon.1633", points: [{ markerNumber: 1, x: 2, y: 3, z: 4 }],
+    });
+    await dispatchFile(otherFamily.length, otherFamily);
+    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/another dungeon family/i);
+    await dispatchFile(1, "{");
+    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/valid JSON/i);
+    await dispatchFile(65_537, "{}");
+    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/64 KiB/i);
+    expect((container.querySelector('input[placeholder="M1 opener"]') as HTMLInputElement).value).toBe("Existing");
+    expect((container.querySelector('input[data-coordinate="x"]') as HTMLInputElement).value).toBe("1");
+    mounted.dispose();
+  });
+
   it("keeps Capture current markers disabled with the exact unverified-build reason", async () => {
     const catalog = view(6_525, "mech-facility", "Opener", 1);
     catalog.context!.clientBuild = "25247556";

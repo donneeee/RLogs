@@ -7,7 +7,7 @@ import type {
   ObservedMarkerSnapshot,
   SaveAutomarkerPresetRequest,
 } from "./automarker-presets";
-import { AUTOMARKER_PREVIEW_STORAGE_KEY, automarkerResponseIsCurrent, automarkerSaveRequest, newlyCreatedPresetId, observedMarkersMatchPresetView, publishAutomarkerPreview } from "./automarker-presets";
+import { AUTOMARKER_EXCHANGE_MAX_BYTES, AUTOMARKER_PREVIEW_STORAGE_KEY, automarkerExportFilename, automarkerResponseIsCurrent, automarkerSaveRequest, newlyCreatedPresetId, observedMarkersMatchPresetView, parseAutomarkerPresetExchange, publishAutomarkerPreview, serializeAutomarkerPresetExchange } from "./automarker-presets";
 
 export interface AutomarkerPresetDependencies {
   loadPresets(): Promise<AutomarkerPresetView>;
@@ -65,10 +65,17 @@ export function mountAutomarkerPresetsSurface(
   const save = button("Save", "primary-button");
   const saveAs = button("Save As…", "quiet-button");
   const load = button("Load", "primary-button");
+  const exportPreset = button("Export", "quiet-button");
+  const importPreset = button("Import…", "quiet-button");
+  const importFile = document.createElement("input");
+  importFile.type = "file";
+  importFile.accept = "application/json,.json";
+  importFile.hidden = true;
+  importFile.className = "automarker-import-file";
   const preview = button("Preview on map", "quiet-button");
   const placeInGame = button("Place in game", "primary-button");
   const refresh = button("Refresh scene", "quiet-button");
-  controls.append(captureCurrent, save, saveAs, load, preview, placeInGame, refresh);
+  controls.append(captureCurrent, save, saveAs, load, exportPreset, importPreset, preview, placeInGame, refresh, importFile);
   const status = text("p", "Connecting to the local marker store…", "card-copy automarker-status");
   const detail = el("div", "automarker-preset-detail");
   card.append(nameLabel, presetLabel, editor, controls, status, detail);
@@ -91,6 +98,9 @@ export function mountAutomarkerPresetsSurface(
   saveAs.addEventListener("click", () => void persist(true));
   preview.addEventListener("click", () => void previewOnMap());
   load.addEventListener("click", () => void requestLoad());
+  exportPreset.addEventListener("click", exportSelectedPreset);
+  importPreset.addEventListener("click", () => importFile.click());
+  importFile.addEventListener("change", () => void importSelectedFile());
   captureCurrent.addEventListener("click", () => void captureCurrentMarkers());
   refresh.addEventListener("click", () => void refreshView());
   setEditorPoints([{ markerNumber: 1, x: 0, y: 0, z: 0 }]);
@@ -290,16 +300,64 @@ export function mountAutomarkerPresetsSurface(
     }
   }
 
+  function exportSelectedPreset(): void {
+    const preset = selectedPreset();
+    if (preset === undefined) return;
+    const blob = new Blob([serializeAutomarkerPresetExchange(preset)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = automarkerExportFilename(preset.name);
+    anchor.hidden = true;
+    document.body.append(anchor);
+    try {
+      anchor.click();
+      status.textContent = `Exported ${preset.name} without account, character, session, or build identity.`;
+    } finally {
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  async function importSelectedFile(): Promise<void> {
+    const file = importFile.files?.[0];
+    if (file === undefined || view?.context === null || view === null) return;
+    try {
+      if (file.size > AUTOMARKER_EXCHANGE_MAX_BYTES) {
+        throw new Error("The automarker preset file exceeds the 64 KiB safety limit.");
+      }
+      const contents = await file.text();
+      if (!alive || view?.context === null || view === null) return;
+      const imported = parseAutomarkerPresetExchange(contents, view.context.activityFamilyId);
+      selectedId = null;
+      name.value = imported.name;
+      setEditorPoints(imported.points);
+      editorDirty = true;
+      status.textContent = `Imported ${imported.name} into the editor. Use Save As… to persist it; nothing was sent to the game.`;
+    } catch (error) {
+      if (alive) status.textContent = message(error);
+    } finally {
+      importFile.value = "";
+      if (alive) render();
+    }
+  }
+
   function render(): void {
     const context = view?.context ?? null;
     sceneBadge.textContent = context === null ? "NO SCENE" : context.sceneName ?? `SCENE ${context.sceneId}`;
     sceneBadge.dataset.state = context === null ? "waiting" : "ready";
     select.replaceChildren();
-    if (view === null || view.presets.length === 0) {
+    const showUnsavedDraft = context !== null && selectedId === null && editorDirty;
+    if (showUnsavedDraft) {
+      const option = new Option("Imported setup · Save As required", "");
+      option.selected = true;
+      select.append(option);
+    }
+    if (view === null || (view.presets.length === 0 && !showUnsavedDraft)) {
       const option = new Option(context === null ? "Enter a scene" : "No saved setups for this dungeon family", "");
       select.append(option);
       selectedId = null;
-    } else {
+    } else if (view !== null) {
       for (const preset of view.presets) {
         const option = new Option(`${preset.name} · ${preset.points.length} marks`, preset.presetId);
         option.selected = preset.presetId === selectedId;
@@ -317,6 +375,10 @@ export function mountAutomarkerPresetsSurface(
     refresh.disabled = busy;
     load.disabled = busy || preset === undefined || context === null;
     load.title = "Restore the selected saved setup into this local editor";
+    exportPreset.disabled = busy || preset === undefined;
+    exportPreset.title = "Download the selected setup without local or game identity";
+    importPreset.disabled = busy || context === null;
+    importPreset.title = "Import an identity-free JSON setup for this dungeon family";
     const captureAvailability = observedMarkerCaptureAvailability(view, observedMarkers);
     captureCurrent.disabled = busy || !captureAvailability.enabled;
     captureCurrent.title = captureAvailability.reason;

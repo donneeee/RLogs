@@ -117,6 +117,13 @@ marker action; the game supplies every live identity and transport value for
 that current player. The server remains the authority on whether that player is
 the party leader.
 
+Cross-user exchange uses a still smaller JSON contract: format kind/version,
+name, dungeon-family identity, and numbered XYZ points. It excludes the local
+preset identifier and save time as well as every build, scene, map, player, and
+session field. Import validates the exact document shape and active family, then
+loads an unsaved editor draft; the user must choose **Save As** before it enters
+the local preset store. Import never invokes placement.
+
 For exact saved XYZ, the preferred future architecture is an in-process call
 through the exact-current-build high-level normal marker action. The current
 package now proves the normal UI boundary as

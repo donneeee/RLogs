@@ -13,6 +13,16 @@ export interface AutomarkerPreset {
   points: readonly AutomarkerPoint[];
 }
 
+export interface AutomarkerPresetExchange {
+  kind: "rlogs-automarker-preset";
+  version: 1;
+  name: string;
+  activityFamilyId: string;
+  points: readonly AutomarkerPoint[];
+}
+
+export const AUTOMARKER_EXCHANGE_MAX_BYTES = 64 * 1024;
+
 export interface AutomarkerSceneContext {
   clientBuild: string;
   sceneId: number;
@@ -108,6 +118,65 @@ export function automarkerSaveRequest(
     points: points.map((point) => ({ ...point })),
     expectedContext: { ...expectedContext },
   };
+}
+
+export function automarkerPresetExchange(preset: AutomarkerPreset): AutomarkerPresetExchange {
+  return {
+    kind: "rlogs-automarker-preset",
+    version: 1,
+    name: preset.name,
+    activityFamilyId: preset.activityFamilyId,
+    points: preset.points.map((point) => ({ ...point })),
+  };
+}
+
+export function serializeAutomarkerPresetExchange(preset: AutomarkerPreset): string {
+  return `${JSON.stringify(automarkerPresetExchange(preset), null, 2)}\n`;
+}
+
+export function parseAutomarkerPresetExchange(
+  text: string,
+  expectedActivityFamilyId: string,
+): AutomarkerPresetExchange {
+  if (new TextEncoder().encode(text).byteLength > AUTOMARKER_EXCHANGE_MAX_BYTES) {
+    throw new Error("The automarker preset file exceeds the 64 KiB safety limit.");
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new Error("The automarker preset file is not valid JSON.");
+  }
+  if (!record(value) || !exactKeys(value, ["kind", "version", "name", "activityFamilyId", "points"]) ||
+      value.kind !== "rlogs-automarker-preset" || value.version !== 1 ||
+      typeof value.name !== "string" || value.name.trim().length < 1 || value.name.length > 80 ||
+      !validFamily(value.activityFamilyId) || !Array.isArray(value.points)) {
+    throw new Error("The automarker preset file has an invalid or unsupported format.");
+  }
+  validateManualPoints(value.points as AutomarkerPoint[]);
+  if (value.activityFamilyId !== expectedActivityFamilyId) {
+    throw new Error("The imported automarker preset belongs to another dungeon family.");
+  }
+  return {
+    kind: "rlogs-automarker-preset",
+    version: 1,
+    name: value.name.trim(),
+    activityFamilyId: value.activityFamilyId,
+    points: value.points.map((point) => ({ ...(point as AutomarkerPoint) })),
+  };
+}
+
+export function automarkerExportFilename(name: string): string {
+  const stem = name.normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^[. _-]+|[. _-]+$/g, "")
+    .slice(0, 64)
+    .replace(/[. _-]+$/g, "");
+  const safeStem = stem.length > 0 && !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(stem)
+    ? stem
+    : "automarker-preset";
+  return `${safeStem}.rlogs-automarker.json`;
 }
 
 export function validateManualPoints(points: readonly AutomarkerPoint[]): void {

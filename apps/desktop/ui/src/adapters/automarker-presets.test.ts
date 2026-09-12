@@ -1,17 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
+  AUTOMARKER_EXCHANGE_MAX_BYTES,
+  automarkerExportFilename,
+  automarkerPresetExchange,
   automarkerSaveRequest,
   activeAutomarkerPreview,
   automarkerResponseIsCurrent,
   newlyCreatedPresetId,
   parseAutomarkerLocalLoadResult,
   parseAutomarkerPreview,
+  parseAutomarkerPresetExchange,
   parseAutomarkerPresetView,
   parseObservedMarkerSnapshot,
   observedMarkersMatchPresetView,
   previewMatchesContext,
   publishAutomarkerPreview,
   readActiveAutomarkerPreview,
+  serializeAutomarkerPresetExchange,
 } from "./automarker-presets";
 import { automarkerPresetContextKey } from "./automarker-presets-surface";
 
@@ -36,6 +41,37 @@ function view() {
 }
 
 describe("automarker preset catalog", () => {
+  it("round-trips an identity-free portable exchange document", () => {
+    const preset = view().presets[0]!;
+    const serialized = serializeAutomarkerPresetExchange(preset);
+    const raw = JSON.parse(serialized) as Record<string, unknown>;
+    expect(Object.keys(raw).sort()).toEqual(["activityFamilyId", "kind", "name", "points", "version"]);
+    expect(serialized).not.toMatch(/presetId|savedAt|clientBuild|sceneId|mapId|session|uuid/i);
+    expect(parseAutomarkerPresetExchange(serialized, "dungeon.1633")).toEqual(automarkerPresetExchange(preset));
+  });
+
+  it("rejects unknown identity fields, another family, malformed JSON, and oversized exchange files", () => {
+    const portable = automarkerPresetExchange(view().presets[0]!);
+    for (const field of ["accountUuid", "characterUuid", "playerUuid", "entityUuid", "sessionId", "skillUuid", "presetId", "savedAtUnixMillis", "clientBuild", "sceneId", "mapId"]) {
+      expect(() => parseAutomarkerPresetExchange(JSON.stringify({ ...portable, [field]: "private" }), "dungeon.1633"), field)
+        .toThrow(/invalid|unsupported/i);
+    }
+    expect(() => parseAutomarkerPresetExchange(JSON.stringify(portable), "mech-facility"))
+      .toThrow(/another dungeon family/i);
+    expect(() => parseAutomarkerPresetExchange("{", "dungeon.1633")).toThrow(/valid JSON/i);
+    expect(() => parseAutomarkerPresetExchange(" ".repeat(AUTOMARKER_EXCHANGE_MAX_BYTES + 1), "dungeon.1633"))
+      .toThrow(/64 KiB/i);
+  });
+
+  it("creates a bounded filesystem-safe export filename", () => {
+    expect(automarkerExportFilename("../../Tína: M1? * opener")).toBe("Tina-M1-opener.rlogs-automarker.json");
+    expect(automarkerExportFilename("CON")).toBe("automarker-preset.rlogs-automarker.json");
+    expect(automarkerExportFilename("CON.txt")).toBe("automarker-preset.rlogs-automarker.json");
+    expect(automarkerExportFilename("lpt1.setup")).toBe("automarker-preset.rlogs-automarker.json");
+    expect(automarkerExportFilename("💥")).toBe("automarker-preset.rlogs-automarker.json");
+    expect(automarkerExportFilename("x".repeat(200)).length).toBeLessThanOrEqual(64 + ".rlogs-automarker.json".length);
+  });
+
   it("accepts only a fully stamped, internally consistent observed marker snapshot", () => {
     const value = {
       ...view(),
