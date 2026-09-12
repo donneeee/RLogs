@@ -884,7 +884,13 @@ mod tests {
             161
         );
         assert_eq!(
-            proof["length_preservation"]["complete_wire_length_preservation_proven"],
+            proof["length_preservation"]
+                ["complete_wire_length_preservation_proven_for_observed_request"],
+            true
+        );
+        assert_eq!(
+            proof["length_preservation"]
+                ["complete_wire_length_preservation_all_requests_proven"],
             false
         );
         assert_eq!(proof["conclusion"]["runtime_sender_enabled"], false);
