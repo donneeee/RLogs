@@ -8,6 +8,11 @@
 //! inject, suspend, place markers, inspect packets, or scan/dump process memory.
 
 #[cfg(windows)]
+#[allow(dead_code)]
+#[path = "../../../../apps/desktop/src/automarker_coordinate_planner.rs"]
+mod coordinate_planner;
+
+#[cfg(windows)]
 mod windows {
     use std::{
         collections::BTreeMap,
@@ -15,12 +20,18 @@ mod windows {
         error::Error,
         ffi::{OsString, c_void},
         fs::{self, File},
-        io::Read,
+        io::{Read, Write},
         mem::size_of,
+        net::TcpStream,
         os::windows::ffi::OsStringExt,
         path::{Path, PathBuf},
         thread,
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    };
+
+    use crate::coordinate_planner::{
+        CertifiedMouseDelta, CoordinatePlannerConfig, CoordinatePlannerSession, PlannerDecision,
+        SettledIndicatorObservation,
     };
 
     use serde::Serialize;
@@ -107,6 +118,7 @@ mod windows {
     const MIN_USER_ADDRESS: usize = 0x1_0000;
     const MAX_USER_ADDRESS: usize = 0x0000_7fff_ffff_ffff;
     const ARMED_MODE_TOKEN: &str = "marker1-reversible-calibration-v1";
+    const PLANNER_ARMED_MODE_TOKEN: &str = "marker1-single-planner-step-and-restore-v1";
     const MARKER_1_SKILL_ID: i32 = 1101;
     const MARKER_1_SLOT_ID: i32 = 201;
     const MARKER_PARAM: f32 = 1.0;
@@ -194,6 +206,59 @@ mod windows {
         cancelled: bool,
         outcome: &'static str,
         preflight: Option<PreflightDiagnostic>,
+        planner_step: Option<PlannerStepReceipt>,
+    }
+
+    #[derive(Clone, Debug, Serialize)]
+    struct PlannerStepReceipt {
+        target: Position,
+        player_origin: Option<Position>,
+        target_player_distance: Option<f32>,
+        proposed_integer_mouse_delta: Option<[i32; 2]>,
+        predicted_distance: Option<f32>,
+        observed_distance: Option<f32>,
+        actual_to_predicted_improvement_ratio: Option<f32>,
+        strict_distance_reduction: bool,
+        rollback_attempted: bool,
+        rollback_not_safe: bool,
+        rollback_cancel_emitted: bool,
+        inverse_emitted: bool,
+        inverse_return_error: Option<f32>,
+        outcome: &'static str,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct LiveMapIdentity {
+        session_id: String,
+        client_build: String,
+        scene_id: i64,
+        map_id: u64,
+        local_actor_id: u64,
+        activity_family_id: String,
+    }
+
+    #[derive(Clone, Debug)]
+    struct LivePlayerContext {
+        identity: LiveMapIdentity,
+        origin: Position,
+    }
+
+    #[derive(Clone, Debug)]
+    struct PlannerCanaryRequest {
+        target: Position,
+        rlogs_base_url: String,
+    }
+
+    struct PlannerStepRunContext<'a, M: Memory> {
+        memory: &'a M,
+        module_base: usize,
+        process_id: u32,
+        started: &'a Instant,
+        baseline_roots: &'a Roots,
+        baseline_context: MarkerContext,
+        calibration: &'a CanaryReceipt,
+        request: &'a PlannerCanaryRequest,
+        initial_live: &'a LivePlayerContext,
     }
 
     #[derive(Clone, Debug, Serialize)]
@@ -321,6 +386,13 @@ mod windows {
         Escape,
         AbortForeground,
         AbortContext,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum PlannerRollbackAction {
+        Inverse([i32; 2]),
+        Escape,
+        CannotActWithoutForeground,
     }
 
     #[derive(Debug, Serialize)]
@@ -490,9 +562,20 @@ mod windows {
         }
         let duration_millis = numeric_option(&options, "duration-ms", 15_000, 100, 60_000)?;
         let interval_millis = numeric_option(&options, "interval-ms", 10, 5, 1_000)?;
-        let armed = options
-            .get("armed-mode")
-            .is_some_and(|value| value == ARMED_MODE_TOKEN);
+        let armed_mode = options.get("armed-mode").map(String::as_str);
+        let armed = armed_mode.is_some();
+        let planner_request = if armed_mode == Some(PLANNER_ARMED_MODE_TOKEN) {
+            Some(PlannerCanaryRequest {
+                target: Position {
+                    x: float_option(&options, "target-x")?,
+                    y: float_option(&options, "target-y")?,
+                    z: float_option(&options, "target-z")?,
+                },
+                rlogs_base_url: required(&options, "rlogs-base-url")?.to_owned(),
+            })
+        } else {
+            None
+        };
         if interval_millis > duration_millis {
             return Err("--interval-ms must not exceed --duration-ms".into());
         }
@@ -551,7 +634,12 @@ mod windows {
 
         let memory = ProcessMemory(handle.0);
         let (events, counters, canary) = if armed {
-            let canary = run_reversible_calibration_canary(&memory, module.base, process_id);
+            let canary = run_reversible_calibration_canary(
+                &memory,
+                module.base,
+                process_id,
+                planner_request.as_ref(),
+            );
             (Vec::new(), Counters::default(), canary)
         } else {
             let (events, counters) = observe(
@@ -563,7 +651,7 @@ mod windows {
             (events, counters, read_only_canary_receipt())
         };
         let receipt = Receipt {
-            schema_version: 4,
+            schema_version: 5,
             generated_by: "rlogs-bpsr-automarker-lifecycle-probe",
             game: "blue-protocol-star-resonance",
             deployment: "global",
@@ -662,6 +750,7 @@ mod windows {
             cancelled: false,
             outcome: "not-armed-read-only",
             preflight: None,
+            planner_step: None,
         }
     }
 
@@ -669,11 +758,16 @@ mod windows {
         memory: &impl Memory,
         module_base: usize,
         process_id: u32,
+        planner_request: Option<&PlannerCanaryRequest>,
     ) -> CanaryReceipt {
         let started = Instant::now();
         let mut receipt = CanaryReceipt {
             armed: true,
-            mode: ARMED_MODE_TOKEN,
+            mode: if planner_request.is_some() {
+                PLANNER_ARMED_MODE_TOKEN
+            } else {
+                ARMED_MODE_TOKEN
+            },
             calibration_pixels: CALIBRATION_PIXELS,
             marker_1_state_validated: false,
             foreground_validated_before_every_input: true,
@@ -688,6 +782,7 @@ mod windows {
             cancelled: false,
             outcome: "preflight-rejected-marker-state",
             preflight: None,
+            planner_step: None,
         };
         let (preflight, baseline) = diagnose_marker_1_preflight(memory, module_base, &started);
         receipt.preflight = Some(preflight);
@@ -702,6 +797,32 @@ mod windows {
         receipt.baseline = Some(baseline.observation);
         receipt.outcome = "failed-closed";
 
+        let planner_live = if let Some(request) = planner_request {
+            let mut failure = empty_planner_receipt(request, "live-player-context-unavailable");
+            let live = match read_live_player_context(&request.rlogs_base_url) {
+                Ok(value) => value,
+                Err(_) => {
+                    receipt.planner_step = Some(failure);
+                    return cancel_preflight_receipt(receipt, memory, module_base, process_id);
+                }
+            };
+            failure.player_origin = Some(live.origin.clone());
+            let distance = position_distance(&request.target, &live.origin);
+            failure.target_player_distance = Some(distance);
+            if position_norm(&request.target) == 0.0 || distance > MARKER_MAX_DISTANCE {
+                failure.outcome = if position_norm(&request.target) == 0.0 {
+                    "invalid-zero-target"
+                } else {
+                    "target-outside-live-player-range"
+                };
+                receipt.planner_step = Some(failure);
+                return cancel_preflight_receipt(receipt, memory, module_base, process_id);
+            }
+            Some(live)
+        } else {
+            None
+        };
+
         for (sequence_index, delta) in CALIBRATION_SEQUENCE.into_iter().enumerate() {
             let pre_input = match stable_marker_1_sample(memory, module_base, &started) {
                 Ok(sample) => sample,
@@ -714,10 +835,18 @@ mod windows {
             };
             let roots_match = pre_input.roots == baseline_roots;
             let context_matches = MarkerContext::from(&pre_input.state) == baseline_context;
+            let live_context_matches = planner_request.is_none()
+                || planner_request
+                    .zip(planner_live.as_ref())
+                    .is_some_and(|(request, expected)| {
+                        read_live_player_context(&request.rlogs_base_url).is_ok_and(|current| {
+                            live_context_matches(expected, &current, &request.target)
+                        })
+                    });
             let action = next_calibration_action(
                 sequence_index,
                 game_is_foreground(process_id),
-                roots_match && context_matches,
+                roots_match && context_matches && live_context_matches,
             );
             match action {
                 CalibrationAction::AbortForeground => {
@@ -789,6 +918,22 @@ mod windows {
             }
         }
 
+        if let Some(request) = planner_request {
+            receipt.planner_step = Some(run_single_planner_step(PlannerStepRunContext {
+                memory,
+                module_base,
+                process_id,
+                started: &started,
+                baseline_roots: &baseline_roots,
+                baseline_context,
+                calibration: &receipt,
+                request,
+                initial_live: planner_live
+                    .as_ref()
+                    .expect("planner preflight established"),
+            }));
+        }
+
         let (final_roots_match, final_lifecycle_match) =
             match stable_marker_1_sample(memory, module_base, &started) {
                 Ok(sample) => (
@@ -816,6 +961,11 @@ mod windows {
             receipt.foreground_validated_before_every_input = false;
         }
 
+        let planner_passed = planner_request.is_none()
+            || receipt
+                .planner_step
+                .as_ref()
+                .is_some_and(|step| step.outcome == "passed");
         if receipt.transitions.len() == CALIBRATION_SEQUENCE.len()
             && receipt
                 .transitions
@@ -828,10 +978,305 @@ mod windows {
             && receipt.escape_emitted
             && receipt.approximately_returned
             && receipt.cancelled
+            && planner_passed
         {
             receipt.outcome = "passed";
         }
         receipt
+    }
+
+    fn run_single_planner_step<M: Memory>(
+        context: PlannerStepRunContext<'_, M>,
+    ) -> PlannerStepReceipt {
+        let PlannerStepRunContext {
+            memory,
+            module_base,
+            process_id,
+            started,
+            baseline_roots,
+            baseline_context,
+            calibration,
+            request,
+            initial_live,
+        } = context;
+        let mut result = empty_planner_receipt(request, "preflight-failed");
+        let live = match read_live_player_context(&request.rlogs_base_url) {
+            Ok(value) => value,
+            Err(_) => {
+                result.outcome = "live-player-context-unavailable";
+                return result;
+            }
+        };
+        if !live_context_matches(initial_live, &live, &request.target) {
+            result.outcome = "live-context-changed-after-calibration";
+            return result;
+        }
+        result.player_origin = Some(live.origin.clone());
+        let player_distance = position_distance(&request.target, &live.origin);
+        result.target_player_distance = Some(player_distance);
+        if player_distance > MARKER_MAX_DISTANCE {
+            result.outcome = "target-outside-live-player-range";
+            return result;
+        }
+        let Some(baseline) = calibration.baseline.as_ref() else {
+            return result;
+        };
+        let mut observations = vec![planner_observation(&baseline.position, None)];
+        for transition in &calibration.transitions {
+            observations.push(planner_observation(
+                &transition.subsequent_observation.position,
+                Some(CertifiedMouseDelta {
+                    planner_command_id: None,
+                    delta: transition.emitted_integer_mouse_delta,
+                    exclusive_input_ownership: true,
+                }),
+            ));
+        }
+        let mut planner = match CoordinatePlannerSession::new(
+            CoordinatePlannerConfig {
+                maximum_mouse_step: 4.0,
+                maximum_mouse_axis_step: 4,
+                ..CoordinatePlannerConfig::default()
+            },
+            1,
+            1,
+            1,
+        ) {
+            Ok(value) => value,
+            Err(_) => {
+                result.outcome = "planner-rejected-calibration";
+                return result;
+            }
+        };
+        let target = [
+            f64::from(request.target.x),
+            f64::from(request.target.y),
+            f64::from(request.target.z),
+        ];
+        let origin = [
+            f64::from(live.origin.x),
+            f64::from(live.origin.y),
+            f64::from(live.origin.z),
+        ];
+        let proposal = match planner.plan(&observations, target, origin, 18.0) {
+            Ok(PlannerDecision::Move(value)) => value,
+            Ok(PlannerDecision::Arrived { .. }) => {
+                result.outcome = "target-already-within-arrival-tolerance";
+                return result;
+            }
+            Err(_) => {
+                result.outcome = "planner-rejected-target";
+                return result;
+            }
+        };
+        let delta = proposal.relative_mouse_delta;
+        if delta == [0, 0]
+            || delta.into_iter().any(|axis| axis.abs() > 4)
+            || (f64::from(delta[0]).powi(2) + f64::from(delta[1]).powi(2)).sqrt() > 4.0
+        {
+            result.outcome = "planner-step-out-of-bounds";
+            return result;
+        }
+        result.proposed_integer_mouse_delta = Some(delta);
+        result.predicted_distance = Some(proposal.predicted_distance as f32);
+        let pre_input = match stable_marker_1_sample(memory, module_base, started) {
+            Ok(value) => value,
+            Err(_) => {
+                result.outcome = "context-lost-before-planner-step";
+                return result;
+            }
+        };
+        let before = pre_input.observation.position.clone();
+        let live_before = read_live_player_context(&request.rlogs_base_url);
+        if !game_is_foreground(process_id)
+            || pre_input.roots != *baseline_roots
+            || MarkerContext::from(&pre_input.state) != baseline_context
+            || !live_before
+                .as_ref()
+                .is_ok_and(|value| live_context_matches(&live, value, &request.target))
+        {
+            result.outcome = "context-lost-before-planner-step";
+            return result;
+        }
+        if !emit_relative_mouse(delta) {
+            result.outcome = "planner-step-input-failed";
+            return result;
+        }
+        result.rollback_attempted = true;
+        thread::sleep(Duration::from_millis(SETTLE_MILLIS));
+        let observed = stable_marker_1_sample(memory, module_base, started);
+        let live_after = read_live_player_context(&request.rlogs_base_url);
+        if observed.as_ref().is_err()
+            || observed.as_ref().is_ok_and(|value| {
+                value.roots != *baseline_roots
+                    || MarkerContext::from(&value.state) != baseline_context
+            })
+            || !live_after
+                .as_ref()
+                .is_ok_and(|value| live_context_matches(&live, value, &request.target))
+        {
+            result.outcome = "context-lost-after-planner-step";
+        }
+        let before_distance = position_distance(&before, &request.target);
+        let observed_distance = observed
+            .as_ref()
+            .ok()
+            .map(|value| position_distance(&value.observation.position, &request.target));
+        result.observed_distance = observed_distance;
+        let predicted_improvement = before_distance - proposal.predicted_distance as f32;
+        if let Some(observed_distance) = observed_distance {
+            let actual_improvement = before_distance - observed_distance;
+            result.strict_distance_reduction = actual_improvement > 0.0;
+            let ratio = actual_improvement / predicted_improvement.max(f32::EPSILON);
+            result.actual_to_predicted_improvement_ratio = Some(ratio);
+        }
+
+        let inverse = [-delta[0], -delta[1]];
+        let pre_inverse = stable_marker_1_sample(memory, module_base, started);
+        let rollback_context_matches = pre_inverse.as_ref().is_ok_and(|value| {
+            value.roots == *baseline_roots && MarkerContext::from(&value.state) == baseline_context
+        });
+        match next_planner_rollback_action(
+            inverse,
+            game_is_foreground(process_id),
+            rollback_context_matches,
+        ) {
+            PlannerRollbackAction::Inverse(exact_inverse) => {
+                result.inverse_emitted = emit_relative_mouse(exact_inverse);
+                if !result.inverse_emitted {
+                    result.outcome = "rollback-input-failed";
+                }
+            }
+            PlannerRollbackAction::Escape => {
+                result.rollback_not_safe = true;
+                result.rollback_cancel_emitted = emit_escape();
+                result.outcome = "rollback_not_safe";
+            }
+            PlannerRollbackAction::CannotActWithoutForeground => {
+                result.rollback_not_safe = true;
+                result.outcome = "rollback_not_safe";
+            }
+        }
+        if result.inverse_emitted {
+            thread::sleep(Duration::from_millis(SETTLE_MILLIS));
+            let live_returned = read_live_player_context(&request.rlogs_base_url);
+            if let Ok(returned) = stable_marker_1_sample(memory, module_base, started) {
+                if returned.roots == *baseline_roots
+                    && MarkerContext::from(&returned.state) == baseline_context
+                    && live_returned
+                        .as_ref()
+                        .is_ok_and(|value| live_context_matches(&live, value, &request.target))
+                {
+                    result.inverse_return_error =
+                        Some(position_distance(&before, &returned.observation.position));
+                }
+            }
+        }
+        if result.outcome != "context-lost-after-planner-step"
+            && observed_distance.is_some_and(|distance| {
+                planner_step_passes(
+                    before_distance,
+                    proposal.predicted_distance as f32,
+                    distance,
+                    result.inverse_return_error,
+                )
+            })
+            && result.inverse_emitted
+        {
+            result.outcome = "passed";
+        } else if result.outcome == "preflight-failed" {
+            result.outcome = "planner-step-validation-failed";
+        }
+        result
+    }
+
+    fn empty_planner_receipt(
+        request: &PlannerCanaryRequest,
+        outcome: &'static str,
+    ) -> PlannerStepReceipt {
+        PlannerStepReceipt {
+            target: request.target.clone(),
+            player_origin: None,
+            target_player_distance: None,
+            proposed_integer_mouse_delta: None,
+            predicted_distance: None,
+            observed_distance: None,
+            actual_to_predicted_improvement_ratio: None,
+            strict_distance_reduction: false,
+            rollback_attempted: false,
+            rollback_not_safe: false,
+            rollback_cancel_emitted: false,
+            inverse_emitted: false,
+            inverse_return_error: None,
+            outcome,
+        }
+    }
+
+    fn cancel_preflight_receipt(
+        mut receipt: CanaryReceipt,
+        memory: &impl Memory,
+        module_base: usize,
+        process_id: u32,
+    ) -> CanaryReceipt {
+        if game_is_foreground(process_id) {
+            receipt.escape_emitted = emit_escape();
+            if receipt.escape_emitted {
+                thread::sleep(Duration::from_millis(150));
+                receipt.cancelled = coherent_sample(memory, module_base)
+                    .map(|state| !state.indicator.is_enable)
+                    .unwrap_or(false);
+            }
+        } else {
+            receipt.foreground_validated_before_every_input = false;
+        }
+        receipt
+    }
+
+    fn planner_step_passes(
+        before_distance: f32,
+        predicted_distance: f32,
+        observed_distance: f32,
+        inverse_return_error: Option<f32>,
+    ) -> bool {
+        let predicted_improvement = before_distance - predicted_distance;
+        let actual_improvement = before_distance - observed_distance;
+        before_distance.is_finite()
+            && predicted_distance.is_finite()
+            && observed_distance.is_finite()
+            && predicted_improvement > 0.0
+            && actual_improvement > 0.0
+            && actual_improvement / predicted_improvement >= 0.20
+            && inverse_return_error.is_some_and(|error| error.is_finite() && error <= 0.002)
+    }
+
+    fn live_context_matches(
+        expected: &LivePlayerContext,
+        current: &LivePlayerContext,
+        target: &Position,
+    ) -> bool {
+        current.identity == expected.identity
+            && position_distance(target, &current.origin).is_finite()
+            && position_distance(target, &current.origin) <= MARKER_MAX_DISTANCE
+    }
+
+    fn planner_observation(
+        position: &Position,
+        applied_mouse_delta: Option<CertifiedMouseDelta>,
+    ) -> SettledIndicatorObservation {
+        SettledIndicatorObservation {
+            position: [
+                f64::from(position.x),
+                f64::from(position.y),
+                f64::from(position.z),
+            ],
+            applied_mouse_delta,
+            lifecycle_generation: 1,
+            root_generation: 1,
+            context_identity: 1,
+            settled: true,
+            foreground: true,
+            context_continuous: true,
+        }
     }
 
     #[derive(Clone)]
@@ -1023,6 +1468,20 @@ mod windows {
             .map_or(CalibrationAction::Escape, CalibrationAction::Move)
     }
 
+    fn next_planner_rollback_action(
+        inverse: [i32; 2],
+        foreground: bool,
+        context_matches: bool,
+    ) -> PlannerRollbackAction {
+        if !foreground {
+            return PlannerRollbackAction::CannotActWithoutForeground;
+        }
+        if !context_matches {
+            return PlannerRollbackAction::Escape;
+        }
+        PlannerRollbackAction::Inverse(inverse)
+    }
+
     fn calibration_sequence_is_rank_2() -> bool {
         let xx: i64 = CALIBRATION_SEQUENCE
             .iter()
@@ -1050,6 +1509,173 @@ mod windows {
 
     fn position_norm(position: &Position) -> f32 {
         (position.x.powi(2) + position.y.powi(2) + position.z.powi(2)).sqrt()
+    }
+
+    fn read_live_player_context(base_url: &str) -> Result<LivePlayerContext, &'static str> {
+        let authority = base_url
+            .strip_prefix("http://127.0.0.1:")
+            .ok_or("rlogs-base-url-must-be-loopback-http")?;
+        if authority.is_empty() || !authority.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err("rlogs-base-url-must-be-loopback-http");
+        }
+        let initial = local_json_get(authority, "/api/runtime/live/mechanics-map")?;
+        let initial_revision = initial
+            .get("revision")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or("missing-map-revision")?;
+        let initial_observed = initial
+            .get("snapshot")
+            .and_then(|value| value.get("last_observed_micros"))
+            .and_then(serde_json::Value::as_u64)
+            .ok_or("missing-map-observation-clock")?;
+        let wait_body = format!("{{\"after_revision\":{initial_revision},\"timeout_millis\":750}}");
+        let map = local_json_request(
+            authority,
+            "POST",
+            "/api/runtime/live/mechanics-map/wait",
+            Some(wait_body.as_bytes()),
+        )?;
+        if map.get("revision").and_then(serde_json::Value::as_u64) <= Some(initial_revision)
+            || map
+                .get("snapshot")
+                .and_then(|value| value.get("last_observed_micros"))
+                .and_then(serde_json::Value::as_u64)
+                <= Some(initial_observed)
+        {
+            return Err("mechanics-map-not-fresh");
+        }
+        let presets = local_json_get(authority, "/api/automarkers/presets")?;
+        let snapshot = map.get("snapshot").ok_or("missing-map-snapshot")?;
+        if snapshot
+            .get("client_build")
+            .and_then(serde_json::Value::as_str)
+            != Some(BUILD)
+            || snapshot
+                .get("local_position_observed")
+                .and_then(serde_json::Value::as_bool)
+                != Some(true)
+        {
+            return Err("map-context-not-current-build-positioned");
+        }
+        let local_actor = snapshot
+            .get("local_actor_id")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or("missing-local-actor")?;
+        let entity = snapshot
+            .get("entities")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|entities| {
+                entities.iter().find(|entity| {
+                    entity.get("actor_id").and_then(serde_json::Value::as_u64) == Some(local_actor)
+                })
+            })
+            .ok_or("missing-local-entity")?;
+        if entity.get("stale").and_then(serde_json::Value::as_bool) != Some(false) {
+            return Err("local-entity-stale");
+        }
+        let number = |key| {
+            entity
+                .get(key)
+                .and_then(serde_json::Value::as_f64)
+                .filter(|value| value.is_finite())
+                .map(|value| value as f32)
+                .ok_or("invalid-local-position")
+        };
+        let context = presets.get("context").ok_or("missing-automarker-context")?;
+        let scene_id = snapshot
+            .get("scene_id")
+            .and_then(serde_json::Value::as_i64)
+            .ok_or("missing-scene")?;
+        let map_id = snapshot
+            .get("map_id")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or("missing-map")?;
+        if context
+            .get("clientBuild")
+            .and_then(serde_json::Value::as_str)
+            != Some(BUILD)
+            || context.get("sceneId").and_then(serde_json::Value::as_i64) != Some(scene_id)
+            || context.get("mapId").and_then(serde_json::Value::as_u64) != Some(map_id)
+        {
+            return Err("automarker-map-context-mismatch");
+        }
+        Ok(LivePlayerContext {
+            identity: LiveMapIdentity {
+                session_id: snapshot
+                    .get("session_id")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or("missing-session")?
+                    .to_owned(),
+                client_build: BUILD.to_owned(),
+                scene_id,
+                map_id,
+                local_actor_id: local_actor,
+                activity_family_id: context
+                    .get("activityFamilyId")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or("missing-family")?
+                    .to_owned(),
+            },
+            origin: Position {
+                x: number("x")?,
+                y: number("y")?,
+                z: number("z")?,
+            },
+        })
+    }
+
+    fn local_json_get(authority: &str, path: &str) -> Result<serde_json::Value, &'static str> {
+        local_json_request(authority, "GET", path, None)
+    }
+
+    fn local_json_request(
+        authority: &str,
+        method: &str,
+        path: &str,
+        body: Option<&[u8]>,
+    ) -> Result<serde_json::Value, &'static str> {
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{authority}"))
+            .map_err(|_| "rlogs-host-unavailable")?;
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .map_err(|_| "rlogs-host-unavailable")?;
+        let body = body.unwrap_or_default();
+        write!(stream, "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{authority}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len())
+            .map_err(|_| "rlogs-host-unavailable")?;
+        stream
+            .write_all(body)
+            .map_err(|_| "rlogs-host-unavailable")?;
+        let mut bytes = Vec::new();
+        stream
+            .read_to_end(&mut bytes)
+            .map_err(|_| "rlogs-host-unavailable")?;
+        let split = bytes
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .ok_or("invalid-rlogs-response")?;
+        let header = std::str::from_utf8(&bytes[..split]).map_err(|_| "invalid-rlogs-response")?;
+        if !header.starts_with("HTTP/1.1 200 ") {
+            return Err("rlogs-host-rejected-request");
+        }
+        if header.to_ascii_lowercase().contains("transfer-encoding:") {
+            return Err("unsupported-rlogs-transfer-encoding");
+        }
+        let content_length = header
+            .lines()
+            .find_map(|line| {
+                line.to_ascii_lowercase()
+                    .strip_prefix("content-length:")
+                    .map(str::trim)
+                    .map(str::to_owned)
+            })
+            .ok_or("missing-rlogs-content-length")?
+            .parse::<usize>()
+            .map_err(|_| "invalid-rlogs-content-length")?;
+        let response_body = &bytes[split + 4..];
+        if response_body.len() != content_length {
+            return Err("rlogs-content-length-mismatch");
+        }
+        serde_json::from_slice(response_body).map_err(|_| "invalid-rlogs-json")
     }
 
     fn game_is_foreground(process_id: u32) -> bool {
@@ -1656,7 +2282,7 @@ mod windows {
     }
 
     fn reject_unknown_options(options: &BTreeMap<String, String>) -> Result<(), Box<dyn Error>> {
-        const ALLOWED: [&str; 7] = [
+        const ALLOWED: [&str; 11] = [
             "build",
             "process-executable",
             "game-assembly",
@@ -1664,6 +2290,10 @@ mod windows {
             "output",
             "duration-ms",
             "armed-mode",
+            "target-x",
+            "target-y",
+            "target-z",
+            "rlogs-base-url",
         ];
         for key in options.keys() {
             if key != "interval-ms" && !ALLOWED.contains(&key.as_str()) {
@@ -1675,11 +2305,30 @@ mod windows {
         }
         if options
             .get("armed-mode")
-            .is_some_and(|value| value != ARMED_MODE_TOKEN)
+            .is_some_and(|value| value != ARMED_MODE_TOKEN && value != PLANNER_ARMED_MODE_TOKEN)
         {
             return Err("unknown armed-mode token".into());
         }
+        let planner_options = ["target-x", "target-y", "target-z", "rlogs-base-url"];
+        if options.get("armed-mode").map(String::as_str) == Some(PLANNER_ARMED_MODE_TOKEN) {
+            if planner_options
+                .iter()
+                .any(|key| !options.contains_key(*key))
+            {
+                return Err("planner mode requires target XYZ and rlogs-base-url".into());
+            }
+        } else if planner_options.iter().any(|key| options.contains_key(*key)) {
+            return Err("planner-only options require the exact planner armed mode".into());
+        }
         Ok(())
+    }
+
+    fn float_option(options: &BTreeMap<String, String>, key: &str) -> Result<f32, Box<dyn Error>> {
+        let value: f32 = required(options, key)?.parse()?;
+        if !value.is_finite() {
+            return Err(format!("--{key} must be finite").into());
+        }
+        Ok(value)
     }
 
     fn required<'a>(
@@ -2012,6 +2661,167 @@ mod windows {
             assert!(reject_unknown_options(&options).is_err());
             options.insert("armed-mode".into(), ARMED_MODE_TOKEN.into());
             assert!(reject_unknown_options(&options).is_ok());
+            options.insert("armed-mode".into(), PLANNER_ARMED_MODE_TOKEN.into());
+            options.insert("target-x".into(), "1".into());
+            options.insert("target-y".into(), "2".into());
+            options.insert("target-z".into(), "3".into());
+            options.insert("rlogs-base-url".into(), "http://127.0.0.1:1".into());
+            assert!(reject_unknown_options(&options).is_ok());
+        }
+
+        #[test]
+        fn planner_step_requires_strict_improvement_ratio_and_two_mm_return() {
+            assert!(planner_step_passes(1.0, 0.5, 0.8, Some(0.002)));
+            assert!(!planner_step_passes(1.0, 0.5, 1.0, Some(0.0)));
+            assert!(!planner_step_passes(1.0, 0.5, 0.91, Some(0.0)));
+            assert!(!planner_step_passes(1.0, 0.5, 0.8, Some(0.0021)));
+            assert!(!planner_step_passes(1.0, 1.1, 0.8, Some(0.0)));
+        }
+
+        #[test]
+        fn post_move_observation_failure_does_not_bypass_exact_inverse_selection() {
+            let post_move_observation_succeeded = false;
+            assert!(!post_move_observation_succeeded);
+            assert_eq!(
+                next_planner_rollback_action([-3, 1], true, true),
+                PlannerRollbackAction::Inverse([-3, 1])
+            );
+            assert_eq!(
+                next_planner_rollback_action([-3, 1], true, false),
+                PlannerRollbackAction::Escape
+            );
+            assert_eq!(
+                next_planner_rollback_action([-3, 1], false, true),
+                PlannerRollbackAction::CannotActWithoutForeground
+            );
+        }
+
+        #[test]
+        fn loopback_map_contract_requires_current_non_stale_local_position_and_family() {
+            use std::net::TcpListener;
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let server = thread::spawn(move || {
+                for request_index in 0..3 {
+                    let (mut stream, _) = listener.accept().unwrap();
+                    let mut request = Vec::new();
+                    loop {
+                        let mut chunk = [0u8; 1024];
+                        let read = stream.read(&mut chunk).unwrap();
+                        request.extend_from_slice(&chunk[..read]);
+                        let complete = request
+                            .windows(4)
+                            .position(|window| window == b"\r\n\r\n")
+                            .is_some_and(|header_end| {
+                                let header = String::from_utf8_lossy(&request[..header_end]);
+                                let content_length = header.lines().find_map(|line| {
+                                    line.to_ascii_lowercase()
+                                        .strip_prefix("content-length:")
+                                        .and_then(|value| value.trim().parse::<usize>().ok())
+                                });
+                                content_length
+                                    .is_some_and(|length| request.len() >= header_end + 4 + length)
+                            });
+                        if complete || read == 0 {
+                            break;
+                        }
+                    }
+                    let body = match request_index {
+                        0 => {
+                            r#"{"revision":1,"snapshot":{"last_observed_micros":1,"client_build":"25247556","session_id":"s","scene_id":1633,"map_id":1633,"local_position_observed":true,"local_actor_id":7,"entities":[{"actor_id":7,"x":1.0,"y":2.0,"z":3.0,"stale":false}]}}"#
+                        }
+                        1 => {
+                            r#"{"revision":2,"snapshot":{"last_observed_micros":2,"client_build":"25247556","session_id":"s","scene_id":1633,"map_id":1633,"local_position_observed":true,"local_actor_id":7,"entities":[{"actor_id":7,"x":1.0,"y":2.0,"z":3.0,"stale":false}]}}"#
+                        }
+                        _ => {
+                            r#"{"context":{"clientBuild":"25247556","sceneId":1633,"mapId":1633,"activityFamilyId":"dungeon.1633"}}"#
+                        }
+                    };
+                    write!(
+                        stream,
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    )
+                    .unwrap();
+                }
+            });
+            let value = read_live_player_context(&format!("http://127.0.0.1:{port}")).unwrap();
+            server.join().unwrap();
+            assert_eq!(value.identity.client_build, BUILD);
+            assert_eq!(value.identity.activity_family_id, "dungeon.1633");
+            assert_eq!(value.identity.local_actor_id, 7);
+            assert_eq!(
+                value.origin,
+                Position {
+                    x: 1.0,
+                    y: 2.0,
+                    z: 3.0
+                }
+            );
+            assert!(read_live_player_context("http://localhost:1").is_err());
+        }
+
+        #[test]
+        fn live_context_rejects_local_actor_rotation() {
+            let expected = LivePlayerContext {
+                identity: LiveMapIdentity {
+                    session_id: "session".to_owned(),
+                    client_build: BUILD.to_owned(),
+                    scene_id: 1633,
+                    map_id: 1633,
+                    local_actor_id: 7,
+                    activity_family_id: "dungeon.1633".to_owned(),
+                },
+                origin: Position {
+                    x: 1.0,
+                    y: 2.0,
+                    z: 3.0,
+                },
+            };
+            let mut rotated = expected.clone();
+            rotated.identity.local_actor_id = 8;
+            assert!(!live_context_matches(
+                &expected,
+                &rotated,
+                &Position {
+                    x: 2.0,
+                    y: 2.0,
+                    z: 3.0,
+                }
+            ));
+        }
+
+        #[test]
+        fn loopback_http_rejects_chunked_and_trailing_response_bytes() {
+            use std::net::TcpListener;
+
+            fn serve_once(response: &'static [u8]) -> u16 {
+                let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+                let port = listener.local_addr().unwrap().port();
+                thread::spawn(move || {
+                    let (mut stream, _) = listener.accept().unwrap();
+                    let mut request = [0u8; 1024];
+                    let _ = stream.read(&mut request).unwrap();
+                    stream.write_all(response).unwrap();
+                });
+                port
+            }
+
+            let chunked_port = serve_once(
+                b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n2\r\n{}\r\n0\r\n\r\n",
+            );
+            assert_eq!(
+                local_json_get(&chunked_port.to_string(), "/test"),
+                Err("unsupported-rlogs-transfer-encoding")
+            );
+
+            let trailing_port =
+                serve_once(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}x");
+            assert_eq!(
+                local_json_get(&trailing_port.to_string(), "/test"),
+                Err("rlogs-content-length-mismatch")
+            );
         }
 
         #[test]

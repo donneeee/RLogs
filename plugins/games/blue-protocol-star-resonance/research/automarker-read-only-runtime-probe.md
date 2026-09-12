@@ -41,7 +41,7 @@ foreground game. It never emits a mouse button, Enter, Normal Attack, or
 placement confirmation. Its receipt contains no PID, account/session identity,
 raw address, or filesystem path.
 
-Receipt schema v4 retains a sanitized diagnostic even when armed preflight is
+Receipt schema v5 retains a sanitized diagnostic even when armed preflight is
 rejected before input. It reports acquisition/class/coherence status, whether
 the allowlisted roots stayed unchanged, each exact Marker 1 field gate, the
 safe observed scalar flags and IDs, indicator parameters and range, input-slot
@@ -97,6 +97,36 @@ passing receipt requires both mouse axes to excite the indicator, the symmetric
 sequence to approximately return, and the indicator to become inactive after
 Escape. The old `-ArmReversibleNudge` switch is intentionally rejected rather
 than treated as an alias. A failed-closed receipt is not placement authority.
+
+Schema v5 adds a separate one-step planner canary. Keep rLogs running so its
+read-only Mechanics Map API exposes a current, non-stale packet-observed local
+player position and Automarkers scene-family context. Supply an intended saved
+world coordinate explicitly:
+
+```powershell
+.\run-bpsr-automarker-lifecycle-probe.ps1 `
+  -ArmSinglePlannerStep `
+  -TargetX <saved-x> -TargetY <saved-y> -TargetZ <saved-z> `
+  -RLogsBaseUrl 'http://127.0.0.1:54221'
+```
+
+No target coordinate is built into the executable. The canary requires
+matching build, session, scene, map, and
+activity family plus a finite target within 18 metres of the live player. It
+also requires the Mechanics Map revision and observation clock to advance,
+rather than accepting a merely cached `stale=false` entity. It
+repeats the calibration, asks the pure planner for exactly one integer move
+bounded to four pixels, requires strict distance reduction and an
+actual/predicted improvement ratio of at least `0.20`, then applies the exact
+inverse and requires return within `0.002 m`. It never falls back to a supplied
+player origin or guessed memory offset.
+
+After a planner movement is emitted, rollback no longer depends on subsequent
+map-API availability or measurement success. If foreground ownership and the
+same read-only Marker 1 roots/context can be re-established, the exact inverse
+is attempted. Otherwise the canary emits Escape only while the game remains
+foreground and records `rollback_not_safe`; it never substitutes a click or
+placement action.
 
 The output is a sanitized JSON receipt containing exact artifact hashes,
 sampling counts, policy assertions, and deduplicated lifecycle transitions.
