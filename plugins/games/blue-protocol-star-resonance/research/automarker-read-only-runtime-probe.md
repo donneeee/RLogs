@@ -200,6 +200,41 @@ URL explicitly. It never scans or connects to a non-loopback address. Run
 `-SelfTest` for the no-process launcher checks, or `-DryRun` for the packaged
 no-process/no-input receipt.
 
+## Operator-confirmed Marker 1 placement evidence
+
+Receipt schema v7 extends v6 with the optional sanitized operator-placement
+evidence block; read-only and earlier armed modes retain their prior meaning.
+
+The next separately armed evidence mode retains manual placement authority:
+
+```powershell
+.\run-bpsr-automarker-lifecycle-probe.ps1 `
+  -ArmOperatorPlacement `
+  -PresetName 'Boss opening'
+```
+
+`-PresetId` is also accepted; raw XYZ is deliberately rejected for this mode.
+The operator manually selects Marker 1 before launch. The canary performs the
+same bounded calibration and closed-loop aim, then prints a ready message and
+waits up to eight seconds for exactly one physical left click while the game is
+foreground. It never synthesizes a mouse button event.
+
+Success requires all of the following on the exact active build and capture
+identity: one human click and no injected/other click or mouse movement; a
+strictly newer verified outbound Marker 1 request; then a strictly newer
+authoritative inbound Marker 1 whose capture-clock timestamp follows that
+request and whose position is within `0.075 m` of the preset target. Session,
+deployment, protocol-pack digest, scene, map, activity family, local actor,
+foreground, read-only roots, and Marker 1 lifecycle gates remain fail-closed.
+
+Before the human click, any failure reverses emitted aim deltas in exact reverse
+order when the existing safety gates permit, then cancels with Escape. After a
+human click, aim deltas are never replayed because the marker UI may already be
+closed and those movements could affect the gameplay camera; every post-click
+failure emits Escape only if the game is still foreground. The receipt records
+the human placement attempt separately from `programmaticClickEmitted: false`
+and contains no PID, pointers, account, session, deployment, or digest values.
+
 The output is a sanitized JSON receipt containing exact artifact hashes,
 sampling counts, policy assertions, and deduplicated lifecycle transitions.
 It contains no PID, raw pointer/module address, or filesystem path. Its

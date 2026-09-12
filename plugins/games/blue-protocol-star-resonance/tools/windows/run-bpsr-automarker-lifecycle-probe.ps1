@@ -7,6 +7,7 @@ param(
     [switch]$ArmReversibleCalibration,
     [switch]$ArmSinglePlannerStep,
     [switch]$ArmClosedLoopAim,
+    [switch]$ArmOperatorPlacement,
     [Nullable[double]]$TargetX,
     [Nullable[double]]$TargetY,
     [Nullable[double]]$TargetZ,
@@ -230,6 +231,7 @@ function Assert-LauncherTargetSelection(
     [bool]$Calibration,
     [bool]$OneStep,
     [bool]$ClosedLoop,
+    [bool]$OperatorPlacement,
     [string]$RequestedPresetId,
     [string]$RequestedPresetName,
     [bool]$ListingPresets,
@@ -237,15 +239,15 @@ function Assert-LauncherTargetSelection(
     [Nullable[double]]$Y,
     [Nullable[double]]$Z
 ) {
-    if (@($Calibration, $OneStep, $ClosedLoop).Where({ $_ }).Count -gt 1) {
+    if (@($Calibration, $OneStep, $ClosedLoop, $OperatorPlacement).Where({ $_ }).Count -gt 1) {
         throw 'Choose only one armed canary mode.'
     }
     $hasPreset = -not [string]::IsNullOrWhiteSpace($RequestedPresetId)
     $hasPresetName = -not [string]::IsNullOrWhiteSpace($RequestedPresetName)
     $hasAnyCoordinate = ($null -ne $X -or $null -ne $Y -or $null -ne $Z)
     $hasAllCoordinates = ($null -ne $X -and $null -ne $Y -and $null -ne $Z)
-    if (($hasPreset -or $hasPresetName) -and -not $ClosedLoop) {
-        throw '-PresetId and -PresetName are supported only with -ArmClosedLoopAim.'
+    if (($hasPreset -or $hasPresetName) -and -not ($ClosedLoop -or $OperatorPlacement)) {
+        throw '-PresetId and -PresetName require -ArmClosedLoopAim or -ArmOperatorPlacement.'
     }
     if (@($hasPreset, $hasPresetName, $hasAnyCoordinate).Where({ $_ }).Count -gt 1) {
         throw '-PresetId, -PresetName, and explicit -TargetX/-TargetY/-TargetZ are mutually exclusive.'
@@ -256,10 +258,13 @@ function Assert-LauncherTargetSelection(
     if ($hasAnyCoordinate -and -not $hasAllCoordinates) {
         throw '-TargetX, -TargetY, and -TargetZ must be supplied together.'
     }
-    if (-not ($OneStep -or $ClosedLoop) -and ($hasPreset -or $hasPresetName -or $hasAnyCoordinate)) {
+    if ($OperatorPlacement -and -not ($hasPreset -or $hasPresetName)) {
+        throw '-ArmOperatorPlacement requires exactly one of -PresetId or -PresetName; explicit XYZ is not accepted.'
+    }
+    if (-not ($OneStep -or $ClosedLoop -or $OperatorPlacement) -and ($hasPreset -or $hasPresetName -or $hasAnyCoordinate)) {
         throw 'Target coordinates and presets require an armed planner mode.'
     }
-    if ($ListingPresets -and ($Calibration -or $OneStep -or $ClosedLoop -or $hasPreset -or $hasPresetName -or $hasAnyCoordinate)) {
+    if ($ListingPresets -and ($Calibration -or $OneStep -or $ClosedLoop -or $OperatorPlacement -or $hasPreset -or $hasPresetName -or $hasAnyCoordinate)) {
         throw '-ListPresets cannot be combined with an armed mode or a target selector.'
     }
 }
@@ -297,17 +302,21 @@ function Invoke-LauncherSelfTest {
     try { [void](Resolve-MarkerOnePresetTarget $nameJson $null 'Same Name') } catch { $rejected = $true }
     if (-not $rejected) { throw 'Self-test failed: ambiguous exact preset name was accepted.' }
     $rejected = $false
-    try { Assert-LauncherTargetSelection $false $false $true 'preset-test' $null $false 1 2 3 } catch { $rejected = $true }
+    try { Assert-LauncherTargetSelection $false $false $true $false 'preset-test' $null $false 1 2 3 } catch { $rejected = $true }
     if (-not $rejected) { throw 'Self-test failed: preset and explicit XYZ were accepted together.' }
-    Assert-LauncherTargetSelection $false $false $true 'preset-test' $null $false $null $null $null
-    Assert-LauncherTargetSelection $false $false $true $null 'Test' $false $null $null $null
-    Assert-LauncherTargetSelection $false $false $true $null $null $false 1 2 3
-    Assert-LauncherTargetSelection $false $false $false $null $null $true $null $null $null
+    Assert-LauncherTargetSelection $false $false $true $false 'preset-test' $null $false $null $null $null
+    Assert-LauncherTargetSelection $false $false $true $false $null 'Test' $false $null $null $null
+    Assert-LauncherTargetSelection $false $false $true $false $null $null $false 1 2 3
+    Assert-LauncherTargetSelection $false $false $false $false $null $null $true $null $null $null
+    Assert-LauncherTargetSelection $false $false $false $true 'preset-test' $null $false $null $null $null
+    $rejected = $false
+    try { Assert-LauncherTargetSelection $false $false $false $true $null $null $false 1 2 3 } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Self-test failed: operator placement accepted raw XYZ without a preset.' }
     Write-Host 'Launcher self-test passed: loopback policy, schema, family context, ID/name uniqueness, and target exclusivity.'
 }
 
 if ($SelfTest) {
-    if ($DryRun -or $ListPresets -or $ArmReversibleCalibration -or $ArmSinglePlannerStep -or $ArmClosedLoopAim) {
+    if ($DryRun -or $ListPresets -or $ArmReversibleCalibration -or $ArmSinglePlannerStep -or $ArmClosedLoopAim -or $ArmOperatorPlacement) {
         throw '-SelfTest cannot be combined with dry-run or armed modes.'
     }
     Invoke-LauncherSelfTest
@@ -315,7 +324,7 @@ if ($SelfTest) {
 }
 
 if ($DryRun) {
-    if ($ListPresets -or $ArmReversibleCalibration -or $ArmSinglePlannerStep -or $ArmClosedLoopAim) {
+    if ($ListPresets -or $ArmReversibleCalibration -or $ArmSinglePlannerStep -or $ArmClosedLoopAim -or $ArmOperatorPlacement) {
         throw '-DryRun cannot be combined with an armed mode.'
     }
     if (-not (Test-Path -LiteralPath $probe -PathType Leaf)) {
@@ -339,7 +348,7 @@ if ($DryRun) {
     return
 }
 
-Assert-LauncherTargetSelection $ArmReversibleCalibration $ArmSinglePlannerStep $ArmClosedLoopAim $PresetId $PresetName $ListPresets $TargetX $TargetY $TargetZ
+Assert-LauncherTargetSelection $ArmReversibleCalibration $ArmSinglePlannerStep $ArmClosedLoopAim $ArmOperatorPlacement $PresetId $PresetName $ListPresets $TargetX $TargetY $TargetZ
 
 if ($ListPresets) {
     if ([string]::IsNullOrWhiteSpace($RLogsBaseUrl)) { $RLogsBaseUrl = Find-RLogsLoopbackBaseUrl }
@@ -399,7 +408,7 @@ if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
 }
 
 $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
-$receipt = Join-Path $PSScriptRoot "automarker-lifecycle-$stamp.v6.json"
+$receipt = Join-Path $PSScriptRoot "automarker-lifecycle-$stamp.v7.json"
 if (Test-Path -LiteralPath $receipt) { throw 'Refusing to overwrite an existing receipt.' }
 
 $arguments = @(
@@ -420,7 +429,7 @@ if ($ArmReversibleCalibration) {
     }
     $arguments += @('--armed-mode', 'marker1-reversible-calibration-v1')
 }
-if ($ArmSinglePlannerStep -or $ArmClosedLoopAim) {
+if ($ArmSinglePlannerStep -or $ArmClosedLoopAim -or $ArmOperatorPlacement) {
     $hasPreset = -not [string]::IsNullOrWhiteSpace($PresetId)
     $hasPresetName = -not [string]::IsNullOrWhiteSpace($PresetName)
     if ([string]::IsNullOrWhiteSpace($RLogsBaseUrl)) {
@@ -444,7 +453,9 @@ if ($ArmSinglePlannerStep -or $ArmClosedLoopAim) {
             throw 'Planner target coordinates must be finite.'
         }
     }
-    if ($ArmClosedLoopAim) {
+    if ($ArmOperatorPlacement) {
+        Write-Warning 'ARMED OPERATOR PLACEMENT EVIDENCE: manually select Marker 1 and keep the game focused. The canary aims without clicking, then asks you to click once. Do not move the mouse. It requires newer outbound and authoritative inbound Marker 1 evidence.'
+    } elseif ($ArmClosedLoopAim) {
         Write-Warning 'ARMED CLOSED-LOOP CANARY: manually select Marker 1 and keep the game focused. This calibrates, makes at most four <=4-pixel moves (<=16 cumulative), reverses every move, then Escape. Do not touch the mouse. It never clicks or places.'
     } else {
         Write-Warning 'ARMED ONE-STEP CANARY: manually select Marker 1 and keep the game focused. This calibrates, moves at most 4 pixels once, applies the exact inverse, then Escape. It never clicks or places.'
@@ -454,7 +465,13 @@ if ($ArmSinglePlannerStep -or $ArmClosedLoopAim) {
         Write-Host "$remaining..."
         Start-Sleep -Seconds 1
     }
-    $armedToken = if ($ArmClosedLoopAim) { 'marker1-closed-loop-aim-and-rollback-v1' } else { 'marker1-single-planner-step-and-restore-v1' }
+    $armedToken = if ($ArmOperatorPlacement) {
+        'marker1-operator-click-placement-evidence-v1'
+    } elseif ($ArmClosedLoopAim) {
+        'marker1-closed-loop-aim-and-rollback-v1'
+    } else {
+        'marker1-single-planner-step-and-restore-v1'
+    }
     $arguments += @(
         '--armed-mode', $armedToken,
         '--target-x', $TargetX.Value.ToString('R', [Globalization.CultureInfo]::InvariantCulture),

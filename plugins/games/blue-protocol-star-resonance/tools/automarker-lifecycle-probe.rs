@@ -3,8 +3,9 @@
 //! The observer opens one already-running client with query/read rights only.
 //! It follows one compile-time allowlisted IL2CPP object chain and samples six
 //! reviewed fields. Its default mode cannot emit input. An exact-token armed
-//! canary may emit four tiny symmetric orthogonal mouse moves and Escape; it
-//! never clicks or confirms a marker. It cannot write/invoke game code, debug,
+//! canary may emit tiny bounded mouse moves and Escape; it never emits a click.
+//! A separately armed mode can observe one operator click and packet-derived
+//! request/ack evidence through rLogs. It cannot write/invoke game code, debug,
 //! inject, suspend, place markers, inspect packets, or scan/dump process memory.
 
 #[cfg(windows)]
@@ -15,7 +16,7 @@ mod coordinate_planner;
 #[cfg(windows)]
 mod windows {
     use std::{
-        collections::BTreeMap,
+        collections::{BTreeMap, BTreeSet},
         env,
         error::Error,
         ffi::{OsString, c_void},
@@ -38,7 +39,7 @@ mod windows {
         SettledIndicatorObservation,
     };
 
-    use serde::Serialize;
+    use serde::{Deserialize, Serialize};
     use sha2::{Digest, Sha256};
     use windows_sys::Win32::{
         Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE},
@@ -67,7 +68,8 @@ mod windows {
             WindowsAndMessaging::{
                 CallNextHookEx, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId,
                 LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, PM_NOREMOVE, PeekMessageW, PostThreadMessageW,
-                SetWindowsHookExW, UnhookWindowsHookEx, WH_MOUSE_LL, WM_MOUSEMOVE, WM_QUIT,
+                SetWindowsHookExW, UnhookWindowsHookEx, WH_MOUSE_LL, WM_LBUTTONDOWN,
+                WM_MBUTTONDOWN, WM_MOUSEMOVE, WM_QUIT, WM_RBUTTONDOWN, WM_XBUTTONDOWN,
             },
         },
     };
@@ -128,6 +130,8 @@ mod windows {
     const ARMED_MODE_TOKEN: &str = "marker1-reversible-calibration-v1";
     const PLANNER_ARMED_MODE_TOKEN: &str = "marker1-single-planner-step-and-restore-v1";
     const CLOSED_LOOP_ARMED_MODE_TOKEN: &str = "marker1-closed-loop-aim-and-rollback-v1";
+    const OPERATOR_PLACEMENT_ARMED_MODE_TOKEN: &str =
+        "marker1-operator-click-placement-evidence-v1";
     const INPUT_OBSERVER_TAG: usize = 0x524C_4F47_5341_4D31;
     const CLOSED_LOOP_MAX_MOVES: usize = 4;
     const CLOSED_LOOP_MAX_CUMULATIVE_PIXELS: f64 = 16.0;
@@ -146,10 +150,15 @@ mod windows {
     const STABILITY_SAMPLE_MILLIS: u64 = 50;
     const MAX_SETTLED_POSITION_DELTA: f32 = 0.002;
     const MAX_SETTLED_VELOCITY: f32 = 0.02;
+    const OPERATOR_CLICK_TIMEOUT_MILLIS: u64 = 8_000;
+    const PLACEMENT_COORDINATE_TOLERANCE: f32 = 0.075;
     const PROCESS_READ_RIGHTS: u32 = PROCESS_QUERY_INFORMATION | PROCESS_VM_READ;
 
     static OBSERVED_OWN_MOUSE_MOVES: AtomicU64 = AtomicU64::new(0);
     static OBSERVED_FOREIGN_MOUSE_MOVES: AtomicU64 = AtomicU64::new(0);
+    static OBSERVED_HUMAN_LEFT_CLICKS: AtomicU64 = AtomicU64::new(0);
+    static OBSERVED_INJECTED_CLICKS: AtomicU64 = AtomicU64::new(0);
+    static OBSERVED_OTHER_CLICKS: AtomicU64 = AtomicU64::new(0);
 
     #[derive(Clone, Debug, Eq, PartialEq)]
     struct Roots {
@@ -246,7 +255,9 @@ mod windows {
     #[derive(Clone, Debug, PartialEq, Eq)]
     struct LiveMapIdentity {
         session_id: String,
+        deployment_id: String,
         client_build: String,
+        protocol_pack_digest: String,
         scene_id: i64,
         map_id: u64,
         local_actor_id: u64,
@@ -270,6 +281,7 @@ mod windows {
     enum PlannerCanaryMode {
         SingleStep,
         ClosedLoop,
+        OperatorPlacement,
     }
 
     impl PlannerCanaryMode {
@@ -277,6 +289,7 @@ mod windows {
             match self {
                 Self::SingleStep => PLANNER_ARMED_MODE_TOKEN,
                 Self::ClosedLoop => CLOSED_LOOP_ARMED_MODE_TOKEN,
+                Self::OperatorPlacement => OPERATOR_PLACEMENT_ARMED_MODE_TOKEN,
             }
         }
     }
@@ -308,13 +321,34 @@ mod windows {
         rollback_not_safe: bool,
         rollback_cancel_emitted: bool,
         rollback_return_error: Option<f32>,
+        operator_placement: Option<OperatorPlacementReceipt>,
         outcome: &'static str,
     }
 
-    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    #[derive(Clone, Debug, Serialize)]
+    struct OperatorPlacementReceipt {
+        human_click_observed: bool,
+        programmatic_click_emitted: bool,
+        injected_click_observed: bool,
+        other_click_observed: bool,
+        outbound_marker_1_newer: bool,
+        outbound_observed_micros: Option<u64>,
+        inbound_marker_1_newer: bool,
+        inbound_observed_micros: Option<u64>,
+        inbound_target_distance: Option<f32>,
+        context_continuous: bool,
+        timed_out: bool,
+        escape_emitted: bool,
+        outcome: &'static str,
+    }
+
+    #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
     struct MouseObservationCounts {
         own: u64,
         foreign: u64,
+        human_left_clicks: u64,
+        injected_clicks: u64,
+        other_clicks: u64,
     }
 
     struct MouseInterferenceObserver {
@@ -638,6 +672,21 @@ mod windows {
             } else {
                 OBSERVED_FOREIGN_MOUSE_MOVES.fetch_add(1, Ordering::SeqCst);
             }
+        } else if code >= 0
+            && matches!(
+                wparam as u32,
+                WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN | WM_XBUTTONDOWN
+            )
+            && lparam != 0
+        {
+            let event = unsafe { &*(lparam as *const MSLLHOOKSTRUCT) };
+            if event.flags & LLMHF_INJECTED != 0 {
+                OBSERVED_INJECTED_CLICKS.fetch_add(1, Ordering::SeqCst);
+            } else if wparam as u32 == WM_LBUTTONDOWN {
+                OBSERVED_HUMAN_LEFT_CLICKS.fetch_add(1, Ordering::SeqCst);
+            } else {
+                OBSERVED_OTHER_CLICKS.fetch_add(1, Ordering::SeqCst);
+            }
         }
         unsafe { CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam) }
     }
@@ -646,6 +695,9 @@ mod windows {
         fn start() -> Result<Self, &'static str> {
             OBSERVED_OWN_MOUSE_MOVES.store(0, Ordering::SeqCst);
             OBSERVED_FOREIGN_MOUSE_MOVES.store(0, Ordering::SeqCst);
+            OBSERVED_HUMAN_LEFT_CLICKS.store(0, Ordering::SeqCst);
+            OBSERVED_INJECTED_CLICKS.store(0, Ordering::SeqCst);
+            OBSERVED_OTHER_CLICKS.store(0, Ordering::SeqCst);
             let (ready_tx, ready_rx) = mpsc::sync_channel(1);
             let join = thread::spawn(move || {
                 let thread_id = unsafe { GetCurrentThreadId() };
@@ -684,6 +736,9 @@ mod windows {
             MouseObservationCounts {
                 own: OBSERVED_OWN_MOUSE_MOVES.load(Ordering::SeqCst),
                 foreign: OBSERVED_FOREIGN_MOUSE_MOVES.load(Ordering::SeqCst),
+                human_left_clicks: OBSERVED_HUMAN_LEFT_CLICKS.load(Ordering::SeqCst),
+                injected_clicks: OBSERVED_INJECTED_CLICKS.load(Ordering::SeqCst),
+                other_clicks: OBSERVED_OTHER_CLICKS.load(Ordering::SeqCst),
             }
         }
     }
@@ -713,6 +768,7 @@ mod windows {
         let planner_mode = match armed_mode {
             Some(PLANNER_ARMED_MODE_TOKEN) => Some(PlannerCanaryMode::SingleStep),
             Some(CLOSED_LOOP_ARMED_MODE_TOKEN) => Some(PlannerCanaryMode::ClosedLoop),
+            Some(OPERATOR_PLACEMENT_ARMED_MODE_TOKEN) => Some(PlannerCanaryMode::OperatorPlacement),
             _ => None,
         };
         let planner_request = if let Some(mode) = planner_mode {
@@ -802,8 +858,13 @@ mod windows {
             );
             (events, counters, read_only_canary_receipt())
         };
+        let operator_placement_attempted = canary
+            .closed_loop
+            .as_ref()
+            .and_then(|closed| closed.operator_placement.as_ref())
+            .is_some_and(|placement| placement.human_click_observed);
         let receipt = Receipt {
-            schema_version: 6,
+            schema_version: 7,
             generated_by: "rlogs-bpsr-automarker-lifecycle-probe",
             game: "blue-protocol-star-resonance",
             deployment: "global",
@@ -840,7 +901,7 @@ mod windows {
                 unavailable_samples: counters.unavailable_samples,
                 rejected_identity_samples: counters.rejected_identity_samples,
                 torn_samples: counters.torn_samples,
-                placement_attempted: false,
+                placement_attempted: operator_placement_attempted,
                 programmatic_activation_proven: false,
             },
             events,
@@ -973,9 +1034,12 @@ mod windows {
             None
         };
 
-        let input_observer = if planner_request
-            .is_some_and(|request| request.mode == PlannerCanaryMode::ClosedLoop)
-        {
+        let input_observer = if planner_request.is_some_and(|request| {
+            matches!(
+                request.mode,
+                PlannerCanaryMode::ClosedLoop | PlannerCanaryMode::OperatorPlacement
+            )
+        }) {
             match MouseInterferenceObserver::start() {
                 Ok(observer) => Some(observer),
                 Err(_) => {
@@ -1097,8 +1161,10 @@ mod windows {
         }
 
         let closed_loop_calibration_failed = planner_request.is_some_and(|request| {
-            request.mode == PlannerCanaryMode::ClosedLoop
-                && receipt.transitions.len() != CALIBRATION_SEQUENCE.len()
+            matches!(
+                request.mode,
+                PlannerCanaryMode::ClosedLoop | PlannerCanaryMode::OperatorPlacement
+            ) && receipt.transitions.len() != CALIBRATION_SEQUENCE.len()
         });
         if closed_loop_calibration_failed {
             let request = planner_request.expect("closed-loop request");
@@ -1149,7 +1215,30 @@ mod windows {
                             .expect("closed-loop observer started"),
                     ));
                 }
+                PlannerCanaryMode::OperatorPlacement => {
+                    receipt.closed_loop = Some(run_closed_loop_aim(
+                        context,
+                        input_observer
+                            .as_ref()
+                            .expect("operator-placement observer started"),
+                    ));
+                }
             }
+        }
+
+        if planner_request.is_some_and(|request| {
+            request.mode == PlannerCanaryMode::OperatorPlacement
+                && receipt
+                    .closed_loop
+                    .as_ref()
+                    .and_then(|closed| closed.operator_placement.as_ref())
+                    .is_some_and(any_click_observed)
+        }) {
+            receipt.outcome = receipt
+                .closed_loop
+                .as_ref()
+                .map_or("failed-closed", |closed| closed.outcome);
+            return receipt;
         }
 
         let (final_roots_match, final_lifecycle_match) =
@@ -1465,6 +1554,194 @@ mod windows {
         result
     }
 
+    struct OperatorPlacementRunContext<'a, M: Memory> {
+        memory: &'a M,
+        module_base: usize,
+        process_id: u32,
+        started: &'a Instant,
+        baseline_roots: &'a Roots,
+        baseline_context: MarkerContext,
+        request: &'a PlannerCanaryRequest,
+        live: &'a LivePlayerContext,
+        observer: &'a MouseInterferenceObserver,
+    }
+
+    fn any_click_observed(receipt: &OperatorPlacementReceipt) -> bool {
+        receipt.human_click_observed
+            || receipt.injected_click_observed
+            || receipt.other_click_observed
+    }
+
+    fn should_escape_after_observed_click(
+        receipt: &OperatorPlacementReceipt,
+        game_foreground: bool,
+    ) -> bool {
+        any_click_observed(receipt) && game_foreground
+    }
+
+    fn finalize_operator_failure(
+        mut receipt: OperatorPlacementReceipt,
+        observer: &MouseInterferenceObserver,
+        process_id: u32,
+    ) -> OperatorPlacementReceipt {
+        let counts = observer.counts();
+        receipt.human_click_observed |= counts.human_left_clicks != 0;
+        receipt.injected_click_observed |= counts.injected_clicks != 0;
+        receipt.other_click_observed |= counts.other_clicks != 0;
+        if should_escape_after_observed_click(&receipt, game_is_foreground(process_id)) {
+            receipt.escape_emitted = emit_escape();
+        }
+        receipt
+    }
+
+    fn run_operator_placement_confirmation<M: Memory>(
+        context: OperatorPlacementRunContext<'_, M>,
+    ) -> OperatorPlacementReceipt {
+        let mut receipt = OperatorPlacementReceipt {
+            human_click_observed: false,
+            programmatic_click_emitted: false,
+            injected_click_observed: false,
+            other_click_observed: false,
+            outbound_marker_1_newer: false,
+            outbound_observed_micros: None,
+            inbound_marker_1_newer: false,
+            inbound_observed_micros: None,
+            inbound_target_distance: None,
+            context_continuous: true,
+            timed_out: false,
+            escape_emitted: false,
+            outcome: "preflight-failed",
+        };
+        let initial_counts = context.observer.counts();
+        if initial_counts.human_left_clicks != 0
+            || initial_counts.injected_clicks != 0
+            || initial_counts.other_clicks != 0
+            || initial_counts.foreign != 0
+        {
+            receipt.outcome = "click-or-input-observed-before-ready";
+            return finalize_operator_failure(receipt, context.observer, context.process_id);
+        }
+        let baseline = match read_observed_marker_evidence(&context.request.rlogs_base_url) {
+            Ok(value) if observed_evidence_matches_live(&value, context.live) => value,
+            _ => {
+                receipt.outcome = "outbound-inbound-evidence-unavailable";
+                return finalize_operator_failure(receipt, context.observer, context.process_id);
+            }
+        };
+        let marker_context_current =
+            stable_marker_1_sample(context.memory, context.module_base, context.started).is_ok_and(
+                |sample| {
+                    sample.roots == *context.baseline_roots
+                        && MarkerContext::from(&sample.state) == context.baseline_context
+                },
+            );
+        if !game_is_foreground(context.process_id) || !marker_context_current {
+            receipt.context_continuous = false;
+            receipt.outcome = "context-lost-before-human-click";
+            return finalize_operator_failure(receipt, context.observer, context.process_id);
+        }
+
+        println!(
+            "Marker 1 aim is ready. Click the normal game placement control exactly once; do not move the mouse."
+        );
+        receipt.outcome = "awaiting-human-click";
+        let deadline = Instant::now() + Duration::from_millis(OPERATOR_CLICK_TIMEOUT_MILLIS);
+        let mut outbound_micros = None;
+        while Instant::now() < deadline {
+            if !game_is_foreground(context.process_id) {
+                receipt.context_continuous = false;
+                receipt.outcome = "foreground-lost-during-human-confirmation";
+                break;
+            }
+            let counts = context.observer.counts();
+            receipt.injected_click_observed = counts.injected_clicks != 0;
+            receipt.other_click_observed = counts.other_clicks != 0;
+            if counts.foreign != initial_counts.foreign
+                || counts.own != initial_counts.own
+                || counts.injected_clicks != 0
+                || counts.other_clicks != 0
+                || counts.human_left_clicks > 1
+            {
+                receipt.outcome = "click-or-input-interference";
+                break;
+            }
+            receipt.human_click_observed = counts.human_left_clicks == 1;
+            let live = match read_live_player_context(&context.request.rlogs_base_url) {
+                Ok(value)
+                    if live_context_matches(context.live, &value, &context.request.target) =>
+                {
+                    value
+                }
+                _ => {
+                    receipt.context_continuous = false;
+                    receipt.outcome = "live-context-lost-during-human-confirmation";
+                    break;
+                }
+            };
+            if !receipt.human_click_observed
+                && !stable_marker_1_sample(context.memory, context.module_base, context.started)
+                    .is_ok_and(|sample| {
+                        sample.roots == *context.baseline_roots
+                            && MarkerContext::from(&sample.state) == context.baseline_context
+                    })
+            {
+                receipt.context_continuous = false;
+                receipt.outcome = "marker-context-lost-before-human-click";
+                break;
+            }
+            let evidence = match read_observed_marker_evidence(&context.request.rlogs_base_url) {
+                Ok(value)
+                    if observed_evidence_matches_live(&value, &live)
+                        && same_observed_identity(&baseline, &value) =>
+                {
+                    value
+                }
+                _ => {
+                    receipt.context_continuous = false;
+                    receipt.outcome = "observed-marker-context-changed";
+                    break;
+                }
+            };
+            if receipt.human_click_observed && outbound_micros.is_none() {
+                outbound_micros = newer_marker_1_outbound(&baseline, &evidence);
+                receipt.outbound_marker_1_newer = outbound_micros.is_some();
+                receipt.outbound_observed_micros = outbound_micros;
+            }
+            if let Some(outbound) = outbound_micros
+                && let Some((observed, distance)) =
+                    newer_marker_1_inbound(&baseline, &evidence, outbound, &context.request.target)
+            {
+                thread::sleep(Duration::from_millis(150));
+                let final_counts = context.observer.counts();
+                if final_counts.human_left_clicks == 1
+                    && final_counts.injected_clicks == 0
+                    && final_counts.other_clicks == 0
+                    && final_counts.foreign == initial_counts.foreign
+                    && final_counts.own == initial_counts.own
+                    && game_is_foreground(context.process_id)
+                {
+                    receipt.inbound_marker_1_newer = true;
+                    receipt.inbound_observed_micros = Some(observed);
+                    receipt.inbound_target_distance = Some(distance);
+                    receipt.outcome = "passed";
+                    return receipt;
+                }
+                receipt.outcome = "click-or-input-interference-after-ack";
+                break;
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+        receipt.timed_out = Instant::now() >= deadline;
+        if receipt.timed_out {
+            receipt.outcome = if receipt.human_click_observed {
+                "timed-out-awaiting-outbound-inbound-evidence"
+            } else {
+                "timed-out-awaiting-human-click"
+            };
+        }
+        finalize_operator_failure(receipt, context.observer, context.process_id)
+    }
+
     fn run_closed_loop_aim<M: Memory>(
         context: PlannerStepRunContext<'_, M>,
         observer: &MouseInterferenceObserver,
@@ -1610,7 +1887,24 @@ mod windows {
                     Ok(PlannerDecision::Arrived { distance }) => {
                         result.arrived = true;
                         result.arrival_distance = Some(distance as f32);
-                        result.outcome = "arrived-awaiting-rollback";
+                        if request.mode == PlannerCanaryMode::OperatorPlacement {
+                            let confirmation =
+                                run_operator_placement_confirmation(OperatorPlacementRunContext {
+                                    memory,
+                                    module_base,
+                                    process_id,
+                                    started,
+                                    baseline_roots,
+                                    baseline_context,
+                                    request,
+                                    live: &live,
+                                    observer,
+                                });
+                            result.outcome = confirmation.outcome;
+                            result.operator_placement = Some(confirmation);
+                        } else {
+                            result.outcome = "arrived-awaiting-rollback";
+                        }
                         break;
                     }
                     Ok(PlannerDecision::Move(value))
@@ -1690,6 +1984,14 @@ mod windows {
             .iter()
             .map(|delta| (f64::from(delta[0]).powi(2) + f64::from(delta[1]).powi(2)).sqrt())
             .sum();
+        if let Some(confirmation) = result.operator_placement.as_ref()
+            && any_click_observed(confirmation)
+        {
+            // Once a human click may have committed the marker, replaying the
+            // aim deltas could move the gameplay camera rather than a reticle.
+            // Never synthesize that unsafe rollback.
+            return result;
+        }
         result.rollback_attempted = !movement_ledger.is_empty();
         for inverse in reverse_rollback_deltas(&movement_ledger) {
             let rollback_sample = stable_marker_1_sample(memory, module_base, started);
@@ -1778,6 +2080,7 @@ mod windows {
             rollback_not_safe: false,
             rollback_cancel_emitted: false,
             rollback_return_error: None,
+            operator_placement: None,
             outcome,
         }
     }
@@ -2078,7 +2381,11 @@ mod windows {
         before: MouseObservationCounts,
         after: MouseObservationCounts,
     ) -> bool {
-        after.own == before.own.saturating_add(1) && after.foreign == before.foreign
+        after.own == before.own.saturating_add(1)
+            && after.foreign == before.foreign
+            && after.human_left_clicks == before.human_left_clicks
+            && after.injected_clicks == before.injected_clicks
+            && after.other_clicks == before.other_clicks
     }
 
     fn reverse_rollback_deltas(movement_ledger: &[[i32; 2]]) -> Vec<[i32; 2]> {
@@ -2116,6 +2423,189 @@ mod windows {
 
     fn position_norm(position: &Position) -> f32 {
         (position.x.powi(2) + position.y.powi(2) + position.z.powi(2)).sqrt()
+    }
+
+    #[derive(Clone, Debug, Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct ObservedRequestEvidence {
+        marker_number: u8,
+        observed_micros: u64,
+    }
+
+    #[derive(Clone, Debug, Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct ObservedPointEvidence {
+        marker_number: u8,
+        x: f32,
+        y: f32,
+        z: f32,
+        observed_micros: u64,
+    }
+
+    #[derive(Clone, Debug, Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct ObservedMarkerEvidence {
+        schema_version: u16,
+        revision: u64,
+        capture_active: bool,
+        protocol_supported: bool,
+        request_observer_supported: bool,
+        verified_request_count: u32,
+        last_verified_request_marker_number: Option<u8>,
+        last_verified_request_observed_micros: Option<u64>,
+        verified_requests: Vec<ObservedRequestEvidence>,
+        reason: String,
+        session_id: Option<String>,
+        deployment_id: Option<String>,
+        client_build: Option<String>,
+        protocol_pack_digest: Option<String>,
+        scene_id: Option<i64>,
+        map_id: Option<u64>,
+        observed_micros: Option<u64>,
+        markers: Vec<ObservedPointEvidence>,
+    }
+
+    fn read_observed_marker_evidence(
+        base_url: &str,
+    ) -> Result<ObservedMarkerEvidence, &'static str> {
+        let authority = base_url
+            .strip_prefix("http://127.0.0.1:")
+            .ok_or("rlogs-base-url-must-be-loopback-http")?;
+        if authority.is_empty() || !authority.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err("rlogs-base-url-must-be-loopback-http");
+        }
+        serde_json::from_value(local_json_get(authority, "/api/automarkers/observed")?)
+            .map_err(|_| "invalid-observed-marker-schema")
+    }
+
+    fn observed_evidence_matches_live(
+        evidence: &ObservedMarkerEvidence,
+        live: &LivePlayerContext,
+    ) -> bool {
+        let request_numbers = evidence
+            .verified_requests
+            .iter()
+            .map(|request| request.marker_number)
+            .collect::<BTreeSet<_>>();
+        let marker_numbers = evidence
+            .markers
+            .iter()
+            .map(|point| point.marker_number)
+            .collect::<BTreeSet<_>>();
+        let last_request_represented = evidence
+            .last_verified_request_marker_number
+            .zip(evidence.last_verified_request_observed_micros)
+            .is_none_or(|(number, observed)| {
+                evidence.verified_requests.iter().any(|request| {
+                    request.marker_number == number && request.observed_micros == observed
+                })
+            });
+        evidence.schema_version == 3
+            && evidence.capture_active
+            && evidence.protocol_supported
+            && evidence.request_observer_supported
+            && evidence.session_id.as_deref() == Some(live.identity.session_id.as_str())
+            && evidence.deployment_id.as_deref() == Some(live.identity.deployment_id.as_str())
+            && evidence.client_build.as_deref() == Some(BUILD)
+            && evidence.protocol_pack_digest.as_deref()
+                == Some(live.identity.protocol_pack_digest.as_str())
+            && evidence.scene_id == Some(live.identity.scene_id)
+            && evidence.map_id == Some(live.identity.map_id)
+            && matches!(
+                evidence.reason.as_str(),
+                "observed_markers_available" | "no_fully_positioned_markers_observed"
+            )
+            && evidence.observed_micros.is_some()
+            && evidence.last_verified_request_marker_number.is_some()
+                == evidence.last_verified_request_observed_micros.is_some()
+            && last_request_represented
+            && evidence.verified_requests.len() <= evidence.verified_request_count as usize
+            && request_numbers.len() == evidence.verified_requests.len()
+            && evidence
+                .verified_requests
+                .iter()
+                .all(|request| (1..=6).contains(&request.marker_number))
+            && evidence.markers.iter().all(|point| {
+                (1..=6).contains(&point.marker_number)
+                    && point.x.is_finite()
+                    && point.y.is_finite()
+                    && point.z.is_finite()
+                    && evidence
+                        .observed_micros
+                        .is_some_and(|observed| point.observed_micros <= observed)
+            })
+            && marker_numbers.len() == evidence.markers.len()
+            && (evidence.reason != "observed_markers_available" || !evidence.markers.is_empty())
+            && (evidence.reason != "no_fully_positioned_markers_observed"
+                || evidence.markers.is_empty())
+    }
+
+    fn same_observed_identity(
+        baseline: &ObservedMarkerEvidence,
+        current: &ObservedMarkerEvidence,
+    ) -> bool {
+        current.session_id == baseline.session_id
+            && current.deployment_id == baseline.deployment_id
+            && current.client_build == baseline.client_build
+            && current.protocol_pack_digest == baseline.protocol_pack_digest
+            && current.scene_id == baseline.scene_id
+            && current.map_id == baseline.map_id
+    }
+
+    fn marker_1_request_micros(evidence: &ObservedMarkerEvidence) -> Option<u64> {
+        evidence
+            .verified_requests
+            .iter()
+            .find(|request| request.marker_number == 1)
+            .map(|request| request.observed_micros)
+    }
+
+    fn marker_1_point(evidence: &ObservedMarkerEvidence) -> Option<&ObservedPointEvidence> {
+        evidence
+            .markers
+            .iter()
+            .find(|point| point.marker_number == 1)
+    }
+
+    fn newer_marker_1_outbound(
+        baseline: &ObservedMarkerEvidence,
+        current: &ObservedMarkerEvidence,
+    ) -> Option<u64> {
+        let observed = marker_1_request_micros(current)?;
+        (current.revision > baseline.revision
+            && current.verified_request_count > baseline.verified_request_count
+            && observed > marker_1_request_micros(baseline).unwrap_or(0))
+        .then_some(observed)
+    }
+
+    fn newer_marker_1_inbound(
+        baseline: &ObservedMarkerEvidence,
+        current: &ObservedMarkerEvidence,
+        outbound_micros: u64,
+        target: &Position,
+    ) -> Option<(u64, f32)> {
+        let point = marker_1_point(current)?;
+        let distance = position_distance(
+            &Position {
+                x: point.x,
+                y: point.y,
+                z: point.z,
+            },
+            target,
+        );
+        (current.revision > baseline.revision
+            && point.observed_micros > outbound_micros
+            && point.observed_micros
+                > marker_1_point(baseline)
+                    .map(|value| value.observed_micros)
+                    .unwrap_or(0)
+            && distance.is_finite()
+            && distance <= PLACEMENT_COORDINATE_TOLERANCE)
+            .then_some((point.observed_micros, distance))
+    }
+
+    fn capture_session_matches_map(map_session_id: &str, capture_session_id: Option<&str>) -> bool {
+        capture_session_id == Some(map_session_id)
     }
 
     fn read_live_player_context(base_url: &str) -> Result<LivePlayerContext, &'static str> {
@@ -2206,14 +2696,33 @@ mod windows {
         {
             return Err("automarker-map-context-mismatch");
         }
+        let session_id = snapshot
+            .get("session_id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or("missing-session")?;
+        let capture_session_id = presets
+            .get("captureSessionId")
+            .and_then(serde_json::Value::as_str)
+            .ok_or("missing-automarker-capture-session")?;
+        let deployment_id = presets
+            .get("deploymentId")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty())
+            .ok_or("missing-automarker-deployment")?;
+        let protocol_pack_digest = presets
+            .get("protocolPackDigest")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty())
+            .ok_or("missing-automarker-protocol-pack")?;
+        if !capture_session_matches_map(session_id, Some(capture_session_id)) {
+            return Err("automarker-capture-session-mismatch");
+        }
         Ok(LivePlayerContext {
             identity: LiveMapIdentity {
-                session_id: snapshot
-                    .get("session_id")
-                    .and_then(serde_json::Value::as_str)
-                    .ok_or("missing-session")?
-                    .to_owned(),
+                session_id: session_id.to_owned(),
+                deployment_id: deployment_id.to_owned(),
                 client_build: BUILD.to_owned(),
+                protocol_pack_digest: protocol_pack_digest.to_owned(),
                 scene_id,
                 map_id,
                 local_actor_id: local_actor,
@@ -2914,13 +3423,18 @@ mod windows {
             value != ARMED_MODE_TOKEN
                 && value != PLANNER_ARMED_MODE_TOKEN
                 && value != CLOSED_LOOP_ARMED_MODE_TOKEN
+                && value != OPERATOR_PLACEMENT_ARMED_MODE_TOKEN
         }) {
             return Err("unknown armed-mode token".into());
         }
         let planner_options = ["target-x", "target-y", "target-z", "rlogs-base-url"];
         if matches!(
             options.get("armed-mode").map(String::as_str),
-            Some(PLANNER_ARMED_MODE_TOKEN | CLOSED_LOOP_ARMED_MODE_TOKEN)
+            Some(
+                PLANNER_ARMED_MODE_TOKEN
+                    | CLOSED_LOOP_ARMED_MODE_TOKEN
+                    | OPERATOR_PLACEMENT_ARMED_MODE_TOKEN
+            )
         ) {
             if planner_options
                 .iter()
@@ -3280,6 +3794,196 @@ mod windows {
             assert!(reject_unknown_options(&options).is_ok());
             options.insert("armed-mode".into(), CLOSED_LOOP_ARMED_MODE_TOKEN.into());
             assert!(reject_unknown_options(&options).is_ok());
+            options.insert(
+                "armed-mode".into(),
+                OPERATOR_PLACEMENT_ARMED_MODE_TOKEN.into(),
+            );
+            assert!(reject_unknown_options(&options).is_ok());
+        }
+
+        fn observed_evidence(
+            revision: u64,
+            request_count: u32,
+            request_micros: Option<u64>,
+            point: Option<(u64, Position)>,
+        ) -> ObservedMarkerEvidence {
+            ObservedMarkerEvidence {
+                schema_version: 3,
+                revision,
+                capture_active: true,
+                protocol_supported: true,
+                request_observer_supported: true,
+                verified_request_count: request_count,
+                last_verified_request_marker_number: request_micros.map(|_| 1),
+                last_verified_request_observed_micros: request_micros,
+                verified_requests: request_micros
+                    .map(|observed_micros| {
+                        vec![ObservedRequestEvidence {
+                            marker_number: 1,
+                            observed_micros,
+                        }]
+                    })
+                    .unwrap_or_default(),
+                reason: if point.is_some() {
+                    "observed_markers_available"
+                } else {
+                    "no_fully_positioned_markers_observed"
+                }
+                .into(),
+                session_id: Some("session-test".into()),
+                deployment_id: Some("deployment-test".into()),
+                client_build: Some(BUILD.into()),
+                protocol_pack_digest: Some("digest-test".into()),
+                scene_id: Some(1633),
+                map_id: Some(1633),
+                observed_micros: Some(point.as_ref().map_or(1, |value| value.0)),
+                markers: point
+                    .map(|(observed_micros, position)| {
+                        vec![ObservedPointEvidence {
+                            marker_number: 1,
+                            x: position.x,
+                            y: position.y,
+                            z: position.z,
+                            observed_micros,
+                        }]
+                    })
+                    .unwrap_or_default(),
+            }
+        }
+
+        #[test]
+        fn placement_evidence_requires_new_outbound_then_new_nearby_inbound() {
+            let target = Position {
+                x: 10.0,
+                y: 20.0,
+                z: 30.0,
+            };
+            let baseline = observed_evidence(5, 2, Some(100), Some((90, target.clone())));
+            let outbound = observed_evidence(6, 3, Some(200), Some((90, target.clone())));
+            assert_eq!(newer_marker_1_outbound(&baseline, &outbound), Some(200));
+            assert!(newer_marker_1_inbound(&baseline, &outbound, 200, &target).is_none());
+            let acknowledged = observed_evidence(
+                7,
+                3,
+                Some(200),
+                Some((
+                    250,
+                    Position {
+                        x: 10.02,
+                        ..target.clone()
+                    },
+                )),
+            );
+            let (_, distance) =
+                newer_marker_1_inbound(&baseline, &acknowledged, 200, &target).unwrap();
+            assert!(distance <= PLACEMENT_COORDINATE_TOLERANCE);
+            let too_far = observed_evidence(
+                7,
+                3,
+                Some(200),
+                Some((
+                    250,
+                    Position {
+                        x: 10.2,
+                        ..target.clone()
+                    },
+                )),
+            );
+            assert!(newer_marker_1_inbound(&baseline, &too_far, 200, &target).is_none());
+        }
+
+        #[test]
+        fn placement_evidence_rejects_stale_or_wrong_order_observations() {
+            let target = Position {
+                x: 1.0,
+                y: 2.0,
+                z: 3.0,
+            };
+            let baseline = observed_evidence(5, 2, Some(100), None);
+            let stale_request = observed_evidence(6, 3, Some(100), None);
+            assert!(newer_marker_1_outbound(&baseline, &stale_request).is_none());
+            let before_request = observed_evidence(7, 3, Some(200), Some((199, target.clone())));
+            assert!(newer_marker_1_inbound(&baseline, &before_request, 200, &target).is_none());
+            let mut changed_session = observed_evidence(7, 3, Some(200), Some((250, target)));
+            changed_session.session_id = Some("other-session".into());
+            assert!(!same_observed_identity(&baseline, &changed_session));
+        }
+
+        #[test]
+        fn placement_evidence_binds_capture_deployment_digest_scene_and_map() {
+            assert!(capture_session_matches_map(
+                "session-test",
+                Some("session-test")
+            ));
+            assert!(!capture_session_matches_map("session-test", Some("other")));
+            assert!(!capture_session_matches_map("session-test", None));
+            let live = LivePlayerContext {
+                identity: LiveMapIdentity {
+                    session_id: "session-test".into(),
+                    deployment_id: "deployment-test".into(),
+                    client_build: BUILD.into(),
+                    protocol_pack_digest: "digest-test".into(),
+                    scene_id: 1633,
+                    map_id: 1633,
+                    local_actor_id: 7,
+                    activity_family_id: "dungeon.1633".into(),
+                },
+                origin: Position {
+                    x: 1.0,
+                    y: 2.0,
+                    z: 3.0,
+                },
+            };
+            let baseline = observed_evidence(5, 2, Some(100), None);
+            assert!(observed_evidence_matches_live(&baseline, &live));
+            let mut changed = baseline.clone();
+            changed.deployment_id = Some("other".into());
+            assert!(!observed_evidence_matches_live(&changed, &live));
+            let mut changed = baseline.clone();
+            changed.protocol_pack_digest = Some("other".into());
+            assert!(!observed_evidence_matches_live(&changed, &live));
+            let mut changed = baseline.clone();
+            changed.scene_id = Some(6515);
+            assert!(!observed_evidence_matches_live(&changed, &live));
+        }
+
+        #[test]
+        fn operator_canary_has_observation_but_no_click_emission_primitive() {
+            let source = include_str!("automarker-lifecycle-probe.rs");
+            assert!(source.contains(OPERATOR_PLACEMENT_ARMED_MODE_TOKEN));
+            for forbidden in [
+                ["MOUSEEVENTF_", "LEFTDOWN"].concat(),
+                ["MOUSEEVENTF_", "LEFTUP"].concat(),
+            ] {
+                assert!(!source.contains(&forbidden));
+            }
+            let receipt = OperatorPlacementReceipt {
+                human_click_observed: true,
+                programmatic_click_emitted: false,
+                injected_click_observed: false,
+                other_click_observed: false,
+                outbound_marker_1_newer: true,
+                outbound_observed_micros: Some(200),
+                inbound_marker_1_newer: true,
+                inbound_observed_micros: Some(250),
+                inbound_target_distance: Some(0.01),
+                context_continuous: true,
+                timed_out: false,
+                escape_emitted: false,
+                outcome: "passed",
+            };
+            let json = serde_json::to_string(&receipt).unwrap();
+            assert!(json.contains("\"human_click_observed\":true"));
+            assert!(json.contains("\"programmatic_click_emitted\":false"));
+            for forbidden in ["session", "deployment", "digest", "account", "pointer"] {
+                assert!(!json.contains(forbidden));
+            }
+            assert!(should_escape_after_observed_click(&receipt, true));
+            assert!(!should_escape_after_observed_click(&receipt, false));
+            let mut no_click = receipt.clone();
+            no_click.human_click_observed = false;
+            assert!(!any_click_observed(&no_click));
+            assert!(!should_escape_after_observed_click(&no_click, true));
         }
 
         #[test]
@@ -3331,22 +4035,50 @@ mod windows {
 
         #[test]
         fn input_ownership_requires_one_tagged_move_and_no_foreign_move() {
-            let before = MouseObservationCounts { own: 4, foreign: 0 };
+            let before = MouseObservationCounts {
+                own: 4,
+                foreign: 0,
+                ..Default::default()
+            };
             assert!(input_ownership_verified(
                 before,
-                MouseObservationCounts { own: 5, foreign: 0 }
+                MouseObservationCounts {
+                    own: 5,
+                    foreign: 0,
+                    ..Default::default()
+                }
             ));
             assert!(!input_ownership_verified(
                 before,
-                MouseObservationCounts { own: 4, foreign: 0 }
+                MouseObservationCounts {
+                    own: 4,
+                    foreign: 0,
+                    ..Default::default()
+                }
             ));
             assert!(!input_ownership_verified(
                 before,
-                MouseObservationCounts { own: 6, foreign: 0 }
+                MouseObservationCounts {
+                    own: 6,
+                    foreign: 0,
+                    ..Default::default()
+                }
             ));
             assert!(!input_ownership_verified(
                 before,
-                MouseObservationCounts { own: 5, foreign: 1 }
+                MouseObservationCounts {
+                    own: 5,
+                    foreign: 1,
+                    ..Default::default()
+                }
+            ));
+            assert!(!input_ownership_verified(
+                before,
+                MouseObservationCounts {
+                    own: 5,
+                    human_left_clicks: 1,
+                    ..Default::default()
+                }
             ));
         }
 
@@ -3388,7 +4120,7 @@ mod windows {
                             r#"{"revision":2,"snapshot":{"last_observed_micros":2,"client_build":"25247556","session_id":"s","scene_id":1633,"map_id":1633,"local_position_observed":true,"local_actor_id":7,"entities":[{"actor_id":7,"x":1.0,"y":2.0,"z":3.0,"stale":false}]}}"#
                         }
                         _ => {
-                            r#"{"context":{"clientBuild":"25247556","sceneId":1633,"mapId":1633,"activityFamilyId":"dungeon.1633"}}"#
+                            r#"{"context":{"clientBuild":"25247556","sceneId":1633,"mapId":1633,"activityFamilyId":"dungeon.1633"},"captureSessionId":"s","deploymentId":"global-steam","protocolPackDigest":"digest"}"#
                         }
                     };
                     write!(
@@ -3405,6 +4137,8 @@ mod windows {
             assert_eq!(value.identity.client_build, BUILD);
             assert_eq!(value.identity.activity_family_id, "dungeon.1633");
             assert_eq!(value.identity.local_actor_id, 7);
+            assert_eq!(value.identity.deployment_id, "global-steam");
+            assert_eq!(value.identity.protocol_pack_digest, "digest");
             assert_eq!(
                 value.origin,
                 Position {
@@ -3421,7 +4155,9 @@ mod windows {
             let expected = LivePlayerContext {
                 identity: LiveMapIdentity {
                     session_id: "session".to_owned(),
+                    deployment_id: "deployment".to_owned(),
                     client_build: BUILD.to_owned(),
+                    protocol_pack_digest: "digest".to_owned(),
                     scene_id: 1633,
                     map_id: 1633,
                     local_actor_id: 7,
@@ -3444,11 +4180,33 @@ mod windows {
                     z: 3.0,
                 }
             ));
+            let mut changed_deployment = expected.clone();
+            changed_deployment.identity.deployment_id = "other-deployment".into();
+            assert!(!live_context_matches(
+                &expected,
+                &changed_deployment,
+                &Position {
+                    x: 2.0,
+                    y: 2.0,
+                    z: 3.0
+                }
+            ));
+            let mut changed_digest = expected.clone();
+            changed_digest.identity.protocol_pack_digest = "other-digest".into();
+            assert!(!live_context_matches(
+                &expected,
+                &changed_digest,
+                &Position {
+                    x: 2.0,
+                    y: 2.0,
+                    z: 3.0
+                }
+            ));
         }
 
         #[test]
         fn loopback_http_rejects_chunked_and_trailing_response_bytes() {
-            use std::net::TcpListener;
+            use std::net::{Shutdown, TcpListener};
 
             fn serve_once(response: &'static [u8]) -> u16 {
                 let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -3458,6 +4216,7 @@ mod windows {
                     let mut request = [0u8; 1024];
                     let _ = stream.read(&mut request).unwrap();
                     stream.write_all(response).unwrap();
+                    stream.shutdown(Shutdown::Write).unwrap();
                 });
                 port
             }
