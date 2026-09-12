@@ -193,6 +193,7 @@ impl ObservedMarkerFeed {
         *current = ObservedMarkerSnapshot {
             revision,
             capture_active: false,
+            protocol_supported: false,
             reason: "live_capture_not_running",
             scene_id: None,
             map_id: None,

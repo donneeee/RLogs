@@ -85,6 +85,7 @@ import { mountMechanicsMapSurface } from "./mechanics-map-surface";
 import { parseOverlayLayoutSettings } from "./overlay-layout";
 import {
   parseAutomarkerLocalLoadResult,
+  parseObservedMarkerSnapshot,
   parseAutomarkerPresetView,
 } from "./automarker-presets";
 
@@ -731,6 +732,9 @@ function createLocalHostAdapter(localizer: UiLocalizer): DesktopHostAdapter {
           return mountAutomarkerPresetsSurface(container, {
             async loadPresets() {
               return parseAutomarkerPresetView(await apiJson<unknown>("/api/automarkers/presets"));
+            },
+            async loadObservedMarkers() {
+              return parseObservedMarkerSnapshot(await apiJson<unknown>("/api/automarkers/observed"));
             },
             async saveCurrent(request) {
               return parseAutomarkerPresetView(await apiJson<unknown>("/api/automarkers/presets/save", {

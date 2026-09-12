@@ -16,6 +16,7 @@ describe("Mechanics Map overlay canvas preferences", () => {
       schemaVersion: 3,
       context: { clientBuild: "24687926", sceneId: 1631, mapId: 1631, activityFamilyId: "tina-mindrealm", sceneName: "Tina" },
       presets: [], captureSupported: false, captureReason: "native_waymark_state_unverified",
+      captureSessionId: null, deploymentId: null, protocolPackDigest: null,
       nativeLoadSupported: false, nativeLoadReason: "native_waymark_request_unverified",
       previewSessionId: "preview-test-session",
     })).toBe(normal);

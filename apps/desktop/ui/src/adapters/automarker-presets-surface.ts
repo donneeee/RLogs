@@ -4,12 +4,14 @@ import type {
   AutomarkerPoint,
   AutomarkerPresetView,
   LoadAutomarkerPresetRequest,
+  ObservedMarkerSnapshot,
   SaveAutomarkerPresetRequest,
 } from "./automarker-presets";
-import { AUTOMARKER_PREVIEW_STORAGE_KEY, automarkerResponseIsCurrent, automarkerSaveRequest, newlyCreatedPresetId, publishAutomarkerPreview } from "./automarker-presets";
+import { AUTOMARKER_PREVIEW_STORAGE_KEY, automarkerResponseIsCurrent, automarkerSaveRequest, newlyCreatedPresetId, observedMarkersMatchPresetView, publishAutomarkerPreview } from "./automarker-presets";
 
 export interface AutomarkerPresetDependencies {
   loadPresets(): Promise<AutomarkerPresetView>;
+  loadObservedMarkers(): Promise<ObservedMarkerSnapshot>;
   saveCurrent(request: SaveAutomarkerPresetRequest): Promise<AutomarkerPresetView>;
   loadPreset(request: LoadAutomarkerPresetRequest): Promise<AutomarkerLocalLoadResult>;
   openOverlay(): Promise<void>;
@@ -22,6 +24,7 @@ export function mountAutomarkerPresetsSurface(
   let alive = true;
   let view: AutomarkerPresetView | null = null;
   let selectedId: string | null = null;
+  let observedMarkers: ObservedMarkerSnapshot | null = null;
   let busy = false;
   let editorDirty = false;
   let contextRefresh: number | null = null;
@@ -58,13 +61,14 @@ export function mountAutomarkerPresetsSurface(
   const addPoint = button("Add point", "quiet-button");
   editor.append(editorHeading, pointRows, addPoint);
   const controls = el("div", "automarker-controls");
+  const captureCurrent = button("Capture current markers", "quiet-button");
   const save = button("Save", "primary-button");
   const saveAs = button("Save As…", "quiet-button");
   const load = button("Load", "primary-button");
   const preview = button("Preview on map", "quiet-button");
   const placeInGame = button("Place in game", "primary-button");
   const refresh = button("Refresh scene", "quiet-button");
-  controls.append(save, saveAs, load, preview, placeInGame, refresh);
+  controls.append(captureCurrent, save, saveAs, load, preview, placeInGame, refresh);
   const status = text("p", "Connecting to the local marker store…", "card-copy automarker-status");
   const detail = el("div", "automarker-preset-detail");
   card.append(nameLabel, presetLabel, editor, controls, status, detail);
@@ -87,6 +91,7 @@ export function mountAutomarkerPresetsSurface(
   saveAs.addEventListener("click", () => void persist(true));
   preview.addEventListener("click", () => void previewOnMap());
   load.addEventListener("click", () => void requestLoad());
+  captureCurrent.addEventListener("click", () => void captureCurrentMarkers());
   refresh.addEventListener("click", () => void refreshView());
   setEditorPoints([{ markerNumber: 1, x: 0, y: 0, z: 0 }]);
   void refreshView();
@@ -96,13 +101,21 @@ export function mountAutomarkerPresetsSurface(
     if (!alive || busy) return;
     const requestGeneration = ++catalogRequestGeneration;
     try {
-      const next = await dependencies.loadPresets();
+      const [next, nextObserved] = await Promise.all([
+        dependencies.loadPresets(),
+        dependencies.loadObservedMarkers(),
+      ]);
       if (!alive || !automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration) ||
-          automarkerPresetContextKey(next) === automarkerPresetContextKey(view)) return;
+          (automarkerPresetContextKey(next) === automarkerPresetContextKey(view) &&
+            observedMarkerSnapshotKey(nextObserved) === observedMarkerSnapshotKey(observedMarkers))) return;
+      const contextChanged = automarkerPresetContextKey(next) !== automarkerPresetContextKey(view);
       view = next;
-      selectedId = view.presets[0]?.presetId ?? null;
-      name.value = view.presets[0]?.name ?? "";
-      setEditorPoints(view.presets[0]?.points ?? [{ markerNumber: 1, x: 0, y: 0, z: 0 }]);
+      observedMarkers = nextObserved;
+      if (contextChanged) {
+        selectedId = view.presets[0]?.presetId ?? null;
+        name.value = view.presets[0]?.name ?? "";
+        setEditorPoints(view.presets[0]?.points ?? [{ markerNumber: 1, x: 0, y: 0, z: 0 }]);
+      }
       status.textContent = view.context === null
         ? "Enter a scene and wait for its build/map identity before saving or selecting presets."
         : view.presets.length === 0
@@ -119,9 +132,13 @@ export function mountAutomarkerPresetsSurface(
     busy = true;
     render();
     try {
-      const next = await dependencies.loadPresets();
+      const [next, nextObserved] = await Promise.all([
+        dependencies.loadPresets(),
+        dependencies.loadObservedMarkers(),
+      ]);
       if (!alive || !automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration)) return;
       view = next;
+      observedMarkers = nextObserved;
       if (!view.presets.some((preset) => preset.presetId === selectedId)) selectedId = view.presets[0]?.presetId ?? null;
       const preset = selectedPreset();
       if (preset !== undefined && name.value.trim() === "") name.value = preset.name;
@@ -204,6 +221,9 @@ export function mountAutomarkerPresetsSurface(
     const requestedPresetId = selectedId;
     const requestedContextKey = automarkerPresetContextKey(view);
     const requestedPreviewSessionId = view.previewSessionId;
+    const requestedCaptureSessionId = view.captureSessionId;
+    const requestedDeploymentId = view.deploymentId;
+    const requestedProtocolPackDigest = view.protocolPackDigest;
     const expectedContext = { ...view.context };
     const requestGeneration = ++catalogRequestGeneration;
     busy = true;
@@ -217,11 +237,47 @@ export function mountAutomarkerPresetsSurface(
           requestedContextKey !== automarkerPresetContextKey({
             context: result.context,
             previewSessionId: requestedPreviewSessionId,
+            captureSessionId: requestedCaptureSessionId,
+            deploymentId: requestedDeploymentId,
+            protocolPackDigest: requestedProtocolPackDigest,
           }) || result.preset.presetId !== requestedPresetId) return;
       name.value = result.preset.name;
       setEditorPoints(result.preset.points);
       editorDirty = false;
       status.textContent = `Loaded ${result.preset.name} into the local editor. Nothing was sent to the game.`;
+    } catch (error) {
+      if (automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration)) {
+        status.textContent = message(error);
+      }
+    } finally {
+      if (automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration)) {
+        busy = false;
+        if (alive) render();
+      }
+    }
+  }
+
+  async function captureCurrentMarkers(): Promise<void> {
+    if (!observedMarkerCaptureAvailability(view, observedMarkers).enabled || view === null) return;
+    const requestedContextKey = automarkerPresetContextKey(view);
+    const requestGeneration = ++catalogRequestGeneration;
+    busy = true;
+    render();
+    try {
+      const [freshView, snapshot] = await Promise.all([
+        dependencies.loadPresets(),
+        dependencies.loadObservedMarkers(),
+      ]);
+      if (!alive || !automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration) ||
+          automarkerPresetContextKey(freshView) !== requestedContextKey) return;
+      if (!observedMarkersMatchPresetView(snapshot, freshView)) {
+        throw new Error(observedMarkerCaptureAvailability(freshView, snapshot).reason);
+      }
+      view = freshView;
+      observedMarkers = snapshot;
+      setEditorPoints(snapshot.markers);
+      editorDirty = true;
+      status.textContent = `Captured ${snapshot.markers.length} current in-game marker${snapshot.markers.length === 1 ? "" : "s"} into the local editor. Nothing was sent to the game.`;
     } catch (error) {
       if (automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration)) {
         status.textContent = message(error);
@@ -261,6 +317,9 @@ export function mountAutomarkerPresetsSurface(
     refresh.disabled = busy;
     load.disabled = busy || preset === undefined || context === null;
     load.title = "Restore the selected saved setup into this local editor";
+    const captureAvailability = observedMarkerCaptureAvailability(view, observedMarkers);
+    captureCurrent.disabled = busy || !captureAvailability.enabled;
+    captureCurrent.title = captureAvailability.reason;
     placeInGame.disabled = true;
     placeInGame.title = `Unavailable until native party-visible marker placement is protocol-verified (${view?.nativeLoadReason ?? "native_waymark_request_unverified"})`;
     detail.replaceChildren();
@@ -277,8 +336,8 @@ export function mountAutomarkerPresetsSurface(
     if (view !== null && !view.nativeLoadSupported) {
       detail.append(text("p", `Place in game is disabled (${view.nativeLoadReason}): rLogs will not emit a guessed game packet.`, "card-copy automarker-safety-note"));
     }
-    if (view !== null && !view.captureSupported) {
-      detail.append(text("p", "Capture current in-game markers is unavailable (native_waymark_state_unverified). Save uses only the XYZ points entered above.", "card-copy automarker-safety-note"));
+    if (!captureAvailability.enabled) {
+      detail.append(text("p", `Capture current markers is unavailable: ${captureAvailability.reason}`, "card-copy automarker-safety-note"));
     }
   }
 
@@ -335,11 +394,38 @@ export function mountAutomarkerPresetsSurface(
   return { dispose() { alive = false; catalogRequestGeneration += 1; if (contextRefresh !== null) window.clearInterval(contextRefresh); } };
 }
 
-export function automarkerPresetContextKey(view: Pick<AutomarkerPresetView, "context" | "previewSessionId"> | null): string {
-  const context = view?.context;
-  return context === null || context === undefined
-    ? "none"
-    : `${view?.previewSessionId ?? ""}:${context.activityFamilyId}:${context.clientBuild}:${context.sceneId}:${context.mapId}`;
+export function automarkerPresetContextKey(
+  view: Pick<AutomarkerPresetView, "context" | "previewSessionId" | "captureSessionId" | "deploymentId" | "protocolPackDigest"> | null,
+): string {
+  if (view === null || view.context === null) return "none";
+  const context = view.context;
+  return `${view.previewSessionId}:${view.captureSessionId ?? ""}:${view.deploymentId ?? ""}:${view.protocolPackDigest ?? ""}:${context.activityFamilyId}:${context.clientBuild}:${context.sceneId}:${context.mapId}`;
+}
+
+export function observedMarkerCaptureAvailability(
+  view: AutomarkerPresetView | null,
+  snapshot: ObservedMarkerSnapshot | null,
+): { enabled: boolean; reason: string } {
+  if (view?.context === null || view === null) return { enabled: false, reason: "Enter a supported dungeon scene first." };
+  if (snapshot === null) return { enabled: false, reason: "Waiting for the live marker observer." };
+  if (!snapshot.captureActive) return { enabled: false, reason: "Live packet monitoring is not running." };
+  if (!snapshot.protocolSupported) {
+    return { enabled: false, reason: `Marker observation is not protocol-verified for build ${snapshot.clientBuild ?? view.context.clientBuild}.` };
+  }
+  if (!observedMarkersMatchPresetView(snapshot, view)) {
+    if (snapshot.reason === "no_fully_positioned_markers_observed") {
+      return { enabled: false, reason: "No fully positioned in-game markers are currently observed." };
+    }
+    if (snapshot.reason === "observed_marker_snapshot_invalid") {
+      return { enabled: false, reason: "The observed marker set is incomplete or ambiguous." };
+    }
+    return { enabled: false, reason: "Waiting for marker observations from this exact capture session, build, scene, and map." };
+  }
+  return { enabled: true, reason: "Copy the current in-game marker positions into the local editor." };
+}
+
+function observedMarkerSnapshotKey(snapshot: ObservedMarkerSnapshot | null): string {
+  return snapshot === null ? "none" : `${snapshot.revision}:${snapshot.sessionId ?? ""}:${snapshot.sceneId ?? ""}:${snapshot.mapId ?? ""}`;
 }
 
 function format(value: number): string { return value.toFixed(3).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1"); }

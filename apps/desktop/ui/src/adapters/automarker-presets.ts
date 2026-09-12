@@ -29,7 +29,10 @@ export interface AutomarkerPresetView {
   context: AutomarkerSceneContext | null;
   presets: readonly AutomarkerPreset[];
   captureSupported: boolean;
-  captureReason: "native_waymark_state_unverified";
+  captureReason: "native_waymark_state_unverified" | "observed_waymark_state_verified";
+  captureSessionId: string | null;
+  deploymentId: string | null;
+  protocolPackDigest: string | null;
   nativeLoadSupported: boolean;
   nativeLoadReason: "native_waymark_request_unverified";
   previewSessionId: string;
@@ -63,6 +66,24 @@ export const AUTOMARKER_PREVIEW_TTL_MILLIS = 5 * 60 * 1_000;
 export interface AutomarkerLocalLoadResult {
   context: AutomarkerSceneContext;
   preset: AutomarkerPreset;
+}
+
+export interface ObservedMarkerSnapshot {
+  schemaVersion: 1;
+  revision: number;
+  captureActive: boolean;
+  protocolSupported: boolean;
+  reason: "live_capture_not_running" | "marker_protocol_not_verified_for_build_pack" |
+    "waiting_for_packet_observed_scene_and_map" | "no_fully_positioned_markers_observed" |
+    "observed_marker_snapshot_invalid" | "observed_markers_available";
+  sessionId: string | null;
+  deploymentId: string | null;
+  clientBuild: string | null;
+  protocolPackDigest: string | null;
+  sceneId: number | null;
+  mapId: number | null;
+  observedMicros: number | null;
+  markers: readonly AutomarkerPoint[];
 }
 
 export function automarkerSaveRequest(
@@ -182,13 +203,24 @@ export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView 
       !(value.context === null || validContext(value.context)) ||
       !Array.isArray(value.presets) || !value.presets.every(validPreset) ||
       typeof value.captureSupported !== "boolean" ||
-      value.captureReason !== "native_waymark_state_unverified" ||
+      !(value.captureReason === "native_waymark_state_unverified" || value.captureReason === "observed_waymark_state_verified") ||
+      !optionalIdentity(value.captureSessionId, 128) ||
+      !optionalIdentity(value.deploymentId, 64) ||
+      !optionalDigest(value.protocolPackDigest) ||
       typeof value.nativeLoadSupported !== "boolean" ||
       value.nativeLoadReason !== "native_waymark_request_unverified" ||
       typeof value.previewSessionId !== "string" || value.previewSessionId.length < 8 || value.previewSessionId.length > 128) {
     throw new Error("The local host returned an invalid automarker preset catalog.");
   }
   const view = value as unknown as AutomarkerPresetView;
+  const hasCaptureStamp = view.captureSessionId !== null || view.deploymentId !== null || view.protocolPackDigest !== null;
+  if (hasCaptureStamp && (view.captureSessionId === null || view.deploymentId === null || view.protocolPackDigest === null)) {
+    throw new Error("The local host returned a partial automarker capture identity.");
+  }
+  if (view.captureSupported !== (view.captureReason === "observed_waymark_state_verified") ||
+      (view.captureSupported && !hasCaptureStamp)) {
+    throw new Error("The local host returned an inconsistent automarker capture capability.");
+  }
   if (view.context === null && view.presets.length !== 0) {
     throw new Error("Automarker presets cannot be listed without a current scene.");
   }
@@ -196,6 +228,50 @@ export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView 
     throw new Error("The local host returned an automarker preset from another dungeon family.");
   }
   return view;
+}
+
+export function parseObservedMarkerSnapshot(value: unknown): ObservedMarkerSnapshot {
+  if (!record(value) || value.schemaVersion !== 1 || !integer(value.revision) ||
+      typeof value.captureActive !== "boolean" || typeof value.protocolSupported !== "boolean" ||
+      !observedReason(value.reason) || !optionalIdentity(value.sessionId, 128) ||
+      !optionalIdentity(value.deploymentId, 64) || !optionalBuild(value.clientBuild) ||
+      !optionalDigest(value.protocolPackDigest) || !optionalInteger(value.sceneId) ||
+      !optionalInteger(value.mapId) || !optionalInteger(value.observedMicros) ||
+      !Array.isArray(value.markers) || !value.markers.every(validPoint) ||
+      new Set(value.markers.map((point) => (point as AutomarkerPoint).markerNumber)).size !== value.markers.length) {
+    throw new Error("The local host returned an invalid observed-marker snapshot.");
+  }
+  const snapshot = value as unknown as ObservedMarkerSnapshot;
+  const fullStamp = snapshot.sessionId !== null && snapshot.deploymentId !== null &&
+    snapshot.clientBuild !== null && snapshot.protocolPackDigest !== null;
+  const hasContext = snapshot.sceneId !== null && snapshot.mapId !== null;
+  const validState = snapshot.reason === "live_capture_not_running"
+    ? !snapshot.captureActive && !snapshot.protocolSupported && !hasContext && snapshot.markers.length === 0
+    : snapshot.reason === "marker_protocol_not_verified_for_build_pack"
+      ? snapshot.captureActive && !snapshot.protocolSupported && fullStamp && !hasContext && snapshot.markers.length === 0
+      : snapshot.reason === "waiting_for_packet_observed_scene_and_map"
+        ? snapshot.captureActive && snapshot.protocolSupported && fullStamp && !hasContext && snapshot.markers.length === 0
+        : snapshot.reason === "observed_markers_available"
+          ? snapshot.captureActive && snapshot.protocolSupported && fullStamp && hasContext &&
+            snapshot.observedMicros !== null && snapshot.markers.length > 0
+          : snapshot.captureActive && snapshot.protocolSupported && fullStamp && hasContext && snapshot.markers.length === 0;
+  if (!validState || (snapshot.sceneId === null) !== (snapshot.mapId === null) ||
+      (!snapshot.captureActive && snapshot.observedMicros !== null)) {
+    throw new Error("The local host returned an inconsistent observed-marker snapshot.");
+  }
+  return snapshot;
+}
+
+export function observedMarkersMatchPresetView(
+  snapshot: ObservedMarkerSnapshot,
+  view: AutomarkerPresetView,
+): boolean {
+  const context = view.context;
+  return context !== null && snapshot.captureActive && snapshot.protocolSupported &&
+    snapshot.reason === "observed_markers_available" && snapshot.markers.length > 0 &&
+    snapshot.sessionId === view.captureSessionId && snapshot.deploymentId === view.deploymentId &&
+    snapshot.clientBuild === context.clientBuild && snapshot.protocolPackDigest === view.protocolPackDigest &&
+    snapshot.sceneId === context.sceneId && snapshot.mapId === context.mapId;
 }
 
 export function parseAutomarkerLocalLoadResult(value: unknown): AutomarkerLocalLoadResult {
@@ -242,6 +318,28 @@ function validPoint(value: unknown): value is AutomarkerPoint {
 
 function validBuild(value: unknown): value is string {
   return typeof value === "string" && value.length >= 1 && value.length <= 32;
+}
+
+function optionalBuild(value: unknown): value is string | null {
+  return value === null || validBuild(value);
+}
+
+function optionalIdentity(value: unknown, max: number): value is string | null {
+  return value === null || (typeof value === "string" && value.length >= 1 && value.length <= max);
+}
+
+function optionalDigest(value: unknown): value is string | null {
+  return value === null || (typeof value === "string" && /^sha256:[0-9a-f]{64}$/.test(value));
+}
+
+function optionalInteger(value: unknown): value is number | null {
+  return value === null || integer(value);
+}
+
+function observedReason(value: unknown): value is ObservedMarkerSnapshot["reason"] {
+  return value === "live_capture_not_running" || value === "marker_protocol_not_verified_for_build_pack" ||
+    value === "waiting_for_packet_observed_scene_and_map" || value === "no_fully_positioned_markers_observed" ||
+    value === "observed_marker_snapshot_invalid" || value === "observed_markers_available";
 }
 
 function validFamily(value: unknown): value is string {

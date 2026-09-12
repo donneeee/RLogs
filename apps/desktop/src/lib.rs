@@ -6955,8 +6955,26 @@ impl RuntimeController {
             Some(context) => store.compatible(context),
             None => store.unavailable(),
         };
-        view.preview_session_id = self.automarker_preview_session_id.clone();
+        self.enrich_automarker_view(&mut view);
         view
+    }
+
+    fn enrich_automarker_view(&self, view: &mut AutomarkerPresetView) {
+        view.preview_session_id = self.automarker_preview_session_id.clone();
+        let observed = self.live_observed_marker_feed.current();
+        let same_capture = observed.capture_active
+            && view.context.as_ref().is_some_and(|context| {
+                observed.client_build.as_deref() == Some(context.client_build.as_str())
+            });
+        if same_capture {
+            view.capture_supported = observed.protocol_supported;
+            if observed.protocol_supported {
+                view.capture_reason = "observed_waymark_state_verified";
+            }
+            view.capture_session_id = observed.session_id;
+            view.deployment_id = observed.deployment_id;
+            view.protocol_pack_digest = observed.protocol_pack_digest;
+        }
     }
 
     fn save_automarker_preset(
@@ -6979,7 +6997,7 @@ impl RuntimeController {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .save(request, context, unix_millis())?;
-        view.preview_session_id = self.automarker_preview_session_id.clone();
+        self.enrich_automarker_view(&mut view);
         Ok(view)
     }
 

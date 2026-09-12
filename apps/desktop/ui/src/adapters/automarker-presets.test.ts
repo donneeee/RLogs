@@ -7,6 +7,8 @@ import {
   parseAutomarkerLocalLoadResult,
   parseAutomarkerPreview,
   parseAutomarkerPresetView,
+  parseObservedMarkerSnapshot,
+  observedMarkersMatchPresetView,
   previewMatchesContext,
   publishAutomarkerPreview,
   readActiveAutomarkerPreview,
@@ -24,6 +26,9 @@ function view() {
     }],
     captureSupported: false,
     captureReason: "native_waymark_state_unverified",
+    captureSessionId: null,
+    deploymentId: null,
+    protocolPackDigest: null,
     nativeLoadSupported: false,
     nativeLoadReason: "native_waymark_request_unverified",
     previewSessionId: "preview-test-session",
@@ -31,6 +36,63 @@ function view() {
 }
 
 describe("automarker preset catalog", () => {
+  it("accepts only a fully stamped, internally consistent observed marker snapshot", () => {
+    const value = {
+      ...view(),
+      captureSupported: true,
+      captureReason: "observed_waymark_state_verified" as const,
+      captureSessionId: "capture-session-1",
+      deploymentId: "global",
+      protocolPackDigest: `sha256:${"a".repeat(64)}`,
+    };
+    const snapshot = parseObservedMarkerSnapshot({
+      schemaVersion: 1,
+      revision: 7,
+      captureActive: true,
+      protocolSupported: true,
+      reason: "observed_markers_available",
+      sessionId: value.captureSessionId,
+      deploymentId: value.deploymentId,
+      clientBuild: value.context.clientBuild,
+      protocolPackDigest: value.protocolPackDigest,
+      sceneId: value.context.sceneId,
+      mapId: value.context.mapId,
+      observedMicros: 99,
+      markers: [{ markerNumber: 1, x: 1, y: 2, z: 3 }],
+    });
+    expect(observedMarkersMatchPresetView(snapshot, parseAutomarkerPresetView(value))).toBe(true);
+    expect(observedMarkersMatchPresetView(
+      { ...snapshot, sessionId: "stale-session" },
+      parseAutomarkerPresetView(value),
+    )).toBe(false);
+  });
+
+  it("rejects partial identities, duplicate markers, and capability contradictions", () => {
+    const base = {
+      schemaVersion: 1,
+      revision: 7,
+      captureActive: true,
+      protocolSupported: true,
+      reason: "observed_markers_available",
+      sessionId: "capture-session-1",
+      deploymentId: "global",
+      clientBuild: "24687926",
+      protocolPackDigest: `sha256:${"a".repeat(64)}`,
+      sceneId: 1_633,
+      mapId: 1_633,
+      observedMicros: 99,
+      markers: [{ markerNumber: 1, x: 1, y: 2, z: 3 }],
+    };
+    expect(() => parseObservedMarkerSnapshot({ ...base, protocolPackDigest: null })).toThrow(/invalid|inconsistent/i);
+    expect(() => parseObservedMarkerSnapshot({ ...base, markers: [...base.markers, { ...base.markers[0] }] }))
+      .toThrow(/invalid/i);
+    expect(() => parseObservedMarkerSnapshot({ ...base, protocolSupported: false })).toThrow(/inconsistent/i);
+
+    const inconsistentView = view();
+    inconsistentView.captureSupported = true;
+    expect(() => parseAutomarkerPresetView(inconsistentView)).toThrow(/inconsistent/i);
+  });
+
   it("refreshes scene provenance when difficulty or build changes within a family", () => {
     const original = view();
     const difficultyChange = view();
