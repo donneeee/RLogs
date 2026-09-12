@@ -5731,6 +5731,7 @@ struct RuntimeController {
     profile_projection: Mutex<()>,
     live_combat_feed: Arc<LiveCombatFeed>,
     live_character_stats_feed: Arc<LiveCharacterStatsFeed>,
+    live_automarker_scene_context: Arc<AutomarkerSceneContextFeed>,
     live_mechanics_map_feed: Arc<MechanicsMapFeed>,
     live_observed_marker_feed: Arc<ObservedMarkerFeed>,
     live_event_feed: Arc<LiveEventFeed>,
@@ -5761,6 +5762,66 @@ fn automarker_scene_context(
         activity_family_id: scene_families.get(&scene_id)?.clone(),
         scene_name: snapshot.scene_name.clone(),
     })
+}
+
+#[derive(Debug, Default)]
+struct AutomarkerSceneContextFeed {
+    context: Mutex<Option<AutomarkerSceneContext>>,
+}
+
+impl AutomarkerSceneContextFeed {
+    fn reset(&self) {
+        *self
+            .context
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    }
+
+    fn current(&self) -> Option<AutomarkerSceneContext> {
+        self.context
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    fn observe_world(
+        &self,
+        event: &CanonicalEvent,
+        deployment_id: &str,
+        client_build: &str,
+        protocol_pack_digest: &str,
+        scene_families: &BTreeMap<i32, String>,
+    ) {
+        let CanonicalEvent::WorldChanged(world) = event else {
+            return;
+        };
+        let next = world
+            .scene_id
+            .zip(world.map_id)
+            .and_then(|(scene_id, map_id)| {
+                let scene_id = scene_id.0;
+                Some(AutomarkerSceneContext {
+                    client_build: client_build.to_owned(),
+                    scene_id,
+                    map_id,
+                    activity_family_id: scene_families.get(&scene_id)?.clone(),
+                    scene_name: localized_scene_name_for_identity(
+                        deployment_id,
+                        client_build,
+                        protocol_pack_digest,
+                        i64::from(scene_id),
+                        "en-US",
+                    )
+                    .ok()
+                    .flatten()
+                    .map(str::to_owned),
+                })
+            });
+        *self
+            .context
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = next;
+    }
 }
 
 fn automarker_scene_family_id(scene_id: i32, identity: &BpsrSceneRunIdentity) -> Option<String> {
@@ -6036,6 +6097,7 @@ impl RuntimeController {
             profile_projection: Mutex::new(()),
             live_combat_feed: Arc::new(LiveCombatFeed::default()),
             live_character_stats_feed: Arc::new(LiveCharacterStatsFeed::default()),
+            live_automarker_scene_context: Arc::new(AutomarkerSceneContextFeed::default()),
             live_mechanics_map_feed: Arc::new(MechanicsMapFeed::default()),
             live_observed_marker_feed: Arc::new(ObservedMarkerFeed::default()),
             live_event_feed: Arc::new(LiveEventFeed::default()),
@@ -7020,32 +7082,8 @@ impl RuntimeController {
         &self,
         request: ActivateAutomarkerPresetRequest,
     ) -> Result<AutomarkerNativeActivationResult, String> {
-        // Reacquire both feeds at request time. A second map read closes the
-        // transition window between the two snapshots without retaining any
-        // actor, action, position, sequence, or payload state.
-        let first_map = self.live_mechanics_map_feed.current().snapshot;
-        let observed = self.live_observed_marker_feed.current();
-        let current_map = self.live_mechanics_map_feed.current().snapshot;
-        if first_map.revision != current_map.revision
-            || first_map.session_id != current_map.session_id
-            || first_map.client_build != current_map.client_build
-            || first_map.scene_id != current_map.scene_id
-            || first_map.map_id != current_map.map_id
-        {
-            return Err("the Mechanics Map changed while validating automarker activation; refresh before retrying".into());
-        }
-        let context = automarker_scene_context(&current_map, &self.automarker_scene_families);
         let live = AutomarkerActivationLiveContext {
-            mechanics_session_id: current_map.session_id,
-            context,
-            capture_active: observed.capture_active,
-            protocol_supported: observed.protocol_supported,
-            observed_session_id: observed.session_id,
-            deployment_id: observed.deployment_id,
-            observed_client_build: observed.client_build,
-            protocol_pack_digest: observed.protocol_pack_digest,
-            observed_scene_id: observed.scene_id,
-            observed_map_id: observed.map_id,
+            context: self.live_automarker_scene_context.current(),
         };
         self.automarker_presets
             .lock()
@@ -9091,6 +9129,7 @@ impl RuntimeController {
         self.live_combat_feed.publish(None);
         self.live_character_stats_feed
             .publish(LiveCharacterStatsSnapshot::default());
+        self.live_automarker_scene_context.reset();
         self.live_mechanics_map_feed.reset();
         self.live_observed_marker_feed
             .begin_session(ObservedMarkerSessionStamp {
@@ -9124,6 +9163,8 @@ impl RuntimeController {
         let parser_health = Arc::clone(&self.parser_health);
         let live_combat_feed = Arc::clone(&self.live_combat_feed);
         let live_character_stats_feed = Arc::clone(&self.live_character_stats_feed);
+        let live_automarker_scene_context = Arc::clone(&self.live_automarker_scene_context);
+        let automarker_scene_families = self.automarker_scene_families.clone();
         let live_mechanics_map_feed = Arc::clone(&self.live_mechanics_map_feed);
         let live_observed_marker_feed = Arc::clone(&self.live_observed_marker_feed);
         let live_event_feed = Arc::clone(&self.live_event_feed);
@@ -9163,6 +9204,8 @@ impl RuntimeController {
         let supervisor_live_process_id = Arc::clone(&self.live_process_id);
         let supervisor_live_combat_control = Arc::clone(&self.live_combat_control);
         let supervisor_live_observed_marker_feed = Arc::clone(&self.live_observed_marker_feed);
+        let supervisor_live_automarker_scene_context =
+            Arc::clone(&self.live_automarker_scene_context);
         let session_id = request.session_id.clone();
         let supervisor_session_id = session_id.clone();
         let validation_game_build = target.build_id.clone();
@@ -9207,6 +9250,11 @@ impl RuntimeController {
                         },
                         producer.clone(),
                     );
+                    let automarker_deployment_id =
+                        pack.definition().target.deployment_id.clone();
+                    let automarker_client_build = live_header.region.client_build.clone();
+                    let automarker_protocol_pack_digest =
+                        live_header.region.protocol_pack_digest.clone();
                     let mut live_meter = bpsr_combat_timeline_plugin_for_region(&live_header.region)?;
                     live_meter.begin_live(&live_header);
                     let mut rdps_validation = RdpsValidationAnalyzer::bundled().map_err(|error| {
@@ -9583,6 +9631,13 @@ impl RuntimeController {
                                     next_world_scene_id,
                                 );
                                 if event.event.topic() == EventTopic::World {
+                                    live_automarker_scene_context.observe_world(
+                                        &event.event,
+                                        &automarker_deployment_id,
+                                        &automarker_client_build,
+                                        &automarker_protocol_pack_digest,
+                                        &automarker_scene_families,
+                                    );
                                     last_world_context_event = Some(event.clone());
                                 }
                                 let opening = matches!(
@@ -10493,6 +10548,7 @@ impl RuntimeController {
                     *control = None;
                 }
                 live_observed_marker_feed.finish_session(&session_id);
+                live_automarker_scene_context.reset();
 
                 let mut state = state
                     .lock()
@@ -10614,6 +10670,7 @@ impl RuntimeController {
                             *control = None;
                         }
                         supervisor_live_observed_marker_feed.finish_session(&supervisor_session_id);
+                        supervisor_live_automarker_scene_context.reset();
                         let terminal_health_snapshot =
                             mark_live_parser_panicked(&supervisor_state, &panic);
                         finish_parser_health(
@@ -17347,6 +17404,43 @@ mod tests {
         let mut scene_id = None;
         assert!(!live_dungeon_scene_departed(false, &mut scene_id, Some(8)));
         assert_eq!(scene_id, None);
+    }
+
+    #[test]
+    fn automarker_scene_context_feed_tracks_canonical_world_without_map_or_marker_feeds() {
+        let feed = AutomarkerSceneContextFeed::default();
+        let families = BTreeMap::from([(6_515, "mech-facility".to_owned())]);
+        let world = |scene_id, map_id| {
+            CanonicalEvent::WorldChanged(WorldContext {
+                scene_id: Some(SceneId(scene_id)),
+                map_id: Some(map_id),
+                line_id: None,
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            })
+        };
+
+        feed.observe_world(
+            &world(6_515, 8),
+            "global",
+            "24687926",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+            &families,
+        );
+        let current = feed.current().expect("supported family context");
+        assert_eq!(current.client_build, "24687926");
+        assert_eq!(current.scene_id, 6_515);
+        assert_eq!(current.map_id, 8);
+        assert_eq!(current.activity_family_id, "mech-facility");
+
+        feed.observe_world(
+            &world(99_999, 9),
+            "global",
+            "24687926",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+            &families,
+        );
+        assert_eq!(feed.current(), None);
     }
 
     #[test]

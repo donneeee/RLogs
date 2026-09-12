@@ -57,16 +57,9 @@ export interface LoadAutomarkerPresetRequest {
   expectedContext: AutomarkerSceneContext;
 }
 
-export interface AutomarkerActivationStamp {
-  captureSessionId: string;
-  deploymentId: string;
-  protocolPackDigest: string;
-  context: AutomarkerSceneContext;
-}
-
 export interface ActivateAutomarkerPresetRequest {
   presetId: string;
-  stamp: AutomarkerActivationStamp;
+  expectedContext: AutomarkerSceneContext;
 }
 
 export interface AutomarkerNativeActivationResult {
@@ -140,24 +133,14 @@ export function automarkerSaveRequest(
 export function automarkerActivationRequest(
   presetId: string,
   view: AutomarkerPresetView,
-  observed: ObservedMarkerSnapshot,
 ): ActivateAutomarkerPresetRequest {
   if (presetId.length < 8 || !view.presets.some((preset) => preset.presetId === presetId) ||
-      view.context === null || !view.captureSupported ||
-      view.captureSessionId === null || view.deploymentId === null || view.protocolPackDigest === null ||
-      observed.sessionId !== view.captureSessionId || observed.deploymentId !== view.deploymentId ||
-      observed.protocolPackDigest !== view.protocolPackDigest || observed.clientBuild !== view.context.clientBuild ||
-      observed.sceneId !== view.context.sceneId || observed.mapId !== view.context.mapId) {
-    throw new Error("A matching live automarker capture and scene are required before activation.");
+      view.context === null) {
+    throw new Error("A matching current automarker scene is required before activation.");
   }
   return {
     presetId,
-    stamp: {
-      captureSessionId: view.captureSessionId,
-      deploymentId: view.deploymentId,
-      protocolPackDigest: view.protocolPackDigest,
-      context: { ...view.context },
-    },
+    expectedContext: { ...view.context },
   };
 }
 

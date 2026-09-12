@@ -59,7 +59,7 @@ const PAGE_DEFINITIONS: Record<OverlayWorkspacePage, PageDefinition> = {
       {
         title: "Automarkers",
         description: "Save and choose scene-specific numbered ground-marker setups.",
-        items: ["Save", "Save As…", "Load → saved setup"],
+        items: ["Save", "Save As…", "Load into editor"],
         destination: destination(OVERLAY_WORKSPACE_ID, "automarkers"),
       },
       {

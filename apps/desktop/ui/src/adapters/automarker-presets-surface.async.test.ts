@@ -353,7 +353,7 @@ describe("mounted automarker preset editor request ordering", () => {
     select.value = "preset-6525-00000001";
     select.dispatchEvent(new Event("change"));
     expect((container.querySelector('input[data-coordinate="x"]') as HTMLInputElement).value).toBe("1");
-    [...container.querySelectorAll("button")].find((button) => button.textContent === "Load")!.click();
+    [...container.querySelectorAll("button")].find((button) => button.textContent === "Load into editor")!.click();
     await flushPromises();
 
     expect(loadPreset).toHaveBeenCalledWith({
@@ -383,7 +383,7 @@ describe("mounted automarker preset editor request ordering", () => {
       openOverlay: async () => undefined,
     });
     await flushPromises();
-    [...container.querySelectorAll("button")].find((button) => button.textContent === "Load")!.click();
+    [...container.querySelectorAll("button")].find((button) => button.textContent === "Load into editor")!.click();
     pending.resolve({
       context: { ...catalog.context!, sceneId: 1_633, mapId: 1_633, activityFamilyId: "dungeon.1633" },
       preset: { ...catalog.presets[0]!, name: "Wrong scene", activityFamilyId: "dungeon.1633" },

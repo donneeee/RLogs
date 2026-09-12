@@ -55,7 +55,7 @@ export function mountAutomarkerPresetsSurface(
   name.maxLength = 80;
   name.placeholder = "M1 opener";
   nameLabel.append(name);
-  const presetLabel = text("label", "Load → saved setup", "automarker-field");
+  const presetLabel = text("label", "Saved setup", "automarker-field");
   const select = document.createElement("select");
   presetLabel.append(select);
   const editor = el("section", "automarker-point-editor");
@@ -68,7 +68,7 @@ export function mountAutomarkerPresetsSurface(
   const captureCurrent = button("Capture current markers", "quiet-button");
   const save = button("Save", "primary-button");
   const saveAs = button("Save As…", "quiet-button");
-  const load = button("Load", "primary-button");
+  const load = button("Load into editor", "primary-button");
   const exportPreset = button("Export", "quiet-button");
   const importPreset = button("Import…", "quiet-button");
   const importFile = document.createElement("input");
