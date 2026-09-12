@@ -664,6 +664,51 @@ mod tests {
     }
 
     #[test]
+    fn persisted_presets_contain_no_user_or_live_session_identity() {
+        let path = temporary_path("portable");
+        let mut store = open(&path);
+        store
+            .save(
+                SaveAutomarkerPresetRequest {
+                    preset_id: None,
+                    name: "Portable setup".into(),
+                    points: points(1.0),
+                    expected_context: mech(),
+                },
+                mech(),
+                10,
+            )
+            .unwrap();
+
+        let persisted: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let preset = persisted["presets"][0].as_object().unwrap();
+        for forbidden in [
+            "accountId",
+            "accountUuid",
+            "characterId",
+            "characterUuid",
+            "playerId",
+            "playerUuid",
+            "sessionId",
+            "sessionSequence",
+            "skillUuid",
+        ] {
+            assert!(
+                !preset.contains_key(forbidden),
+                "portable preset unexpectedly persisted {forbidden}"
+            );
+        }
+        assert_eq!(preset["activityFamilyId"], "mech-facility");
+        assert_eq!(preset["points"][0]["markerNumber"], 1);
+        assert_eq!(preset["points"][0]["x"], 1.0);
+
+        drop(store);
+        assert_eq!(open(&path).compatible(mech()).presets.len(), 1);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
     fn tina_master_presets_are_tier_independent_but_isolated_from_other_scene_families() {
         let path = temporary_path("scope");
         let mut store = open(&path);
