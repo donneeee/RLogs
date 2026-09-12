@@ -208,6 +208,11 @@ to a non-loopback address. Run
 `-SelfTest` for the no-process launcher checks, or `-DryRun` for the packaged
 no-process/no-input receipt.
 
+Preset and explicit XYZ targets share one Windows PowerShell 5.1-safe argument
+formatter. It converts the supplied value directly to a finite `Double` and
+uses invariant round-trip text; it does not dereference `Nullable[Double].Value`
+because Windows PowerShell 5.1 unwraps populated nullable values.
+
 ## Operator-confirmed Marker 1 placement evidence
 
 Receipt schema v7 extends v6 with the optional sanitized operator-placement

@@ -69,6 +69,29 @@ function Test-FiniteJsonNumber($Value) {
     return (-not [double]::IsNaN($number) -and -not [double]::IsInfinity($number))
 }
 
+function ConvertTo-InvariantFiniteCoordinate($Value, [string]$Label) {
+    if ($null -eq $Value) { throw "Planner target coordinate $Label is missing." }
+    try {
+        $number = [double]$Value
+    } catch {
+        throw "Planner target coordinate $Label is not numeric."
+    }
+    if ([double]::IsNaN($number) -or [double]::IsInfinity($number)) {
+        throw "Planner target coordinate $Label must be finite."
+    }
+    return $number.ToString('R', [Globalization.CultureInfo]::InvariantCulture)
+}
+
+function New-PlannerTargetArguments($X, $Y, $Z, [string]$BaseUrl) {
+    Assert-LoopbackBaseUrl $BaseUrl
+    return @(
+        '--target-x', (ConvertTo-InvariantFiniteCoordinate $X 'X'),
+        '--target-y', (ConvertTo-InvariantFiniteCoordinate $Y 'Y'),
+        '--target-z', (ConvertTo-InvariantFiniteCoordinate $Z 'Z'),
+        '--rlogs-base-url', $BaseUrl
+    )
+}
+
 function Assert-PresetProjectionSchema($Projection) {
     $topLevel = @(
         'schemaVersion', 'context', 'presets', 'captureSupported', 'captureReason',
@@ -811,6 +834,20 @@ function Invoke-LauncherSelfTest {
     if ((Get-LoopbackEndpointRejectionCategory $syntheticHttpRuntimeFailure) -cne 'http-runtime-unavailable') {
         throw 'Self-test failed: missing System.Net.Http was not classified distinctly.'
     }
+    # Windows PowerShell 5.1 unwraps Nullable[Double] assignments to ordinary
+    # Double values. Exercise the exact native argument construction without
+    # opening a process or emitting input, and ensure no `.Value` access exists.
+    $nullableX = [Nullable[double]]1.25
+    $nullableY = [Nullable[double]]-2.5
+    $nullableZ = [Nullable[double]]3.75
+    $targetArguments = @(New-PlannerTargetArguments $nullableX $nullableY $nullableZ 'http://127.0.0.1:54221')
+    $expectedTargetArguments = @('--target-x', '1.25', '--target-y', '-2.5', '--target-z', '3.75', '--rlogs-base-url', 'http://127.0.0.1:54221')
+    if (($targetArguments -join "`n") -cne ($expectedTargetArguments -join "`n")) {
+        throw 'Self-test failed: PS 5.1-safe target argument construction changed coordinate values.'
+    }
+    $rejected = $false
+    try { [void](New-PlannerTargetArguments ([double]::NaN) 2 3 'http://127.0.0.1:54221') } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Self-test failed: non-finite native target argument was accepted.' }
     Assert-LoopbackBaseUrl 'http://127.0.0.1:54221'
     foreach ($acceptedOwner in @('rlogs-app', 'rlogs-app.exe', 'rLogs', 'rLogs.exe')) {
         if (-not (Test-RLogsDesktopOwnerName $acceptedOwner)) {
@@ -1093,18 +1130,14 @@ if ($ArmSinglePlannerStep -or $ArmClosedLoopAim -or $ArmOperatorPlacement) {
     if ($hasPreset -or $hasPresetName) {
         $projection = Get-LoopbackPresetProjection $RLogsBaseUrl
         $resolved = Resolve-MarkerOnePresetTarget $projection $PresetId $PresetName
-        $TargetX = [Nullable[double]]$resolved.X
-        $TargetY = [Nullable[double]]$resolved.Y
-        $TargetZ = [Nullable[double]]$resolved.Z
+        $TargetX = [double]$resolved.X
+        $TargetY = [double]$resolved.Y
+        $TargetZ = [double]$resolved.Z
         $resolvedName = [regex]::Replace($resolved.PresetName, '\p{C}', '?')
         $resolvedId = [regex]::Replace($resolved.PresetId, '\p{C}', '?')
         Write-Host "Resolved Marker 1 from preset '$resolvedName' ($resolvedId) in the exact active activity family."
     }
-    foreach ($coordinate in @($TargetX.Value, $TargetY.Value, $TargetZ.Value)) {
-        if ([double]::IsNaN($coordinate) -or [double]::IsInfinity($coordinate)) {
-            throw 'Planner target coordinates must be finite.'
-        }
-    }
+    $targetArguments = @(New-PlannerTargetArguments $TargetX $TargetY $TargetZ $RLogsBaseUrl)
     if ($ArmOperatorPlacement) {
         Write-Warning 'ARMED OPERATOR PLACEMENT EVIDENCE: manually select Marker 1 and keep the game focused. The canary aims without clicking, then asks you to click once. Do not move the mouse. It requires newer outbound and authoritative inbound Marker 1 evidence.'
     } elseif ($ArmClosedLoopAim) {
@@ -1124,13 +1157,8 @@ if ($ArmSinglePlannerStep -or $ArmClosedLoopAim -or $ArmOperatorPlacement) {
     } else {
         'marker1-single-planner-step-and-restore-v1'
     }
-    $arguments += @(
-        '--armed-mode', $armedToken,
-        '--target-x', $TargetX.Value.ToString('R', [Globalization.CultureInfo]::InvariantCulture),
-        '--target-y', $TargetY.Value.ToString('R', [Globalization.CultureInfo]::InvariantCulture),
-        '--target-z', $TargetZ.Value.ToString('R', [Globalization.CultureInfo]::InvariantCulture),
-        '--rlogs-base-url', $RLogsBaseUrl
-    )
+    $arguments += @('--armed-mode', $armedToken)
+    $arguments += $targetArguments
 }
 
 $expectedCanaryMode = if ($ArmOperatorPlacement) {
