@@ -432,13 +432,16 @@ function Assert-CalibrationSuccess($Canary, [bool]$RequireCancel = $true) {
 
 function Assert-PlannerStepSuccess($PlannerStep) {
     $fields = @(
-        'target', 'player_origin', 'target_player_distance', 'proposed_integer_mouse_delta',
+        'target', 'player_origin', 'live_context_failure_reason', 'target_player_distance', 'proposed_integer_mouse_delta',
         'predicted_distance', 'observed_distance', 'actual_to_predicted_improvement_ratio',
         'strict_distance_reduction', 'rollback_attempted', 'rollback_not_safe',
         'rollback_cancel_emitted', 'inverse_emitted', 'inverse_return_error', 'outcome'
     )
     if (-not (Test-ExactPropertySet $PlannerStep $fields) -or [string]$PlannerStep.outcome -cne 'passed') {
         throw 'The sanitized lifecycle receipt lacks a passing planner-step proof.'
+    }
+    if ($null -ne $PlannerStep.live_context_failure_reason) {
+        throw 'A passing planner-step receipt cannot retain a live-context failure reason.'
     }
     Assert-ExactPosition $PlannerStep.target 'canary.planner_step.target'
     Assert-ExactPosition $PlannerStep.player_origin 'canary.planner_step.player_origin'
@@ -709,6 +712,20 @@ function Read-ValidatedLifecycleReceipt(
         [string]$receipt.canary.outcome -cnotmatch '^[a-z0-9_-]{1,80}$') {
         throw 'The sanitized lifecycle receipt canary envelope does not match the requested mode.'
     }
+    if ($null -ne $receipt.canary.planner_step) {
+        $plannerFields = @(
+            'target', 'player_origin', 'live_context_failure_reason', 'target_player_distance',
+            'proposed_integer_mouse_delta', 'predicted_distance', 'observed_distance',
+            'actual_to_predicted_improvement_ratio', 'strict_distance_reduction',
+            'rollback_attempted', 'rollback_not_safe', 'rollback_cancel_emitted',
+            'inverse_emitted', 'inverse_return_error', 'outcome'
+        )
+        $reason = $receipt.canary.planner_step.live_context_failure_reason
+        if (-not (Test-ExactPropertySet $receipt.canary.planner_step $plannerFields) -or
+            ($null -ne $reason -and [string]$reason -cnotmatch '^[a-z0-9-]{1,80}$')) {
+            throw 'The sanitized lifecycle receipt has an invalid planner live-context diagnostic.'
+        }
+    }
     Assert-ExactBoolean $receipt.canary.armed $ExpectedArmed 'canary.armed'
     if (-not $ExpectedArmed -and [string]$receipt.canary.outcome -cne 'not-armed-read-only') {
         throw 'The sanitized lifecycle receipt has an unexpected read-only outcome.'
@@ -785,7 +802,7 @@ function New-SyntheticLifecycleReceipt([bool]$Armed, [string]$Mode, [string]$Out
         $receipt.canary.cancelled = $true
         if ($Mode -ceq 'marker1-single-planner-step-and-restore-v1') {
             $receipt.canary.planner_step = [ordered]@{
-                target = [ordered]@{ x = 1; y = 2; z = 3 }; player_origin = [ordered]@{ x = 0; y = 0; z = 0 }
+                target = [ordered]@{ x = 1; y = 2; z = 3 }; player_origin = [ordered]@{ x = 0; y = 0; z = 0 }; live_context_failure_reason = $null
                 target_player_distance = 3.75; proposed_integer_mouse_delta = @(1, -1)
                 predicted_distance = 2.5; observed_distance = 3.0; actual_to_predicted_improvement_ratio = 0.6
                 strict_distance_reduction = $true; rollback_attempted = $true; rollback_not_safe = $false
@@ -927,6 +944,18 @@ function Invoke-LauncherSelfTest {
             [IO.File]::WriteAllText($receiptTestPath, ($passing | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
             [void](Read-ValidatedLifecycleReceipt $receiptTestPath $passingMode $true 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1)))
         }
+
+        $diagnostic = New-SyntheticLifecycleReceipt $true 'marker1-single-planner-step-and-restore-v1' 'passed'
+        $diagnostic.canary.outcome = 'failed-closed'
+        $diagnostic.canary.planner_step.outcome = 'live-player-context-unavailable'
+        $diagnostic.canary.planner_step.live_context_failure_reason = 'mechanics-map-not-fresh'
+        [IO.File]::WriteAllText($receiptTestPath, ($diagnostic | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'marker1-single-planner-step-and-restore-v1' $true 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1)))
+        $diagnostic.canary.planner_step.live_context_failure_reason = '../private-path'
+        [IO.File]::WriteAllText($receiptTestPath, ($diagnostic | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        $rejected = $false
+        try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'marker1-single-planner-step-and-restore-v1' $true 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
+        if (-not $rejected) { throw 'Self-test failed: unsafe live-context diagnostic was accepted.' }
 
         foreach ($nestedFailure in @(
             'calibration-return', 'missing-planner-step', 'failed-closed-loop',

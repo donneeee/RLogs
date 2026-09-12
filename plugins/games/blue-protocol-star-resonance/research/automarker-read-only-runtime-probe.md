@@ -274,6 +274,15 @@ The launcher prints only that bounded sanitized outcome. Ordinary read-only
 observation keeps its prior success behavior after the same receipt-integrity
 checks.
 
+Failed planner receipts retain a bounded static `live_context_failure_reason`
+when the read-only mechanics-map origin gate fails (for example,
+`mechanics-map-not-fresh` or `missing-local-actor`). The launcher validates this
+as a lowercase reason token; the field cannot contain a URL, path, response
+body, process identity, or captured identity value. The mechanics-map feed also
+retains its existing bounded publication behavior; unrelated high-rate combat
+events are not promoted into map rerenders merely to advance a clock. A stale
+local entity remains a hard failure for the 18 m player-origin requirement.
+
 ## Interpretation limits
 
 A successful receipt proves only that a stable, class-validated read chain was

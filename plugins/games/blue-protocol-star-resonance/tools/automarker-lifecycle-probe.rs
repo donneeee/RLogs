@@ -238,6 +238,7 @@ mod windows {
     struct PlannerStepReceipt {
         target: Position,
         player_origin: Option<Position>,
+        live_context_failure_reason: Option<&'static str>,
         target_player_distance: Option<f32>,
         proposed_integer_mouse_delta: Option<[i32; 2]>,
         predicted_distance: Option<f32>,
@@ -1012,7 +1013,8 @@ mod windows {
             let mut failure = empty_planner_receipt(request, "live-player-context-unavailable");
             let live = match read_live_player_context(&request.rlogs_base_url) {
                 Ok(value) => value,
-                Err(_) => {
+                Err(reason) => {
+                    failure.live_context_failure_reason = Some(reason);
                     receipt.planner_step = Some(failure);
                     return cancel_preflight_receipt(receipt, memory, module_base, process_id);
                 }
@@ -1313,7 +1315,8 @@ mod windows {
         let mut result = empty_planner_receipt(request, "preflight-failed");
         let live = match read_live_player_context(&request.rlogs_base_url) {
             Ok(value) => value,
-            Err(_) => {
+            Err(reason) => {
+                result.live_context_failure_reason = Some(reason);
                 result.outcome = "live-player-context-unavailable";
                 return result;
             }
@@ -2092,6 +2095,7 @@ mod windows {
         PlannerStepReceipt {
             target: request.target.clone(),
             player_origin: None,
+            live_context_failure_reason: None,
             target_player_distance: None,
             proposed_integer_mouse_delta: None,
             predicted_distance: None,
@@ -3993,6 +3997,29 @@ mod windows {
             assert!(!planner_step_passes(1.0, 0.5, 0.91, Some(0.0)));
             assert!(!planner_step_passes(1.0, 0.5, 0.8, Some(0.0021)));
             assert!(!planner_step_passes(1.0, 1.1, 0.8, Some(0.0)));
+        }
+
+        #[test]
+        fn planner_receipt_retains_only_bounded_static_live_context_reason() {
+            let request = PlannerCanaryRequest {
+                mode: PlannerCanaryMode::SingleStep,
+                target: Position {
+                    x: 1.0,
+                    y: 2.0,
+                    z: 3.0,
+                },
+                rlogs_base_url: "http://127.0.0.1:7419".into(),
+            };
+            let mut receipt = empty_planner_receipt(&request, "live-player-context-unavailable");
+            receipt.live_context_failure_reason = Some("mechanics-map-not-fresh");
+            let json = serde_json::to_value(receipt).unwrap();
+            assert_eq!(
+                json.get("live_context_failure_reason")
+                    .and_then(serde_json::Value::as_str),
+                Some("mechanics-map-not-fresh")
+            );
+            let encoded = json.to_string();
+            assert!(!encoded.contains("127.0.0.1"));
         }
 
         #[test]
