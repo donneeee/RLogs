@@ -391,19 +391,21 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         let scene_entries = load_localization_entries(&locale_directory.path().join("scenes"))?;
         let mut scenes = Vec::with_capacity(scene_keys.len());
         for (key, id) in &scene_keys {
-            let (entry_locale, entry_text) = match scene_entries.get(key) {
-                Some(entry) => (entry.locale.as_str(), entry.text.as_str()),
-                None => (
-                    "en-US",
-                    exact_english_scene_names
-                        .get(key)
-                        .map(String::as_str)
-                        .ok_or_else(|| {
-                            format!("locale {locale} is missing reviewed scene localization {key}")
-                        })?,
-                ),
+            let exact_english = exact_english_scene_names.get(key).map(String::as_str);
+            let Some((entry_locale, entry_text)) = scene_entries
+                .get(key)
+                .map(|entry| (entry.locale.as_str(), entry.text.as_str()))
+                .or_else(|| (locale == "en-US").then_some(("en-US", exact_english?)))
+            else {
+                if exact_english.is_some() {
+                    continue;
+                }
+                return Err(format!(
+                    "locale {locale} is missing reviewed scene localization {key}"
+                )
+                .into());
             };
-            if (entry_locale != locale && entry_locale != "en-US") || entry_text.trim().is_empty() {
+            if entry_locale != locale || entry_text.trim().is_empty() {
                 return Err(format!(
                     "scene localization {key} has an invalid locale or empty name"
                 )

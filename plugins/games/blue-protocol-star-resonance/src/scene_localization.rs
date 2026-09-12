@@ -218,11 +218,20 @@ pub fn scene_presentation(scene_id: i64) -> Result<Option<&'static ScenePresenta
 /// official locale bundle. Scene 1 intentionally has no current game label.
 pub fn localized_scene_name(scene_id: i64, locale: &str) -> Result<Option<&'static str>, String> {
     let catalog = bundled_locale(locale).catalog()?;
-    Ok(catalog
+    let localized = catalog
         .scenes
         .binary_search_by_key(&scene_id, |(id, _)| *id)
         .ok()
-        .map(|index| catalog.scenes[index].1.as_str()))
+        .map(|index| catalog.scenes[index].1.as_str());
+    if localized.is_some() || catalog.locale == "en-US" {
+        return Ok(localized);
+    }
+    let english = EN_US.catalog()?;
+    Ok(english
+        .scenes
+        .binary_search_by_key(&scene_id, |(id, _)| *id)
+        .ok()
+        .map(|index| english.scenes[index].1.as_str()))
 }
 
 /// Resolves a display-only scene label from the trusted bundled ID catalog.
@@ -369,7 +378,7 @@ mod tests {
     }
 
     #[test]
-    fn every_locale_has_the_same_reviewed_scene_identity_set() {
+    fn untranslated_current_scenes_use_english_fallback_without_false_locale_rows() {
         let expected = EN_US.catalog().unwrap();
         let expected_ids = expected
             .scenes
@@ -380,11 +389,17 @@ mod tests {
             &DE_DE, &ES_ES, &FR_FR, &ID_ID, &JA_JP, &KO_KR, &PT_BR, &TH_TH, &ZH_CN, &ZH_TW,
         ] {
             let actual = source.catalog().unwrap();
+            let actual_ids = actual.scenes.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+            assert!(!actual_ids.contains(&14_001));
+            assert!(!actual_ids.contains(&14_002));
+            assert!(actual_ids.iter().all(|id| expected_ids.contains(id)));
             assert_eq!(
-                actual.scenes.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
-                expected_ids,
-                "{} scene identity set differs from en-US",
-                source.locale
+                localized_scene_name(14_001, source.locale).unwrap(),
+                Some("Winged Whale Investigation Area I")
+            );
+            assert_eq!(
+                localized_scene_name(14_002, source.locale).unwrap(),
+                Some("Winged Whale Investigation Area II")
             );
         }
     }
