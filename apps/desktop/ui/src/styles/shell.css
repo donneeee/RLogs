@@ -8825,6 +8825,28 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
   padding: 9px 10px;
 }
 
+.automarker-live-heading { margin: 4px 0 0; font-weight: 800; color: var(--text-primary, #f2f6fb); }
+.automarker-live-slot-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.automarker-live-slot {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(92, 228, 212, .28);
+  border-radius: 8px;
+  background: rgba(7, 24, 35, .58);
+  padding: 10px;
+  color: var(--text-muted, #9fb0c2);
+  font-size: 11px;
+}
+.automarker-live-slot strong { color: #69e4d7; font-size: 12px; }
+.automarker-live-request { color: var(--text-secondary, #c2d0dd); }
+
 .automarker-safety-note {
   color: #f2c36b;
 }

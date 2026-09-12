@@ -43,7 +43,7 @@ export function mountAutomarkerPresetsSurface(
   heading.append(
     text("span", "AUTOMARKERS", "eyebrow"),
     text("h2", "Marker presets"),
-    text("p", "Enter 1–6 numbered XYZ points, save them locally, and preview them on the Mechanics Map without sending anything to the game.", "card-copy"),
+    text("p", "Capture the current packet-observed marker set or enter 1–6 numbered XYZ points, save it locally, and preview it on the Mechanics Map without sending anything to the game.", "card-copy"),
   );
   const sceneBadge = text("span", "NO SCENE", "overlay-menu-preview-badge");
   intro.append(heading, sceneBadge);
@@ -60,7 +60,7 @@ export function mountAutomarkerPresetsSurface(
   presetLabel.append(select);
   const editor = el("section", "automarker-point-editor");
   const editorHeading = el("div", "automarker-point-editor-heading");
-  editorHeading.append(text("strong", "Manual marker points"), text("span", "Local coordinates only"));
+  editorHeading.append(text("strong", "Marker points"), text("span", "Captured or locally entered"));
   const pointRows = el("div", "automarker-point-rows");
   const addPoint = button("Add point", "quiet-button");
   editor.append(editorHeading, pointRows, addPoint);
@@ -290,6 +290,9 @@ export function mountAutomarkerPresetsSurface(
       view = freshView;
       observedMarkers = snapshot;
       setEditorPoints(snapshot.markers);
+      if (name.value.trim() === "") {
+        name.value = `${freshView.context?.sceneName ?? "Current scene"} markers`;
+      }
       editorDirty = true;
       status.textContent = `Captured ${snapshot.markers.length} current in-game marker${snapshot.markers.length === 1 ? "" : "s"} into the local editor. Nothing was sent to the game.`;
     } catch (error) {
@@ -413,6 +416,27 @@ export function mountAutomarkerPresetsSurface(
         "card-copy automarker-request-diagnostic",
       ));
     }
+    if (observedMarkers !== null && observedMarkers.reason === "observed_markers_available") {
+      const liveSlots = el("ol", "automarker-live-slot-list");
+      const requests = new Map(observedMarkers.verifiedRequests.map((request) => [request.markerNumber, request.observedMicros]));
+      for (const point of observedMarkers.markers) {
+        const requestMicros = requests.get(point.markerNumber) ?? null;
+        const row = el("li", "automarker-live-slot");
+        row.dataset.markerNumber = String(point.markerNumber);
+        row.append(
+          text("strong", `Marker ${point.markerNumber} · inbound confirmed`),
+          text("span", observedMarkerFreshnessLabel(point.observedMicros, observedMarkers.observedMicros)),
+          text("span", requestMicros === null
+            ? "No matching local request was observed in this capture."
+            : `Verified local request observed at ${formatCaptureTime(requestMicros)}.`, "automarker-live-request"),
+        );
+        liveSlots.append(row);
+      }
+      detail.append(
+        text("p", "Live packet-observed marker slots", "card-copy automarker-live-heading"),
+        liveSlots,
+      );
+    }
     if (!captureAvailability.enabled) {
       detail.append(text("p", `Capture current markers is unavailable: ${captureAvailability.reason}`, "card-copy automarker-safety-note"));
     }
@@ -503,6 +527,23 @@ export function observedMarkerCaptureAvailability(
 
 function observedMarkerSnapshotKey(snapshot: ObservedMarkerSnapshot | null): string {
   return snapshot === null ? "none" : `${snapshot.revision}:${snapshot.sessionId ?? ""}:${snapshot.sceneId ?? ""}:${snapshot.mapId ?? ""}`;
+}
+
+export function observedMarkerFreshnessLabel(
+  markerObservedMicros: number,
+  snapshotObservedMicros: number | null,
+): string {
+  if (snapshotObservedMicros === null || markerObservedMicros > snapshotObservedMicros) {
+    return `Authoritative inbound position observed at ${formatCaptureTime(markerObservedMicros)}.`;
+  }
+  const delta = snapshotObservedMicros - markerObservedMicros;
+  return delta === 0
+    ? `Authoritative inbound position observed at ${formatCaptureTime(markerObservedMicros)} (latest marker update).`
+    : `Authoritative inbound position observed at ${formatCaptureTime(markerObservedMicros)} (${formatCaptureTime(delta)} before the latest marker update).`;
+}
+
+function formatCaptureTime(micros: number): string {
+  return `${(micros / 1_000_000).toFixed(3)}s`;
 }
 
 function format(value: number): string { return value.toFixed(3).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1"); }

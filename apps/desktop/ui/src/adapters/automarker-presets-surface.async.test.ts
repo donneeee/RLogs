@@ -13,7 +13,7 @@ interface Deferred<T> {
 
 function unavailableObserved(build = "25247556"): ObservedMarkerSnapshot {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     revision: 1,
     captureActive: true,
     protocolSupported: false,
@@ -21,6 +21,7 @@ function unavailableObserved(build = "25247556"): ObservedMarkerSnapshot {
     verifiedRequestCount: 0,
     lastVerifiedRequestMarkerNumber: null,
     lastVerifiedRequestObservedMicros: null,
+    verifiedRequests: [],
     reason: "marker_protocol_not_verified_for_build_pack",
     sessionId: "capture-test-session",
     deploymentId: "global",
@@ -43,7 +44,7 @@ function capturable(sceneId = 6_525): { catalog: AutomarkerPresetView; snapshot:
   return {
     catalog,
     snapshot: {
-      schemaVersion: 2,
+      schemaVersion: 3,
       revision: 9,
       captureActive: true,
       protocolSupported: true,
@@ -51,6 +52,10 @@ function capturable(sceneId = 6_525): { catalog: AutomarkerPresetView; snapshot:
       verifiedRequestCount: 2,
       lastVerifiedRequestMarkerNumber: 2,
       lastVerifiedRequestObservedMicros: 123_455,
+      verifiedRequests: [
+        { markerNumber: 1, observedMicros: 123_445 },
+        { markerNumber: 2, observedMicros: 123_455 },
+      ],
       reason: "observed_markers_available",
       sessionId: catalog.captureSessionId,
       deploymentId: catalog.deploymentId,
@@ -60,8 +65,8 @@ function capturable(sceneId = 6_525): { catalog: AutomarkerPresetView; snapshot:
       mapId: catalog.context!.mapId,
       observedMicros: 123_456,
       markers: [
-        { markerNumber: 1, x: 11, y: 12, z: 13 },
-        { markerNumber: 2, x: 21, y: 22, z: 23 },
+        { markerNumber: 1, x: 11, y: 12, z: 13, observedMicros: 123_450 },
+        { markerNumber: 2, x: 21, y: 22, z: 23, observedMicros: 123_456 },
       ],
     },
   };
@@ -281,6 +286,12 @@ describe("mounted automarker preset editor request ordering", () => {
       .toContain("2 recognized");
     expect(container.querySelector(".automarker-request-diagnostic")?.textContent)
       .toContain("marker 2 at 0.123s");
+    const liveSlots = [...container.querySelectorAll<HTMLElement>(".automarker-live-slot")];
+    expect(liveSlots).toHaveLength(2);
+    expect(liveSlots[0]?.textContent).toContain("Marker 1 · inbound confirmed");
+    expect(liveSlots[0]?.textContent).toContain("0.000s before the latest marker update");
+    expect(liveSlots[0]?.textContent).toContain("Verified local request observed at 0.123s");
+    expect(liveSlots[1]?.textContent).toContain("latest marker update");
     capture.click();
 
     freshSnapshot.resolve(initial.snapshot);
@@ -294,6 +305,57 @@ describe("mounted automarker preset editor request ordering", () => {
     expect([...container.querySelectorAll<HTMLInputElement>('input[data-coordinate="x"]')].map((input) => input.value))
       .toEqual(["11", "21"]);
     expect(container.querySelector(".automarker-status")?.textContent).toContain("Captured 2 current in-game markers");
+    mounted.dispose();
+  });
+
+  it("captures an authoritative set into an empty family and saves it without coordinate entry", async () => {
+    const current = capturable();
+    current.catalog.presets = [];
+    const savedCatalog: AutomarkerPresetView = {
+      ...current.catalog,
+      presets: [{
+        presetId: "preset-captured-00000001",
+        name: "Scene 6525 markers",
+        activityFamilyId: current.catalog.context!.activityFamilyId,
+        savedAtUnixMillis: 2,
+        points: current.snapshot.markers.map(({ markerNumber, x, y, z }) => ({ markerNumber, x, y, z })),
+      }],
+    };
+    const saveCurrent = vi.fn(async () => savedCatalog);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const mounted = mountAutomarkerPresetsSurface(container, {
+      loadPresets: async () => current.catalog,
+      loadObservedMarkers: async () => current.snapshot,
+      saveCurrent,
+      loadPreset: async () => { throw new Error("not used"); },
+      openOverlay: async () => undefined,
+    });
+    await flushPromises();
+
+    [...container.querySelectorAll("button")]
+      .find((button) => button.textContent === "Capture current markers")!
+      .click();
+    await flushPromises();
+    expect((container.querySelector('input[placeholder="M1 opener"]') as HTMLInputElement).value)
+      .toBe("Scene 6525 markers");
+    expect([...container.querySelectorAll<HTMLInputElement>('input[data-coordinate="x"]')].map((input) => input.value))
+      .toEqual(["11", "21"]);
+
+    [...container.querySelectorAll("button")]
+      .find((button) => button.textContent === "Save As…")!
+      .click();
+    await flushPromises();
+    expect(saveCurrent).toHaveBeenCalledWith({
+      presetId: null,
+      name: "Scene 6525 markers",
+      points: [
+        { markerNumber: 1, x: 11, y: 12, z: 13 },
+        { markerNumber: 2, x: 21, y: 22, z: 23 },
+      ],
+      expectedContext: current.catalog.context,
+    });
+    expect(container.querySelector(".automarker-status")?.textContent).toContain("Saved a new marker setup");
     mounted.dispose();
   });
 

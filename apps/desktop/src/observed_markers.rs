@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use rlogs_game_bpsr::{LocalMapMarker, LocalMapMarkerSnapshotError};
 use serde::Serialize;
 
-pub const OBSERVED_MARKER_SNAPSHOT_SCHEMA_VERSION: u16 = 2;
+pub const OBSERVED_MARKER_SNAPSHOT_SCHEMA_VERSION: u16 = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObservedMarkerSessionStamp {
@@ -22,6 +22,17 @@ pub struct ObservedMarkerPoint {
     pub x: f32,
     pub y: f32,
     pub z: f32,
+    /// Capture-clock time of the authoritative inbound marker state.
+    pub observed_micros: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservedMarkerRequest {
+    pub marker_number: u8,
+    /// Capture-clock time of the newest locally observed, verified outbound
+    /// request for this slot. This is diagnostic evidence, not server ACK.
+    pub observed_micros: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -35,6 +46,7 @@ pub struct ObservedMarkerSnapshot {
     pub verified_request_count: u32,
     pub last_verified_request_marker_number: Option<u8>,
     pub last_verified_request_observed_micros: Option<u64>,
+    pub verified_requests: Vec<ObservedMarkerRequest>,
     pub reason: &'static str,
     pub session_id: Option<String>,
     pub deployment_id: Option<String>,
@@ -57,6 +69,7 @@ impl Default for ObservedMarkerSnapshot {
             verified_request_count: 0,
             last_verified_request_marker_number: None,
             last_verified_request_observed_micros: None,
+            verified_requests: Vec::new(),
             reason: "live_capture_not_running",
             session_id: None,
             deployment_id: None,
@@ -97,6 +110,7 @@ impl ObservedMarkerFeed {
             verified_request_count: 0,
             last_verified_request_marker_number: None,
             last_verified_request_observed_micros: None,
+            verified_requests: Vec::new(),
             reason,
             session_id: Some(stamp.session_id),
             deployment_id: Some(stamp.deployment_id),
@@ -175,6 +189,7 @@ impl ObservedMarkerFeed {
                 x,
                 y,
                 z,
+                observed_micros: marker.observed_micros,
             });
         }
         points.sort_by_key(|point| point.marker_number);
@@ -211,6 +226,7 @@ impl ObservedMarkerFeed {
             verified_request_count: 0,
             last_verified_request_marker_number: None,
             last_verified_request_observed_micros: None,
+            verified_requests: Vec::new(),
             reason: "live_capture_not_running",
             scene_id: None,
             map_id: None,
@@ -251,6 +267,21 @@ impl ObservedMarkerFeed {
         current.verified_request_count = current.verified_request_count.saturating_add(1);
         current.last_verified_request_marker_number = Some(marker_number);
         current.last_verified_request_observed_micros = Some(observed_micros);
+        if let Some(request) = current
+            .verified_requests
+            .iter_mut()
+            .find(|request| request.marker_number == marker_number)
+        {
+            request.observed_micros = observed_micros;
+        } else {
+            current.verified_requests.push(ObservedMarkerRequest {
+                marker_number,
+                observed_micros,
+            });
+            current
+                .verified_requests
+                .sort_by_key(|request| request.marker_number);
+        }
         current.revision = current.revision.saturating_add(1);
     }
 
@@ -383,12 +414,38 @@ mod tests {
         assert_eq!(snapshot.verified_request_count, 1);
         assert_eq!(snapshot.last_verified_request_marker_number, Some(3));
         assert_eq!(snapshot.last_verified_request_observed_micros, Some(12));
+        assert_eq!(
+            snapshot.verified_requests,
+            vec![ObservedMarkerRequest {
+                marker_number: 3,
+                observed_micros: 12,
+            }]
+        );
+
+        feed.observe_verified_request("one", 3, 13);
+        feed.observe_verified_request("one", 1, 14);
+        let updated = feed.current();
+        assert_eq!(updated.verified_request_count, 3);
+        assert_eq!(
+            updated.verified_requests,
+            vec![
+                ObservedMarkerRequest {
+                    marker_number: 1,
+                    observed_micros: 14,
+                },
+                ObservedMarkerRequest {
+                    marker_number: 3,
+                    observed_micros: 13,
+                },
+            ]
+        );
 
         feed.begin_session(stamp("two", true));
         let reset = feed.current();
         assert_eq!(reset.verified_request_count, 0);
         assert_eq!(reset.last_verified_request_marker_number, None);
         assert_eq!(reset.last_verified_request_observed_micros, None);
+        assert!(reset.verified_requests.is_empty());
         feed.finish_session("two");
         let finished = feed.current();
         assert!(!finished.request_observer_supported);
@@ -449,6 +506,7 @@ mod tests {
         let snapshot = feed.current();
         assert_eq!(snapshot.reason, "observed_markers_available");
         assert_eq!(snapshot.markers.len(), 6);
+        assert_eq!(snapshot.markers[0].observed_micros, 1);
         let feed_points = snapshot
             .markers
             .into_iter()

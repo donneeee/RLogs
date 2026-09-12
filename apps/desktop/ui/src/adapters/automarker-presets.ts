@@ -86,7 +86,7 @@ export interface AutomarkerLocalLoadResult {
 }
 
 export interface ObservedMarkerSnapshot {
-  schemaVersion: 2;
+  schemaVersion: 3;
   revision: number;
   captureActive: boolean;
   protocolSupported: boolean;
@@ -94,6 +94,7 @@ export interface ObservedMarkerSnapshot {
   verifiedRequestCount: number;
   lastVerifiedRequestMarkerNumber: number | null;
   lastVerifiedRequestObservedMicros: number | null;
+  verifiedRequests: readonly ObservedMarkerRequest[];
   reason: "live_capture_not_running" | "marker_protocol_not_verified_for_build_pack" |
     "waiting_for_packet_observed_scene_and_map" | "no_fully_positioned_markers_observed" |
     "observed_marker_snapshot_invalid" | "observed_markers_available";
@@ -104,7 +105,16 @@ export interface ObservedMarkerSnapshot {
   sceneId: number | null;
   mapId: number | null;
   observedMicros: number | null;
-  markers: readonly AutomarkerPoint[];
+  markers: readonly ObservedMarkerPoint[];
+}
+
+export interface ObservedMarkerPoint extends AutomarkerPoint {
+  observedMicros: number;
+}
+
+export interface ObservedMarkerRequest {
+  markerNumber: number;
+  observedMicros: number;
 }
 
 export function automarkerSaveRequest(
@@ -333,16 +343,18 @@ export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView 
 }
 
 export function parseObservedMarkerSnapshot(value: unknown): ObservedMarkerSnapshot {
-  if (!record(value) || value.schemaVersion !== 2 || !integer(value.revision) ||
+  if (!record(value) || value.schemaVersion !== 3 || !integer(value.revision) ||
       typeof value.captureActive !== "boolean" || typeof value.protocolSupported !== "boolean" ||
       typeof value.requestObserverSupported !== "boolean" || !integer(value.verifiedRequestCount) ||
       !optionalMarkerNumber(value.lastVerifiedRequestMarkerNumber) ||
       !optionalInteger(value.lastVerifiedRequestObservedMicros) ||
+      !Array.isArray(value.verifiedRequests) || !value.verifiedRequests.every(validObservedRequest) ||
+      new Set(value.verifiedRequests.map((request) => (request as ObservedMarkerRequest).markerNumber)).size !== value.verifiedRequests.length ||
       !observedReason(value.reason) || !optionalIdentity(value.sessionId, 128) ||
       !optionalIdentity(value.deploymentId, 64) || !optionalBuild(value.clientBuild) ||
       !optionalDigest(value.protocolPackDigest) || !optionalInteger(value.sceneId) ||
       !optionalInteger(value.mapId) || !optionalInteger(value.observedMicros) ||
-      !Array.isArray(value.markers) || !value.markers.every(validPoint) ||
+      !Array.isArray(value.markers) || !value.markers.every(validObservedPoint) ||
       new Set(value.markers.map((point) => (point as AutomarkerPoint).markerNumber)).size !== value.markers.length) {
     throw new Error("The local host returned an invalid observed-marker snapshot.");
   }
@@ -352,11 +364,18 @@ export function parseObservedMarkerSnapshot(value: unknown): ObservedMarkerSnaps
   const hasContext = snapshot.sceneId !== null && snapshot.mapId !== null;
   const hasRequestDiagnostic = snapshot.lastVerifiedRequestMarkerNumber !== null &&
     snapshot.lastVerifiedRequestObservedMicros !== null;
+  const lastRequestIsRepresented = !hasRequestDiagnostic || snapshot.verifiedRequests.some((request) =>
+    request.markerNumber === snapshot.lastVerifiedRequestMarkerNumber &&
+    request.observedMicros === snapshot.lastVerifiedRequestObservedMicros);
   const validRequestDiagnostic = snapshot.captureActive
     ? snapshot.requestObserverSupported
-      ? (snapshot.verifiedRequestCount === 0 ? !hasRequestDiagnostic : hasRequestDiagnostic)
-      : snapshot.verifiedRequestCount === 0 && !hasRequestDiagnostic
-    : !snapshot.requestObserverSupported && snapshot.verifiedRequestCount === 0 && !hasRequestDiagnostic;
+      ? (snapshot.verifiedRequestCount === 0
+          ? !hasRequestDiagnostic && snapshot.verifiedRequests.length === 0
+          : hasRequestDiagnostic && snapshot.verifiedRequests.length > 0 &&
+            snapshot.verifiedRequests.length <= snapshot.verifiedRequestCount && lastRequestIsRepresented)
+      : snapshot.verifiedRequestCount === 0 && !hasRequestDiagnostic && snapshot.verifiedRequests.length === 0
+    : !snapshot.requestObserverSupported && snapshot.verifiedRequestCount === 0 &&
+      !hasRequestDiagnostic && snapshot.verifiedRequests.length === 0;
   const validState = snapshot.reason === "live_capture_not_running"
     ? !snapshot.captureActive && !snapshot.protocolSupported && !hasContext && snapshot.markers.length === 0
     : snapshot.reason === "marker_protocol_not_verified_for_build_pack"
@@ -431,6 +450,19 @@ function validPoint(value: unknown): value is AutomarkerPoint {
   return record(value) && exactKeys(value, ["markerNumber", "x", "y", "z"]) &&
     integer(value.markerNumber) && Number(value.markerNumber) >= 1 &&
     Number(value.markerNumber) <= 6 && finite(value.x) && finite(value.y) && finite(value.z);
+}
+
+function validObservedPoint(value: unknown): value is ObservedMarkerPoint {
+  return record(value) && exactKeys(value, ["markerNumber", "x", "y", "z", "observedMicros"]) &&
+    integer(value.markerNumber) && value.markerNumber >= 1 && value.markerNumber <= 6 &&
+    finite(value.x) && finite(value.y) && finite(value.z) && integer(value.observedMicros) &&
+    value.observedMicros >= 0;
+}
+
+function validObservedRequest(value: unknown): value is ObservedMarkerRequest {
+  return record(value) && exactKeys(value, ["markerNumber", "observedMicros"]) &&
+    integer(value.markerNumber) && value.markerNumber >= 1 && value.markerNumber <= 6 &&
+    integer(value.observedMicros) && value.observedMicros >= 0;
 }
 
 function validBuild(value: unknown): value is string {
