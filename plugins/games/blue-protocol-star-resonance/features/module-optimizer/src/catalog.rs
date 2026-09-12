@@ -232,14 +232,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn current_catalog_reproduces_the_cn_0_2_0_scoring_tables() {
+    fn source_and_current_build_catalog_reproduce_the_reviewed_scoring_tables() {
         let catalog_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../game-data/catalog");
         let (actual, catalog) = load_catalog_from_path(&catalog_root).unwrap();
         let expected = ScoringRules::cn_0_2_0_fixture();
         assert_eq!(actual.attributes, expected.attributes);
         assert_eq!(actual.link_power, expected.link_power);
         assert_eq!(catalog.attributes.len(), 21);
-        assert_eq!(catalog.client_builds, ["24252055"]);
+        assert_eq!(catalog.client_builds, ["24252055", "24687926"]);
         for (id, expected_name) in [
             (1112, "Intellect Boost"),
             (1307, "Resistance"),
@@ -255,6 +255,51 @@ mod tests {
                     .map(|entry| (entry.name.as_str(), entry.official_name.as_deref())),
                 Some((expected_name, None))
             );
+        }
+    }
+
+    #[test]
+    fn current_build_scoring_equivalence_receipt_is_exact_and_complete() {
+        let catalog_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../game-data/catalog");
+        let receipt: serde_json::Value = read_json(
+            &catalog_root.join("coverage/module-optimizer-scoring-build-equivalence.v1.json"),
+        )
+        .unwrap();
+        let comparison = &receipt["comparison"];
+
+        assert_eq!(receipt["source_build"], "24252055");
+        assert_eq!(receipt["current_build"], "24687926");
+        assert_eq!(receipt["authority"], "exact-current-build-static-data");
+        assert_eq!(comparison["module_effect_family_count"], 21);
+        assert_eq!(comparison["module_effect_scoring_row_count"], 147);
+        assert_eq!(comparison["module_link_scoring_row_count"], 121);
+        assert_eq!(comparison["identical"], true);
+        assert_eq!(comparison["differences"], serde_json::json!([]));
+        assert_eq!(
+            comparison["source_module_effect_digest"],
+            comparison["current_module_effect_digest"]
+        );
+        assert_eq!(
+            comparison["source_module_link_digest"],
+            comparison["current_module_link_digest"]
+        );
+
+        let current_build = serde_json::json!({
+            "deployment_id": "global",
+            "channel": "steam",
+            "client_build": "24687926",
+        });
+        for directory in ["module-effects", "module-link-effects"] {
+            for record in
+                read_json_directory::<serde_json::Value>(&catalog_root.join(directory)).unwrap()
+            {
+                assert!(
+                    record["availability"]
+                        .as_array()
+                        .is_some_and(|availability| availability.contains(&current_build)),
+                    "{directory} record is missing current-build availability"
+                );
+            }
         }
     }
 }

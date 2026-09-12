@@ -1,12 +1,20 @@
 {
   "schema_version": 2,
   "catalog_id": "rlogs-official",
-  "catalog_revision": "steam-24252055-reviewed-catalog-v5",
+  "catalog_revision": "steam-24252055-24687926-reviewed-catalog-v6",
   "supported_builds": [
     {
       "deployment_id": "global",
       "channel": "steam",
       "client_build": "24252055"
+    },
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24687926"
     }
+  ],
+  "scoring_equivalence_receipts": [
+    "coverage/module-optimizer-scoring-build-equivalence.v1.json"
   ]
 }

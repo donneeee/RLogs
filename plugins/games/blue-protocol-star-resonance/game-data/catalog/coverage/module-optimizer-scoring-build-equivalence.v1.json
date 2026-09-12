@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "kind": "module_optimizer_scoring_build_equivalence",
+  "deployment_id": "global",
+  "channel": "steam",
+  "source_build": "24252055",
+  "current_build": "24687926",
+  "authority": "exact-current-build-static-data",
+  "source_catalog": {
+    "manifest": "../manifest.json",
+    "module_effect_reference": "client-build:global/steam/24252055@sha256:bcfe2d0d694d398e74abf23d01d389368353785c0df5d98202a218bb70e317c3+sha256:8c4e893b4b8b19412e2f0dfadaa9565182f6aced95fefae0e599834001e5dc9b",
+    "module_link_reference": "client-build:global/steam/24252055@sha256:c500899c05a083f483d4b7112b9311616896df5134cfe7c5edd8c28a619b209a"
+  },
+  "current_build_source": {
+    "manifest": "../../../research/game-file-inventory/global/steam-24687926/complete-build-source-manifest.v1.json",
+    "manifest_sha256": "dc4723c91e2a09385d754f9f821d5315d835139702bfb35a4616ecba2359d273",
+    "tables": {
+      "ModEffectTable.json": {
+        "sha256": "0e34c49b620c2d5025c7594b227f1a86bda1fa1b8b1af4ee4bfac34c2926ee8d",
+        "bytes": 219056
+      },
+      "ModEffectLibTable.json": {
+        "sha256": "c8204839b4cca2262e6f8baef730b794c21002296b92e7a8cf6c14a968dcd1d5",
+        "bytes": 11007
+      },
+      "ModLinkEffectTable.json": {
+        "sha256": "0d804f8c03fe38504ff1b465f3382aaa0e0e9cd8ec95fd72fc89755525e3c669",
+        "bytes": 41792
+      }
+    }
+  },
+  "comparison": {
+    "module_effect_family_count": 21,
+    "module_effect_scoring_row_count": 147,
+    "module_link_scoring_row_count": 121,
+    "source_module_effect_digest": "f0657e07f4465d7ad77fce5e002268e9f0dc6d9cea58783c2aa9e4d539414f85",
+    "current_module_effect_digest": "f0657e07f4465d7ad77fce5e002268e9f0dc6d9cea58783c2aa9e4d539414f85",
+    "source_module_link_digest": "525ed2a5dad52084b74a4e3a0a410e2922a987c00b99f9a99e2b75bea5b51bc1",
+    "current_module_link_digest": "525ed2a5dad52084b74a4e3a0a410e2922a987c00b99f9a99e2b75bea5b51bc1",
+    "identical": true,
+    "differences": []
+  },
+  "policy": {
+    "every_effect_family_and_library_membership_must_match": true,
+    "every_effect_threshold_and_fight_value_row_must_match": true,
+    "every_total_link_and_fight_value_row_must_match": true,
+    "promotion_fails_closed_on_any_difference": true
+  }
+}
