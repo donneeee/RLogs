@@ -1,0 +1,204 @@
+{
+  "schema_version": 1,
+  "generated_by": "bounded-read-only-il2cpp-design-audit",
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "build_id": "25247556",
+  "scope": {
+    "offline_static_analysis_only": true,
+    "process_access": false,
+    "game_method_invocation": false,
+    "memory_write": false,
+    "packet_synthesis_or_transmission": false,
+    "runtime_activation_enabled": false
+  },
+  "build_identity": {
+    "game_executable": {
+      "byte_length": 808496,
+      "sha256": "90537dbd0e4c9d4b3ed2af06aa8bf7ffe7219fc94bb2f6963673f7b340288588"
+    },
+    "game_assembly": {
+      "byte_length": 218074672,
+      "sha256": "4a079aec0a3e51a8023aa86bbd152e12068907b65b9aafb355d20bb6d6c41fe3"
+    },
+    "global_metadata": {
+      "metadata_version": 31,
+      "byte_length": 28697724,
+      "sha256": "2f8213cf2a253d7a99a37b81f796e3a0162d0cf2d1ca6a2d0e0719f8f9a57779"
+    },
+    "bounded_analysis_inputs": [
+      { "name": "dump.cs", "sha256": "3bbc01c125dc160be85730986ebb40740dc2a078cb4bb4c5a0add00349b47a32" },
+      { "name": "script.json", "sha256": "84fc7707e91f1eabc4c17ea3735f387da6b9e7a26ee70a34a0c768994e1cbcd4" },
+      { "name": "il2cpp.h", "sha256": "75ce0d79c2995449f7200a9df03bb47e85e39494e6b6098aac64f36a62ed7f91" },
+      { "name": "automarker-direct-calls-indicator-state.v1.json", "sha256": "cf74fbc02ddeede9bf22ff5c46e446d419b82ec1a2e3d10d8290979e593f2d36" },
+      { "name": "automarker-direct-calls-indicator-use-skill.v1.json", "sha256": "6775767a34c07d5d6046bb257eab1fc653a3d04179f98842e58490aac811bd3f" }
+    ]
+  },
+  "abi_proof": {
+    "platform": "Windows x86-64 IL2CPP",
+    "set_indicator_position": {
+      "managed_identity": "Panda.ZGame.EntityAttrExtensions.SetIndicatorPos(Panda.ZGame.ZEntity, UnityEngine.Vector3)",
+      "rva": "0x53E86A0",
+      "generated_c_signature": "void Panda_ZGame_EntityAttrExtensions__SetIndicatorPos(Panda_ZGame_ZEntity_o* entity, UnityEngine_Vector3_o position, const MethodInfo* method)",
+      "type_signature": "viii",
+      "register_contract": {
+        "rcx": "managed ZEntity object pointer",
+        "rdx": "address of the 12-byte Vector3 aggregate",
+        "r8": "hidden MethodInfo pointer required by the generated ABI contract"
+      },
+      "native_observations": [
+        "The entry moves RDX to RDI and RCX to RBX.",
+        "The body reads eight bytes from [RDI] and four bytes from [RDI+8], proving indirect carriage of three float32 values.",
+        "The body validates the entity/pure-component chain and writes component id 0x6A, consistent with IndicatorPosComponent."
+      ]
+    },
+    "fire_indicator_skill": {
+      "managed_identity": "Panda.ZGame.ZSkillInputMgr.FirePlaySkillByIndicator(System.Int32)",
+      "rva": "0x52E09E0",
+      "generated_c_signature": "bool Panda_ZGame_ZSkillInputMgr__FirePlaySkillByIndicator(Panda_ZGame_ZSkillInputMgr_o* __this, int32_t skillID, const MethodInfo* method)",
+      "type_signature": "iiii",
+      "register_contract": {
+        "rcx": "live ZSkillInputMgr object pointer",
+        "edx": "signed 32-bit skill id",
+        "r8": "hidden MethodInfo pointer required by the generated ABI contract",
+        "al": "boolean result"
+      },
+      "native_observations": [
+        "The entry moves EDX to EBX and RCX to RDI.",
+        "It resolves SkillControlData through TryGetSkillControlData and returns false when lookup fails.",
+        "On success it calls FirePlaySkillEvent with clearSlot=true, isIndicator=true, and isAIPress=false and propagates the result."
+      ]
+    },
+    "vector3_layout": {
+      "size_bytes": 12,
+      "fields": [
+        { "name": "x", "offset": 0, "type": "float32" },
+        { "name": "y", "offset": 4, "type": "float32" },
+        { "name": "z", "offset": 8, "type": "float32" }
+      ]
+    }
+  },
+  "object_requirements": {
+    "root_chain": [
+      "current ZEntityMgr singleton",
+      "ZEntityMgr.playerEnt_ at +0x18",
+      "current PlayerEnt",
+      "PlayerEnt.skillInputComp_ at +0x128",
+      "current PlayerSkillInputComp",
+      "PlayerSkillInputComp.skillInputMgr_ at +0x28",
+      "current ZSkillInputMgr"
+    ],
+    "indicator_component": "PlayerEnt PureComponents backing storage +0x20, then PlayerEnt__Storage._value105 at +0x9C4",
+    "manager_identity_checks": [
+      "ZSkillInputMgr.comp_ at +0x10 must equal the current PlayerSkillInputComp.",
+      "Every managed object must remain class-valid and unchanged across scheduling and both candidate calls.",
+      "The PlayerEnt, scene, and root generation must be identical before and after the operation.",
+      "A zero Vector3 remains a selection sentinel and is not a portable saved location."
+    ]
+  },
+  "call_graph": [
+    { "from": "EntityAttrExtensions.SetIndicatorPos", "rva": "0x53E86A0", "to": "IndicatorPosComponent mutation through the entity component API", "status": "statically proven" },
+    { "from": "ZSkillInputMgr.FirePlaySkillByIndicator", "rva": "0x52E09E0", "to": "SkillControlDataMgr.TryGetSkillControlData", "target_rva": "0x52BE550", "status": "statically proven" },
+    { "from": "ZSkillInputMgr.FirePlaySkillByIndicator", "rva": "0x52E09E0", "to": "ZSkillInputMgr.FirePlaySkillEvent", "target_rva": "0x52E0AB0", "callsite_rva": "0x52E0A83", "status": "statically proven" },
+    { "from": "FirePlaySkillEvent", "to": "PlayerCtrl/CharCtrl indicator skill path", "status": "statically proven" },
+    { "from": "CharCtrlCompBase.UseSkill", "rva": "0x54A2370", "to": "CharCtrlCompBase.useSkillByServer", "target_rva": "0x54A3DD0", "callsite_rva": "0x54A3A2D", "status": "statically proven" },
+    { "from": "useSkillByServer", "to": "World.UseSlot with fresh client-owned action/session/authentication state", "status": "statically proven" }
+  ],
+  "scheduler_design_constraints": {
+    "preferred_candidate_not_proven_safe": {
+      "identity": "Cysharp.Threading.Tasks.UniTask.Post(System.Action, PlayerLoopTiming)",
+      "rva": "0x670EB30",
+      "generated_c_signature": "void Cysharp_Threading_Tasks_UniTask__Post(System_Action_o* action, int32_t timing, const MethodInfo* method)",
+      "timing": "Update = 8",
+      "reason": "It is a named one-shot main-player-loop dispatch surface."
+    },
+    "related_delegate_surface": {
+      "system_action_constructor_rva": "0xB38650",
+      "system_action_invoke_rva": "0xABDE30",
+      "switch_to_main_thread_awaiter_on_completed_rva": "0x6719000"
+    },
+    "delegate_requirements": [
+      "A valid managed System.Action must be allocated using the exact current IL2CPP type and constructor contract.",
+      "The delegate target and trampoline must be valid, GC-rooted until invocation, exception-contained, and guaranteed to execute once.",
+      "The invoking thread must be attached to IL2CPP and all class/MethodInfo initialization requirements must be satisfied.",
+      "Lifecycle and leader gates must be rechecked inside the scheduled callback, not only before queueing."
+    ],
+    "alternative_candidate": {
+      "identity": "UpdateManager.AddUpdate(MonoBehaviour, int, UpdateManager.OnUpdate)",
+      "rva": "0x4097270",
+      "limitations": "Requires a live MonoBehaviour, an OnUpdate delegate with the correct float callback ABI, stable rooting, registration ownership, and guaranteed DelUpdate cleanup."
+    },
+    "conclusion": "No sanctioned bridge, delegate construction route, GC-rooting policy, exception boundary, or cancellation guarantee is proven. The scheduler is a design candidate, not an activation contract."
+  },
+  "required_fail_closed_gates": {
+    "before_queue_and_inside_callback": [
+      "exact build hashes still match",
+      "current stage is a dungeon stage",
+      "scene/family/map identity matches a reviewed marker setup",
+      "current character is the live party leader",
+      "scene-mask slots 201-206 still resolve marker skills 1101-1106 for this scene",
+      "PlayerEnt and ZSkillInputMgr object chain and lifecycle generation are unchanged",
+      "not loading, reconnecting, changing scene, in cutscene, or otherwise input-blocked",
+      "no marker operation is already in flight",
+      "target is finite, non-zero, belongs to this scene family, and passes game distance rules"
+    ],
+    "source_evidence": "The reviewed normal game UI checks dungeon stage and compares TeamInfo.baseInfo.leaderId with the current character id before exposing scene-mask marker skills. An internal route would bypass that UI and therefore must duplicate the gates independently."
+  },
+  "pacing_and_acknowledgement": {
+    "captured_normal_ui_sample_count": 6,
+    "skills": [1101, 1102, 1103, 1104, 1105, 1106],
+    "slots": [201, 202, 203, 204, 205, 206],
+    "request_to_empty_return_microseconds": [89505, 38297, 91077, 54981, 67733, 49168],
+    "required_success_evidence": [
+      "the game-owned dispatch returns success",
+      "a matching self inbound marker-add notification is passively observed with the same scene/session, skill, and XYZ"
+    ],
+    "insufficient_evidence": [
+      "transport frame acknowledgement alone",
+      "an empty World.UseSlot return alone",
+      "local IndicatorPosComponent state alone"
+    ],
+    "sequencing_rule": "Permit only one marker in flight. Do not advance until both success signals match; abort on timeout, mismatch, lifecycle change, leader loss, scene change, or replacement/clear ambiguity.",
+    "pacing_limit": "One six-marker trace does not prove a safe minimum interval. Update, replacement, clear, rejection, reconnect, and scene-transition captures remain required."
+  },
+  "why_shortcuts_are_invalid": {
+    "simple_memory_write": [
+      "Writing PlayerEnt__Storage._value105 bypasses the component API, change tracking, and object validity checks.",
+      "The value can be overwritten by ZIndicatorMgr or later game updates.",
+      "It creates no skill action, fresh session/authentication state, server authority, or party-visible marker.",
+      "SetIndicatorPos itself is a game method and is not equivalent to changing three floats."
+    ],
+    "raw_packet_injection": [
+      "World.UseSlot carries dynamic slot, skill UUID, begin time, session sequence, authenticated/encrypted attribute data, call id, frame sequence, position, and transport ordering state.",
+      "Replaying captured constants would be stale and would bypass current eligibility, cooldown, lifecycle, and authorization logic.",
+      "A transport acknowledgement is not semantic marker acceptance.",
+      "The proposed game-owned route exists specifically so the current client creates all freshness and authority fields through its normal path."
+    ]
+  },
+  "unresolved_risks": [
+    "No supported in-process entry, IL2CPP thread attachment, delegate allocation/rooting, or MethodInfo acquisition mechanism is proven.",
+    "No proof establishes that SetIndicatorPos followed by FirePlaySkillByIndicator is atomic against normal input or ZIndicatorMgr updates.",
+    "The exact leader, scene-transition, input-blocked, cooldown, and marker-replacement state queries at the internal boundary are not resolved.",
+    "The semantic meaning and lifetime of FirePlaySkillByIndicator's boolean result are not runtime-validated.",
+    "The server rate limit and failure behavior are not characterized beyond one successful six-marker trace.",
+    "Marker update, replacement, clear, rejection, reconnect, and stale-object behavior remain uncaptured.",
+    "Seasonal builds require a complete hash, RVA, layout, call-graph, and behavior re-audit."
+  ],
+  "decision": {
+    "function_abi_statically_proven_for_exact_build": true,
+    "object_chain_statically_identified": true,
+    "normal_game_owned_downstream_route_statically_proven": true,
+    "safe_main_thread_invocation_proven": false,
+    "complete_runtime_gating_proven": false,
+    "runtime_activation_enabled": false,
+    "native_placement_must_remain_disabled": true
+  },
+  "privacy": {
+    "contains_absolute_native_addresses": false,
+    "contains_build_relative_rvas": true,
+    "contains_private_paths": false,
+    "contains_raw_payloads": false,
+    "contains_personal_identity": false
+  }
+}
