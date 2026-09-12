@@ -275,6 +275,15 @@ mod windows {
         matches_reviewed_image: bool,
     }
 
+    #[derive(Clone, Copy, Debug)]
+    struct ReviewedCodeSpec {
+        identity: &'static str,
+        rva_text: &'static str,
+        rva: usize,
+        byte_length: usize,
+        expected_sha256: &'static str,
+    }
+
     #[derive(Clone, Debug, Serialize)]
     struct BoundedGate {
         proven: bool,
@@ -2702,21 +2711,25 @@ mod windows {
             memory,
             module_base,
             module_size,
-            "Panda.ZGame.EntityAttrExtensions.SetIndicatorPos",
-            "0x53E86A0",
-            SET_INDICATOR_POS_RVA,
-            SET_INDICATOR_POS_BYTES,
-            SET_INDICATOR_POS_SHA256,
+            ReviewedCodeSpec {
+                identity: "Panda.ZGame.EntityAttrExtensions.SetIndicatorPos",
+                rva_text: "0x53E86A0",
+                rva: SET_INDICATOR_POS_RVA,
+                byte_length: SET_INDICATOR_POS_BYTES,
+                expected_sha256: SET_INDICATOR_POS_SHA256,
+            },
         );
         let fire_indicator_code = reviewed_code_receipt(
             memory,
             module_base,
             module_size,
-            "Panda.ZGame.ZSkillInputMgr.FirePlaySkillByIndicator",
-            "0x52E09E0",
-            FIRE_PLAY_SKILL_BY_INDICATOR_RVA,
-            FIRE_PLAY_SKILL_BY_INDICATOR_BYTES,
-            FIRE_PLAY_SKILL_BY_INDICATOR_SHA256,
+            ReviewedCodeSpec {
+                identity: "Panda.ZGame.ZSkillInputMgr.FirePlaySkillByIndicator",
+                rva_text: "0x52E09E0",
+                rva: FIRE_PLAY_SKILL_BY_INDICATOR_RVA,
+                byte_length: FIRE_PLAY_SKILL_BY_INDICATOR_BYTES,
+                expected_sha256: FIRE_PLAY_SKILL_BY_INDICATOR_SHA256,
+            },
         );
         let first = coherent_sample_with_roots(memory, module_base);
         thread::sleep(Duration::from_millis(STABILITY_SAMPLE_MILLIS));
@@ -2809,28 +2822,25 @@ mod windows {
         memory: &impl Memory,
         module_base: usize,
         module_size: usize,
-        identity: &'static str,
-        rva_text: &'static str,
-        rva: usize,
-        byte_length: usize,
-        expected_sha256: &str,
+        spec: ReviewedCodeSpec,
     ) -> ReviewedCodeReceipt {
-        let range_within_module = rva
-            .checked_add(byte_length)
+        let range_within_module = spec
+            .rva
+            .checked_add(spec.byte_length)
             .is_some_and(|end| end <= module_size);
         let sha256 = if range_within_module {
-            checked_add(module_base, rva)
-                .and_then(|address| memory.read_exact(address, byte_length))
+            checked_add(module_base, spec.rva)
+                .and_then(|address| memory.read_exact(address, spec.byte_length))
                 .map(|bytes| format!("{:x}", Sha256::digest(bytes)))
                 .unwrap_or_default()
         } else {
             String::new()
         };
-        let matches_reviewed_image = sha256 == expected_sha256;
+        let matches_reviewed_image = sha256 == spec.expected_sha256;
         ReviewedCodeReceipt {
-            identity,
-            rva: rva_text,
-            byte_length,
+            identity: spec.identity,
+            rva: spec.rva_text,
+            byte_length: spec.byte_length,
             sha256,
             matches_reviewed_image,
         }
@@ -4214,11 +4224,13 @@ mod windows {
                 &memory,
                 0x10_0000,
                 usize::MAX - 0x10_0000,
-                "Panda.ZGame.EntityAttrExtensions.SetIndicatorPos",
-                "0x53E86A0",
-                SET_INDICATOR_POS_RVA,
-                SET_INDICATOR_POS_BYTES,
-                SET_INDICATOR_POS_SHA256,
+                ReviewedCodeSpec {
+                    identity: "Panda.ZGame.EntityAttrExtensions.SetIndicatorPos",
+                    rva_text: "0x53E86A0",
+                    rva: SET_INDICATOR_POS_RVA,
+                    byte_length: SET_INDICATOR_POS_BYTES,
+                    expected_sha256: SET_INDICATOR_POS_SHA256,
+                },
             );
             assert!(!code.matches_reviewed_image);
             assert!(code.sha256.is_empty());
@@ -4229,7 +4241,7 @@ mod windows {
             let module_base = 0x10_0000;
             let rva = 0x1000;
             let bytes = [1u8, 2, 3, 4];
-            let expected = format!("{:x}", Sha256::digest(bytes));
+            let expected = "9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a";
             let mut memory = FakeMemory::new();
             memory.put(module_base + rva, &bytes);
 
@@ -4237,11 +4249,13 @@ mod windows {
                 &memory,
                 module_base,
                 rva + bytes.len() - 1,
-                "test",
-                "0x1000",
-                rva,
-                bytes.len(),
-                &expected,
+                ReviewedCodeSpec {
+                    identity: "test",
+                    rva_text: "0x1000",
+                    rva,
+                    byte_length: bytes.len(),
+                    expected_sha256: expected,
+                },
             );
             assert!(outside.sha256.is_empty());
             assert!(!outside.matches_reviewed_image);
@@ -4250,11 +4264,13 @@ mod windows {
                 &memory,
                 module_base,
                 rva + bytes.len(),
-                "test",
-                "0x1000",
-                rva,
-                bytes.len(),
-                &expected,
+                ReviewedCodeSpec {
+                    identity: "test",
+                    rva_text: "0x1000",
+                    rva,
+                    byte_length: bytes.len(),
+                    expected_sha256: expected,
+                },
             );
             assert_eq!(inside.sha256, expected);
             assert!(inside.matches_reviewed_image);
