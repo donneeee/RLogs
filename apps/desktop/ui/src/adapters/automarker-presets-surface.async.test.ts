@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActivateAutomarkerPresetRequest, AutomarkerLocalLoadResult, AutomarkerNativeActivationResult, AutomarkerPresetView, ObservedMarkerSnapshot } from "./automarker-presets";
-import { mountAutomarkerPresetsSurface, safeAimCanaryCommand } from "./automarker-presets-surface";
+import { mountAutomarkerPresetsSurface, operatorPlacementCanaryCommand } from "./automarker-presets-surface";
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -129,7 +129,7 @@ afterEach(() => {
 });
 
 describe("mounted automarker preset editor request ordering", () => {
-  it("copies a gated name-based aim canary without IDs, coordinates, or activation", async () => {
+  it("copies a gated name-based operator placement evidence test without IDs, coordinates, clicks, or activation", async () => {
     const catalog = view(1_633, "dungeon.1633", "Boss's opener", 91.25);
     catalog.context!.clientBuild = "25247556";
     const copyCanaryCommand = vi.fn(async (_command: string) => undefined);
@@ -151,35 +151,66 @@ describe("mounted automarker preset editor request ordering", () => {
     await flushPromises();
 
     const copy = [...container.querySelectorAll("button")]
-      .find((candidate) => candidate.textContent === "Copy safe aim canary")!;
+      .find((candidate) => candidate.textContent === "Copy placement evidence test")!;
     expect(copy.disabled).toBe(false);
+    expect(copy.title).toMatch(/one human click after aim settles/i);
+    const placeInGame = [...container.querySelectorAll("button")]
+      .find((candidate) => candidate.textContent === "Place in game")!;
+    expect(placeInGame.disabled).toBe(true);
     copy.click();
     await flushPromises();
 
     expect(copyCanaryCommand).toHaveBeenCalledOnce();
     const command = copyCanaryCommand.mock.calls[0]![0];
-    expect(command).toBe(".\\run-bpsr-automarker-lifecycle-probe.ps1 -ArmClosedLoopAim -PresetName 'Boss''s opener'");
+    expect(command).toBe(".\\run-bpsr-automarker-lifecycle-probe.ps1 -ArmOperatorPlacement -PresetName 'Boss''s opener'");
     expect(command).not.toContain(catalog.presets[0]!.presetId);
     expect(command).not.toMatch(/Target[XYZ]|91\.25/);
     expect(activatePreset).not.toHaveBeenCalled();
     expect(saveCurrent).not.toHaveBeenCalled();
     expect(loadPreset).not.toHaveBeenCalled();
     expect(openOverlay).not.toHaveBeenCalled();
-    expect(container.querySelector(".automarker-status")?.textContent).toContain("never clicks or places");
+    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/manually select Marker 1/i);
+    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/keep the game focused/i);
+    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/do not move the mouse/i);
+    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/click exactly once after the Marker 1 reticle visibly stops moving/i);
+    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/eight-second confirmation window/i);
+    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/never synthesizes a click/i);
     mounted.dispose();
   });
 
-  it("fails the safe canary handoff closed for the wrong build, duplicate names, or control characters", () => {
+  it("fails the operator placement handoff closed for the wrong build, duplicate names, or control characters", () => {
     const catalog = view(1_633, "dungeon.1633", "Opener", 1);
     const presetId = catalog.presets[0]!.presetId;
-    expect(safeAimCanaryCommand(catalog, presetId).enabled).toBe(false);
+    expect(operatorPlacementCanaryCommand(catalog, presetId).enabled).toBe(false);
 
     catalog.context!.clientBuild = "25247556";
     catalog.presets = [...catalog.presets, { ...catalog.presets[0]!, presetId: "duplicate" }];
-    expect(safeAimCanaryCommand(catalog, presetId).reason).toMatch(/unique/i);
+    expect(operatorPlacementCanaryCommand(catalog, presetId).reason).toMatch(/unique/i);
 
     catalog.presets = [{ ...catalog.presets[0]!, name: "Bad\nName" }];
-    expect(safeAimCanaryCommand(catalog, presetId).reason).toMatch(/control/i);
+    expect(operatorPlacementCanaryCommand(catalog, presetId).reason).toMatch(/control/i);
+  });
+
+  it("requires the exact active family and exactly one Marker 1", () => {
+    const catalog = view(1_633, "dungeon.1633", "Opener", 1);
+    catalog.context!.clientBuild = "25247556";
+    const presetId = catalog.presets[0]!.presetId;
+
+    catalog.presets = [{ ...catalog.presets[0]!, activityFamilyId: "other-family" }];
+    expect(operatorPlacementCanaryCommand(catalog, presetId).reason).toMatch(/exact active dungeon family/i);
+
+    catalog.presets = [{ ...catalog.presets[0]!, activityFamilyId: "dungeon.1633", points: [] }];
+    expect(operatorPlacementCanaryCommand(catalog, presetId).reason).toMatch(/exactly one Marker 1/i);
+
+    catalog.presets = [{
+      ...catalog.presets[0]!,
+      activityFamilyId: "dungeon.1633",
+      points: [
+        { markerNumber: 1, x: 1, y: 2, z: 3 },
+        { markerNumber: 1, x: 4, y: 5, z: 6 },
+      ],
+    }];
+    expect(operatorPlacementCanaryCommand(catalog, presetId).reason).toMatch(/exactly one Marker 1/i);
   });
 
   it("exports the selected preset as a safe identity-free JSON download", async () => {
