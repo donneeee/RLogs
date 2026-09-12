@@ -49,6 +49,20 @@ function Resolve-RequiredDirectory([string]$Path, [string]$Description) {
     return $full
 }
 
+function Resolve-NodeExecutablePath([string]$RequestedPath) {
+    if (-not [string]::IsNullOrWhiteSpace($RequestedPath)) {
+        return [IO.Path]::GetFullPath($RequestedPath)
+    }
+    # PowerShell can return more than one Application command when multiple
+    # node.exe entries are present on PATH. Preserve PATH precedence and pass
+    # one concrete executable path into the offline orchestration boundary.
+    $candidate = @(Get-Command node -CommandType Application -ErrorAction Stop)[0]
+    if ($null -eq $candidate -or [string]::IsNullOrWhiteSpace([string]$candidate.Source)) {
+        throw 'Node executable could not be resolved'
+    }
+    return [IO.Path]::GetFullPath([string]$candidate.Source)
+}
+
 function Read-JsonObject([string]$LiteralPath, [string]$Description) {
     try { $value = [IO.File]::ReadAllText($LiteralPath) | ConvertFrom-Json -Depth 100 }
     catch { throw "$Description is not valid JSON: $($_.Exception.Message)" }
@@ -261,7 +275,7 @@ function Write-NewUtf8File([string]$LiteralPath, [string]$Contents) {
 }
 
 function Assert-PathFreeReceipt([string]$Json, [string[]]$SensitivePaths) {
-    if ($Json -match '(?i)[a-z]:[\\/]' -or $Json -match '(?i)(?:^|["\s])/(?:users|home|tmp|var)/') {
+    if ($Json -match '(?i)(?<![a-z0-9])[a-z]:[\\/]' -or $Json -match '(?i)(?:^|["\s])/(?:users|home|tmp|var)/') {
         throw 'sanitized receipt contains an absolute path'
     }
     foreach ($path in $SensitivePaths) {
@@ -403,10 +417,7 @@ foreach ($required in @('IdentityReceiptPath', 'MetadataPath', 'GameAssemblyPath
 if ([string]::IsNullOrWhiteSpace($ArtifactManifestPath)) {
     $ArtifactManifestPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'plugins/games/blue-protocol-star-resonance/research/toolchain/il2cppdumper-4741d46-net8-win-x64.manifest.v1.json'
 }
-if ([string]::IsNullOrWhiteSpace($NodeExecutablePath)) {
-    $nodeCommand = Get-Command node -CommandType Application -ErrorAction Stop
-    $NodeExecutablePath = $nodeCommand.Source
-}
+$NodeExecutablePath = Resolve-NodeExecutablePath $NodeExecutablePath
 $routeTool = Join-Path $PSScriptRoot 'bpsr-automarker-il2cpp-route.mjs'
 $invokeParameters = @{
     ReceiptFile = $IdentityReceiptPath
