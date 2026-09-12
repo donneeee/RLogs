@@ -723,7 +723,7 @@ export function mountMechanicsMapOverlay(
     automarkerSelect.replaceChildren();
     const presets = automarkerView?.presets ?? [];
     if (presets.length === 0) {
-      automarkerSelect.append(new Option(automarkerView?.context === null ? "Enter a scene" : "No setups for this scene", ""));
+      automarkerSelect.append(new Option(automarkerView?.context === null ? "Enter a scene" : "No setups for this dungeon family", ""));
     } else {
       for (const preset of presets) automarkerSelect.append(new Option(`${preset.name} · ${preset.points.length} marks`, preset.presetId));
     }

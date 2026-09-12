@@ -296,7 +296,7 @@ export function mountAutomarkerPresetsSurface(
     sceneBadge.dataset.state = context === null ? "waiting" : "ready";
     select.replaceChildren();
     if (view === null || view.presets.length === 0) {
-      const option = new Option(context === null ? "Enter a scene" : "No saved setups for this scene", "");
+      const option = new Option(context === null ? "Enter a scene" : "No saved setups for this dungeon family", "");
       select.append(option);
       selectedId = null;
     } else {

@@ -961,7 +961,7 @@ describe("mounted Mechanics Map automarker request ordering", () => {
     transition.resolve(snapshot(1_631, 2));
     await flushPromises();
     const picker = container.querySelector(".automarker-overlay-picker select") as HTMLSelectElement;
-    expect(picker.textContent).toContain("No setups for this scene");
+    expect(picker.textContent).toContain("No setups for this dungeon family");
 
     currentSceneCatalog.resolve(catalog(1_631, "tina-mindrealm", "Current normal"));
     await flushPromises();
