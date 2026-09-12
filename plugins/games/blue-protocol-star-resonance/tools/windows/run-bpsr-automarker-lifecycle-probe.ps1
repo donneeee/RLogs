@@ -10,7 +10,9 @@ param(
     [Nullable[double]]$TargetX,
     [Nullable[double]]$TargetY,
     [Nullable[double]]$TargetZ,
+    [string]$PresetId,
     [string]$RLogsBaseUrl,
+    [switch]$SelfTest,
     [switch]$DryRun
 )
 
@@ -18,9 +20,235 @@ $ErrorActionPreference = 'Stop'
 $expectedBuild = '25247556'
 $expectedAppId = '3681810'
 $probe = Join-Path $PSScriptRoot 'rlogs-bpsr-automarker-lifecycle-probe.exe'
+function Get-AcfValue([string]$Text, [string]$Key) {
+    $match = [regex]::Match($Text, '(?im)^\s*"' + [regex]::Escape($Key) + '"\s+"([^"]*)"')
+    if ($match.Success) { return $match.Groups[1].Value }
+    return $null
+}
+
+function Assert-LoopbackBaseUrl([string]$BaseUrl) {
+    $match = [regex]::Match($BaseUrl, '^http://127\.0\.0\.1:([0-9]{1,5})$')
+    if (-not $match.Success) {
+        throw '-RLogsBaseUrl must be an HTTP loopback URL such as http://127.0.0.1:54221.'
+    }
+    $port = [int]$match.Groups[1].Value
+    if ($port -lt 1 -or $port -gt 65535) { throw '-RLogsBaseUrl contains an invalid port.' }
+}
+
+function Test-ExactPropertySet($Value, [string[]]$Expected) {
+    if ($null -eq $Value) { return $false }
+    $actualNames = @($Value.PSObject.Properties.Name | Sort-Object)
+    $expectedNames = @($Expected | Sort-Object)
+    return (($actualNames -join "`n") -ceq ($expectedNames -join "`n"))
+}
+
+function Test-FiniteJsonNumber($Value) {
+    if ($Value -isnot [byte] -and $Value -isnot [sbyte] -and
+        $Value -isnot [int16] -and $Value -isnot [uint16] -and
+        $Value -isnot [int32] -and $Value -isnot [uint32] -and
+        $Value -isnot [int64] -and $Value -isnot [uint64] -and
+        $Value -isnot [single] -and $Value -isnot [double] -and $Value -isnot [decimal]) {
+        return $false
+    }
+    $number = [double]$Value
+    return (-not [double]::IsNaN($number) -and -not [double]::IsInfinity($number))
+}
+
+function Assert-PresetProjectionSchema($Projection) {
+    $topLevel = @(
+        'schemaVersion', 'context', 'presets', 'captureSupported', 'captureReason',
+        'captureSessionId', 'deploymentId', 'protocolPackDigest', 'nativeLoadSupported',
+        'nativeLoadReason', 'previewSessionId'
+    )
+    if (-not (Test-ExactPropertySet $Projection $topLevel) -or $Projection.schemaVersion -ne 4 -or
+        $Projection.presets -isnot [array] -or $Projection.captureSupported -isnot [bool] -or
+        @('native_waymark_state_unverified', 'observed_waymark_state_verified') -cnotcontains [string]$Projection.captureReason -or
+        $Projection.captureSupported -ne ([string]$Projection.captureReason -ceq 'observed_waymark_state_verified') -or
+        $Projection.nativeLoadSupported -isnot [bool] -or $Projection.nativeLoadSupported -or
+        [string]$Projection.nativeLoadReason -cne 'native_waymark_transport_unavailable' -or
+        [string]::IsNullOrWhiteSpace([string]$Projection.previewSessionId) -or
+        ([string]$Projection.previewSessionId).Length -lt 8 -or ([string]$Projection.previewSessionId).Length -gt 128) {
+        throw 'The loopback endpoint did not return the expected rLogs automarker presets schema.'
+    }
+    foreach ($preset in @($Projection.presets)) {
+        if (-not (Test-ExactPropertySet $preset @('presetId', 'name', 'activityFamilyId', 'savedAtUnixMillis', 'points'))) {
+            throw 'The loopback endpoint returned an unexpected automarker preset shape.'
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$preset.presetId) -or ([string]$preset.presetId).Length -lt 8 -or
+            [string]::IsNullOrWhiteSpace([string]$preset.name) -or ([string]$preset.name).Length -gt 80 -or
+            [string]::IsNullOrWhiteSpace([string]$preset.activityFamilyId) -or
+            -not (Test-FiniteJsonNumber $preset.savedAtUnixMillis) -or
+            [double]$preset.savedAtUnixMillis % 1 -ne 0 -or $preset.points -isnot [array] -or
+            @($preset.points).Count -lt 1 -or @($preset.points).Count -gt 6) {
+            throw 'The loopback endpoint returned invalid automarker preset values.'
+        }
+        $markerNumbers = @()
+        foreach ($point in @($preset.points)) {
+            if (-not (Test-ExactPropertySet $point @('markerNumber', 'x', 'y', 'z')) -or
+                -not (Test-FiniteJsonNumber $point.markerNumber) -or [double]$point.markerNumber % 1 -ne 0 -or
+                [int]$point.markerNumber -lt 1 -or [int]$point.markerNumber -gt 6 -or
+                -not (Test-FiniteJsonNumber $point.x) -or -not (Test-FiniteJsonNumber $point.y) -or
+                -not (Test-FiniteJsonNumber $point.z)) {
+                throw 'The loopback endpoint returned an unexpected automarker point shape.'
+            }
+            $markerNumbers += [int]$point.markerNumber
+        }
+        if (@($markerNumbers | Select-Object -Unique).Count -ne $markerNumbers.Count) {
+            throw 'The loopback endpoint returned duplicate automarker marker numbers.'
+        }
+    }
+}
+
+function Get-LoopbackPresetProjection([string]$BaseUrl) {
+    Assert-LoopbackBaseUrl $BaseUrl
+    $handler = [Net.Http.HttpClientHandler]::new()
+    $handler.AllowAutoRedirect = $false
+    $handler.UseProxy = $false
+    $client = [Net.Http.HttpClient]::new($handler)
+    $client.Timeout = [TimeSpan]::FromSeconds(2)
+    $response = $null
+    try {
+        $response = $client.GetAsync("$BaseUrl/api/automarkers/presets").GetAwaiter().GetResult()
+        if ([int]$response.StatusCode -ne 200) { throw "rLogs presets endpoint returned HTTP $([int]$response.StatusCode)." }
+        $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        if ([Text.Encoding]::UTF8.GetByteCount($body) -gt 524288) { throw 'rLogs presets response exceeded the 512 KiB safety limit.' }
+        $projection = $body | ConvertFrom-Json
+        Assert-PresetProjectionSchema $projection
+        return $projection
+    } finally {
+        if ($null -ne $response) { $response.Dispose() }
+        $client.Dispose()
+        $handler.Dispose()
+    }
+}
+
+function Find-RLogsLoopbackBaseUrl {
+    try {
+        $listeners = @(Get-NetTCPConnection -State Listen -ErrorAction Stop |
+            Where-Object { $_.LocalAddress -eq '127.0.0.1' } |
+            Select-Object -Property LocalPort, OwningProcess -Unique)
+    } catch {
+        throw 'Could not enumerate loopback listeners. Supply -RLogsBaseUrl http://127.0.0.1:<port>.'
+    }
+    $matches = @()
+    foreach ($listener in $listeners) {
+        $owner = Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue
+        if ($null -eq $owner) { continue }
+        $ownerName = $owner.ProcessName
+        try {
+            if ($owner.Path) { $ownerName = [IO.Path]::GetFileNameWithoutExtension($owner.Path) }
+        } catch {
+            # ProcessName still comes from the owning PID even when Windows
+            # denies querying the executable path across an integrity boundary.
+        }
+        if ($ownerName -ine 'rlogs-app') { continue }
+        $candidate = "http://127.0.0.1:$($listener.LocalPort)"
+        try {
+            [void](Get-LoopbackPresetProjection $candidate)
+            $matches += $candidate
+        } catch { continue }
+    }
+    if ($matches.Count -ne 1) {
+        throw "Found $($matches.Count) unambiguous rLogs loopback hosts. Supply -RLogsBaseUrl http://127.0.0.1:<port>."
+    }
+    return $matches[0]
+}
+
+function Resolve-MarkerOnePresetTarget($Projection, [string]$RequestedPresetId) {
+    Assert-PresetProjectionSchema $Projection
+    if ($null -eq $Projection.context -or
+        -not (Test-ExactPropertySet $Projection.context @('clientBuild', 'sceneId', 'mapId', 'activityFamilyId', 'sceneName'))) {
+        throw 'rLogs does not have an exact active automarker context.'
+    }
+    $context = $Projection.context
+    if ([string]$context.clientBuild -cne $expectedBuild -or
+        -not (Test-FiniteJsonNumber $context.sceneId) -or
+        -not (Test-FiniteJsonNumber $context.mapId) -or
+        [double]$context.sceneId % 1 -ne 0 -or [double]$context.mapId % 1 -ne 0 -or
+        [string]::IsNullOrWhiteSpace([string]$context.activityFamilyId)) {
+        throw 'The active rLogs build/scene/map/family context is incomplete or does not match this canary.'
+    }
+    $selected = @($Projection.presets | Where-Object { [string]$_.presetId -ceq $RequestedPresetId })
+    if ($selected.Count -ne 1) { throw "Preset '$RequestedPresetId' was not uniquely resolved." }
+    $preset = $selected[0]
+    if ([string]$preset.activityFamilyId -cne [string]$context.activityFamilyId) {
+        throw "Preset '$RequestedPresetId' does not belong to the exact active activity family."
+    }
+    $markerOne = @($preset.points | Where-Object { $_.markerNumber -eq 1 })
+    if ($markerOne.Count -ne 1) { throw "Preset '$RequestedPresetId' must contain exactly one Marker 1 point." }
+    $point = $markerOne[0]
+    foreach ($coordinate in @($point.x, $point.y, $point.z)) {
+        if (-not (Test-FiniteJsonNumber $coordinate)) { throw "Preset '$RequestedPresetId' has a non-finite Marker 1 coordinate." }
+    }
+    return [pscustomobject]@{ X = [double]$point.x; Y = [double]$point.y; Z = [double]$point.z }
+}
+
+function Assert-LauncherTargetSelection(
+    [bool]$Calibration,
+    [bool]$OneStep,
+    [bool]$ClosedLoop,
+    [string]$RequestedPresetId,
+    [Nullable[double]]$X,
+    [Nullable[double]]$Y,
+    [Nullable[double]]$Z
+) {
+    if (@($Calibration, $OneStep, $ClosedLoop).Where({ $_ }).Count -gt 1) {
+        throw 'Choose only one armed canary mode.'
+    }
+    $hasPreset = -not [string]::IsNullOrWhiteSpace($RequestedPresetId)
+    $hasAnyCoordinate = ($null -ne $X -or $null -ne $Y -or $null -ne $Z)
+    $hasAllCoordinates = ($null -ne $X -and $null -ne $Y -and $null -ne $Z)
+    if ($hasPreset -and -not $ClosedLoop) { throw '-PresetId is supported only with -ArmClosedLoopAim.' }
+    if ($hasPreset -and $hasAnyCoordinate) {
+        throw '-PresetId and explicit -TargetX/-TargetY/-TargetZ are mutually exclusive.'
+    }
+    if (($OneStep -or $ClosedLoop) -and -not $hasPreset -and -not $hasAllCoordinates) {
+        throw 'Supply either -PresetId (closed-loop only) or all of -TargetX, -TargetY, and -TargetZ.'
+    }
+    if ($hasAnyCoordinate -and -not $hasAllCoordinates) {
+        throw '-TargetX, -TargetY, and -TargetZ must be supplied together.'
+    }
+    if (-not ($OneStep -or $ClosedLoop) -and ($hasPreset -or $hasAnyCoordinate)) {
+        throw 'Target coordinates and presets require an armed planner mode.'
+    }
+}
+
+function Invoke-LauncherSelfTest {
+    Assert-LoopbackBaseUrl 'http://127.0.0.1:54221'
+    $rejected = $false
+    try { Assert-LoopbackBaseUrl 'http://localhost:54221' } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Self-test failed: non-literal loopback host was accepted.' }
+    $json = '{"schemaVersion":4,"context":{"clientBuild":"25247556","sceneId":100,"mapId":200,"activityFamilyId":"tina","sceneName":"Tina"},"presets":[{"presetId":"preset-test","name":"Test","activityFamilyId":"tina","savedAtUnixMillis":1,"points":[{"markerNumber":1,"x":1.5,"y":2.5,"z":3.5}]}],"captureSupported":false,"captureReason":"native_waymark_state_unverified","captureSessionId":null,"deploymentId":null,"protocolPackDigest":null,"nativeLoadSupported":false,"nativeLoadReason":"native_waymark_transport_unavailable","previewSessionId":"preview-test"}' | ConvertFrom-Json
+    $target = Resolve-MarkerOnePresetTarget $json 'preset-test'
+    if ($target.X -ne 1.5 -or $target.Y -ne 2.5 -or $target.Z -ne 3.5) { throw 'Self-test failed: target coordinates changed.' }
+    $json.presets[0].points += [pscustomobject]@{ markerNumber = 1; x = 4; y = 5; z = 6 }
+    $rejected = $false
+    try { [void](Resolve-MarkerOnePresetTarget $json 'preset-test') } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Self-test failed: duplicate Marker 1 was accepted.' }
+    $familyJson = '{"schemaVersion":4,"context":{"clientBuild":"25247556","sceneId":100,"mapId":200,"activityFamilyId":"other","sceneName":"Other"},"presets":[{"presetId":"preset-test","name":"Test","activityFamilyId":"tina","savedAtUnixMillis":1,"points":[{"markerNumber":1,"x":1.5,"y":2.5,"z":3.5}]}],"captureSupported":false,"captureReason":"native_waymark_state_unverified","captureSessionId":null,"deploymentId":null,"protocolPackDigest":null,"nativeLoadSupported":false,"nativeLoadReason":"native_waymark_transport_unavailable","previewSessionId":"preview-test"}' | ConvertFrom-Json
+    $rejected = $false
+    try { [void](Resolve-MarkerOnePresetTarget $familyJson 'preset-test') } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Self-test failed: mismatched activity family was accepted.' }
+    $rejected = $false
+    try { Assert-LauncherTargetSelection $false $false $true 'preset-test' 1 2 3 } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Self-test failed: preset and explicit XYZ were accepted together.' }
+    Assert-LauncherTargetSelection $false $false $true 'preset-test' $null $null $null
+    Assert-LauncherTargetSelection $false $false $true $null 1 2 3
+    Write-Host 'Launcher self-test passed: loopback policy, schema, family context, and unique Marker 1 resolution.'
+}
+
+if ($SelfTest) {
+    if ($DryRun -or $ArmReversibleCalibration -or $ArmSinglePlannerStep -or $ArmClosedLoopAim) {
+        throw '-SelfTest cannot be combined with dry-run or armed modes.'
+    }
+    Invoke-LauncherSelfTest
+    return
+}
+
 if (-not (Test-Path -LiteralPath $probe -PathType Leaf)) {
     throw 'The probe executable is missing from this package.'
 }
+
 if ($DryRun) {
     if ($ArmReversibleCalibration -or $ArmSinglePlannerStep -or $ArmClosedLoopAim) {
         throw '-DryRun cannot be combined with an armed mode.'
@@ -29,7 +257,7 @@ if ($DryRun) {
     $dryReceipt = Join-Path $PSScriptRoot "automarker-dry-run-$dryStamp.v1.json"
     $value = [ordered]@{
         schemaVersion = 1
-        evidenceKind = 'automarker-v10-packaged-dry-run'
+        evidenceKind = 'automarker-v11-packaged-dry-run'
         exactBuild = $expectedBuild
         executablePresent = $true
         processOpened = $false
@@ -43,11 +271,7 @@ if ($DryRun) {
     return
 }
 
-function Get-AcfValue([string]$Text, [string]$Key) {
-    $match = [regex]::Match($Text, '(?im)^\s*"' + [regex]::Escape($Key) + '"\s+"([^"]*)"')
-    if ($match.Success) { return $match.Groups[1].Value }
-    return $null
-}
+Assert-LauncherTargetSelection $ArmReversibleCalibration $ArmSinglePlannerStep $ArmClosedLoopAim $PresetId $TargetX $TargetY $TargetZ
 
 function Find-ExactInstall {
     $steamRoots = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -108,9 +332,6 @@ $arguments = @(
     '--interval-ms', $IntervalMs,
     '--output', $receipt
 )
-if (@($ArmReversibleCalibration, $ArmSinglePlannerStep, $ArmClosedLoopAim).Where({ $_ }).Count -gt 1) {
-    throw 'Choose only one armed canary mode.'
-}
 if ($ArmReversibleCalibration) {
     Write-Warning 'ARMED CALIBRATION: manually select Marker 1 and keep the game focused. This emits +X, -X, +Y, -Y six-pixel mouse moves and Escape. It never clicks.'
     Write-Host 'Return focus to the game now. The fail-closed canary starts in 5 seconds.'
@@ -121,16 +342,25 @@ if ($ArmReversibleCalibration) {
     $arguments += @('--armed-mode', 'marker1-reversible-calibration-v1')
 }
 if ($ArmSinglePlannerStep -or $ArmClosedLoopAim) {
-    if ($null -eq $TargetX -or $null -eq $TargetY -or $null -eq $TargetZ) {
-        throw '-TargetX, -TargetY, and -TargetZ are required for planner modes.'
+    $hasPreset = -not [string]::IsNullOrWhiteSpace($PresetId)
+    if ([string]::IsNullOrWhiteSpace($RLogsBaseUrl)) {
+        $RLogsBaseUrl = Find-RLogsLoopbackBaseUrl
+        Write-Host "Resolved the unique rLogs loopback host at $RLogsBaseUrl."
+    } else {
+        Assert-LoopbackBaseUrl $RLogsBaseUrl
+    }
+    if ($hasPreset) {
+        $projection = Get-LoopbackPresetProjection $RLogsBaseUrl
+        $resolved = Resolve-MarkerOnePresetTarget $projection $PresetId
+        $TargetX = [Nullable[double]]$resolved.X
+        $TargetY = [Nullable[double]]$resolved.Y
+        $TargetZ = [Nullable[double]]$resolved.Z
+        Write-Host "Resolved Marker 1 from preset '$PresetId' in the exact active activity family."
     }
     foreach ($coordinate in @($TargetX.Value, $TargetY.Value, $TargetZ.Value)) {
         if ([double]::IsNaN($coordinate) -or [double]::IsInfinity($coordinate)) {
             throw 'Planner target coordinates must be finite.'
         }
-    }
-    if ([string]::IsNullOrWhiteSpace($RLogsBaseUrl) -or $RLogsBaseUrl -notmatch '^http://127\.0\.0\.1:\d+$') {
-        throw '-RLogsBaseUrl must be the active loopback rLogs host, for example http://127.0.0.1:54221.'
     }
     if ($ArmClosedLoopAim) {
         Write-Warning 'ARMED CLOSED-LOOP CANARY: manually select Marker 1 and keep the game focused. This calibrates, makes at most four <=4-pixel moves (<=16 cumulative), reverses every move, then Escape. Do not touch the mouse. It never clicks or places.'

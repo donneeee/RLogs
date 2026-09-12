@@ -153,6 +153,31 @@ read-only root/Marker 1 safety gates. Map API failure cannot suppress rollback.
 The canary then requires return within `0.01 m` and cancels with Escape. It has
 no mouse-button input and cannot place a marker.
 
+The v11 launcher can resolve the same closed-loop target from an existing local
+rLogs preset, avoiding coordinate copy/paste without changing the native v10
+canary or adding placement authority:
+
+```powershell
+.\run-bpsr-automarker-lifecycle-probe.ps1 `
+  -ArmClosedLoopAim `
+  -PresetId 'preset-000000000001-0000'
+```
+
+`-PresetId` and explicit `-TargetX/-TargetY/-TargetZ` are mutually exclusive.
+Preset mode fetches only `/api/automarkers/presets` over literal
+`http://127.0.0.1:<port>`, rejects redirects and proxies, requires schema v4,
+exact build `25247556`, a complete active scene/map/family context, a matching
+preset family, and exactly one finite Marker 1 point. Only that point's XYZ is
+passed to the existing closed-loop token. Marker selection remains manual and
+there is still no click or placement action.
+
+When `-RLogsBaseUrl` is omitted, the launcher examines only TCP listeners bound
+to `127.0.0.1` and owned by `rlogs-app.exe`. It proceeds only if exactly one of
+those listeners returns the expected preset schema; otherwise pass the loopback
+URL explicitly. It never scans or connects to a non-loopback address. Run
+`-SelfTest` for the no-process launcher checks, or `-DryRun` for the packaged
+no-process/no-input receipt.
+
 The output is a sanitized JSON receipt containing exact artifact hashes,
 sampling counts, policy assertions, and deduplicated lifecycle transitions.
 It contains no PID, raw pointer/module address, or filesystem path. Its

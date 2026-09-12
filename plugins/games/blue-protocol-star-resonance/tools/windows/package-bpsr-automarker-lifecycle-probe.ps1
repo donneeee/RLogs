@@ -25,6 +25,8 @@ try {
     Copy-Item -LiteralPath (Join-Path $isolatedTarget 'release\rlogs-bpsr-automarker-lifecycle-probe.exe') -Destination $Destination
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'run-bpsr-automarker-lifecycle-probe.ps1') -Destination $Destination
     Copy-Item -LiteralPath (Join-Path $repoRoot 'plugins\games\blue-protocol-star-resonance\research\automarker-read-only-runtime-probe.md') -Destination (Join-Path $Destination 'README.md')
+    & (Join-Path $Destination 'run-bpsr-automarker-lifecycle-probe.ps1') -SelfTest
+    if ($LASTEXITCODE -ne 0) { throw 'Packaged launcher self-test failed.' }
     & (Join-Path $Destination 'run-bpsr-automarker-lifecycle-probe.ps1') -DryRun
     if ($LASTEXITCODE -ne 0) { throw 'Packaged no-process dry run failed.' }
     Write-Host 'Built and dry-run validated a self-contained probe package; armed modes remain opt-in.'
