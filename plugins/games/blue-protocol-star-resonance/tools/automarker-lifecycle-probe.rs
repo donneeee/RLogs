@@ -99,6 +99,10 @@ mod windows {
     // Reviewed at three independent native callsites for build 25247556.
     const INDICATOR_MGR_SINGLETON_METHOD_INFO_RVA: usize = 0x95EA430;
     const INDICATOR_MGR_SINGLETON_TYPE_INFO_RVA: usize = 0x95EA438;
+    // Recovered exact-build metadata plus StageMgr's generated get_Instance
+    // MethodInfo identify this independent, read-only singleton root.
+    const STAGE_MGR_SINGLETON_METHOD_INFO_RVA: usize = 0x95D_6B50;
+    const STAGE_MGR_SINGLETON_TYPE_INFO_RVA: usize = 0x95D_6B68;
     const METHOD_INFO_NAME: usize = 0x18;
     const METHOD_INFO_KLASS: usize = 0x20;
     const IL2CPP_CLASS_NAME: usize = 0x10;
@@ -132,6 +136,11 @@ mod windows {
     const SKILL_LAST_USED_SLOT_ID: usize = 0x1C;
     const SKILL_LAST_PRESS_SLOT_ID: usize = 0x20;
     const SKILL_IS_PRESS: usize = 0x38;
+    const STAGE_MGR_SWITCH_STATE: usize = 0x18;
+    const STAGE_MGR_CURRENT_STAGE: usize = 0x20;
+    const STAGE_BASE_STAGE_TYPE: usize = 0x10;
+    const SWITCH_STATE_NONE: u8 = 0;
+    const STAGE_TYPE_DUNGEON: u8 = 5;
     const MAX_C_STRING_BYTES: usize = 96;
     const MIN_USER_ADDRESS: usize = 0x1_0000;
     const MAX_USER_ADDRESS: usize = 0x0000_7fff_ffff_ffff;
@@ -302,6 +311,14 @@ mod windows {
         map_id: u64,
         activity_family_id: String,
         marker_1_target: Position,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    struct DungeonStageSample {
+        stage_mgr: usize,
+        current_stage: usize,
+        switch_state: u8,
+        stage_type: u8,
     }
 
     #[derive(Clone, Debug, Serialize)]
@@ -2732,12 +2749,15 @@ mod windows {
             },
         );
         let first = coherent_sample_with_roots(memory, module_base);
+        let first_stage = read_dungeon_stage_sample(memory, module_base);
         thread::sleep(Duration::from_millis(STABILITY_SAMPLE_MILLIS));
         let second = coherent_sample_with_roots(memory, module_base);
+        let second_stage = read_dungeon_stage_sample(memory, module_base);
         let root_chain_class_valid = first.is_ok() && second.is_ok();
         let root_chain_stable = matches!((&first, &second), (Ok((a, _)), Ok((b, _))) if a == b);
         let lifecycle_idle =
             matches!(&second, Ok((_, state)) if !state.is_press && !state.indicator.is_enable);
+        let dungeon_stage_gate = dungeon_stage_gate(&first_stage, &second_stage);
 
         let (preset, preset_context_failure_reason) = match read_native_dispatch_preset_context(
             &request.rlogs_base_url,
@@ -2751,6 +2771,7 @@ mod windows {
             && root_chain_stable
             && lifecycle_idle
             && preset_context_current
+            && dungeon_stage_gate.proven
             && set_position_code.matches_reviewed_image
             && fire_indicator_code.matches_reviewed_image;
         let (scene_id, map_id, activity_family_id, marker_1_target) =
@@ -2795,10 +2816,7 @@ mod windows {
                 lifecycle_idle,
                 preset_context_current,
                 reviewed_code: [set_position_code, fire_indicator_code],
-                dungeon_stage_gate: BoundedGate {
-                    proven: false,
-                    reason: "unresolved-no-reviewed-read-only-dungeon-stage-query",
-                },
+                dungeon_stage_gate,
                 leader_gate: BoundedGate {
                     proven: false,
                     reason: "unresolved-no-reviewed-read-only-party-leader-query",
@@ -2815,6 +2833,65 @@ mod windows {
                 activation_attempted: false,
                 outcome: "blocked-unresolved-native-gates",
             }),
+        }
+    }
+
+    fn read_dungeon_stage_sample(
+        memory: &impl Memory,
+        module_base: usize,
+    ) -> Result<DungeonStageSample, AcquireError> {
+        let stage_mgr = acquire_singleton_instance(
+            memory,
+            module_base,
+            STAGE_MGR_SINGLETON_METHOD_INFO_RVA,
+            STAGE_MGR_SINGLETON_TYPE_INFO_RVA,
+            "StageMgr",
+            "Panda",
+        )?;
+        let current_stage = pointer_at(
+            memory,
+            checked_add(stage_mgr, STAGE_MGR_CURRENT_STAGE)?,
+            true,
+        )?;
+        validate_object(memory, current_stage, "StageDungeon", "Panda")?;
+        Ok(DungeonStageSample {
+            stage_mgr,
+            current_stage,
+            switch_state: byte_at(memory, checked_add(stage_mgr, STAGE_MGR_SWITCH_STATE)?)?,
+            stage_type: byte_at(memory, checked_add(current_stage, STAGE_BASE_STAGE_TYPE)?)?,
+        })
+    }
+
+    fn dungeon_stage_gate(
+        first: &Result<DungeonStageSample, AcquireError>,
+        second: &Result<DungeonStageSample, AcquireError>,
+    ) -> BoundedGate {
+        match (first, second) {
+            (Ok(first), Ok(second)) if first != second => BoundedGate {
+                proven: false,
+                reason: "unstable-read-only-dungeon-stage-lifecycle",
+            },
+            (Ok(sample), Ok(_))
+                if sample.switch_state == SWITCH_STATE_NONE
+                    && sample.stage_type == STAGE_TYPE_DUNGEON =>
+            {
+                BoundedGate {
+                    proven: true,
+                    reason: "proven-read-only-current-dungeon-stage",
+                }
+            }
+            (Ok(sample), Ok(_)) if sample.switch_state != SWITCH_STATE_NONE => BoundedGate {
+                proven: false,
+                reason: "stage-is-loading-or-switching",
+            },
+            (Ok(_), Ok(_)) => BoundedGate {
+                proven: false,
+                reason: "current-stage-is-not-standard-dungeon",
+            },
+            _ => BoundedGate {
+                proven: false,
+                reason: "unavailable-or-invalid-read-only-dungeon-stage-chain",
+            },
         }
     }
 
@@ -4082,6 +4159,57 @@ mod windows {
             );
             m.put(indicator + INDICATOR_ENTER_STATE, &3i32.to_le_bytes());
             m.put(indicator + INDICATOR_CAMERA_OPEN_ID, &7i32.to_le_bytes());
+            let stage_method = 0x22_0000;
+            let stage_declaring_class = 0x38_0000;
+            let stage_singleton_class = 0x38_1000;
+            let stage_generic_context = 0x38_2000;
+            let stage_static_fields = 0x42_0000;
+            let stage_mgr = 0x92_0000;
+            let stage_mgr_class = 0x39_0000;
+            let current_stage = 0x93_0000;
+            let current_stage_class = 0x3A_0000;
+            m.ptr(base + STAGE_MGR_SINGLETON_METHOD_INFO_RVA, stage_method);
+            m.ptr(
+                base + STAGE_MGR_SINGLETON_TYPE_INFO_RVA,
+                stage_singleton_class,
+            );
+            m.ptr(stage_method + METHOD_INFO_NAME, 0xA4_0000);
+            m.ptr(stage_method + METHOD_INFO_KLASS, stage_declaring_class);
+            m.text(0xA4_0000, "get_Instance");
+            m.ptr(stage_declaring_class + IL2CPP_CLASS_NAME, 0xA4_0100);
+            m.ptr(stage_declaring_class + IL2CPP_CLASS_NAMESPACE, 0xA4_0200);
+            m.text(0xA4_0100, "ZSingleton`1");
+            m.text(0xA4_0200, "ZUtil");
+            m.ptr(
+                stage_declaring_class + IL2CPP_CLASS_GENERIC_CONTEXT,
+                stage_generic_context,
+            );
+            m.ptr(
+                stage_generic_context + GENERIC_CONTEXT_INFLATED_CLASS,
+                stage_singleton_class,
+            );
+            m.ptr(stage_singleton_class + IL2CPP_CLASS_NAME, 0xA4_0300);
+            m.ptr(stage_singleton_class + IL2CPP_CLASS_NAMESPACE, 0xA4_0400);
+            m.text(0xA4_0300, "ZSingleton`1");
+            m.text(0xA4_0400, "ZUtil");
+            m.ptr(
+                stage_singleton_class + IL2CPP_CLASS_STATIC_FIELDS,
+                stage_static_fields,
+            );
+            m.ptr(stage_static_fields, stage_mgr);
+            m.ptr(stage_mgr, stage_mgr_class);
+            m.ptr(stage_mgr_class + IL2CPP_CLASS_NAME, 0xA4_0500);
+            m.ptr(stage_mgr_class + IL2CPP_CLASS_NAMESPACE, 0xA4_0600);
+            m.text(0xA4_0500, "StageMgr");
+            m.text(0xA4_0600, "Panda");
+            m.put(stage_mgr + STAGE_MGR_SWITCH_STATE, &[SWITCH_STATE_NONE]);
+            m.ptr(stage_mgr + STAGE_MGR_CURRENT_STAGE, current_stage);
+            m.ptr(current_stage, current_stage_class);
+            m.ptr(current_stage_class + IL2CPP_CLASS_NAME, 0xA4_0700);
+            m.ptr(current_stage_class + IL2CPP_CLASS_NAMESPACE, 0xA4_0800);
+            m.text(0xA4_0700, "StageDungeon");
+            m.text(0xA4_0800, "Panda");
+            m.put(current_stage + STAGE_BASE_STAGE_TYPE, &[STAGE_TYPE_DUNGEON]);
             m
         }
 
@@ -4117,6 +4245,37 @@ mod windows {
             memory.ptr(0x10_0000 + ENTITY_MGR_SINGLETON_TYPE_INFO_RVA, 0x30_0000);
             assert_eq!(
                 coherent_sample(&memory, 0x10_0000),
+                Err(AcquireError::Identity)
+            );
+        }
+
+        #[test]
+        fn proves_only_a_stable_idle_standard_dungeon_stage() {
+            let memory = valid_memory();
+            let first = read_dungeon_stage_sample(&memory, 0x10_0000);
+            let second = read_dungeon_stage_sample(&memory, 0x10_0000);
+            let gate = dungeon_stage_gate(&first, &second);
+            assert!(gate.proven);
+            assert_eq!(gate.reason, "proven-read-only-current-dungeon-stage");
+        }
+
+        #[test]
+        fn rejects_a_loading_or_switching_stage() {
+            let mut memory = valid_memory();
+            memory.put(0x92_0000 + STAGE_MGR_SWITCH_STATE, &[1]);
+            let first = read_dungeon_stage_sample(&memory, 0x10_0000);
+            let second = read_dungeon_stage_sample(&memory, 0x10_0000);
+            let gate = dungeon_stage_gate(&first, &second);
+            assert!(!gate.proven);
+            assert_eq!(gate.reason, "stage-is-loading-or-switching");
+        }
+
+        #[test]
+        fn rejects_a_non_dungeon_stage_class() {
+            let mut memory = valid_memory();
+            memory.text(0xA4_0700, "StageCity");
+            assert_eq!(
+                read_dungeon_stage_sample(&memory, 0x10_0000),
                 Err(AcquireError::Identity)
             );
         }

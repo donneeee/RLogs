@@ -7,6 +7,11 @@ const proofUrl = new URL(
   import.meta.url,
 );
 const proof = JSON.parse(await readFile(fileURLToPath(proofUrl), "utf8"));
+const dungeonProofUrl = new URL(
+  "../plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-25247556/automarker-read-only-dungeon-stage-proof.v1.json",
+  import.meta.url,
+);
+const dungeonProof = JSON.parse(await readFile(fileURLToPath(dungeonProofUrl), "utf8"));
 
 assert.equal(proof.schema_version, 1);
 assert.equal(proof.build_id, "25247556");
@@ -42,5 +47,36 @@ assert.equal(proof.privacy.contains_absolute_native_addresses, false);
 const serialized = JSON.stringify(proof);
 assert.doesNotMatch(serialized, /[A-Z]:\\|\\\\[A-Za-z0-9._-]+\\/i, "proof must not contain private absolute paths");
 assert.ok(proof.unresolved_risks.length >= 6, "proof must retain explicit unresolved risks");
+
+assert.equal(dungeonProof.schema_version, 1);
+assert.equal(dungeonProof.build_id, "25247556");
+assert.equal(dungeonProof.proof_kind, "exact-build-read-only-dungeon-stage-preflight");
+assert.equal(dungeonProof.inputs.game_assembly.sha256, proof.build_identity.game_assembly.sha256);
+assert.equal(dungeonProof.inputs.recovered_metadata.sha256, proof.build_identity.global_metadata.sha256);
+assert.equal(dungeonProof.stage_singleton.method_info_slot_rva_hex, "0x95D6B50");
+assert.equal(dungeonProof.stage_singleton.type_info_slot_rva_hex, "0x95D6B68");
+assert.deepEqual(
+  dungeonProof.field_layouts.map(({ instance_offset_hex }) => instance_offset_hex),
+  ["0x18", "0x20", "0x10"],
+);
+assert.equal(dungeonProof.enum_values["Panda.ESwitchState.ENone"], 0);
+assert.equal(dungeonProof.enum_values["Panda.EStageType.Dungeon"], 5);
+assert.equal(dungeonProof.generated_layout_evidence.stage_base_field_declaration, "uint8_t _Stage_k__BackingField");
+assert.equal(dungeonProof.generated_layout_evidence.stage_enum_underlying_declaration, "uint8_t value__");
+assert.equal(dungeonProof.generated_layout_evidence.switch_enum_underlying_declaration, "uint8_t value__");
+assert.equal(dungeonProof.generated_layout_evidence.stage_getter.rva_hex, "0xBCDE50");
+assert.equal(dungeonProof.generated_layout_evidence.stage_getter.generated_c_return_type, "uint8_t");
+assert.equal(dungeonProof.stage_singleton.independent_native_slot_references.length, 3);
+assert.equal(dungeonProof.runtime_acceptance_contract.length, 5);
+assert.equal(dungeonProof.scope.process_memory_write, false);
+assert.equal(dungeonProof.scope.game_method_invocation, false);
+assert.equal(dungeonProof.scope.runtime_activation_enabled, false);
+assert.equal(dungeonProof.privacy.contains_private_paths, false);
+assert.equal(dungeonProof.privacy.contains_process_addresses, false);
+assert.doesNotMatch(
+  JSON.stringify(dungeonProof),
+  /[A-Z]:\\|\\\\[A-Za-z0-9._-]+\\/i,
+  "dungeon-stage proof must not contain private absolute paths",
+);
 
 console.log("validated exact-build automarker internal-route proof");

@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "build_id": "25247556",
+  "proof_kind": "exact-build-read-only-dungeon-stage-preflight",
+  "scope": {
+    "offline_static_analysis_only": true,
+    "process_memory_write": false,
+    "game_method_invocation": false,
+    "runtime_activation_enabled": false
+  },
+  "inputs": {
+    "game_assembly": {
+      "byte_length": 218074672,
+      "sha256": "4a079aec0a3e51a8023aa86bbd152e12068907b65b9aafb355d20bb6d6c41fe3"
+    },
+    "recovered_metadata": {
+      "version": 31,
+      "byte_length": 28697724,
+      "sha256": "2f8213cf2a253d7a99a37b81f796e3a0162d0cf2d1ca6a2d0e0719f8f9a57779"
+    },
+    "dump_cs_sha256": "3bbc01c125dc160be85730986ebb40740dc2a078cb4bb4c5a0add00349b47a32",
+    "il2cpp_h_sha256": "75ce0d79c2995449f7200a9df03bb47e85e39494e6b6098aac64f36a62ed7f91",
+    "script_json_sha256": "84fc7707e91f1eabc4c17ea3735f387da6b9e7a26ee70a34a0c768994e1cbcd4"
+  },
+  "stage_singleton": {
+    "managed_type": "ZUtil.ZSingleton<Panda.StageMgr>",
+    "method_info_slot_rva_hex": "0x95D6B50",
+    "type_info_slot_rva_hex": "0x95D6B68",
+    "validated_chain": [
+      "MethodInfo name is get_Instance",
+      "MethodInfo declaring class is ZUtil.ZSingleton`1",
+      "declaring-class generic context inflated class equals the exact TypeInfo slot",
+      "inflated singleton class is ZUtil.ZSingleton`1",
+      "singleton static instance object is Panda.StageMgr"
+    ],
+    "independent_native_slot_references": [
+      {
+        "caller": "Panda.ZGame.MoveComp.PlayerMove",
+        "method_info_reference_rva_hex": "0x414388C",
+        "method_info_reference_bytes_hex": "488d0dbd324905",
+        "type_info_reference_rva_hex": "0x41438BF",
+        "type_info_reference_bytes_hex": "488d0da2324905"
+      },
+      {
+        "caller": "Panda.ZGame.MoveComp.SimpleMoveGo",
+        "method_info_reference_rva_hex": "0x4148F77",
+        "method_info_reference_bytes_hex": "488d0dd2db4805",
+        "type_info_reference_rva_hex": "0x4148F88",
+        "type_info_reference_bytes_hex": "488d0dd9db4805"
+      },
+      {
+        "caller": "Panda.ZGame.TargetComp.checkNeedTickSelectTarget",
+        "method_info_reference_rva_hex": "0x417B4B5",
+        "method_info_reference_bytes_hex": "488d0d94b64505",
+        "type_info_reference_rva_hex": "0x417B4D7",
+        "type_info_reference_bytes_hex": "488d0d8ab64505"
+      }
+    ],
+    "provenance": [
+      "recovered script metadata names the global at RVA 0x95D6B50 as Method$ZUtil.ZSingleton<StageMgr>.get_Instance()",
+      "recovered script metadata names the global at RVA 0x95D6B68 as ZUtil.ZSingleton<StageMgr>_TypeInfo",
+      "three independent exact-image native callsites resolve RIP-relative references to both named slots"
+    ]
+  },
+  "generated_layout_evidence": {
+    "stage_base_field_declaration": "uint8_t _Stage_k__BackingField",
+    "stage_enum_underlying_declaration": "uint8_t value__",
+    "switch_enum_underlying_declaration": "uint8_t value__",
+    "stage_getter": {
+      "identity": "Panda.StageBase.get_Stage",
+      "rva_hex": "0xBCDE50",
+      "generated_c_return_type": "uint8_t"
+    },
+    "stage_manager_fields": [
+      "uint8_t stageState_",
+      "Panda.StageBase* currentStage_"
+    ],
+    "conclusion": "Both StageMgr.stageState_ and StageBase.Stage are exact-build one-byte enum fields; the observer's u8 reads match the generated native layout."
+  },
+  "field_layouts": [
+    {
+      "declaring_type": "Panda.StageMgr",
+      "field": "stageState_",
+      "instance_offset_hex": "0x18",
+      "value_type": "Panda.ESwitchState"
+    },
+    {
+      "declaring_type": "Panda.StageMgr",
+      "field": "currentStage_",
+      "instance_offset_hex": "0x20",
+      "target_type": "Panda.StageBase"
+    },
+    {
+      "declaring_type": "Panda.StageBase",
+      "field": "<Stage>k__BackingField",
+      "instance_offset_hex": "0x10",
+      "value_type": "Panda.EStageType"
+    }
+  ],
+  "enum_values": {
+    "Panda.ESwitchState.ENone": 0,
+    "Panda.EStageType.Dungeon": 5
+  },
+  "bounded_native_semantics": [
+    {
+      "identity": "Panda.StageMgr.get_IsLoading",
+      "rva_hex": "0x4E6CC30",
+      "bytes_hex": "807918000f97c0",
+      "sha256": "d970e70c9f4621112e1a92af5a3f7e80495daccacbeaa2f9053e4806f2f94a45",
+      "meaning": "returns stageState_ greater than ENone"
+    },
+    {
+      "identity": "Panda.StageMgr.get_IsSwitching and get_IsResLoaded",
+      "rva_hex": "0x4E6CC40",
+      "byte_length": 25,
+      "sha256": "9847ad28e3f39de5e25b729ac3bf614c77741b8793302cfe2c238c6d065e6f14",
+      "meaning": "IsSwitching returns stageState_ greater than ENone; IsResLoaded returns stageState_ equal to ENone"
+    },
+    {
+      "identity": "Panda.StageMgr.get_SwitchStage",
+      "rva_hex": "0xB39810",
+      "bytes_hex": "0fb64118c3",
+      "sha256": "2a0c05b547620f32eb862e23015183656e25ac55b8febeff3e039f8d8292e3c8",
+      "meaning": "reads the byte at StageMgr offset 0x18"
+    }
+  ],
+  "runtime_acceptance_contract": [
+    "acquire and class-validate the exact StageMgr singleton without invoking it",
+    "require currentStage_ to be a class-valid Panda.StageDungeon",
+    "require stageState_ to equal ENone",
+    "require StageBase.Stage to equal Dungeon",
+    "repeat the full chain and require identical object roots and scalar values"
+  ],
+  "bounded_scope": {
+    "accepted_stage": "Panda.StageDungeon only",
+    "other_dungeon_like_stage_types_accepted": false,
+    "reason": "The numbered scene-marker UI is proven in ordinary dungeon context; broader stage families require separate eligibility evidence.",
+    "mech_facility_and_tina_policy": "The gate does not infer a stage class from a scene name. It evaluates the live class. Mech Facility and Tina pass when their live current stage is Panda.StageDungeon and otherwise fail closed; a runtime receipt is required before claiming their class assignment."
+  },
+  "privacy": {
+    "contains_raw_dump_or_full_binary": false,
+    "contains_only_bounded_instruction_bytes": true,
+    "contains_private_paths": false,
+    "contains_process_addresses": false,
+    "contains_personal_identity": false
+  }
+}

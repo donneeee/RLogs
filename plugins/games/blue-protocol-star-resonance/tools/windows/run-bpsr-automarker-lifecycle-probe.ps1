@@ -648,8 +648,20 @@ function Assert-NativeDispatchPreflight($Value) {
             throw 'The sanitized native-dispatch preflight has invalid reviewed code evidence.'
         }
     }
+    $dungeonGate = $Value.dungeon_stage_gate
+    $dungeonFalseReasons = @(
+        'unstable-read-only-dungeon-stage-lifecycle',
+        'stage-is-loading-or-switching',
+        'current-stage-is-not-standard-dungeon',
+        'unavailable-or-invalid-read-only-dungeon-stage-chain'
+    )
+    if (-not (Test-ExactPropertySet $dungeonGate @('proven', 'reason')) -or
+        $dungeonGate.proven -isnot [bool] -or
+        ([bool]$dungeonGate.proven -and [string]$dungeonGate.reason -cne 'proven-read-only-current-dungeon-stage') -or
+        (-not [bool]$dungeonGate.proven -and [string]$dungeonGate.reason -cnotin $dungeonFalseReasons)) {
+        throw 'The sanitized native-dispatch preflight has an invalid dungeon_stage_gate result.'
+    }
     $expectedGates = [ordered]@{
-        dungeon_stage_gate = 'unresolved-no-reviewed-read-only-dungeon-stage-query'
         leader_gate = 'unresolved-no-reviewed-read-only-party-leader-query'
         marker_skill_resolution_gate = 'unresolved-no-reviewed-non-invoking-live-skill-resolution'
         main_thread_bridge_gate = 'unresolved-no-sanctioned-one-shot-main-thread-bridge'
@@ -664,6 +676,7 @@ function Assert-NativeDispatchPreflight($Value) {
     }
     $computedResolvable = [bool]$Value.root_chain_class_valid -and [bool]$Value.root_chain_stable -and
         [bool]$Value.lifecycle_idle -and [bool]$Value.preset_context_current -and
+        [bool]$Value.dungeon_stage_gate.proven -and
         [bool]$Value.reviewed_code[0].matches_reviewed_image -and [bool]$Value.reviewed_code[1].matches_reviewed_image
     if ([bool]$Value.exact_image_identity -ne
         ([bool]$Value.reviewed_code[0].matches_reviewed_image -and [bool]$Value.reviewed_code[1].matches_reviewed_image) -or
@@ -1123,7 +1136,7 @@ function Invoke-LauncherSelfTest {
                 [ordered]@{ identity = 'Panda.ZGame.EntityAttrExtensions.SetIndicatorPos'; rva = '0x53E86A0'; byte_length = 464; sha256 = 'a02f30ee1ee8ecf606fceb964a3428b83fa3ab2aac9c4290d85d0c1454af17e6'; matches_reviewed_image = $true },
                 [ordered]@{ identity = 'Panda.ZGame.ZSkillInputMgr.FirePlaySkillByIndicator'; rva = '0x52E09E0'; byte_length = 208; sha256 = '6ae23a6d1f432969dd2d4c9dd4461f80b7ac6ecf5b5382526dbc00a7b6d8b9f6'; matches_reviewed_image = $true }
             )
-            dungeon_stage_gate = [ordered]@{ proven = $false; reason = 'unresolved-no-reviewed-read-only-dungeon-stage-query' }
+            dungeon_stage_gate = [ordered]@{ proven = $true; reason = 'proven-read-only-current-dungeon-stage' }
             leader_gate = [ordered]@{ proven = $false; reason = 'unresolved-no-reviewed-read-only-party-leader-query' }
             marker_skill_resolution_gate = [ordered]@{ proven = $false; reason = 'unresolved-no-reviewed-non-invoking-live-skill-resolution' }
             main_thread_bridge_gate = [ordered]@{ proven = $false; reason = 'unresolved-no-sanctioned-one-shot-main-thread-bridge' }
@@ -1136,6 +1149,16 @@ function Invoke-LauncherSelfTest {
         $rejected = $false
         try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
         if (-not $rejected) { throw 'Self-test failed: an activating native preflight receipt was accepted.' }
+        $native.canary.native_dispatch_preflight.activation_attempted = $false
+        $native.canary.native_dispatch_preflight.dungeon_stage_gate.reason = 'unreviewed-dungeon-result'
+        [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        $rejected = $false
+        try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
+        if (-not $rejected) { throw 'Self-test failed: an unknown dungeon-stage gate result was accepted.' }
+        $native.canary.native_dispatch_preflight.dungeon_stage_gate = [ordered]@{ proven = $false; reason = 'stage-is-loading-or-switching' }
+        $native.canary.native_dispatch_preflight.all_resolvable_gates_passed = $false
+        [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1)))
 
         foreach ($invalid in @('wrong-schema', 'missing-critical', 'extra-critical', 'mismatched-mode', 'mismatched-invocation', 'stale-receipt', 'unsafe-policy')) {
             $candidate = New-SyntheticLifecycleReceipt $true 'marker1-closed-loop-aim-and-rollback-v1' 'passed'

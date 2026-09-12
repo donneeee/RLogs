@@ -325,14 +325,23 @@ RVAs, hashes, booleans, bounded reason tokens, preset ID, scene/map/family, and
 the saved Marker 1 coordinate. It contains no runtime address, process ID,
 account/session identity, endpoint, or filesystem path.
 
+The exact-build dungeon-stage query is now resolved without calling game code.
+The observer class-validates the independent `StageMgr` singleton and its
+current `StageDungeon`, requires `ESwitchState.ENone` and
+`EStageType.Dungeon`, then repeats the full chain and requires identical roots
+and values. The bounded proof is retained in
+`automarker-read-only-dungeon-stage-proof.v1.json`. Other dungeon-like stage
+classes remain rejected until their normal marker eligibility is separately
+proven.
+
 This preflight deliberately remains blocked even when every currently
-resolvable gate passes. Exact read-only queries for dungeon-stage state, current
-party leadership, and non-invoking live marker-skill resolution are not yet
-reviewed, and no sanctioned one-shot Unity main-thread bridge exists. Each is
-recorded as a separate false gate with a fixed bounded reason. The mode never
-calls either native method, creates or schedules a delegate, emits input,
-requests write/debug/thread rights, modifies memory, or observes/sends packets.
-It is evidence for the next implementation boundary, not placement authority.
+resolvable gate passes. Exact read-only queries for current party leadership
+and non-invoking live marker-skill resolution are not yet reviewed, and no
+sanctioned one-shot Unity main-thread bridge exists. Each remains recorded as a
+separate false gate with a fixed bounded reason. The mode never calls either
+native method, creates or schedules a delegate, emits input, requests
+write/debug/thread rights, modifies memory, or observes/sends packets. It is
+evidence for the next implementation boundary, not placement authority.
 
 The statically reviewed direct sequence avoids one specific overwrite in the
 normal UI route: `ZIndicatorMgr.FireSkill` copies its reticle position before
