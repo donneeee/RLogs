@@ -240,6 +240,23 @@ sampling counts, policy assertions, and deduplicated lifecycle transitions.
 It contains no PID, raw pointer/module address, or filesystem path. Its
 timestamped filename is created beside the package and never overwritten.
 
+The v15 launcher validates the newly written schema-v7 receipt after the
+native process returns. It requires the exact producer, game/build/app,
+requested mode, duration, interval, identity, policy, summary, and canary
+envelopes and rejects stale, malformed, missing, or unexpected critical
+fields. Every armed invocation now succeeds only when the sanitized top-level
+`canary.outcome` is exactly `passed` **and** its mode-specific nested proof is
+internally consistent. Calibration requires the four transitions plus Escape,
+return, and cancellation evidence; a planner step requires its strict
+improvement and inverse-return proof; closed loop requires bounded arrival and
+complete safe rollback; operator placement requires a single observed human
+click, no programmatic/injected/other click, a newer outbound followed by a
+newer inbound observation within `0.075 m`, continuous context, and no timeout.
+Any other outcome returns nonzero while retaining the receipt for diagnosis.
+The launcher prints only that bounded sanitized outcome. Ordinary read-only
+observation keeps its prior success behavior after the same receipt-integrity
+checks.
+
 ## Interpretation limits
 
 A successful receipt proves only that a stable, class-validated read chain was

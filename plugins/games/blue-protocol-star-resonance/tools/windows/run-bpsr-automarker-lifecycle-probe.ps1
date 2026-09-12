@@ -269,6 +269,483 @@ function Assert-LauncherTargetSelection(
     }
 }
 
+function Assert-ExactBoolean($Value, [bool]$Expected, [string]$Field) {
+    if ($Value -isnot [bool] -or $Value -ne $Expected) {
+        throw "The sanitized lifecycle receipt has an invalid $Field value."
+    }
+}
+
+function Assert-FiniteNumber($Value, [string]$Field) {
+    if (-not (Test-FiniteJsonNumber $Value)) {
+        throw "The sanitized lifecycle receipt has an invalid $Field value."
+    }
+}
+
+function Assert-ExactPosition($Value, [string]$Field) {
+    if (-not (Test-ExactPropertySet $Value @('x', 'y', 'z'))) {
+        throw "The sanitized lifecycle receipt has an invalid $Field envelope."
+    }
+    foreach ($axis in @('x', 'y', 'z')) { Assert-FiniteNumber $Value.$axis "$Field.$axis" }
+}
+
+function Assert-SettledObservation($Value, [string]$Field) {
+    $fields = @(
+        'elapsed_micros', 'position', 'current_velocity', 'stability_sample_gap_millis',
+        'stability_position_delta', 'velocity_norm', 'settled'
+    )
+    if (-not (Test-ExactPropertySet $Value $fields)) {
+        throw "The sanitized lifecycle receipt has an invalid $Field envelope."
+    }
+    Assert-ExactPosition $Value.position "$Field.position"
+    Assert-ExactPosition $Value.current_velocity "$Field.current_velocity"
+    foreach ($numberField in @('elapsed_micros', 'stability_sample_gap_millis', 'stability_position_delta', 'velocity_norm')) {
+        Assert-FiniteNumber $Value.$numberField "$Field.$numberField"
+        if ([decimal]$Value.$numberField -lt 0) { throw "The sanitized lifecycle receipt has an invalid $Field.$numberField value." }
+    }
+    if ([decimal]$Value.elapsed_micros % 1 -ne 0 -or [decimal]$Value.stability_sample_gap_millis % 1 -ne 0) {
+        throw "The sanitized lifecycle receipt has a non-integral $Field timestamp or interval."
+    }
+    Assert-ExactBoolean $Value.settled $true "$Field.settled"
+}
+
+function Assert-CalibrationSuccess($Canary, [bool]$RequireCancel = $true) {
+    foreach ($field in @('marker_1_state_validated', 'foreground_validated_before_every_input',
+        'root_context_unchanged', 'lifecycle_context_unchanged', 'rank_2_input_excitation',
+        'approximately_returned')) {
+        Assert-ExactBoolean $Canary.$field $true "canary.$field"
+    }
+    Assert-ExactBoolean $Canary.escape_emitted $RequireCancel 'canary.escape_emitted'
+    Assert-ExactBoolean $Canary.cancelled $RequireCancel 'canary.cancelled'
+    if ($Canary.calibration_pixels -ne 6 -or @($Canary.transitions).Count -ne 4) {
+        throw 'The sanitized lifecycle receipt lacks the four-step calibration proof.'
+    }
+    Assert-SettledObservation $Canary.baseline 'canary.baseline'
+    $expectedDeltas = @(@(6, 0), @(-6, 0), @(0, 6), @(0, -6))
+    $maximumDisplacement = 0.0
+    for ($index = 0; $index -lt 4; $index++) {
+        $transition = @($Canary.transitions)[$index]
+        if (-not (Test-ExactPropertySet $transition @(
+            'sequence_index', 'emitted_integer_mouse_delta', 'input_elapsed_micros',
+            'subsequent_observation', 'displacement'
+        )) -or $transition.sequence_index -ne $index -or
+            @($transition.emitted_integer_mouse_delta).Count -ne 2 -or
+            [int]$transition.emitted_integer_mouse_delta[0] -ne $expectedDeltas[$index][0] -or
+            [int]$transition.emitted_integer_mouse_delta[1] -ne $expectedDeltas[$index][1]) {
+            throw 'The sanitized lifecycle receipt has an invalid calibration transition envelope.'
+        }
+        Assert-FiniteNumber $transition.input_elapsed_micros "canary.transitions[$index].input_elapsed_micros"
+        Assert-FiniteNumber $transition.displacement "canary.transitions[$index].displacement"
+        if ([decimal]$transition.input_elapsed_micros % 1 -ne 0 -or [decimal]$transition.input_elapsed_micros -lt 0 -or
+            [double]$transition.displacement -lt 0.001) {
+            throw 'The sanitized lifecycle receipt has invalid calibration transition measurements.'
+        }
+        Assert-SettledObservation $transition.subsequent_observation "canary.transitions[$index].subsequent_observation"
+        $maximumDisplacement = [Math]::Max($maximumDisplacement, [double]$transition.displacement)
+    }
+    Assert-FiniteNumber $Canary.final_return_error 'canary.final_return_error'
+    if ([double]$Canary.final_return_error -lt 0 -or
+        [double]$Canary.final_return_error -gt [Math]::Max($maximumDisplacement * 0.35, 0.15)) {
+        throw 'The sanitized lifecycle receipt has an invalid canary.final_return_error value.'
+    }
+}
+
+function Assert-PlannerStepSuccess($PlannerStep) {
+    $fields = @(
+        'target', 'player_origin', 'target_player_distance', 'proposed_integer_mouse_delta',
+        'predicted_distance', 'observed_distance', 'actual_to_predicted_improvement_ratio',
+        'strict_distance_reduction', 'rollback_attempted', 'rollback_not_safe',
+        'rollback_cancel_emitted', 'inverse_emitted', 'inverse_return_error', 'outcome'
+    )
+    if (-not (Test-ExactPropertySet $PlannerStep $fields) -or [string]$PlannerStep.outcome -cne 'passed') {
+        throw 'The sanitized lifecycle receipt lacks a passing planner-step proof.'
+    }
+    Assert-ExactPosition $PlannerStep.target 'canary.planner_step.target'
+    Assert-ExactPosition $PlannerStep.player_origin 'canary.planner_step.player_origin'
+    foreach ($field in @('target_player_distance', 'predicted_distance', 'observed_distance',
+        'actual_to_predicted_improvement_ratio', 'inverse_return_error')) {
+        Assert-FiniteNumber $PlannerStep.$field "canary.planner_step.$field"
+    }
+    if (@($PlannerStep.proposed_integer_mouse_delta).Count -ne 2 -or
+        @($PlannerStep.proposed_integer_mouse_delta).Where({ -not (Test-FiniteJsonNumber $_) -or [decimal]$_ % 1 -ne 0 }).Count -ne 0 -or
+        [double]$PlannerStep.target_player_distance -lt 0 -or [double]$PlannerStep.target_player_distance -gt 18 -or
+        [double]$PlannerStep.predicted_distance -lt 0 -or [double]$PlannerStep.observed_distance -lt 0 -or
+        [double]$PlannerStep.actual_to_predicted_improvement_ratio -lt 0.20 -or
+        [double]$PlannerStep.inverse_return_error -lt 0 -or [double]$PlannerStep.inverse_return_error -gt 0.002) {
+        throw 'The sanitized lifecycle receipt has inconsistent planner-step measurements.'
+    }
+    Assert-ExactBoolean $PlannerStep.strict_distance_reduction $true 'canary.planner_step.strict_distance_reduction'
+    Assert-ExactBoolean $PlannerStep.rollback_attempted $true 'canary.planner_step.rollback_attempted'
+    Assert-ExactBoolean $PlannerStep.rollback_not_safe $false 'canary.planner_step.rollback_not_safe'
+    Assert-ExactBoolean $PlannerStep.rollback_cancel_emitted $false 'canary.planner_step.rollback_cancel_emitted'
+    Assert-ExactBoolean $PlannerStep.inverse_emitted $true 'canary.planner_step.inverse_emitted'
+}
+
+function Assert-ClosedLoopEnvelope($ClosedLoop) {
+    $fields = @(
+        'target', 'player_origin', 'target_player_distance', 'arrived', 'arrival_distance', 'steps',
+        'emitted_move_count', 'cumulative_motion_pixels', 'input_observer_started',
+        'foreign_mouse_moves_observed', 'rollback_attempted', 'rollback_inverse_count',
+        'rollback_not_safe', 'rollback_cancel_emitted', 'rollback_return_error',
+        'operator_placement', 'outcome'
+    )
+    if (-not (Test-ExactPropertySet $ClosedLoop $fields) -or [string]$ClosedLoop.outcome -cne 'passed' -or
+        $ClosedLoop.steps -isnot [array]) {
+        throw 'The sanitized lifecycle receipt lacks a passing closed-loop proof.'
+    }
+    Assert-ExactPosition $ClosedLoop.target 'canary.closed_loop.target'
+    Assert-ExactPosition $ClosedLoop.player_origin 'canary.closed_loop.player_origin'
+    foreach ($field in @('target_player_distance', 'arrival_distance', 'cumulative_motion_pixels')) {
+        Assert-FiniteNumber $ClosedLoop.$field "canary.closed_loop.$field"
+    }
+    foreach ($field in @('emitted_move_count', 'foreign_mouse_moves_observed', 'rollback_inverse_count')) {
+        Assert-FiniteNumber $ClosedLoop.$field "canary.closed_loop.$field"
+        if ([decimal]$ClosedLoop.$field % 1 -ne 0 -or [decimal]$ClosedLoop.$field -lt 0) {
+            throw "The sanitized lifecycle receipt has an invalid canary.closed_loop.$field value."
+        }
+    }
+    if ([decimal]$ClosedLoop.emitted_move_count -ne @($ClosedLoop.steps).Count) {
+        throw 'The sanitized lifecycle receipt has an inconsistent closed-loop step count.'
+    }
+    foreach ($step in @($ClosedLoop.steps)) {
+        if (-not (Test-ExactPropertySet $step @(
+            'command_id', 'emitted_integer_mouse_delta', 'distance_before', 'predicted_distance',
+            'observed_distance', 'input_ownership_verified'
+        )) -or @($step.emitted_integer_mouse_delta).Count -ne 2 -or
+            @($step.emitted_integer_mouse_delta).Where({ -not (Test-FiniteJsonNumber $_) -or [decimal]$_ % 1 -ne 0 }).Count -ne 0) {
+            throw 'The sanitized lifecycle receipt has an invalid closed-loop step envelope.'
+        }
+        foreach ($field in @('command_id', 'distance_before', 'predicted_distance', 'observed_distance')) {
+            Assert-FiniteNumber $step.$field "canary.closed_loop.steps.$field"
+        }
+        if ([decimal]$step.command_id % 1 -ne 0 -or [decimal]$step.command_id -lt 0 -or
+            [double]$step.distance_before -lt 0 -or [double]$step.predicted_distance -lt 0 -or
+            [double]$step.observed_distance -lt 0) {
+            throw 'The sanitized lifecycle receipt has invalid closed-loop step measurements.'
+        }
+        Assert-ExactBoolean $step.input_ownership_verified $true 'canary.closed_loop.steps.input_ownership_verified'
+    }
+    Assert-ExactBoolean $ClosedLoop.arrived $true 'canary.closed_loop.arrived'
+    Assert-ExactBoolean $ClosedLoop.input_observer_started $true 'canary.closed_loop.input_observer_started'
+    Assert-ExactBoolean $ClosedLoop.rollback_not_safe $false 'canary.closed_loop.rollback_not_safe'
+    Assert-ExactBoolean $ClosedLoop.rollback_cancel_emitted $false 'canary.closed_loop.rollback_cancel_emitted'
+    if ([double]$ClosedLoop.target_player_distance -lt 0 -or [double]$ClosedLoop.target_player_distance -gt 18 -or
+        [double]$ClosedLoop.arrival_distance -lt 0 -or [double]$ClosedLoop.arrival_distance -gt 0.075 -or
+        [double]$ClosedLoop.cumulative_motion_pixels -lt 0 -or [double]$ClosedLoop.cumulative_motion_pixels -gt 16 -or
+        [decimal]$ClosedLoop.emitted_move_count -gt 4 -or [decimal]$ClosedLoop.foreign_mouse_moves_observed -ne 0) {
+        throw 'The sanitized lifecycle receipt has inconsistent closed-loop measurements.'
+    }
+}
+
+function Assert-ClosedLoopSuccess($ClosedLoop) {
+    Assert-ClosedLoopEnvelope $ClosedLoop
+    if ($null -ne $ClosedLoop.operator_placement -or
+        [decimal]$ClosedLoop.rollback_inverse_count -ne [decimal]$ClosedLoop.emitted_move_count) {
+        throw 'The sanitized lifecycle receipt has an invalid closed-loop rollback proof.'
+    }
+    Assert-ExactBoolean $ClosedLoop.rollback_attempted ([decimal]$ClosedLoop.emitted_move_count -gt 0) 'canary.closed_loop.rollback_attempted'
+    Assert-FiniteNumber $ClosedLoop.rollback_return_error 'canary.closed_loop.rollback_return_error'
+    if ([double]$ClosedLoop.rollback_return_error -lt 0 -or [double]$ClosedLoop.rollback_return_error -gt 0.01) {
+        throw 'The sanitized lifecycle receipt has an invalid closed-loop return error.'
+    }
+}
+
+function Assert-OperatorPlacementSuccess($Receipt) {
+    Assert-ExactBoolean $Receipt.summary.placement_attempted $true 'summary.placement_attempted'
+    Assert-CalibrationSuccess $Receipt.canary $false
+    $closed = $Receipt.canary.closed_loop
+    Assert-ClosedLoopEnvelope $closed
+    $placement = $closed.operator_placement
+    $fields = @(
+        'human_click_observed', 'programmatic_click_emitted', 'injected_click_observed',
+        'other_click_observed', 'outbound_marker_1_newer', 'outbound_observed_micros',
+        'inbound_marker_1_newer', 'inbound_observed_micros', 'inbound_target_distance',
+        'context_continuous', 'timed_out', 'escape_emitted', 'outcome'
+    )
+    if (-not (Test-ExactPropertySet $placement $fields) -or [string]$placement.outcome -cne 'passed') {
+        throw 'The sanitized lifecycle receipt lacks a passing operator-placement proof.'
+    }
+    foreach ($field in @('human_click_observed', 'outbound_marker_1_newer', 'inbound_marker_1_newer', 'context_continuous')) {
+        Assert-ExactBoolean $placement.$field $true "canary.closed_loop.operator_placement.$field"
+    }
+    foreach ($field in @('programmatic_click_emitted', 'injected_click_observed', 'other_click_observed', 'timed_out', 'escape_emitted')) {
+        Assert-ExactBoolean $placement.$field $false "canary.closed_loop.operator_placement.$field"
+    }
+    Assert-ExactBoolean $closed.rollback_attempted $false 'canary.closed_loop.rollback_attempted'
+    if ([decimal]$closed.rollback_inverse_count -ne 0 -or $null -ne $closed.rollback_return_error) {
+        throw 'The sanitized operator-placement receipt claims an unsafe post-click aim rollback.'
+    }
+    foreach ($field in @('outbound_observed_micros', 'inbound_observed_micros', 'inbound_target_distance')) {
+        Assert-FiniteNumber $placement.$field "canary.closed_loop.operator_placement.$field"
+    }
+    if ([decimal]$placement.outbound_observed_micros % 1 -ne 0 -or [decimal]$placement.outbound_observed_micros -lt 0 -or
+        [decimal]$placement.inbound_observed_micros % 1 -ne 0 -or
+        [decimal]$placement.inbound_observed_micros -le [decimal]$placement.outbound_observed_micros -or
+        [double]$placement.inbound_target_distance -lt 0 -or [double]$placement.inbound_target_distance -gt 0.075) {
+        throw 'The sanitized lifecycle receipt has inconsistent operator-placement timing or distance evidence.'
+    }
+}
+
+function Assert-ArmedModeSuccess($Receipt, [string]$ExpectedMode) {
+    if ([string]$Receipt.canary.outcome -cne 'passed') { return }
+    switch ($ExpectedMode) {
+        'marker1-reversible-calibration-v1' { Assert-CalibrationSuccess $Receipt.canary }
+        'marker1-single-planner-step-and-restore-v1' {
+            Assert-CalibrationSuccess $Receipt.canary
+            Assert-PlannerStepSuccess $Receipt.canary.planner_step
+        }
+        'marker1-closed-loop-aim-and-rollback-v1' {
+            Assert-CalibrationSuccess $Receipt.canary
+            Assert-ClosedLoopSuccess $Receipt.canary.closed_loop
+        }
+        'marker1-operator-click-placement-evidence-v1' { Assert-OperatorPlacementSuccess $Receipt }
+        default { throw 'The sanitized lifecycle receipt has an unsupported armed mode.' }
+    }
+}
+
+function Read-ValidatedLifecycleReceipt(
+    [string]$Path,
+    [string]$ExpectedMode,
+    [bool]$ExpectedArmed,
+    [int]$ExpectedDurationMs,
+    [int]$ExpectedIntervalMs,
+    [DateTime]$NotBeforeUtc,
+    [DateTime]$NotAfterUtc
+) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw 'The native probe returned without creating the expected sanitized lifecycle receipt.'
+    }
+    $file = Get-Item -LiteralPath $Path -ErrorAction Stop
+    if ($file.Length -le 0) {
+        throw 'The sanitized lifecycle receipt was empty.'
+    }
+    try {
+        $receipt = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        throw 'The sanitized lifecycle receipt is not valid JSON.'
+    }
+    $topLevel = @(
+        'schema_version', 'generated_by', 'game', 'deployment', 'channel', 'game_build',
+        'distribution_app_id', 'observed_unix_millis', 'duration_millis', 'interval_millis',
+        'identities', 'acquisition', 'events', 'summary', 'policy', 'canary'
+    )
+    if (-not (Test-ExactPropertySet $receipt $topLevel) -or $receipt.schema_version -ne 7 -or
+        [string]$receipt.generated_by -cne 'rlogs-bpsr-automarker-lifecycle-probe' -or
+        [string]$receipt.game -cne 'blue-protocol-star-resonance' -or
+        [string]$receipt.deployment -cne 'global' -or [string]$receipt.channel -cne 'steam' -or
+        [string]$receipt.game_build -cne $expectedBuild -or
+        [string]$receipt.distribution_app_id -cne $expectedAppId -or
+        -not (Test-FiniteJsonNumber $receipt.observed_unix_millis) -or
+        [decimal]$receipt.observed_unix_millis % 1 -ne 0 -or
+        [decimal]$receipt.observed_unix_millis -lt ([DateTimeOffset]$NotBeforeUtc).ToUnixTimeMilliseconds() -or
+        [decimal]$receipt.observed_unix_millis -gt ([DateTimeOffset]$NotAfterUtc).ToUnixTimeMilliseconds() -or
+        $receipt.duration_millis -ne $ExpectedDurationMs -or
+        $receipt.interval_millis -ne $ExpectedIntervalMs -or $receipt.events -isnot [array]) {
+        throw 'The sanitized lifecycle receipt envelope does not match this exact probe invocation.'
+    }
+
+    if (-not (Test-ExactPropertySet $receipt.identities @('process_executable', 'game_assembly', 'steam_manifest'))) {
+        throw 'The sanitized lifecycle receipt identities envelope is invalid.'
+    }
+    foreach ($identityName in @('process_executable', 'game_assembly', 'steam_manifest')) {
+        $identity = $receipt.identities.$identityName
+        if (-not (Test-ExactPropertySet $identity @('byte_length', 'sha256')) -or
+            -not (Test-FiniteJsonNumber $identity.byte_length) -or [decimal]$identity.byte_length % 1 -ne 0 -or
+            [decimal]$identity.byte_length -lt 1 -or [string]$identity.sha256 -cnotmatch '^[0-9a-f]{64}$') {
+            throw "The sanitized lifecycle receipt has an invalid $identityName identity."
+        }
+    }
+
+    $acquisitionFields = @(
+        'root_kind', 'class_identity_validation_required', 'validated_classes',
+        'roots_double_read_per_sample', 'lifecycle_state_double_read_per_sample'
+    )
+    $expectedValidatedClasses = @(
+        'ZUtil.ZSingleton`1', 'Panda.ZGame.ZEntityMgr', 'Panda.ZGame.PlayerEnt',
+        'Panda.ZGame.PlayerEnt__Storage', 'Panda.ZGame.PlayerSkillInputComp',
+        'Panda.ZGame.ZSkillInputMgr', 'Panda.ZGame.ZIndicatorMgr'
+    )
+    if (-not (Test-ExactPropertySet $receipt.acquisition $acquisitionFields) -or
+        [string]$receipt.acquisition.root_kind -cne 'reviewed-singleton-method-info' -or
+        (@($receipt.acquisition.validated_classes) -join "`n") -cne ($expectedValidatedClasses -join "`n")) {
+        throw 'The sanitized lifecycle receipt acquisition envelope is invalid.'
+    }
+    Assert-ExactBoolean $receipt.acquisition.class_identity_validation_required $true 'acquisition.class_identity_validation_required'
+    Assert-ExactBoolean $receipt.acquisition.roots_double_read_per_sample $true 'acquisition.roots_double_read_per_sample'
+    Assert-ExactBoolean $receipt.acquisition.lifecycle_state_double_read_per_sample $true 'acquisition.lifecycle_state_double_read_per_sample'
+
+    $summaryFields = @(
+        'poll_attempts', 'accepted_samples', 'emitted_transitions', 'unavailable_samples',
+        'rejected_identity_samples', 'torn_samples', 'placement_attempted',
+        'programmatic_activation_proven'
+    )
+    if (-not (Test-ExactPropertySet $receipt.summary $summaryFields)) {
+        throw 'The sanitized lifecycle receipt summary envelope is invalid.'
+    }
+    if ($receipt.summary.placement_attempted -isnot [bool]) {
+        throw 'The sanitized lifecycle receipt has an invalid summary.placement_attempted value.'
+    }
+    Assert-ExactBoolean $receipt.summary.programmatic_activation_proven $false 'summary.programmatic_activation_proven'
+
+    $policyFields = @(
+        'exact_build_and_hashes_required', 'process_rights', 'allowlisted_pointer_chain_only',
+        'allowlisted_fields_only', 'heap_or_process_scan_performed', 'process_identifiers_emitted',
+        'raw_addresses_emitted', 'filesystem_paths_emitted', 'debugger_attached', 'threads_suspended',
+        'code_injected_or_invoked', 'process_memory_written', 'remote_process_write_rights_requested',
+        'remote_memory_allocated', 'remote_thread_created', 'dll_injected',
+        'internal_game_function_invoked', 'packets_observed_or_modified', 'packet_synthesis_performed',
+        'ordinary_foreground_input_only', 'place_enabled', 'mouse_click_emitted',
+        'reversible_mouse_move_enabled', 'escape_cancel_enabled'
+    )
+    if (-not (Test-ExactPropertySet $receipt.policy $policyFields) -or
+        @($receipt.policy.process_rights).Count -ne 2 -or
+        [string]$receipt.policy.process_rights[0] -cne 'PROCESS_QUERY_INFORMATION' -or
+        [string]$receipt.policy.process_rights[1] -cne 'PROCESS_VM_READ') {
+        throw 'The sanitized lifecycle receipt policy envelope is invalid.'
+    }
+    foreach ($field in @('exact_build_and_hashes_required', 'allowlisted_pointer_chain_only', 'allowlisted_fields_only', 'ordinary_foreground_input_only')) {
+        Assert-ExactBoolean $receipt.policy.$field $true "policy.$field"
+    }
+    foreach ($field in @('heap_or_process_scan_performed', 'process_identifiers_emitted', 'raw_addresses_emitted',
+        'filesystem_paths_emitted', 'debugger_attached', 'threads_suspended', 'code_injected_or_invoked',
+        'process_memory_written', 'remote_process_write_rights_requested', 'remote_memory_allocated',
+        'remote_thread_created', 'dll_injected', 'internal_game_function_invoked',
+        'packets_observed_or_modified', 'packet_synthesis_performed', 'place_enabled', 'mouse_click_emitted')) {
+        Assert-ExactBoolean $receipt.policy.$field $false "policy.$field"
+    }
+    Assert-ExactBoolean $receipt.policy.reversible_mouse_move_enabled $ExpectedArmed 'policy.reversible_mouse_move_enabled'
+    Assert-ExactBoolean $receipt.policy.escape_cancel_enabled $ExpectedArmed 'policy.escape_cancel_enabled'
+
+    $canaryFields = @(
+        'armed', 'mode', 'calibration_pixels', 'marker_1_state_validated',
+        'foreground_validated_before_every_input', 'root_context_unchanged',
+        'lifecycle_context_unchanged', 'rank_2_input_excitation', 'escape_emitted', 'baseline',
+        'transitions', 'final_return_error', 'approximately_returned', 'cancelled', 'outcome',
+        'preflight', 'planner_step', 'closed_loop'
+    )
+    if (-not (Test-ExactPropertySet $receipt.canary $canaryFields) -or
+        $receipt.canary.transitions -isnot [array] -or
+        [string]$receipt.canary.mode -cne $ExpectedMode -or
+        [string]$receipt.canary.outcome -cnotmatch '^[a-z0-9_-]{1,80}$') {
+        throw 'The sanitized lifecycle receipt canary envelope does not match the requested mode.'
+    }
+    Assert-ExactBoolean $receipt.canary.armed $ExpectedArmed 'canary.armed'
+    if (-not $ExpectedArmed -and [string]$receipt.canary.outcome -cne 'not-armed-read-only') {
+        throw 'The sanitized lifecycle receipt has an unexpected read-only outcome.'
+    }
+    if ($ExpectedArmed) { Assert-ArmedModeSuccess $receipt $ExpectedMode }
+    return $receipt
+}
+
+function Assert-ArmedCanaryPassed($Receipt) {
+    $outcome = [string]$Receipt.canary.outcome
+    Write-Host "Sanitized armed canary outcome: $outcome"
+    if ($outcome -cne 'passed') {
+        throw 'The armed canary failed closed. Its sanitized receipt was retained for diagnosis.'
+    }
+}
+
+function New-SyntheticLifecycleReceipt([bool]$Armed, [string]$Mode, [string]$Outcome) {
+    $identity = [ordered]@{ byte_length = 1; sha256 = ('a' * 64) }
+    $receipt = [ordered]@{
+        schema_version = 7; generated_by = 'rlogs-bpsr-automarker-lifecycle-probe'
+        game = 'blue-protocol-star-resonance'; deployment = 'global'; channel = 'steam'
+        game_build = $expectedBuild; distribution_app_id = $expectedAppId
+        observed_unix_millis = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        duration_millis = 100; interval_millis = 10
+        identities = [ordered]@{ process_executable = $identity; game_assembly = $identity; steam_manifest = $identity }
+        acquisition = [ordered]@{
+            root_kind = 'reviewed-singleton-method-info'; class_identity_validation_required = $true
+            validated_classes = @('ZUtil.ZSingleton`1', 'Panda.ZGame.ZEntityMgr', 'Panda.ZGame.PlayerEnt', 'Panda.ZGame.PlayerEnt__Storage', 'Panda.ZGame.PlayerSkillInputComp', 'Panda.ZGame.ZSkillInputMgr', 'Panda.ZGame.ZIndicatorMgr')
+            roots_double_read_per_sample = $true; lifecycle_state_double_read_per_sample = $true
+        }
+        events = @()
+        summary = [ordered]@{ poll_attempts = 0; accepted_samples = 0; emitted_transitions = 0; unavailable_samples = 0; rejected_identity_samples = 0; torn_samples = 0; placement_attempted = $false; programmatic_activation_proven = $false }
+        policy = [ordered]@{
+            exact_build_and_hashes_required = $true; process_rights = @('PROCESS_QUERY_INFORMATION', 'PROCESS_VM_READ')
+            allowlisted_pointer_chain_only = $true; allowlisted_fields_only = $true; heap_or_process_scan_performed = $false
+            process_identifiers_emitted = $false; raw_addresses_emitted = $false; filesystem_paths_emitted = $false
+            debugger_attached = $false; threads_suspended = $false; code_injected_or_invoked = $false
+            process_memory_written = $false; remote_process_write_rights_requested = $false; remote_memory_allocated = $false
+            remote_thread_created = $false; dll_injected = $false; internal_game_function_invoked = $false
+            packets_observed_or_modified = $false; packet_synthesis_performed = $false
+            ordinary_foreground_input_only = $true; place_enabled = $false; mouse_click_emitted = $false
+            reversible_mouse_move_enabled = $Armed; escape_cancel_enabled = $Armed
+        }
+        canary = [ordered]@{
+            armed = $Armed; mode = $Mode; calibration_pixels = $(if ($Armed) { 6 } else { 0 })
+            marker_1_state_validated = $false; foreground_validated_before_every_input = $false
+            root_context_unchanged = $false; lifecycle_context_unchanged = $false
+            rank_2_input_excitation = $false; escape_emitted = $false; baseline = $null; transitions = @()
+            final_return_error = $null; approximately_returned = $false; cancelled = $false; outcome = $Outcome
+            preflight = $null; planner_step = $null; closed_loop = $null
+        }
+    }
+    if ($Armed -and $Outcome -ceq 'passed') {
+        $settled = [ordered]@{
+            elapsed_micros = 10; position = [ordered]@{ x = 1; y = 2; z = 3 }
+            current_velocity = [ordered]@{ x = 0; y = 0; z = 0 }; stability_sample_gap_millis = 50
+            stability_position_delta = 0.001; velocity_norm = 0.001; settled = $true
+        }
+        $receipt.canary.marker_1_state_validated = $true
+        $receipt.canary.foreground_validated_before_every_input = $true
+        $receipt.canary.root_context_unchanged = $true
+        $receipt.canary.lifecycle_context_unchanged = $true
+        $receipt.canary.rank_2_input_excitation = $true
+        $receipt.canary.baseline = $settled
+        $receipt.canary.transitions = @(
+            [ordered]@{ sequence_index = 0; emitted_integer_mouse_delta = @(6, 0); input_elapsed_micros = 20; subsequent_observation = $settled; displacement = 0.5 },
+            [ordered]@{ sequence_index = 1; emitted_integer_mouse_delta = @(-6, 0); input_elapsed_micros = 30; subsequent_observation = $settled; displacement = 0.5 },
+            [ordered]@{ sequence_index = 2; emitted_integer_mouse_delta = @(0, 6); input_elapsed_micros = 40; subsequent_observation = $settled; displacement = 0.5 },
+            [ordered]@{ sequence_index = 3; emitted_integer_mouse_delta = @(0, -6); input_elapsed_micros = 50; subsequent_observation = $settled; displacement = 0.5 }
+        )
+        $receipt.canary.final_return_error = 0.01
+        $receipt.canary.approximately_returned = $true
+        $receipt.canary.escape_emitted = $true
+        $receipt.canary.cancelled = $true
+        if ($Mode -ceq 'marker1-single-planner-step-and-restore-v1') {
+            $receipt.canary.planner_step = [ordered]@{
+                target = [ordered]@{ x = 1; y = 2; z = 3 }; player_origin = [ordered]@{ x = 0; y = 0; z = 0 }
+                target_player_distance = 3.75; proposed_integer_mouse_delta = @(1, -1)
+                predicted_distance = 2.5; observed_distance = 3.0; actual_to_predicted_improvement_ratio = 0.6
+                strict_distance_reduction = $true; rollback_attempted = $true; rollback_not_safe = $false
+                rollback_cancel_emitted = $false; inverse_emitted = $true; inverse_return_error = 0.001; outcome = 'passed'
+            }
+        }
+        if ($Mode -ceq 'marker1-closed-loop-aim-and-rollback-v1' -or
+            $Mode -ceq 'marker1-operator-click-placement-evidence-v1') {
+            $receipt.canary.closed_loop = [ordered]@{
+                target = [ordered]@{ x = 1; y = 2; z = 3 }; player_origin = [ordered]@{ x = 0; y = 0; z = 0 }
+                target_player_distance = 3.75; arrived = $true; arrival_distance = 0.05
+                steps = @([ordered]@{
+                    command_id = 1; emitted_integer_mouse_delta = @(1, -1); distance_before = 1.0
+                    predicted_distance = 0.5; observed_distance = 0.4; input_ownership_verified = $true
+                })
+                emitted_move_count = 1; cumulative_motion_pixels = 4.0; input_observer_started = $true
+                foreign_mouse_moves_observed = 0; rollback_attempted = $true; rollback_inverse_count = 1
+                rollback_not_safe = $false; rollback_cancel_emitted = $false; rollback_return_error = 0.005
+                operator_placement = $null; outcome = 'passed'
+            }
+        }
+        if ($Mode -ceq 'marker1-operator-click-placement-evidence-v1') {
+            $receipt.summary.placement_attempted = $true
+            $receipt.canary.escape_emitted = $false
+            $receipt.canary.cancelled = $false
+            $receipt.canary.closed_loop.rollback_attempted = $false
+            $receipt.canary.closed_loop.rollback_inverse_count = 0
+            $receipt.canary.closed_loop.rollback_return_error = $null
+            $receipt.canary.closed_loop.operator_placement = [ordered]@{
+                human_click_observed = $true; programmatic_click_emitted = $false
+                injected_click_observed = $false; other_click_observed = $false
+                outbound_marker_1_newer = $true; outbound_observed_micros = 200
+                inbound_marker_1_newer = $true; inbound_observed_micros = 250
+                inbound_target_distance = 0.01; context_continuous = $true; timed_out = $false
+                escape_emitted = $false; outcome = 'passed'
+            }
+        }
+    }
+    return $receipt
+}
+
 function Invoke-LauncherSelfTest {
     Assert-LoopbackBaseUrl 'http://127.0.0.1:54221'
     $rejected = $false
@@ -312,7 +789,108 @@ function Invoke-LauncherSelfTest {
     $rejected = $false
     try { Assert-LauncherTargetSelection $false $false $false $true $null $null $false 1 2 3 } catch { $rejected = $true }
     if (-not $rejected) { throw 'Self-test failed: operator placement accepted raw XYZ without a preset.' }
-    Write-Host 'Launcher self-test passed: loopback policy, schema, family context, ID/name uniqueness, and target exclusivity.'
+
+    $receiptTestPath = Join-Path ([IO.Path]::GetTempPath()) ("rlogs-lifecycle-launcher-self-test-" + [Guid]::NewGuid().ToString('N') + '.json')
+    try {
+        $notBefore = [DateTime]::UtcNow.AddSeconds(-1)
+        $synthetic = New-SyntheticLifecycleReceipt $true 'marker1-closed-loop-aim-and-rollback-v1' 'passed'
+        [IO.File]::WriteAllText($receiptTestPath, ($synthetic | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        $validated = Read-ValidatedLifecycleReceipt $receiptTestPath 'marker1-closed-loop-aim-and-rollback-v1' $true 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))
+        Assert-ArmedCanaryPassed $validated
+
+        foreach ($passingMode in @(
+            'marker1-reversible-calibration-v1',
+            'marker1-single-planner-step-and-restore-v1',
+            'marker1-operator-click-placement-evidence-v1'
+        )) {
+            $passing = New-SyntheticLifecycleReceipt $true $passingMode 'passed'
+            [IO.File]::WriteAllText($receiptTestPath, ($passing | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+            [void](Read-ValidatedLifecycleReceipt $receiptTestPath $passingMode $true 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1)))
+        }
+
+        foreach ($nestedFailure in @(
+            'calibration-return', 'missing-planner-step', 'failed-closed-loop',
+            'operator-not-attempted', 'operator-missing', 'operator-failed',
+            'operator-programmatic-click', 'operator-injected-click', 'operator-other-click',
+            'operator-stale-outbound', 'operator-missing-inbound', 'operator-context-lost',
+            'operator-timeout', 'operator-distance', 'operator-timestamp-order',
+            'operator-calibration', 'operator-rollback'
+        )) {
+            $failureMode = if ($nestedFailure -eq 'calibration-return') { 'marker1-reversible-calibration-v1' } `
+                elseif ($nestedFailure -eq 'missing-planner-step') { 'marker1-single-planner-step-and-restore-v1' } `
+                elseif ($nestedFailure -eq 'failed-closed-loop') { 'marker1-closed-loop-aim-and-rollback-v1' } `
+                else { 'marker1-operator-click-placement-evidence-v1' }
+            $candidate = New-SyntheticLifecycleReceipt $true $failureMode 'passed'
+            switch ($nestedFailure) {
+                'calibration-return' { $candidate.canary.approximately_returned = $false }
+                'missing-planner-step' { $candidate.canary.planner_step = $null }
+                'failed-closed-loop' { $candidate.canary.closed_loop.outcome = 'rollback_not_safe' }
+                'operator-not-attempted' { $candidate.summary.placement_attempted = $false }
+                'operator-missing' { $candidate.canary.closed_loop.operator_placement = $null }
+                'operator-failed' { $candidate.canary.closed_loop.operator_placement.outcome = 'failed-closed' }
+                'operator-programmatic-click' { $candidate.canary.closed_loop.operator_placement.programmatic_click_emitted = $true }
+                'operator-injected-click' { $candidate.canary.closed_loop.operator_placement.injected_click_observed = $true }
+                'operator-other-click' { $candidate.canary.closed_loop.operator_placement.other_click_observed = $true }
+                'operator-stale-outbound' { $candidate.canary.closed_loop.operator_placement.outbound_marker_1_newer = $false }
+                'operator-missing-inbound' { $candidate.canary.closed_loop.operator_placement.inbound_marker_1_newer = $false }
+                'operator-context-lost' { $candidate.canary.closed_loop.operator_placement.context_continuous = $false }
+                'operator-timeout' { $candidate.canary.closed_loop.operator_placement.timed_out = $true }
+                'operator-distance' { $candidate.canary.closed_loop.operator_placement.inbound_target_distance = 0.076 }
+                'operator-timestamp-order' { $candidate.canary.closed_loop.operator_placement.inbound_observed_micros = 200 }
+                'operator-calibration' { $candidate.canary.rank_2_input_excitation = $false }
+                'operator-rollback' {
+                    $candidate.canary.closed_loop.rollback_attempted = $true
+                    $candidate.canary.closed_loop.rollback_inverse_count = 1
+                    $candidate.canary.closed_loop.rollback_return_error = 0.001
+                }
+            }
+            [IO.File]::WriteAllText($receiptTestPath, ($candidate | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+            $rejected = $false
+            try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath $failureMode $true 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
+            if (-not $rejected) { throw "Self-test failed: $nestedFailure nested proof was accepted." }
+        }
+
+        $synthetic.canary.outcome = 'failed-closed'
+        [IO.File]::WriteAllText($receiptTestPath, ($synthetic | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        $validatedFailure = Read-ValidatedLifecycleReceipt $receiptTestPath 'marker1-closed-loop-aim-and-rollback-v1' $true 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))
+        $rejected = $false
+        try { Assert-ArmedCanaryPassed $validatedFailure } catch { $rejected = $true }
+        if (-not $rejected) { throw 'Self-test failed: a non-passing armed receipt returned success.' }
+
+        $readOnly = New-SyntheticLifecycleReceipt $false 'read-only' 'not-armed-read-only'
+        [IO.File]::WriteAllText($receiptTestPath, ($readOnly | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'read-only' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1)))
+        $readOnly.canary.outcome = 'passed'
+        [IO.File]::WriteAllText($receiptTestPath, ($readOnly | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        $rejected = $false
+        try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'read-only' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
+        if (-not $rejected) { throw 'Self-test failed: a mismatched read-only outcome was accepted.' }
+
+        foreach ($invalid in @('wrong-schema', 'missing-critical', 'extra-critical', 'mismatched-mode', 'mismatched-invocation', 'stale-receipt', 'unsafe-policy')) {
+            $candidate = New-SyntheticLifecycleReceipt $true 'marker1-closed-loop-aim-and-rollback-v1' 'passed'
+            switch ($invalid) {
+                'wrong-schema' { $candidate.schema_version = 6 }
+                'missing-critical' { [void]$candidate.Remove('summary') }
+                'extra-critical' { $candidate.unexpected = 'rejected' }
+                'mismatched-mode' { $candidate.canary.mode = 'marker1-reversible-calibration-v1' }
+                'mismatched-invocation' { $candidate.duration_millis = 101 }
+                'stale-receipt' { $candidate.observed_unix_millis = ([DateTimeOffset]$notBefore).AddSeconds(-1).ToUnixTimeMilliseconds() }
+                'unsafe-policy' { $candidate.policy.place_enabled = $true }
+            }
+            [IO.File]::WriteAllText($receiptTestPath, ($candidate | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+            $rejected = $false
+            try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'marker1-closed-loop-aim-and-rollback-v1' $true 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
+            if (-not $rejected) { throw "Self-test failed: $invalid receipt was accepted." }
+        }
+
+        [IO.File]::WriteAllText($receiptTestPath, '{malformed', [Text.UTF8Encoding]::new($false))
+        $rejected = $false
+        try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'read-only' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
+        if (-not $rejected) { throw 'Self-test failed: malformed receipt JSON was accepted.' }
+    } finally {
+        Remove-Item -LiteralPath $receiptTestPath -Force -ErrorAction SilentlyContinue
+    }
+    Write-Host 'Launcher self-test passed: loopback/preset gates and strict synthetic sanitized-receipt validation.'
 }
 
 if ($SelfTest) {
@@ -481,6 +1059,27 @@ if ($ArmSinglePlannerStep -or $ArmClosedLoopAim -or $ArmOperatorPlacement) {
     )
 }
 
+$expectedCanaryMode = if ($ArmOperatorPlacement) {
+    'marker1-operator-click-placement-evidence-v1'
+} elseif ($ArmClosedLoopAim) {
+    'marker1-closed-loop-aim-and-rollback-v1'
+} elseif ($ArmSinglePlannerStep) {
+    'marker1-single-planner-step-and-restore-v1'
+} elseif ($ArmReversibleCalibration) {
+    'marker1-reversible-calibration-v1'
+} else {
+    'read-only'
+}
+$armedCanary = [bool]($ArmReversibleCalibration -or $ArmSinglePlannerStep -or $ArmClosedLoopAim -or $ArmOperatorPlacement)
+$probeStartedUtc = [DateTime]::UtcNow
 & $probe @arguments
-if ($LASTEXITCODE -ne 0) { throw 'The exact-build probe or calibration canary failed closed.' }
-Write-Host "Created sanitized receipt $(Split-Path -Leaf $receipt). Marker confirmation and Place remain disabled."
+$probeExitCode = $LASTEXITCODE
+$probeFinishedUtc = [DateTime]::UtcNow
+if ($probeExitCode -ne 0) { throw 'The exact-build probe or calibration canary failed closed.' }
+$validatedReceipt = Read-ValidatedLifecycleReceipt `
+    $receipt $expectedCanaryMode $armedCanary $DurationMs $IntervalMs $probeStartedUtc $probeFinishedUtc
+if ($armedCanary) {
+    Assert-ArmedCanaryPassed $validatedReceipt
+} else {
+    Write-Host "Created sanitized receipt $(Split-Path -Leaf $receipt). Marker confirmation and Place remain disabled."
+}
