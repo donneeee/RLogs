@@ -598,14 +598,14 @@ function Assert-NativeDispatchPreflight($Value) {
     $fields = @(
         'preset_id', 'scene_id', 'map_id', 'activity_family_id', 'marker_1_target',
         'preset_context_failure_reason', 'exact_image_identity', 'root_chain_class_valid',
-        'root_chain_stable', 'lifecycle_idle', 'preset_context_current', 'reviewed_code',
+        'root_chain_stable', 'lifecycle_idle', 'preset_context_current', 'reviewed_code', 'scheduler_reviewed_code',
         'dungeon_stage_gate', 'leader_gate', 'marker_skill_resolution_gate',
-        'main_thread_bridge_gate', 'all_resolvable_gates_passed', 'activation_attempted', 'outcome'
+        'main_thread_scheduler_gate', 'main_thread_bridge_gate', 'all_resolvable_gates_passed', 'activation_attempted', 'outcome'
     )
     if (-not (Test-ExactPropertySet $Value $fields) -or
         [string]$Value.preset_id -cnotmatch '^[^\p{C}]{8,128}$' -or
         [string]$Value.outcome -cne 'blocked-unresolved-native-gates' -or
-        @($Value.reviewed_code).Count -ne 2) {
+        @($Value.reviewed_code).Count -ne 2 -or @($Value.scheduler_reviewed_code).Count -ne 4) {
         throw 'The sanitized native-dispatch preflight envelope is invalid.'
     }
     foreach ($field in @('exact_image_identity', 'root_chain_class_valid', 'root_chain_stable',
@@ -641,11 +641,33 @@ function Assert-NativeDispatchPreflight($Value) {
         if (-not (Test-ExactPropertySet $code @('identity', 'rva', 'byte_length', 'sha256', 'matches_reviewed_image')) -or
             [string]$code.identity -cne $expectedCode[$index].Identity -or
             [string]$code.rva -cne $expectedCode[$index].Rva -or
-            [int]$code.byte_length -ne $expectedCode[$index].Bytes -or
+            -not (Test-FiniteJsonNumber $code.byte_length) -or
+            [decimal]$code.byte_length % 1 -ne 0 -or
+            [decimal]$code.byte_length -ne $expectedCode[$index].Bytes -or
             [string]$code.sha256 -cnotmatch '^([0-9a-f]{64})?$' -or
             $code.matches_reviewed_image -isnot [bool] -or
             [bool]$code.matches_reviewed_image -ne ([string]$code.sha256 -ceq $expectedCode[$index].Hash)) {
             throw 'The sanitized native-dispatch preflight has invalid reviewed code evidence.'
+        }
+    }
+    $expectedSchedulerCode = @(
+        [ordered]@{ Identity = 'Cysharp.Threading.Tasks.UniTask.Post'; Rva = '0x670EB30'; Bytes = 16; Hash = '01311db2ce75535a228e3edd96331773c56b27e08392ed317af9ae05366fcb49' },
+        [ordered]@{ Identity = 'Cysharp.Threading.Tasks.PlayerLoopHelper.AddContinuation'; Rva = '0x670AFE0'; Bytes = 128; Hash = '120e184efe897e07e7ac4f2a10307a1cf115544208ec6f95fd0353822234e0a2' },
+        [ordered]@{ Identity = 'Cysharp.Threading.Tasks.Internal.ContinuationQueue.Enqueue'; Rva = '0x676A0B0'; Bytes = 1392; Hash = '25888277bd929d97b136cdb9bcc99b57e523e933e644588b70af27b51d9c52fa' },
+        [ordered]@{ Identity = 'Cysharp.Threading.Tasks.Internal.ContinuationQueue.RunCore'; Rva = '0x676A630'; Bytes = 960; Hash = '5dca8245396e0fa60f0f7f74ad34ca76d511e269c3cbfae71fda909440e9a9cd' }
+    )
+    for ($index = 0; $index -lt 4; $index++) {
+        $code = @($Value.scheduler_reviewed_code)[$index]
+        if (-not (Test-ExactPropertySet $code @('identity', 'rva', 'byte_length', 'sha256', 'matches_reviewed_image')) -or
+            [string]$code.identity -cne $expectedSchedulerCode[$index].Identity -or
+            [string]$code.rva -cne $expectedSchedulerCode[$index].Rva -or
+            -not (Test-FiniteJsonNumber $code.byte_length) -or
+            [decimal]$code.byte_length % 1 -ne 0 -or
+            [decimal]$code.byte_length -ne $expectedSchedulerCode[$index].Bytes -or
+            [string]$code.sha256 -cnotmatch '^([0-9a-f]{64})?$' -or
+            $code.matches_reviewed_image -isnot [bool] -or
+            [bool]$code.matches_reviewed_image -ne ([string]$code.sha256 -ceq $expectedSchedulerCode[$index].Hash)) {
+            throw 'The sanitized native-dispatch preflight has invalid scheduler code evidence.'
         }
     }
     $dungeonGate = $Value.dungeon_stage_gate
@@ -689,7 +711,14 @@ function Assert-NativeDispatchPreflight($Value) {
         'unstable-read-only-marker-skill-lifecycle',
         'unavailable-or-invalid-read-only-marker-skill-root-chain',
         'unavailable-or-invalid-marker-skill-data-manager',
-        'unavailable-or-invalid-marker-skill-slot-dictionary',
+        'marker-skill-slot-dictionary-pointer-invalid',
+        'marker-skill-slot-dictionary-class-invalid',
+        'marker-skill-slot-dictionary-header-unavailable',
+        'marker-skill-slot-dictionary-counts-or-buckets-invalid',
+        'marker-skill-slot-dictionary-entry-storage-unavailable',
+        'marker-skill-slot-dictionary-entry-capacity-invalid',
+        'marker-skill-slot-dictionary-entry-array-class-invalid',
+        'marker-skill-slot-dictionary-entry-stride-invalid',
         'unavailable-or-invalid-marker-skill-control-dictionary',
         'marker-1-slot-missing-or-duplicate',
         'marker-1-slot-mapping-mismatch',
@@ -704,13 +733,26 @@ function Assert-NativeDispatchPreflight($Value) {
         (-not [bool]$markerSkillGate.proven -and [string]$markerSkillGate.reason -cnotin $markerSkillFalseReasons)) {
         throw 'The sanitized native-dispatch preflight has an invalid marker_skill_resolution_gate result.'
     }
+    $schedulerGate = $Value.main_thread_scheduler_gate
+    $schedulerFalseReasons = @(
+        'unstable-read-only-main-thread-scheduler-state',
+        'unavailable-or-invalid-read-only-main-thread-scheduler-state'
+    )
+    if (-not (Test-ExactPropertySet $schedulerGate @('proven', 'reason')) -or
+        $schedulerGate.proven -isnot [bool] -or
+        ([bool]$schedulerGate.proven -and [string]$schedulerGate.reason -cne 'proven-read-only-main-thread-scheduler-state') -or
+        (-not [bool]$schedulerGate.proven -and [string]$schedulerGate.reason -cnotin $schedulerFalseReasons)) {
+        throw 'The sanitized native-dispatch preflight has an invalid main_thread_scheduler_gate result.'
+    }
     $computedResolvable = [bool]$Value.root_chain_class_valid -and [bool]$Value.root_chain_stable -and
         [bool]$Value.lifecycle_idle -and [bool]$Value.preset_context_current -and
         [bool]$Value.dungeon_stage_gate.proven -and [bool]$Value.leader_gate.proven -and
-        [bool]$Value.marker_skill_resolution_gate.proven -and
-        [bool]$Value.reviewed_code[0].matches_reviewed_image -and [bool]$Value.reviewed_code[1].matches_reviewed_image
+        [bool]$Value.marker_skill_resolution_gate.proven -and [bool]$Value.main_thread_scheduler_gate.proven -and
+        [bool]$Value.reviewed_code[0].matches_reviewed_image -and [bool]$Value.reviewed_code[1].matches_reviewed_image -and
+        (@($Value.scheduler_reviewed_code | Where-Object { -not [bool]$_.matches_reviewed_image }).Count -eq 0)
     if ([bool]$Value.exact_image_identity -ne
-        ([bool]$Value.reviewed_code[0].matches_reviewed_image -and [bool]$Value.reviewed_code[1].matches_reviewed_image) -or
+        ([bool]$Value.reviewed_code[0].matches_reviewed_image -and [bool]$Value.reviewed_code[1].matches_reviewed_image -and
+            (@($Value.scheduler_reviewed_code | Where-Object { -not [bool]$_.matches_reviewed_image }).Count -eq 0)) -or
         [bool]$Value.all_resolvable_gates_passed -ne $computedResolvable) {
         throw 'The sanitized native-dispatch preflight has inconsistent gate aggregation.'
     }
@@ -742,7 +784,9 @@ function Read-ValidatedLifecycleReceipt(
         'distribution_app_id', 'observed_unix_millis', 'duration_millis', 'interval_millis',
         'identities', 'acquisition', 'events', 'summary', 'policy', 'canary'
     )
-    if (-not (Test-ExactPropertySet $receipt $topLevel) -or $receipt.schema_version -ne 8 -or
+    if (-not (Test-ExactPropertySet $receipt $topLevel) -or
+        -not (Test-FiniteJsonNumber $receipt.schema_version) -or
+        [decimal]$receipt.schema_version % 1 -ne 0 -or [decimal]$receipt.schema_version -ne 9 -or
         [string]$receipt.generated_by -cne 'rlogs-bpsr-automarker-lifecycle-probe' -or
         [string]$receipt.game -cne 'blue-protocol-star-resonance' -or
         [string]$receipt.deployment -cne 'global' -or [string]$receipt.channel -cne 'steam' -or
@@ -884,7 +928,7 @@ function Assert-ArmedCanaryPassed($Receipt) {
 function New-SyntheticLifecycleReceipt([bool]$Armed, [string]$Mode, [string]$Outcome) {
     $identity = [ordered]@{ byte_length = 1; sha256 = ('a' * 64) }
     $receipt = [ordered]@{
-        schema_version = 8; generated_by = 'rlogs-bpsr-automarker-lifecycle-probe'
+        schema_version = 9; generated_by = 'rlogs-bpsr-automarker-lifecycle-probe'
         game = 'blue-protocol-star-resonance'; deployment = 'global'; channel = 'steam'
         game_build = $expectedBuild; distribution_app_id = $expectedAppId
         observed_unix_millis = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
@@ -1167,19 +1211,75 @@ function Invoke-LauncherSelfTest {
                 [ordered]@{ identity = 'Panda.ZGame.EntityAttrExtensions.SetIndicatorPos'; rva = '0x53E86A0'; byte_length = 464; sha256 = 'a02f30ee1ee8ecf606fceb964a3428b83fa3ab2aac9c4290d85d0c1454af17e6'; matches_reviewed_image = $true },
                 [ordered]@{ identity = 'Panda.ZGame.ZSkillInputMgr.FirePlaySkillByIndicator'; rva = '0x52E09E0'; byte_length = 208; sha256 = '6ae23a6d1f432969dd2d4c9dd4461f80b7ac6ecf5b5382526dbc00a7b6d8b9f6'; matches_reviewed_image = $true }
             )
+            scheduler_reviewed_code = @(
+                [ordered]@{ identity = 'Cysharp.Threading.Tasks.UniTask.Post'; rva = '0x670EB30'; byte_length = 16; sha256 = '01311db2ce75535a228e3edd96331773c56b27e08392ed317af9ae05366fcb49'; matches_reviewed_image = $true },
+                [ordered]@{ identity = 'Cysharp.Threading.Tasks.PlayerLoopHelper.AddContinuation'; rva = '0x670AFE0'; byte_length = 128; sha256 = '120e184efe897e07e7ac4f2a10307a1cf115544208ec6f95fd0353822234e0a2'; matches_reviewed_image = $true },
+                [ordered]@{ identity = 'Cysharp.Threading.Tasks.Internal.ContinuationQueue.Enqueue'; rva = '0x676A0B0'; byte_length = 1392; sha256 = '25888277bd929d97b136cdb9bcc99b57e523e933e644588b70af27b51d9c52fa'; matches_reviewed_image = $true },
+                [ordered]@{ identity = 'Cysharp.Threading.Tasks.Internal.ContinuationQueue.RunCore'; rva = '0x676A630'; byte_length = 960; sha256 = '5dca8245396e0fa60f0f7f74ad34ca76d511e269c3cbfae71fda909440e9a9cd'; matches_reviewed_image = $true }
+            )
             dungeon_stage_gate = [ordered]@{ proven = $true; reason = 'proven-read-only-current-dungeon-stage' }
             leader_gate = [ordered]@{ proven = $true; reason = 'proven-read-only-current-player-is-party-leader' }
             marker_skill_resolution_gate = [ordered]@{ proven = $true; reason = 'proven-read-only-marker-1-slot-and-skill-resolution' }
+            main_thread_scheduler_gate = [ordered]@{ proven = $true; reason = 'proven-read-only-main-thread-scheduler-state' }
             main_thread_bridge_gate = [ordered]@{ proven = $false; reason = 'unresolved-no-sanctioned-one-shot-main-thread-bridge' }
             all_resolvable_gates_passed = $true; activation_attempted = $false; outcome = 'blocked-unresolved-native-gates'
         }
         [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
         [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1)))
+        $native.schema_version = '9'
+        [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        $rejected = $false
+        try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
+        if (-not $rejected) { throw 'Self-test failed: a string-valued schema version was accepted.' }
+        $native.schema_version = 9
+        $native.canary.native_dispatch_preflight.reviewed_code[0].byte_length = '464'
+        [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        $rejected = $false
+        try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
+        if (-not $rejected) { throw 'Self-test failed: a string-valued reviewed code length was accepted.' }
+        $native.canary.native_dispatch_preflight.reviewed_code[0].byte_length = 464
+        $native.canary.native_dispatch_preflight.scheduler_reviewed_code[0].byte_length = '16'
+        [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        $rejected = $false
+        try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
+        if (-not $rejected) { throw 'Self-test failed: a string-valued scheduler code length was accepted.' }
+        $native.canary.native_dispatch_preflight.scheduler_reviewed_code[0].byte_length = 16
         $native.canary.native_dispatch_preflight.activation_attempted = $true
         [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
         $rejected = $false
         try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
         if (-not $rejected) { throw 'Self-test failed: an activating native preflight receipt was accepted.' }
+        $native.canary.native_dispatch_preflight.activation_attempted = $false
+        $native.canary.native_dispatch_preflight.main_thread_bridge_gate = [ordered]@{ proven = $true; reason = 'unresolved-no-sanctioned-one-shot-main-thread-bridge' }
+        [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        $rejected = $false
+        try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
+        if (-not $rejected) { throw 'Self-test failed: a proven main-thread bridge was accepted.' }
+        $native.canary.native_dispatch_preflight.main_thread_bridge_gate = [ordered]@{ proven = $false; reason = 'unresolved-no-sanctioned-one-shot-main-thread-bridge' }
+        $native.canary.native_dispatch_preflight.main_thread_scheduler_gate.reason = 'unreviewed-scheduler-result'
+        [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        $rejected = $false
+        try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
+        if (-not $rejected) { throw 'Self-test failed: an unknown scheduler gate result was accepted.' }
+        $native.canary.native_dispatch_preflight.main_thread_scheduler_gate = [ordered]@{ proven = $true; reason = 'proven-read-only-main-thread-scheduler-state' }
+        $native.canary.native_dispatch_preflight.main_thread_scheduler_gate.Add('unexpected', 'rejected')
+        [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        $rejected = $false
+        try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
+        if (-not $rejected) { throw 'Self-test failed: an extra scheduler gate field was accepted.' }
+        [void]$native.canary.native_dispatch_preflight.main_thread_scheduler_gate.Remove('unexpected')
+        $native.canary.native_dispatch_preflight.main_thread_scheduler_gate = [ordered]@{ proven = $false; reason = 'unavailable-or-invalid-read-only-main-thread-scheduler-state' }
+        $native.canary.native_dispatch_preflight.all_resolvable_gates_passed = $false
+        [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1)))
+        $native.canary.native_dispatch_preflight.main_thread_scheduler_gate = [ordered]@{ proven = $true; reason = 'proven-read-only-main-thread-scheduler-state' }
+        $native.canary.native_dispatch_preflight.all_resolvable_gates_passed = $true
+        $native.canary.native_dispatch_preflight.scheduler_reviewed_code[2].sha256 = ('0' * 64)
+        [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        $rejected = $false
+        try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
+        if (-not $rejected) { throw 'Self-test failed: mismatched scheduler code evidence was accepted.' }
+        $native.canary.native_dispatch_preflight.scheduler_reviewed_code[2].sha256 = '25888277bd929d97b136cdb9bcc99b57e523e933e644588b70af27b51d9c52fa'
         $native.canary.native_dispatch_preflight.activation_attempted = $false
         $native.canary.native_dispatch_preflight.dungeon_stage_gate.reason = 'unreviewed-dungeon-result'
         [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
@@ -1203,7 +1303,14 @@ function Invoke-LauncherSelfTest {
         $markerSkillDiagnosticReasons = @(
             'unavailable-or-invalid-read-only-marker-skill-root-chain',
             'unavailable-or-invalid-marker-skill-data-manager',
-            'unavailable-or-invalid-marker-skill-slot-dictionary',
+            'marker-skill-slot-dictionary-pointer-invalid',
+            'marker-skill-slot-dictionary-class-invalid',
+            'marker-skill-slot-dictionary-header-unavailable',
+            'marker-skill-slot-dictionary-counts-or-buckets-invalid',
+            'marker-skill-slot-dictionary-entry-storage-unavailable',
+            'marker-skill-slot-dictionary-entry-capacity-invalid',
+            'marker-skill-slot-dictionary-entry-array-class-invalid',
+            'marker-skill-slot-dictionary-entry-stride-invalid',
             'unavailable-or-invalid-marker-skill-control-dictionary',
             'marker-1-slot-missing-or-duplicate',
             'marker-1-slot-mapping-mismatch',
@@ -1226,7 +1333,7 @@ function Invoke-LauncherSelfTest {
         foreach ($invalid in @('wrong-schema', 'missing-critical', 'extra-critical', 'mismatched-mode', 'mismatched-invocation', 'stale-receipt', 'unsafe-policy')) {
             $candidate = New-SyntheticLifecycleReceipt $true 'marker1-closed-loop-aim-and-rollback-v1' 'passed'
             switch ($invalid) {
-                'wrong-schema' { $candidate.schema_version = 6 }
+                'wrong-schema' { $candidate.schema_version = 8 }
                 'missing-critical' { [void]$candidate.Remove('summary') }
                 'extra-critical' { $candidate.unexpected = 'rejected' }
                 'mismatched-mode' { $candidate.canary.mode = 'marker1-reversible-calibration-v1' }
@@ -1343,7 +1450,7 @@ if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
 }
 
 $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
-$receipt = Join-Path $PSScriptRoot "automarker-lifecycle-$stamp.v8.json"
+$receipt = Join-Path $PSScriptRoot "automarker-lifecycle-$stamp.v9.json"
 if (Test-Path -LiteralPath $receipt) { throw 'Refusing to overwrite an existing receipt.' }
 
 $arguments = @(

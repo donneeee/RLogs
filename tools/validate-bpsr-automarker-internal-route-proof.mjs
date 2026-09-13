@@ -162,7 +162,27 @@ assert.deepEqual(markerSkillProof.sanitized_receipt.success, {
   proven: true,
   reason: "proven-read-only-marker-1-slot-and-skill-resolution",
 });
-assert.equal(markerSkillProof.sanitized_runtime_observations.length, 1);
+assert.deepEqual(markerSkillProof.sanitized_receipt.failure_reasons, [
+  "unstable-read-only-marker-skill-lifecycle",
+  "unavailable-or-invalid-read-only-marker-skill-root-chain",
+  "unavailable-or-invalid-marker-skill-data-manager",
+  "marker-skill-slot-dictionary-pointer-invalid",
+  "marker-skill-slot-dictionary-class-invalid",
+  "marker-skill-slot-dictionary-header-unavailable",
+  "marker-skill-slot-dictionary-counts-or-buckets-invalid",
+  "marker-skill-slot-dictionary-entry-storage-unavailable",
+  "marker-skill-slot-dictionary-entry-capacity-invalid",
+  "marker-skill-slot-dictionary-entry-array-class-invalid",
+  "marker-skill-slot-dictionary-entry-stride-invalid",
+  "unavailable-or-invalid-marker-skill-control-dictionary",
+  "marker-1-slot-missing-or-duplicate",
+  "marker-1-slot-mapping-mismatch",
+  "marker-1-control-data-missing-or-duplicate",
+  "marker-1-control-data-class-invalid",
+  "marker-1-control-data-skill-identity-invalid",
+  "inconsistent-read-only-marker-skill-failure-stage",
+]);
+assert.equal(markerSkillProof.sanitized_runtime_observations.length, 2);
 const markerSkillObservation = markerSkillProof.sanitized_runtime_observations[0];
 assert.equal(markerSkillObservation.receipt_schema_version, 8);
 assert.equal(markerSkillObservation.receipt_sha256, leaderObservation.receipt_sha256);
@@ -174,6 +194,17 @@ assert.deepEqual(markerSkillObservation.marker_skill_resolution_gate, {
   reason: "unavailable-or-invalid-read-only-marker-skill-chain",
 });
 assert.equal(markerSkillObservation.activation_attempted, false);
+const markerSkillDictionaryObservation = markerSkillProof.sanitized_runtime_observations[1];
+assert.equal(markerSkillDictionaryObservation.receipt_schema_version, 8);
+assert.equal(markerSkillDictionaryObservation.receipt_sha256, "363ce069cbc41b99c437c696e3d19d86a0ad97abc0f4bf718954689f6c6ece45");
+assert.equal(markerSkillDictionaryObservation.scene_id, 6525);
+assert.equal(markerSkillDictionaryObservation.map_id, 6525);
+assert.equal(markerSkillDictionaryObservation.activity_family_id, "mech-facility");
+assert.deepEqual(markerSkillDictionaryObservation.marker_skill_resolution_gate, {
+  proven: false,
+  reason: "unavailable-or-invalid-marker-skill-slot-dictionary",
+});
+assert.equal(markerSkillDictionaryObservation.activation_attempted, false);
 assert.equal(markerSkillProof.decision.slot_201_to_skill_1101_static_layout_proven, true);
 assert.equal(markerSkillProof.decision.non_invoking_live_resolution_probe_implemented, true);
 assert.equal(markerSkillProof.decision.game_method_invocation_enabled, false);
@@ -221,6 +252,9 @@ assert.deepEqual(
   ],
 );
 assert.equal(schedulerProof.player_loop_layout.type_info_pointer_slot_rva_hex, "0x9591498");
+assert.equal(schedulerProof.player_loop_layout.unity_synchronization_context_type_info_pointer_slot_rva_hex, "0x9559498");
+assert.equal(schedulerProof.player_loop_layout.continuation_queue_type_info_pointer_slot_rva_hex, "0x95913E0");
+assert.equal(schedulerProof.player_loop_layout.continuation_queue_array_type_info_pointer_slot_rva_hex, "0x95913E8");
 assert.equal(schedulerProof.player_loop_layout.static_fields.yielders_offset_hex, "0x18");
 assert.equal(schedulerProof.player_loop_layout.continuation_queue_instance_fields.timing_offset_hex, "0x10");
 assert.equal(schedulerProof.managed_callback_boundary.system_action_constructor.shared_rva_hex, "0xB38650");
@@ -273,7 +307,27 @@ assert.deepEqual(
 );
 assert.equal(schedulerProof.safe_adapter_contract.status, "design-contract-only-not-implemented");
 assert.equal(schedulerProof.read_only_scheduler_preflight.possible, true);
+assert.equal(schedulerProof.read_only_scheduler_preflight.implemented, true);
+assert.equal(schedulerProof.read_only_scheduler_preflight.receipt_schema_version, 9);
+assert.equal(schedulerProof.read_only_scheduler_preflight.receipt_gate, "main_thread_scheduler_gate");
+assert.equal(schedulerProof.read_only_scheduler_preflight.double_read_interval_milliseconds, 50);
+assert.equal(schedulerProof.read_only_scheduler_preflight.system_action_array_type_info_pointer_slot_rva_hex, "0x95997C8");
+assert.deepEqual(schedulerProof.read_only_scheduler_preflight.reviewed_code_regions, [
+  "0x670EB30+16",
+  "0x670AFE0+128",
+  "0x676A0B0+1392",
+  "0x676A630+960",
+]);
+assert.equal(schedulerProof.read_only_scheduler_preflight.maximum_code_read_chunk_bytes, 512);
+assert.equal(schedulerProof.read_only_scheduler_preflight.maximum_player_loop_timing_count, 64);
+assert.equal(schedulerProof.read_only_scheduler_preflight.maximum_action_array_length, 16384);
+assert.deepEqual(schedulerProof.read_only_scheduler_preflight.bounded_results, {
+  success: "proven-read-only-main-thread-scheduler-state",
+  unstable: "unstable-read-only-main-thread-scheduler-state",
+  invalid_or_unavailable: "unavailable-or-invalid-read-only-main-thread-scheduler-state",
+});
 assert.equal(schedulerProof.read_only_scheduler_preflight.activation_permitted_by_preflight, false);
+assert.equal(schedulerProof.read_only_scheduler_preflight.main_thread_bridge_gate_remains_false, true);
 assert.ok(schedulerProof.unresolved_blockers.length >= 9, "scheduler proof must retain every exact unresolved blocker");
 assert.equal(schedulerProof.scope.offline_static_analysis_only, true);
 for (const denied of [

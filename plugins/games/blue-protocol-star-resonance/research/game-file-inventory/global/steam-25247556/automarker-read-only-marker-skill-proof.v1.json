@@ -118,7 +118,23 @@
     "success": { "proven": true, "reason": "proven-read-only-marker-1-slot-and-skill-resolution" },
     "failure_reasons": [
       "unstable-read-only-marker-skill-lifecycle",
-      "unavailable-or-invalid-read-only-marker-skill-chain"
+      "unavailable-or-invalid-read-only-marker-skill-root-chain",
+      "unavailable-or-invalid-marker-skill-data-manager",
+      "marker-skill-slot-dictionary-pointer-invalid",
+      "marker-skill-slot-dictionary-class-invalid",
+      "marker-skill-slot-dictionary-header-unavailable",
+      "marker-skill-slot-dictionary-counts-or-buckets-invalid",
+      "marker-skill-slot-dictionary-entry-storage-unavailable",
+      "marker-skill-slot-dictionary-entry-capacity-invalid",
+      "marker-skill-slot-dictionary-entry-array-class-invalid",
+      "marker-skill-slot-dictionary-entry-stride-invalid",
+      "unavailable-or-invalid-marker-skill-control-dictionary",
+      "marker-1-slot-missing-or-duplicate",
+      "marker-1-slot-mapping-mismatch",
+      "marker-1-control-data-missing-or-duplicate",
+      "marker-1-control-data-class-invalid",
+      "marker-1-control-data-skill-identity-invalid",
+      "inconsistent-read-only-marker-skill-failure-stage"
     ],
     "emits_runtime_addresses": false,
     "emits_dictionary_contents": false,
@@ -137,6 +153,19 @@
       },
       "activation_attempted": false,
       "interpretation": "The static slot-to-skill route remains proven, but this live state did not satisfy the current combined chain; bounded stage diagnostics are required before revising the runtime contract."
+    },
+    {
+      "receipt_schema_version": 8,
+      "receipt_sha256": "363ce069cbc41b99c437c696e3d19d86a0ad97abc0f4bf718954689f6c6ece45",
+      "scene_id": 6525,
+      "map_id": 6525,
+      "activity_family_id": "mech-facility",
+      "marker_skill_resolution_gate": {
+        "proven": false,
+        "reason": "unavailable-or-invalid-marker-skill-slot-dictionary"
+      },
+      "activation_attempted": false,
+      "interpretation": "The first bounded stage diagnostic isolated the live rejection to the presumed skillSlotDict_ concrete dictionary; a finer fixed-only dictionary diagnostic is required before changing the layout contract."
     }
   ],
   "decision": {

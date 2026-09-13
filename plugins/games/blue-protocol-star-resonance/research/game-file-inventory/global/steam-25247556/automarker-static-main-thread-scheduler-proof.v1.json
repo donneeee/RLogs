@@ -96,6 +96,9 @@
   ],
   "player_loop_layout": {
     "type_info_pointer_slot_rva_hex": "0x9591498",
+    "unity_synchronization_context_type_info_pointer_slot_rva_hex": "0x9559498",
+    "continuation_queue_type_info_pointer_slot_rva_hex": "0x95913E0",
+    "continuation_queue_array_type_info_pointer_slot_rva_hex": "0x95913E8",
     "il2cpp_class_static_fields_offset_hex": "0xB8",
     "static_fields": {
       "main_thread_id_offset_hex": "0x0",
@@ -235,6 +238,25 @@
   },
   "read_only_scheduler_preflight": {
     "possible": true,
+    "implemented": true,
+    "receipt_schema_version": 9,
+    "receipt_gate": "main_thread_scheduler_gate",
+    "double_read_interval_milliseconds": 50,
+    "system_action_array_type_info_pointer_slot_rva_hex": "0x95997C8",
+    "reviewed_code_regions": [
+      "0x670EB30+16",
+      "0x670AFE0+128",
+      "0x676A0B0+1392",
+      "0x676A630+960"
+    ],
+    "maximum_code_read_chunk_bytes": 512,
+    "maximum_player_loop_timing_count": 64,
+    "maximum_action_array_length": 16384,
+    "bounded_results": {
+      "success": "proven-read-only-main-thread-scheduler-state",
+      "unstable": "unstable-read-only-main-thread-scheduler-state",
+      "invalid_or_unavailable": "unavailable-or-invalid-read-only-main-thread-scheduler-state"
+    },
     "can_prove_without_scheduling": [
       "exact process image and reviewed method bytes",
       "initialized PlayerLoopHelper TypeInfo and static fields",
@@ -250,7 +272,8 @@
       "atomicity of SetIndicatorPos followed by FirePlaySkillByIndicator",
       "server acceptance of a saved target beyond the normal reticle range"
     ],
-    "activation_permitted_by_preflight": false
+    "activation_permitted_by_preflight": false,
+    "main_thread_bridge_gate_remains_false": true
   },
   "unresolved_blockers": [
     "No documented supported in-process adapter load or IPC entry has been found.",

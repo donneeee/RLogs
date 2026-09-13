@@ -298,7 +298,7 @@ local entity remains a hard failure for the 18 m player-origin requirement.
 
 ## Read-only native-dispatch preflight
 
-Receipt schema v8 adds a separate, non-activating preflight for the exact-build
+Receipt schema v8 added a separate, non-activating preflight for the exact-build
 game-owned dispatch candidate. It does not use the manual reticle planner and
 does not apply the planner's 18-metre range gate:
 
@@ -313,14 +313,19 @@ inside the active scene family and passes only its opaque ID and the literal
 loopback rLogs URL to the native observer. The observer independently fetches
 the schema-v4 preset projection and requires exact build `25247556`, the active
 scene and map, the same activity family, and one finite non-zero Marker 1 point.
-It never accepts explicit XYZ for this mode.
+It never accepts explicit XYZ for this mode. Schema v9 extends that exact
+envelope with the scheduler code and live scheduler-state gate below; the
+launcher rejects older v8 receipts rather than interpreting a missing gate.
 
 The observer verifies the running executable, Steam manifest, and
 `GameAssembly.dll`; double-reads and class-validates the reviewed
 `PlayerEnt -> PlayerSkillInputComp -> ZSkillInputMgr` chain; requires an idle
 indicator lifecycle; and hashes the loaded exact method bodies for
 `EntityAttrExtensions.SetIndicatorPos` and
-`ZSkillInputMgr.FirePlaySkillByIndicator`. The receipt contains only reviewed
+`ZSkillInputMgr.FirePlaySkillByIndicator`. It separately hashes the four exact
+scheduler regions for `UniTask.Post`, `PlayerLoopHelper.AddContinuation`,
+`ContinuationQueue.Enqueue`, and `ContinuationQueue.RunCore`; regions larger
+than 512 bytes are read in fixed 512-byte-or-smaller chunks. The receipt contains only reviewed
 RVAs, hashes, booleans, bounded reason tokens, preset ID, scene/map/family, and
 the saved Marker 1 coordinate. It contains no runtime address, process ID,
 account/session identity, endpoint, or filesystem path.
@@ -352,8 +357,9 @@ gate result documented in `automarker-read-only-marker-skill-proof.v1.json`;
 it never exposes addresses or dictionary contents.
 
 When that gate fails, the receipt identifies only the fixed chain stage: root
-chain, `SkillControlDataMgr`, slot dictionary, control-data dictionary, Marker
-1 slot lookup or mapping, or control-data lookup, class, or skill identity. A
+chain, `SkillControlDataMgr`, the slot-dictionary pointer/class/header/count
+shape/entry storage/capacity/array class/entry stride, control-data dictionary,
+Marker 1 slot lookup or mapping, or control-data lookup, class, or skill identity. A
 distinct fixed token reports when the two bounded reads fail at different
 stages. These diagnostics contain no pointers, container counts, dictionary
 keys or values, character identity, process identity, or other live runtime
@@ -372,9 +378,24 @@ state, or any changed root/container/value. The receipt exposes only a bounded
 gate result; it never exposes either CharId. The retained static proof is
 `automarker-read-only-party-leader-proof.v1.json`.
 
+The main-thread scheduler query is a separate read-only gate. It validates the
+exact `PlayerLoopHelper` TypeInfo and static-fields pointer, requires a positive
+recorded `mainThreadId` and nonnull Unity synchronization context, validates a
+bounded one-dimensional reference `yielders` array containing index 8, and
+class-validates that entry as a `ContinuationQueue` whose timing is `Update`
+(8). Both `System.Action[]` queue buffers must have the exact reviewed TypeInfo;
+their lengths are capped at 16,384 and each nonnegative count must fit its
+buffer. The observer repeats the complete sample across the stability interval
+and accepts it only when every pointer, scalar, buffer length, and count is
+identical. The sanitized receipt exposes only the four reviewed code hashes and
+one bounded `main_thread_scheduler_gate`; no thread ID, object address, queue
+count, or queued callback is retained.
+
 This preflight deliberately remains blocked even when every currently
-resolvable gate passes because no sanctioned one-shot Unity main-thread bridge
-exists. The marker-skill and party-leader gates are now live read-only results
+resolvable gate passes because no sanctioned in-process entry or ABI-valid
+managed callback exists for the selected one-shot Unity main-thread queue. The
+separate `main_thread_bridge_gate` therefore remains false even when the new
+scheduler-state gate passes. The marker-skill, party-leader, and scheduler gates are now live read-only results
 rather than unresolved placeholders. The mode never calls either native method, creates or
 schedules a delegate, emits input, requests
 write/debug/thread rights, modifies memory, or observes/sends packets. It is
