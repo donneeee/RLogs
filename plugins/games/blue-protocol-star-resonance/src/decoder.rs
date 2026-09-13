@@ -2386,6 +2386,24 @@ fn decode_sync_dungeon_dirty(
     let patch =
         dungeon_dirty_v1::decode_dungeon_update(&buffer, data.stream_type.unwrap_or_default())?;
     let mut drafts = Vec::new();
+    if let Some(scene_id) = patch
+        .scene_uuid
+        .map(i64::from)
+        .and_then(infer_known_scene_id_from_scene_uuid)
+        && tracker.current_scene_id != Some(scene_id)
+    {
+        drafts.push(draft(
+            metadata,
+            EventSensitivity::PublicGameplay,
+            CanonicalEventDraftKind::WorldChanged(WorldContext {
+                scene_id: Some(scene_id),
+                map_id: u32::try_from(scene_id.0).ok(),
+                line_id: None,
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            }),
+        ));
+    }
     prepare_dungeon_identity(tracker, patch.scene_uuid.map(|uuid| uuid.to_string()), None);
     record_dungeon_flow(metadata, tracker, patch.flow, true, &mut drafts);
 
@@ -7688,6 +7706,69 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event.event, rlogs_events::CanonicalEvent::WorldChanged(_)))
         );
+    }
+
+    #[test]
+    fn dungeon_dirty_patch_recovers_a_known_scene_once_after_late_attach() {
+        let pack = pack();
+        let mut runtime = runtime(&pack);
+        let snapshot = schema::SyncDungeonDirtyData {
+            data: Some(schema::BufferStream {
+                buffer: Some(safe_dirty_object(vec![(1, safe_dirty_scalar(6_565))])),
+                stream_type: Some(0),
+            }),
+        };
+
+        let recovered = runtime
+            .process(&record(1, 24, encode(snapshot.clone())))
+            .unwrap();
+        assert!(recovered.events.iter().any(|event| matches!(
+            &event.event,
+            rlogs_events::CanonicalEvent::WorldChanged(WorldContext {
+                scene_id: Some(SceneId(6_565)),
+                map_id: Some(6_565),
+                ..
+            })
+        )));
+
+        let duplicate = runtime.process(&record(2, 24, encode(snapshot))).unwrap();
+        assert!(
+            !duplicate
+                .events
+                .iter()
+                .any(|event| matches!(event.event, rlogs_events::CanonicalEvent::WorldChanged(_)))
+        );
+    }
+
+    #[test]
+    fn dungeon_dirty_patch_scene_inference_fails_closed_for_unknown_and_ambiguous_uuids() {
+        let pack = pack();
+        let mut runtime = runtime(&pack);
+
+        for (sequence, scene_uuid) in [(1, 99_999), (2, (6_561_i32 << 16) | 6_565)] {
+            let batch = runtime
+                .process(&record(
+                    sequence,
+                    24,
+                    encode(schema::SyncDungeonDirtyData {
+                        data: Some(schema::BufferStream {
+                            buffer: Some(safe_dirty_object(vec![(
+                                1,
+                                safe_dirty_scalar(scene_uuid),
+                            )])),
+                            stream_type: Some(0),
+                        }),
+                    }),
+                ))
+                .unwrap();
+            assert!(
+                !batch.events.iter().any(|event| matches!(
+                    event.event,
+                    rlogs_events::CanonicalEvent::WorldChanged(_)
+                )),
+                "scene UUID {scene_uuid} must not fabricate a world transition"
+            );
+        }
     }
 
     #[test]
