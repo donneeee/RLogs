@@ -304,6 +304,7 @@ pub struct ProtocolRuntime<'a> {
     server_clock: Option<ServerClockAnchor>,
     objective_catalog: Option<Arc<dyn ObjectiveCatalogResolver>>,
     skill_action_scratch: Vec<u8>,
+    compatibility_skill_action_authorized: bool,
     config: ProtocolRuntimeConfig,
 }
 
@@ -341,6 +342,17 @@ impl<'a> ProtocolRuntime<'a> {
             protocol_pack_digest: pack.digest().to_owned(),
             evidence,
         };
+        let compatibility_skill_action_authorized = build.build_id
+            == crate::BPSR_COMPATIBILITY_USE_SKILL_ATTR_BUILD
+            && matches!(
+                    crate::bpsr_runtime_authority(
+                        &build.deployment_id,
+                        &build.build_id,
+                        pack.digest(),
+                    )
+                    .map_err(ProtocolRuntimeError::CompatibilityAuthority)?,
+                    Some(crate::BpsrRuntimeAuthority::CompatibilityEpoch { .. })
+                );
 
         Ok(Self {
             pack,
@@ -356,6 +368,7 @@ impl<'a> ProtocolRuntime<'a> {
             server_clock: None,
             objective_catalog: None,
             skill_action_scratch: Vec::new(),
+            compatibility_skill_action_authorized,
             config,
         })
     }
@@ -495,6 +508,7 @@ impl<'a> ProtocolRuntime<'a> {
                     &mut self.dungeon,
                     &mut self.profile,
                     &self.client_build,
+                    self.compatibility_skill_action_authorized,
                     &mut self.skill_action_scratch,
                 ) {
                     Ok(decoded) => {
@@ -1078,10 +1092,11 @@ fn decode_message(
     dungeon: &mut DungeonTracker,
     profile: &mut ProfileTracker,
     client_build: &str,
+    compatibility_skill_action_authorized: bool,
     skill_action_scratch: &mut Vec<u8>,
 ) -> Result<DecodedMessage, ProtocolMessageError> {
     let drafts = match decoder {
-        DecoderKind::NotifyEnterWorldV1 => return decode_notify_enter_world(payload),
+        DecoderKind::NotifyEnterWorldV1 => return decode_notify_enter_world(payload, metadata),
         DecoderKind::SyncServerTimeV1 => return decode_server_time(payload),
         DecoderKind::SyncSeasonV1 => {
             decode_sync_season(payload, metadata, &profile.local_character)
@@ -1131,6 +1146,7 @@ fn decode_message(
             entities,
             profile,
             client_build,
+            compatibility_skill_action_authorized,
             skill_action_scratch,
         ),
         DecoderKind::SyncProjectListV1 => decode_sync_project_list(payload, metadata, profile),
@@ -1275,10 +1291,13 @@ fn reviewed_photo_assets(
         .collect()
 }
 
-fn decode_notify_enter_world(payload: &[u8]) -> Result<DecodedMessage, ProtocolMessageError> {
+fn decode_notify_enter_world(
+    payload: &[u8],
+    metadata: &DecodeMetadata,
+) -> Result<DecodedMessage, ProtocolMessageError> {
     let message = schema::NotifyEnterWorld::decode(payload)?;
-    let announced_server = message.request.and_then(|request| {
-        let host = request.scene_host?.trim().to_owned();
+    let announced_server = message.request.as_ref().and_then(|request| {
+        let host = request.scene_host.as_deref()?.trim().to_owned();
         if host.is_empty() || host.len() > 253 || !host.is_ascii() {
             return None;
         }
@@ -1288,8 +1307,38 @@ fn decode_notify_enter_world(payload: &[u8]) -> Result<DecodedMessage, ProtocolM
             .filter(|port| *port != 0);
         Some(AnnouncedServerEndpoint { host, port })
     });
+    // NotifyEnterWorld precedes EnterScene and is the earliest authoritative
+    // scene/line handoff. Keeping this gameplay-only subset means monitoring
+    // can change scenes even when adapter discovery misses the later snapshot;
+    // account, token, position, and connection GUID fields remain undeclared.
+    let drafts = message
+        .request
+        .as_ref()
+        .and_then(|request| {
+            let scene_id = request
+                .transform
+                .and_then(|transform| transform.scene_id)
+                .filter(|scene_id| *scene_id > 0)
+                .map(SceneId)?;
+            let line_id = request
+                .scene_line_data
+                .and_then(|line| line.line_id)
+                .filter(|line_id| *line_id > 0);
+            Some(vec![draft(
+                metadata,
+                EventSensitivity::PublicGameplay,
+                CanonicalEventDraftKind::WorldChanged(WorldContext {
+                    scene_id: Some(scene_id),
+                    map_id: u32::try_from(scene_id.0).ok(),
+                    line_id,
+                    scene_instance_id: None,
+                    dungeon_instance_id: None,
+                }),
+            )])
+        })
+        .unwrap_or_default();
     Ok(DecodedMessage {
-        drafts: Vec::new(),
+        drafts,
         announced_server,
         server_clock: None,
         local_photo_assets: Vec::new(),
@@ -2774,15 +2823,18 @@ fn decode_sync_container(
     }
 
     if let Some(scene) = character.scene {
+        let map_id = scene
+            .map_id
+            .filter(|value| *value > 0)
+            .or_else(|| scene.level_map_id.filter(|value| *value > 0));
         drafts.push(draft(
             metadata,
             EventSensitivity::PublicGameplay,
             CanonicalEventDraftKind::WorldChanged(WorldContext {
-                scene_id: scene
-                    .map_id
+                scene_id: map_id
                     .and_then(|value| i32::try_from(value).ok())
                     .map(SceneId),
-                map_id: scene.map_id,
+                map_id,
                 line_id: scene.line_id.or(scene.channel_id),
                 scene_instance_id: scene.scene_instance_id,
                 dungeon_instance_id: scene.dungeon_instance_id,
@@ -4746,10 +4798,15 @@ fn decode_world_use_slot_skill_action(
     entities: &mut EntityRegistry,
     profile: &ProfileTracker,
     client_build: &str,
+    compatibility_skill_action_authorized: bool,
     scratch: &mut Vec<u8>,
 ) -> Result<Vec<CanonicalEventDraft>, ProtocolMessageError> {
-    let Some(action) =
-        crate::decode_world_use_slot_skill_action_into(client_build, payload, scratch)?
+    let Some(action) = crate::use_skill_attr::decode_world_use_slot_skill_action_for_runtime_into(
+        client_build,
+        compatibility_skill_action_authorized,
+        payload,
+        scratch,
+    )?
     else {
         return Ok(Vec::new());
     };
@@ -6299,6 +6356,9 @@ pub enum ProtocolRuntimeError {
     #[error("protocol runtime limits must be non-zero")]
     InvalidConfig,
 
+    #[error("BPSR compatibility authority could not be verified: {0}")]
+    CompatibilityAuthority(String),
+
     #[error("decoder emitted {count} events, exceeding the per-packet limit {limit}")]
     EventLimitExceeded { count: usize, limit: usize },
 
@@ -6498,6 +6558,10 @@ mod tests {
         scene_host: Option<String>,
         #[prost(int32, optional, tag = "4")]
         scene_port: Option<i32>,
+        #[prost(message, optional, tag = "5")]
+        transform: Option<schema::WorldTransferParam>,
+        #[prost(message, optional, tag = "6")]
+        scene_line_data: Option<schema::SceneLineData>,
     }
 
     #[derive(Clone, PartialEq, Message)]
@@ -7184,6 +7248,8 @@ mod tests {
                 token: Some("private-login-token".into()),
                 scene_host: Some("gamesvr.playbpsr.com".into()),
                 scene_port: Some(10_099),
+                transform: None,
+                scene_line_data: None,
             }),
         });
 
@@ -7232,6 +7298,44 @@ mod tests {
             event.region.identity.deployment_id == "global"
                 && event.region.identity.region_id == "north-america"
         }));
+    }
+
+    #[test]
+    fn world_entry_announces_scene_and_line_without_materializing_login_fields() {
+        let pack = pack();
+        let mut runtime = runtime(&pack);
+        let payload = encode(FullNotifyEnterWorld {
+            request: Some(FullNotifyEnterWorldRequest {
+                account_id: Some("private-account-value".into()),
+                token: Some("private-login-token".into()),
+                scene_host: Some("gamesvr.playbpsr.com".into()),
+                scene_port: Some(10_099),
+                transform: Some(schema::WorldTransferParam {
+                    scene_id: Some(6_565),
+                }),
+                scene_line_data: Some(schema::SceneLineData { line_id: Some(7) }),
+            }),
+        });
+
+        let batch = runtime
+            .process(&record_for(WORLD_LOGIN_SERVICE, 1, 3, payload))
+            .unwrap();
+
+        assert_eq!(batch.status, ProtocolDecodeStatus::Decoded);
+        assert_eq!(batch.events.len(), 1);
+        assert!(matches!(
+            &batch.events[0].event,
+            rlogs_events::CanonicalEvent::WorldChanged(WorldContext {
+                scene_id: Some(SceneId(6_565)),
+                map_id: Some(6_565),
+                line_id: Some(7),
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            })
+        ));
+        let json = serde_json::to_string(&batch.events).unwrap();
+        assert!(!json.contains("private-account-value"));
+        assert!(!json.contains("private-login-token"));
     }
 
     #[test]
@@ -7293,6 +7397,8 @@ mod tests {
                         token: Some("private-login-token".into()),
                         scene_host: Some("bpm-sea-gamesvra.haoplay.net".into()),
                         scene_port: Some(10_099),
+                        transform: None,
+                        scene_line_data: None,
                     }),
                 }),
             ))
@@ -9260,6 +9366,40 @@ mod tests {
     }
 
     #[test]
+    fn container_scene_falls_back_to_positive_level_map_id() {
+        let pack = pack();
+        let mut runtime = runtime(&pack);
+        let payload = encode(schema::SyncContainerData {
+            character: Some(schema::CharacterSerialize {
+                scene: Some(schema::SceneData {
+                    map_id: None,
+                    level_map_id: Some(6_561),
+                    channel_id: Some(3),
+                    line_id: Some(9),
+                    scene_instance_id: Some("scene-instance".into()),
+                    dungeon_instance_id: Some("dungeon-instance".into()),
+                    ..schema::SceneData::default()
+                }),
+                ..schema::CharacterSerialize::default()
+            }),
+        });
+
+        let batch = runtime.process(&record(1, 0x15, payload)).unwrap();
+
+        assert_eq!(batch.status, ProtocolDecodeStatus::Decoded);
+        assert!(matches!(
+            &batch.events[0].event,
+            rlogs_events::CanonicalEvent::WorldChanged(WorldContext {
+                scene_id: Some(SceneId(6_561)),
+                map_id: Some(6_561),
+                line_id: Some(9),
+                scene_instance_id: Some(scene_instance),
+                dungeon_instance_id: Some(dungeon_instance),
+            }) if scene_instance == "scene-instance" && dungeon_instance == "dungeon-instance"
+        ));
+    }
+
+    #[test]
     fn character_decoder_maps_safe_profile_subtrees() {
         let pack = pack();
         let mut runtime = runtime(&pack);
@@ -11077,6 +11217,99 @@ mod tests {
         assert!(timing.passive);
         assert!(timing.activated_roulette);
         assert_eq!(timing.target_part_id, 3);
+    }
+
+    #[test]
+    fn compatibility_build_client_use_slot_decodes_through_the_full_runtime() {
+        const CLIENT_WORLD_SERVICE: u64 = 103_198_054;
+        const USE_SLOT_METHOD: u32 = 249_858;
+        let source = ProtocolPack::from_json(include_bytes!(
+            "../protocol-packs/global/steam-24687926/pack.json"
+        ))
+        .unwrap();
+        let pack = crate::compatibility_epoch::retarget_protocol_pack(
+            &source,
+            "compatibility-fallback",
+            "global",
+            "steam",
+            crate::BPSR_COMPATIBILITY_USE_SKILL_ATTR_BUILD,
+        )
+        .unwrap();
+        assert!(matches!(
+            crate::bpsr_runtime_authority(
+                "global",
+                crate::BPSR_COMPATIBILITY_USE_SKILL_ATTR_BUILD,
+                pack.digest(),
+            )
+            .unwrap(),
+            Some(crate::BpsrRuntimeAuthority::CompatibilityEpoch { .. })
+        ));
+
+        let mut game_build = build();
+        game_build.build_id = crate::BPSR_COMPATIBILITY_USE_SKILL_ATTR_BUILD.into();
+        let mut runtime = ProtocolRuntime::new(
+            &pack,
+            "capture-compatibility-use-slot",
+            &game_build,
+            RegionIdentity {
+                deployment_id: "global".into(),
+                region_id: "north-america".into(),
+                realm_id: None,
+                world_id: None,
+            },
+            vec![RegionEvidence {
+                kind: RegionEvidenceKind::ConnectionEndpoint,
+                reference: "na-endpoint-group".into(),
+            }],
+            ProtocolRuntimeConfig::default(),
+        )
+        .unwrap();
+        let self_delta = runtime
+            .process(&record(
+                1,
+                0x2e,
+                encode(schema::SyncToMeDeltaInfo {
+                    delta: Some(schema::AoiSyncToMeDelta {
+                        base_delta: None,
+                        hate_ids: Vec::new(),
+                        cooldowns: Vec::new(),
+                        fight_resource_cooldowns: Vec::new(),
+                        uuid: Some(216_009_015_936),
+                    }),
+                }),
+            ))
+            .unwrap();
+        assert_eq!(self_delta.status, ProtocolDecodeStatus::Decoded);
+
+        let batch = runtime
+            .process(&record_for_route(
+                2,
+                RouteKey::new(
+                    PacketDirection::ClientToServer,
+                    FragmentKind::Call,
+                    CLIENT_WORLD_SERVICE,
+                    USE_SLOT_METHOD,
+                ),
+                crate::use_skill_attr::tests::world_skill_use_payload(),
+            ))
+            .unwrap();
+        assert_eq!(batch.status, ProtocolDecodeStatus::Decoded);
+        let cast = batch.events.iter().find_map(|event| match &event.event {
+            rlogs_events::CanonicalEvent::Timeline(timeline) => match &timeline.kind {
+                TimelineEventKind::Cast(cast) => Some(cast),
+                _ => None,
+            },
+            _ => None,
+        });
+        let cast = cast.expect("canonical compatibility-build UseSlot cast");
+        assert_eq!(cast.source.entity_uuid.0, 216_009_015_936);
+        assert_eq!(cast.ability.0, 2_233);
+        assert_eq!(
+            cast.action_timing
+                .expect("exact compatibility-build action timing")
+                .action_instance_id,
+            9_001
+        );
     }
 
     #[test]

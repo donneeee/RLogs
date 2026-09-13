@@ -14,6 +14,9 @@ import {
   RECONCILIATION_SCHEMA_VERSION,
   STATUS_SPAN_RECONCILIATION_SCHEMA_VERSION, STATUS_SPAN_REPORT_PROJECTION_REVISION,
   STATUS_SPAN_TIMELINE_SCHEMA_VERSION,
+  SKILL_COVERAGE_RECONCILIATION_SCHEMA_VERSION,
+  SKILL_COVERAGE_REPORT_PROJECTION_REVISION,
+  SKILL_COVERAGE_TIMELINE_SCHEMA_VERSION,
   UPCOMING_RECONCILIATION_SCHEMA_VERSION, UPCOMING_REPORT_PROJECTION_REVISION,
   UPCOMING_REPORT_SCHEMA_VERSION, UPCOMING_TIMELINE_SCHEMA_VERSION,
   catalogEntry, compatibleProfileName, expectedReportId, reconcileCatalogEntry,
@@ -101,6 +104,18 @@ function statusSpanTimeline(options = {}) {
     }], omitted_evidence: 0,
   }];
   timeline.omitted.status_spans = 0;
+  return timeline;
+}
+
+function skillCoverageTimeline(options = {}) {
+  const timeline = statusSpanTimeline(options);
+  timeline.schema_version = SKILL_COVERAGE_TIMELINE_SCHEMA_VERSION;
+  timeline.participant_tracks[0].skill_observation = {
+    coverage: "complete", evidence: ["exact_local_outbound"],
+  };
+  timeline.participant_tracks[1].skill_observation = {
+    coverage: "unavailable", evidence: [],
+  };
   return timeline;
 }
 
@@ -228,6 +243,29 @@ test("report v17 revision 10 strictly validates exact skill timeline evidence", 
   }, wakeup), false);
 });
 
+test("report v17 revision 13 requires truthful per-track skill observation coverage", () => {
+  const output = { schema_version: 1, report: {
+    schema_version: UPCOMING_REPORT_SCHEMA_VERSION,
+    projection_revision: SKILL_COVERAGE_REPORT_PROJECTION_REVISION,
+    report_id: wakeup.expected_report_id,
+    verification: { artifact_sha256: digest },
+    runs: [{ timeline: skillCoverageTimeline() }],
+  }, membership: { report_id: wakeup.expected_report_id, artifact_sha256: digest, runs: [] } };
+  assert.equal(validateOutput(output, wakeup), true);
+  for (const mutate of [
+    (timeline) => { delete timeline.participant_tracks[0].skill_observation; },
+    (timeline) => { timeline.participant_tracks[0].skill_observation.coverage = "complete_party"; },
+    (timeline) => { timeline.participant_tracks[0].skill_observation.evidence = []; },
+    (timeline) => { timeline.participant_tracks[1].skill_observation.evidence = ["exact_local_outbound"]; },
+    (timeline) => { timeline.participant_tracks[0].skill_observation.evidence.push("exact_party_broadcast"); },
+    (timeline) => { timeline.participant_tracks[0].skill_observation.evidence = ["reconciled_local_vantage"]; },
+  ]) {
+    const invalid = structuredClone(output);
+    mutate(invalid.report.runs[0].timeline);
+    assert.equal(validateOutput(invalid, wakeup), false);
+  }
+});
+
 test("report v17 revision 11 strictly validates bounded hostile cast evidence", () => {
   const output = { schema_version: 1, report: {
     schema_version: UPCOMING_REPORT_SCHEMA_VERSION,
@@ -329,8 +367,8 @@ test("backfill eligibility accepts only exact batch-scoped historical source tup
 
 test("historical backfill is pinned to the exact current public timeline tuple", () => {
   assert.equal(BACKFILL_TARGET_SCHEMA_VERSION, 17);
-  assert.equal(BACKFILL_TARGET_PROJECTION_REVISION, 12);
-  assert.equal(BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION, 8);
+  assert.equal(BACKFILL_TARGET_PROJECTION_REVISION, 13);
+  assert.equal(BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION, 9);
 });
 
 test("hosted verifier rollout tuple matches the Rust projection producer", async () => {
@@ -346,7 +384,7 @@ test("hosted verifier rollout tuple matches the Rust projection producer", async
     rustConstant("PUBLIC_PARSE_PROJECTION_REVISION"));
   assert.equal(BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION,
     rustConstant("PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION"));
-  assert.equal(STATUS_SPAN_RECONCILIATION_SCHEMA_VERSION,
+  assert.equal(SKILL_COVERAGE_RECONCILIATION_SCHEMA_VERSION,
     rustConstant("PUBLIC_RECONCILIATION_SCHEMA_VERSION"));
 });
 
@@ -372,7 +410,7 @@ test("backfill output can add schema fields but cannot change identity, owner, v
       projection_revision: BACKFILL_TARGET_PROJECTION_REVISION,
       verification: { ...original.verification }, runs: [{
         run_index: 0, run_group_id: "run_fixture",
-        timeline: statusSpanTimeline(),
+        timeline: skillCoverageTimeline(),
       }],
     },
     membership: {
@@ -504,6 +542,26 @@ test("reconciliation output must preserve the exact source set and canonical spi
       canonicalReportId: sources[0].report_id,
     }),
   }, "run_exact", sources), true);
+  const skillCoverage = skillCoverageTimeline({
+    source: "reconciled_canonical_spine",
+    reportIds: sources.map((source) => source.report_id),
+    canonicalReportId: sources[0].report_id,
+  });
+  skillCoverage.participant_tracks[0].skill_observation = {
+    coverage: "partial", evidence: ["reconciled_local_vantage"],
+  };
+  assert.equal(validateReconciliationOutput({
+    ...output,
+    schema_version: SKILL_COVERAGE_RECONCILIATION_SCHEMA_VERSION,
+    timeline: skillCoverage,
+  }, "run_exact", sources), true);
+  const wrongSkillCoverageSource = structuredClone(skillCoverage);
+  wrongSkillCoverageSource.participant_tracks[0].skill_observation.evidence = ["exact_local_outbound"];
+  assert.equal(validateReconciliationOutput({
+    ...output,
+    schema_version: SKILL_COVERAGE_RECONCILIATION_SCHEMA_VERSION,
+    timeline: wrongSkillCoverageSource,
+  }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, rdps_status: "partial_packet_proven_rules" }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, schema_version: 16 }, "run_exact", sources), false);
   assert.equal(validateReconciliationOutput({ ...output, timeline: { schema_version: 2 } }, "run_exact", sources), false);

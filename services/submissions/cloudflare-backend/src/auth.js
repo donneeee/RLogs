@@ -9,9 +9,10 @@ const MAXIMUM_QUERY_LIMIT = 250;
 const REPORT_ID_PATTERN = /^rpt_[a-f0-9]{32}$/;
 const VISIBILITIES = new Set(["public", "unlisted", "private"]);
 const CURRENT_PUBLIC_PARSE_SCHEMA_VERSION = 17;
-// Visibility remains mutable for older immutable projections, but only the
-// exact current projection may enter the current hosted reconciliation flow.
-const RECONCILABLE_PUBLIC_PARSE_PROJECTION_REVISIONS = new Set([12]);
+// Visibility remains mutable for older immutable projections. Keep the prior
+// accepted timeline projection eligible while the current producer rolls out,
+// so a visibility change cannot strand an otherwise valid reconciliation.
+const RECONCILABLE_PUBLIC_PARSE_PROJECTION_REVISIONS = new Set([12, 13]);
 
 function json(value, status = 200) {
   return Response.json(value, {

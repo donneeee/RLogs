@@ -41,9 +41,9 @@ function candidateTimeline(reportId) {
     duration_micros: 2_000_000,
     participant_tracks: [
       { actor_id: "actor-1", canonical_participant_index: 0, series_point_count: 1,
-        omitted_skill_uses: 0 },
+        omitted_skill_uses: 0, skill_observation: { coverage: "unavailable", evidence: [] } },
       { actor_id: "actor-2", canonical_participant_index: 1, series_point_count: 2,
-        omitted_skill_uses: 1 },
+        omitted_skill_uses: 1, skill_observation: { coverage: "unavailable", evidence: [] } },
     ],
     clock_anchor: {
       at_micros: 0, game_time_millis: 1_000,

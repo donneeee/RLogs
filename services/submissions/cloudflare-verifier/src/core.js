@@ -19,13 +19,15 @@ export const HOSTILE_CAST_REPORT_PROJECTION_REVISION = 11;
 export const HOSTILE_CAST_TIMELINE_SCHEMA_VERSION = 7;
 export const STATUS_SPAN_REPORT_PROJECTION_REVISION = 12;
 export const STATUS_SPAN_TIMELINE_SCHEMA_VERSION = 8;
+export const SKILL_COVERAGE_REPORT_PROJECTION_REVISION = 13;
+export const SKILL_COVERAGE_TIMELINE_SCHEMA_VERSION = 9;
 // Historical artifacts are replayed by the same pinned verifier image that
 // produces new hosted reports. Keep this tuple exact: accepting an intermediate
 // projection would make a backfilled report unusable as a hosted reconciliation
 // source and would leave timeline-v7 data absent from the public site.
 export const BACKFILL_TARGET_SCHEMA_VERSION = UPCOMING_REPORT_SCHEMA_VERSION;
-export const BACKFILL_TARGET_PROJECTION_REVISION = STATUS_SPAN_REPORT_PROJECTION_REVISION;
-export const BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION = STATUS_SPAN_TIMELINE_SCHEMA_VERSION;
+export const BACKFILL_TARGET_PROJECTION_REVISION = SKILL_COVERAGE_REPORT_PROJECTION_REVISION;
+export const BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION = SKILL_COVERAGE_TIMELINE_SCHEMA_VERSION;
 
 function validReportTuple(report) {
   const timelineSchemaVersion = report?.runs?.[0]?.timeline?.schema_version;
@@ -53,10 +55,14 @@ function validReportTuple(report) {
     report?.schema_version === UPCOMING_REPORT_SCHEMA_VERSION &&
     report?.projection_revision === STATUS_SPAN_REPORT_PROJECTION_REVISION &&
     timelineSchemaVersion === STATUS_SPAN_TIMELINE_SCHEMA_VERSION
+  ) || (
+    report?.schema_version === UPCOMING_REPORT_SCHEMA_VERSION &&
+    report?.projection_revision === SKILL_COVERAGE_REPORT_PROJECTION_REVISION &&
+    timelineSchemaVersion === SKILL_COVERAGE_TIMELINE_SCHEMA_VERSION
   );
   return validTuple && report.runs.every((run) => {
     if (run?.timeline?.schema_version !== timelineSchemaVersion) return false;
-    return ![EXACT_SKILL_TIMELINE_SCHEMA_VERSION, HOSTILE_CAST_TIMELINE_SCHEMA_VERSION, STATUS_SPAN_TIMELINE_SCHEMA_VERSION].includes(timelineSchemaVersion) ||
+    return ![EXACT_SKILL_TIMELINE_SCHEMA_VERSION, HOSTILE_CAST_TIMELINE_SCHEMA_VERSION, STATUS_SPAN_TIMELINE_SCHEMA_VERSION, SKILL_COVERAGE_TIMELINE_SCHEMA_VERSION].includes(timelineSchemaVersion) ||
       validExactSkillTimeline(run.timeline, [report.report_id], "single_report", report.report_id);
   });
 }
@@ -85,7 +91,7 @@ function sameStringSet(left, right) {
 }
 
 function validExactSkillTimeline(timeline, allowedReportIds, source, canonicalReportId) {
-  if (![EXACT_SKILL_TIMELINE_SCHEMA_VERSION, HOSTILE_CAST_TIMELINE_SCHEMA_VERSION, STATUS_SPAN_TIMELINE_SCHEMA_VERSION].includes(timeline?.schema_version) ||
+  if (![EXACT_SKILL_TIMELINE_SCHEMA_VERSION, HOSTILE_CAST_TIMELINE_SCHEMA_VERSION, STATUS_SPAN_TIMELINE_SCHEMA_VERSION, SKILL_COVERAGE_TIMELINE_SCHEMA_VERSION].includes(timeline?.schema_version) ||
       timeline.source !== source || timeline.canonical_report_id !== canonicalReportId ||
       !nonNegativeSafeInteger(timeline.duration_micros) ||
       !Array.isArray(timeline.contributing_report_ids) ||
@@ -93,7 +99,9 @@ function validExactSkillTimeline(timeline, allowedReportIds, source, canonicalRe
       !timeline.contributing_report_ids.every((reportId) => REPORT_ID.test(reportId)) ||
       !Array.isArray(timeline.participant_tracks) || timeline.participant_tracks.length > 256 ||
       !timeline.participant_tracks.every((track) => boundedIdentifierText(track?.actor_id) &&
-        nonNegativeSafeInteger(track?.omitted_skill_uses)) ||
+        nonNegativeSafeInteger(track?.omitted_skill_uses) &&
+        (timeline.schema_version < SKILL_COVERAGE_TIMELINE_SCHEMA_VERSION ||
+          validSkillObservation(track?.skill_observation, timeline.source))) ||
       new Set(timeline.participant_tracks.map((track) => track.actor_id)).size !== timeline.participant_tracks.length ||
       !Array.isArray(timeline.skill_uses) || timeline.skill_uses.length > MAXIMUM_TIMELINE_SKILL_USES ||
       !nonNegativeSafeInteger(timeline.omitted?.skill_uses)) return false;
@@ -184,7 +192,7 @@ function validExactSkillTimeline(timeline, allowedReportIds, source, canonicalRe
       }
     }
   }
-  if (timeline.schema_version === STATUS_SPAN_TIMELINE_SCHEMA_VERSION) {
+  if (timeline.schema_version >= STATUS_SPAN_TIMELINE_SCHEMA_VERSION) {
     if (!Array.isArray(timeline.status_spans) || timeline.status_spans.length > MAXIMUM_TIMELINE_STATUS_SPANS ||
         !nonNegativeSafeInteger(timeline.omitted?.status_spans)) return false;
     const keptByTarget = new Map();
@@ -223,6 +231,18 @@ function validExactSkillTimeline(timeline, allowedReportIds, source, canonicalRe
     }
   }
   return true;
+}
+
+function validSkillObservation(observation, timelineSource) {
+  if (!observation || !["unavailable", "partial", "complete"].includes(observation.coverage) ||
+      !Array.isArray(observation.evidence) ||
+      observation.evidence.some((item) => !["exact_local_outbound", "reconciled_local_vantage"].includes(item)) ||
+      new Set(observation.evidence).size !== observation.evidence.length) return false;
+  if (observation.coverage === "unavailable") return observation.evidence.length === 0;
+  const requiredEvidence = timelineSource === "single_report"
+    ? "exact_local_outbound"
+    : "reconciled_local_vantage";
+  return observation.evidence.length === 1 && observation.evidence[0] === requiredEvidence;
 }
 
 export function expectedReportId(digest) {
@@ -362,6 +382,7 @@ export const LEGACY_RECONCILIATION_SCHEMA_VERSION = 18;
 export const RECONCILIATION_SCHEMA_VERSION = 19;
 export const UPCOMING_RECONCILIATION_SCHEMA_VERSION = 20;
 export const STATUS_SPAN_RECONCILIATION_SCHEMA_VERSION = 21;
+export const SKILL_COVERAGE_RECONCILIATION_SCHEMA_VERSION = 22;
 const MAXIMUM_TIMELINE_RATE_CLOCK_POINTS = 262_144;
 const MAXIMUM_TIMELINE_PARTICIPANTS = 256;
 const MAXIMUM_TIMELINE_SERIES_POINTS = 262_144;
@@ -525,6 +546,9 @@ export function validateReconciliationOutput(value, runGroupId, sources) {
   ) || (
     value?.schema_version === STATUS_SPAN_RECONCILIATION_SCHEMA_VERSION &&
     value?.timeline?.schema_version === STATUS_SPAN_TIMELINE_SCHEMA_VERSION
+  ) || (
+    value?.schema_version === SKILL_COVERAGE_RECONCILIATION_SCHEMA_VERSION &&
+    value?.timeline?.schema_version === SKILL_COVERAGE_TIMELINE_SCHEMA_VERSION
   );
   if (!validTuple || value?.run_group_id !== runGroupId ||
       !RECONCILIATION_ID.test(value?.reconciliation_id ?? "") ||
@@ -544,7 +568,7 @@ export function validateReconciliationOutput(value, runGroupId, sources) {
   if (unique.size !== actual.length || !unique.has(reconciliationSourceIdentity(value.canonical_spine))) {
     return false;
   }
-  if ([EXACT_SKILL_TIMELINE_SCHEMA_VERSION, HOSTILE_CAST_TIMELINE_SCHEMA_VERSION, STATUS_SPAN_TIMELINE_SCHEMA_VERSION].includes(value.timeline?.schema_version) && !validExactSkillTimeline(
+  if ([EXACT_SKILL_TIMELINE_SCHEMA_VERSION, HOSTILE_CAST_TIMELINE_SCHEMA_VERSION, STATUS_SPAN_TIMELINE_SCHEMA_VERSION, SKILL_COVERAGE_TIMELINE_SCHEMA_VERSION].includes(value.timeline?.schema_version) && !validExactSkillTimeline(
     value.timeline,
     value.reports.map((report) => report.report_id),
     "reconciled_canonical_spine",

@@ -24,6 +24,12 @@ pub const BPSR_USE_SKILL_ATTR_BUILD: &str = "24609362";
 /// route, and authenticated-envelope keys were independently verified.
 pub const BPSR_CURRENT_USE_SKILL_ATTR_BUILD: &str = "24687926";
 
+/// First carried-forward client build for which the reviewed compatibility
+/// epoch is allowed to reuse the exact outbound `World.UseSlot` schema. The
+/// caller must additionally prove the derived protocol-pack digest through
+/// `bpsr_runtime_authority`; this build label alone grants no authority.
+pub const BPSR_COMPATIBILITY_USE_SKILL_ATTR_BUILD: &str = "25247556";
+
 const BPSR_SUPPORTED_USE_SKILL_ATTR_BUILDS: [&str; 2] =
     [BPSR_USE_SKILL_ATTR_BUILD, BPSR_CURRENT_USE_SKILL_ATTR_BUILD];
 const BPSR_SUPPORTED_USE_SKILL_ATTR_BUILD_LABEL: &str = "24609362 or 24687926";
@@ -341,6 +347,33 @@ pub fn decode_world_use_slot_skill_action_into(
         param: decode_use_skill_param(extra_data)?,
         attributes,
     }))
+}
+
+/// Decodes `World.UseSlot` for either an exact reviewed build or the single
+/// explicitly admitted compatibility build after the runtime has verified the
+/// derived pack identity. Keeping this gate outside the public build-only
+/// decoder prevents arbitrary future build labels from inheriting the schema.
+pub(crate) fn decode_world_use_slot_skill_action_for_runtime_into(
+    game_build: &str,
+    compatibility_epoch_authorized: bool,
+    payload: &[u8],
+    scratch: &mut Vec<u8>,
+) -> Result<Option<UseSkillActionSnapshot>, UseSkillActionDecodeError> {
+    if BPSR_SUPPORTED_USE_SKILL_ATTR_BUILDS.contains(&game_build) {
+        return decode_world_use_slot_skill_action_into(game_build, payload, scratch);
+    }
+    if game_build != BPSR_COMPATIBILITY_USE_SKILL_ATTR_BUILD || !compatibility_epoch_authorized {
+        return Err(UseSkillAttrDecodeError::UnsupportedBuild {
+            observed: game_build.to_owned(),
+            expected: BPSR_SUPPORTED_USE_SKILL_ATTR_BUILD_LABEL,
+        }
+        .into());
+    }
+
+    // The authenticated envelope keys and protobuf shapes are properties of
+    // the reviewed epoch. Decode using its reviewed source identity only after
+    // the caller proved the exact derived-pack digest above.
+    decode_world_use_slot_skill_action_into(BPSR_CURRENT_USE_SKILL_ATTR_BUILD, payload, scratch)
 }
 
 /// Strictly decodes one current-build local stage-trigger request.
@@ -1240,6 +1273,48 @@ pub(crate) mod tests {
                 UseSkillAttrDecodeError::UnsupportedBuild { .. }
             )
         ));
+    }
+
+    #[test]
+    fn compatibility_build_requires_separate_digest_verified_runtime_authority() {
+        let payload = world_skill_use_payload();
+        let mut scratch = Vec::new();
+        let denied = decode_world_use_slot_skill_action_for_runtime_into(
+            BPSR_COMPATIBILITY_USE_SKILL_ATTR_BUILD,
+            false,
+            &payload,
+            &mut scratch,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            denied,
+            UseSkillActionDecodeError::AttributeEnvelope(
+                UseSkillAttrDecodeError::UnsupportedBuild { .. }
+            )
+        ));
+
+        let decoded = decode_world_use_slot_skill_action_for_runtime_into(
+            BPSR_COMPATIBILITY_USE_SKILL_ATTR_BUILD,
+            true,
+            &payload,
+            &mut scratch,
+        )
+        .unwrap()
+        .expect("authorized compatibility build skill action");
+        assert_eq!(decoded.param.skill_uuid, 9_001);
+        assert_eq!(decoded.param.skill_id, 2_233);
+        assert_eq!(decoded.param.target_uuid, 216_009_015_936);
+
+        assert!(
+            decode_world_use_slot_skill_action_for_runtime_into(
+                "25247557",
+                true,
+                &payload,
+                &mut scratch,
+            )
+            .is_err(),
+            "a verified epoch must not silently admit a later build"
+        );
     }
 
     #[test]

@@ -166,6 +166,23 @@ mod tests {
             crate::bundled_localization_supports_identity("global", "24699999", steam.digest(),)
                 .unwrap()
         );
+        let current_skill_build = retarget_protocol_pack(
+            &pack,
+            "compatibility-fallback",
+            "global",
+            "steam",
+            crate::BPSR_COMPATIBILITY_USE_SKILL_ATTR_BUILD,
+        )
+        .unwrap();
+        assert!(matches!(
+            bpsr_runtime_authority(
+                "global",
+                crate::BPSR_COMPATIBILITY_USE_SKILL_ATTR_BUILD,
+                current_skill_build.digest(),
+            )
+            .unwrap(),
+            Some(BpsrRuntimeAuthority::CompatibilityEpoch { version: 1 })
+        ));
         let bootstrap = retarget_protocol_pack(
             &pack,
             "client-bootstrap",

@@ -7,8 +7,8 @@ test("isolated Wrangler rehearsal publishes then consumes a queued inverse rollb
   const receipt = await runBackfillRolloutRehearsal();
   assert.deepEqual(receipt.target, {
     report_schema_version: 17,
-    projection_revision: 12,
-    timeline_schema_version: 8,
+    projection_revision: 13,
+    timeline_schema_version: 9,
     verifier_release: "isolated-rehearsal-release",
   });
   assert.equal(receipt.forward.candidate_validated, true);

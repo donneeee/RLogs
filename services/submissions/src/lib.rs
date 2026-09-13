@@ -30,15 +30,16 @@ use rlogs_events::{
     RegionContext, RegionIdentity, RunState, StatusState, TimelineEventKind,
 };
 use rlogs_game_bpsr::{
-    BPSR_GAME_PLUGIN_ID, BUNDLED_RUN_RULE_CLIENT_BUILD, BUNDLED_RUN_RULE_DEPLOYMENT_ID,
-    BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST, BpsrLifeWaveTriggerLearner, BpsrRemoteFactorLearner,
-    BpsrStatResonanceTransitionLearner, BpsrStateDamageContributionProjector,
-    CharacterProfilePatch, SwiftVortexCandidateAuditAnalyzer, SwiftVortexCandidateAuditReport,
-    TRAINING_DURATION_MICROS, TrainingDummyController, TrainingDummyPhase,
-    bundled_localization_supports_identity, bundled_run_reducer_config_for_identity,
-    canonicalize_bpsr_region_identity, character_id_from_entity_uuid, combat_action_presentation,
-    combat_breakdown_ability_id, combat_recount_group_id, confirmed_damage_contribution_rules,
-    is_stat_resonance_status, localized_class_name, localized_combat_action_name_for_identity,
+    BPSR_COMPATIBILITY_USE_SKILL_ATTR_BUILD, BPSR_GAME_PLUGIN_ID, BUNDLED_RUN_RULE_CLIENT_BUILD,
+    BUNDLED_RUN_RULE_DEPLOYMENT_ID, BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+    BpsrLifeWaveTriggerLearner, BpsrRemoteFactorLearner, BpsrStatResonanceTransitionLearner,
+    BpsrStateDamageContributionProjector, CharacterProfilePatch, SwiftVortexCandidateAuditAnalyzer,
+    SwiftVortexCandidateAuditReport, TRAINING_DURATION_MICROS, TrainingDummyController,
+    TrainingDummyPhase, bpsr_runtime_authority, bundled_localization_supports_identity,
+    bundled_run_reducer_config_for_identity, canonicalize_bpsr_region_identity,
+    character_id_from_entity_uuid, combat_action_presentation, combat_breakdown_ability_id,
+    combat_recount_group_id, confirmed_damage_contribution_rules, is_stat_resonance_status,
+    localized_class_name, localized_combat_action_name_for_identity,
     localized_monster_name_for_identity, localized_recount_group_name_for_identity,
     localized_scene_name_for_identity, localized_specialization_name,
     rdps_attribution_effect_presentation, status_effect_presentation,
@@ -77,10 +78,10 @@ use profiles::{
 use rlogs_profiles::LocalProfilePackage;
 
 pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 17;
-pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 12;
+pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 13;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 7;
-pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 21;
-pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 8;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 22;
+pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 9;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
@@ -3256,6 +3257,32 @@ pub struct PublicTimelineParticipantTrack {
     /// global timeline bound. Evidence duplicates do not increase this count.
     #[serde(default)]
     pub omitted_skill_uses: usize,
+    /// Explicit scope and provenance for skill rows observed for this actor.
+    /// Absence on historical projections means unreported, never complete.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_observation: Option<PublicTimelineSkillObservation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicTimelineSkillObservation {
+    pub coverage: PublicTimelineSkillObservationCoverage,
+    #[serde(default)]
+    pub evidence: Vec<PublicTimelineSkillObservationEvidence>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicTimelineSkillObservationCoverage {
+    Unavailable,
+    Partial,
+    Complete,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicTimelineSkillObservationEvidence {
+    ExactLocalOutbound,
+    ReconciledLocalVantage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -5145,6 +5172,27 @@ fn bpsr_has_exact_presentation_catalog_authority(history: &CombatHistorySnapshot
         && history.protocol_pack_digest == BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST
 }
 
+fn bpsr_has_local_outbound_skill_authority(history: &CombatHistorySnapshot) -> bool {
+    matches!(
+        bpsr_runtime_authority(
+            &history.deployment_id,
+            &history.client_build,
+            &history.protocol_pack_digest,
+        ),
+        Ok(Some(rlogs_game_bpsr::BpsrRuntimeAuthority::ExactReviewed))
+    ) || (history.client_build == BPSR_COMPATIBILITY_USE_SKILL_ATTR_BUILD
+        && matches!(
+            bpsr_runtime_authority(
+                &history.deployment_id,
+                &history.client_build,
+                &history.protocol_pack_digest,
+            ),
+            Ok(Some(
+                rlogs_game_bpsr::BpsrRuntimeAuthority::CompatibilityEpoch { .. }
+            ))
+        ))
+}
+
 fn canonicalize_public_report_region(report: &mut PublicParseReport) {
     if report.game_plugin_id != BPSR_GAME_PLUGIN_ID {
         return;
@@ -6446,6 +6494,7 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
         None,
     );
     populate_reconciled_timeline_skill_uses(&mut timeline, &sources, canonical_report_id);
+    populate_reconciled_timeline_skill_observation(&mut timeline, &sources, canonical_report_id);
     populate_reconciled_timeline_hostile_casts(&mut timeline, &sources, canonical_report_id);
     populate_reconciled_timeline_status_spans(&mut timeline, &sources, canonical_report_id);
 
@@ -7962,6 +8011,11 @@ fn public_combat_timeline(
         canonical_run_observed_bounds(analysis),
         presentation_semantics_authorized,
     );
+    populate_timeline_skill_observation(
+        &mut timeline,
+        run,
+        bpsr_has_local_outbound_skill_authority(history),
+    );
     populate_timeline_hostile_casts(
         &mut timeline,
         report_id,
@@ -7985,6 +8039,39 @@ fn public_combat_timeline(
         canonical_run_observed_bounds(analysis),
     );
     timeline
+}
+
+fn populate_timeline_skill_observation(
+    timeline: &mut PublicCombatTimeline,
+    run: &PublicRun,
+    local_outbound_authorized: bool,
+) {
+    let local_character_ids = run
+        .local_profile_character_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    for track in &mut timeline.participant_tracks {
+        let is_proven_local = track
+            .character_id
+            .as_deref()
+            .is_some_and(|character_id| local_character_ids.contains(character_id));
+        track.skill_observation = Some(if local_outbound_authorized && is_proven_local {
+            PublicTimelineSkillObservation {
+                // Each emitted row is exact, but the current history contract
+                // does not retain proof that the outbound route and local
+                // source binding were observable for the entire run. Do not
+                // turn general run-boundary coverage into a zero-cast claim.
+                coverage: PublicTimelineSkillObservationCoverage::Partial,
+                evidence: vec![PublicTimelineSkillObservationEvidence::ExactLocalOutbound],
+            }
+        } else {
+            PublicTimelineSkillObservation {
+                coverage: PublicTimelineSkillObservationCoverage::Unavailable,
+                evidence: Vec::new(),
+            }
+        });
+    }
 }
 
 fn populate_timeline_rate_clock(
@@ -8145,6 +8232,7 @@ fn populate_timeline_combat_data(
                     .get(&participant.actor_id)
                     .copied()
                     .unwrap_or_default(),
+                skill_observation: None,
             });
         let exact_deaths = selected_timeline_death_events(
             participant,
@@ -9054,6 +9142,65 @@ fn populate_reconciled_timeline_skill_uses(
         }
         *participant_kept = participant_kept.saturating_add(1);
         timeline.skill_uses.push(row);
+    }
+}
+
+fn populate_reconciled_timeline_skill_observation(
+    timeline: &mut PublicCombatTimeline,
+    sources: &[ReconciliationRunSource],
+    canonical_report_id: &str,
+) {
+    let Some(canonical_source) = sources
+        .iter()
+        .find(|source| source.report_id == canonical_report_id)
+    else {
+        return;
+    };
+    for track in &mut timeline.participant_tracks {
+        let mut best = PublicTimelineSkillObservationCoverage::Unavailable;
+        for source in sources.iter().filter(|source| {
+            source.deployment_id == canonical_source.deployment_id
+                && source.client_build == canonical_source.client_build
+                && source.protocol_pack_digest == canonical_source.protocol_pack_digest
+        }) {
+            let matching = source.timeline.participant_tracks.iter().find(|candidate| {
+                match (
+                    track.character_id.as_deref(),
+                    candidate.character_id.as_deref(),
+                ) {
+                    (Some(left), Some(right)) => left == right,
+                    _ => track.actor_id == candidate.actor_id,
+                }
+            });
+            let Some(observation) = matching.and_then(|row| row.skill_observation.as_ref()) else {
+                continue;
+            };
+            if !observation
+                .evidence
+                .contains(&PublicTimelineSkillObservationEvidence::ExactLocalOutbound)
+            {
+                continue;
+            }
+            best = match observation.coverage {
+                PublicTimelineSkillObservationCoverage::Complete => {
+                    PublicTimelineSkillObservationCoverage::Complete
+                }
+                PublicTimelineSkillObservationCoverage::Partial
+                    if best != PublicTimelineSkillObservationCoverage::Complete =>
+                {
+                    PublicTimelineSkillObservationCoverage::Partial
+                }
+                _ => best,
+            };
+        }
+        track.skill_observation = Some(PublicTimelineSkillObservation {
+            coverage: best,
+            evidence: if best == PublicTimelineSkillObservationCoverage::Unavailable {
+                Vec::new()
+            } else {
+                vec![PublicTimelineSkillObservationEvidence::ReconciledLocalVantage]
+            },
+        });
     }
 }
 
@@ -10000,6 +10147,25 @@ mod tests {
         let mut wrong_digest = exact;
         wrong_digest.protocol_pack_digest = "sha256:wrong-pack".into();
         assert!(!bpsr_has_presentation_semantic_authority(&wrong_digest).unwrap());
+
+        let current_skill_pack = rlogs_game_bpsr::LiveProtocolPackSelection {
+            path: Path::new(env!("CARGO_MANIFEST_DIR")).join(
+                "../../plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24687926/pack.json",
+            ),
+            build_id: BPSR_COMPATIBILITY_USE_SKILL_ATTR_BUILD.into(),
+            pack_build_id: BUNDLED_RUN_RULE_CLIENT_BUILD.into(),
+            deployment_id: BUNDLED_RUN_RULE_DEPLOYMENT_ID.into(),
+            channel: "steam".into(),
+            kind: rlogs_game_bpsr::LiveProtocolPackKind::CompatibilityFallback,
+        }
+        .load_pack()
+        .unwrap();
+        let mut current_skill = compatibility_epoch;
+        current_skill.client_build = BPSR_COMPATIBILITY_USE_SKILL_ATTR_BUILD.into();
+        current_skill.protocol_pack_digest = current_skill_pack.digest().into();
+        assert!(bpsr_has_local_outbound_skill_authority(&current_skill));
+        current_skill.protocol_pack_digest = "sha256:wrong-pack".into();
+        assert!(!bpsr_has_local_outbound_skill_authority(&current_skill));
     }
 
     fn timeline_participant(actor_id: &str) -> PublicParticipant {
@@ -16386,6 +16552,95 @@ mod tests {
             },
         };
         build_public_reconciliation(&group)
+    }
+
+    #[test]
+    fn skill_observation_marks_only_the_proven_local_track_partial() {
+        let mut report =
+            fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
+        let report_run = report.runs[0].clone();
+        populate_timeline_skill_observation(&mut report.runs[0].timeline, &report_run, true);
+        let tracks = &report.runs[0].timeline.participant_tracks;
+        assert_eq!(
+            tracks[0].skill_observation,
+            Some(PublicTimelineSkillObservation {
+                coverage: PublicTimelineSkillObservationCoverage::Partial,
+                evidence: vec![PublicTimelineSkillObservationEvidence::ExactLocalOutbound],
+            })
+        );
+        assert_eq!(
+            tracks[1].skill_observation,
+            Some(PublicTimelineSkillObservation {
+                coverage: PublicTimelineSkillObservationCoverage::Unavailable,
+                evidence: Vec::new(),
+            })
+        );
+
+        let mut unauthorized =
+            fixture_public_report("rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "character-a", 0);
+        let unauthorized_run = unauthorized.runs[0].clone();
+        populate_timeline_skill_observation(
+            &mut unauthorized.runs[0].timeline,
+            &unauthorized_run,
+            false,
+        );
+        assert_eq!(
+            unauthorized.runs[0].timeline.participant_tracks[0]
+                .skill_observation
+                .as_ref()
+                .unwrap()
+                .coverage,
+            PublicTimelineSkillObservationCoverage::Unavailable
+        );
+    }
+
+    #[test]
+    fn reconciled_skill_observation_combines_only_proven_compatible_local_vantages() {
+        let mut report_a =
+            fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
+        let mut report_b =
+            fixture_public_report("rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "character-b", 0);
+        for report in [&mut report_a, &mut report_b] {
+            let run = report.runs[0].clone();
+            populate_timeline_skill_observation(&mut report.runs[0].timeline, &run, true);
+        }
+        let sources = vec![
+            ReconciliationRunSource::from_report(&report_a, &report_a.runs[0], None),
+            ReconciliationRunSource::from_report(&report_b, &report_b.runs[0], None),
+        ];
+        let mut timeline = report_a.runs[0].timeline.clone();
+        populate_reconciled_timeline_skill_observation(
+            &mut timeline,
+            &sources,
+            &report_a.report_id,
+        );
+        assert!(timeline.participant_tracks.iter().all(|track| {
+            track.skill_observation.as_ref().is_some_and(|observation| {
+                observation.coverage == PublicTimelineSkillObservationCoverage::Partial
+                    && observation.evidence
+                        == [PublicTimelineSkillObservationEvidence::ReconciledLocalVantage]
+            })
+        }));
+
+        report_b.protocol_pack_digest = "sha256:incompatible".into();
+        let incompatible_sources = vec![
+            ReconciliationRunSource::from_report(&report_a, &report_a.runs[0], None),
+            ReconciliationRunSource::from_report(&report_b, &report_b.runs[0], None),
+        ];
+        populate_reconciled_timeline_skill_observation(
+            &mut timeline,
+            &incompatible_sources,
+            &report_a.report_id,
+        );
+        let remote = timeline
+            .participant_tracks
+            .iter()
+            .find(|track| track.character_id.as_deref() == Some("character-b"))
+            .unwrap();
+        assert_eq!(
+            remote.skill_observation.as_ref().unwrap().coverage,
+            PublicTimelineSkillObservationCoverage::Unavailable
+        );
     }
 
     #[test]

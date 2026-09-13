@@ -20,7 +20,25 @@ pub(crate) struct NotifyEnterWorldRequest {
     pub scene_host: Option<String>,
     #[prost(int32, optional, tag = "4")]
     pub scene_port: Option<i32>,
-    // Transform and scene-line fields are outside this decoder's narrow purpose.
+    #[prost(message, optional, tag = "5")]
+    pub transform: Option<WorldTransferParam>,
+    #[prost(message, optional, tag = "6")]
+    pub scene_line_data: Option<SceneLineData>,
+}
+
+/// Gameplay-only subset of the transfer target announced before a world load.
+/// Position, account, and connection-guid fields remain deliberately opaque.
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct WorldTransferParam {
+    #[prost(int32, optional, tag = "1")]
+    pub scene_id: Option<i32>,
+}
+
+/// Gameplay-only scene-line identity announced with a world transfer.
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct SceneLineData {
+    #[prost(uint32, optional, tag = "1")]
+    pub line_id: Option<u32>,
 }
 
 #[derive(Clone, Copy, PartialEq, Message)]

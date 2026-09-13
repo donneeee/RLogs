@@ -1,5 +1,5 @@
 -- Admit only the three historical projection tuples reviewed for replay into
--- the current schema-17/projection-12/timeline-8 producer. Runtime validation
+-- the current schema-17/projection-13/timeline-9 producer. Runtime validation
 -- independently checks the exact projection and timeline revision for the
 -- requested source schema. Publication remains paused in the verifier.
 --
