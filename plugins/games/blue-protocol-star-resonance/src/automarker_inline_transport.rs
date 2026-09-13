@@ -18,6 +18,199 @@ const IPV4_MIN_HEADER_BYTES: usize = 20;
 const TCP_MIN_HEADER_BYTES: usize = 20;
 const TCP_PROTOCOL: u8 = 6;
 
+/// Reviewed upstream distribution for a future Windows interception backend.
+///
+/// These constants do not load or install WinDivert. They let packaging and
+/// preflight code reject any unreviewed binary before a live handle can exist.
+pub const AUTOMARKER_WINDIVERT_VERSION: &str = "2.2.2";
+pub const AUTOMARKER_WINDIVERT_RELEASE_TAG_COMMIT: &str =
+    "1789526ecfb9ff5397c94f9f54c1a3dc2fb60440";
+pub const AUTOMARKER_WINDIVERT_X64_DLL_SHA256: &str =
+    "c1e060ee19444a259b2162f8af0f3fe8c4428a1c6f694dce20de194ac8d7d9a2";
+pub const AUTOMARKER_WINDIVERT_X64_DRIVER_SHA256: &str =
+    "8da085332782708d8767bcace5327a6ec7283c17cfb85e40b03cd2323a90ddc2";
+
+/// WinDivert handle contract selected by the reviewed backend design.
+/// Values match the WinDivert 2.2 public ABI but are intentionally kept as
+/// dependency-neutral data: this module still cannot open a driver handle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OfflineAutomarkerWinDivertHandlePolicy {
+    pub layer: OfflineAutomarkerWinDivertLayer,
+    pub priority: i16,
+    pub sniff: bool,
+    pub recv_only: bool,
+    pub no_install: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OfflineAutomarkerWinDivertLayer {
+    Network,
+    Flow,
+    Reflect,
+}
+
+/// Passive NETWORK observation runs one WinDivert priority above the active
+/// handle. A packet reinjected by the active priority therefore cannot return
+/// to this observer through WinDivert's own priority chain.
+pub const AUTOMARKER_WINDIVERT_DISCOVERY_NETWORK_POLICY: OfflineAutomarkerWinDivertHandlePolicy =
+    OfflineAutomarkerWinDivertHandlePolicy {
+        layer: OfflineAutomarkerWinDivertLayer::Network,
+        priority: 1,
+        sniff: true,
+        recv_only: true,
+        no_install: true,
+    };
+
+pub const AUTOMARKER_WINDIVERT_DISCOVERY_FLOW_POLICY: OfflineAutomarkerWinDivertHandlePolicy =
+    OfflineAutomarkerWinDivertHandlePolicy {
+        layer: OfflineAutomarkerWinDivertLayer::Flow,
+        priority: 0,
+        sniff: true,
+        recv_only: true,
+        no_install: true,
+    };
+
+pub const AUTOMARKER_WINDIVERT_REFLECT_POLICY: OfflineAutomarkerWinDivertHandlePolicy =
+    OfflineAutomarkerWinDivertHandlePolicy {
+        layer: OfflineAutomarkerWinDivertLayer::Reflect,
+        priority: 0,
+        sniff: true,
+        recv_only: true,
+        no_install: true,
+    };
+
+/// The only policy capable of diverting and reinjecting a game packet. It must
+/// stay without SNIFF/RECV_ONLY/SEND_ONLY flags: every received packet must be
+/// synchronously returned as either its original or verified rewritten copy.
+/// NO_INSTALL keeps driver installation in the separate, explicit setup flow.
+pub const AUTOMARKER_WINDIVERT_ACTIVE_NETWORK_POLICY: OfflineAutomarkerWinDivertHandlePolicy =
+    OfflineAutomarkerWinDivertHandlePolicy {
+        layer: OfflineAutomarkerWinDivertLayer::Network,
+        priority: 0,
+        sniff: false,
+        recv_only: false,
+        no_install: true,
+    };
+
+/// Formats the narrow immutable filter for a single proven IPv4/TCP epoch.
+/// PID is intentionally absent: WinDivert's NETWORK layer cannot expose it.
+pub fn offline_automarker_windivert_active_filter(
+    connection: AutomarkerOwnedTcpConnection,
+) -> String {
+    format!(
+        "outbound and ip and tcp and tcp.PayloadLength > 0 and ip.SrcAddr == {} and tcp.SrcPort == {} and ip.DstAddr == {} and tcp.DstPort == {}",
+        connection.local.address,
+        connection.local.port,
+        connection.remote.address,
+        connection.remote.port
+    )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OfflineAutomarkerWinDivertReadinessGate {
+    ExactReleaseHashes,
+    DriverSignature,
+    DriverVersion,
+    Administrator,
+    BaseFilteringEngine,
+    ExactProcessOwnedEpoch,
+    SynObserved,
+    FilterCompiled,
+    NoSamePriorityWinDivertHandle,
+    ChecksumPath,
+    WfpCoexistence,
+    ExitLagAuthoritativeLeg,
+    OperatorConsent,
+}
+
+/// Evidence needed before a future backend may open its active NETWORK handle.
+/// `exitlag_authoritative_leg` is ignored only when ExitLag is explicitly off.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OfflineAutomarkerWinDivertReadiness {
+    pub exact_release_hashes: bool,
+    pub driver_signature_valid: bool,
+    pub driver_version_2_2: bool,
+    pub administrator: bool,
+    pub base_filtering_engine_available: bool,
+    pub exact_process_owned_epoch: bool,
+    pub syn_observed: bool,
+    pub exact_filter_compiled: bool,
+    pub no_same_priority_windivert_handle: bool,
+    pub checksum_path_proven: bool,
+    pub wfp_coexistence_proven: bool,
+    pub exitlag_enabled: bool,
+    pub exitlag_authoritative_leg_proven: bool,
+    pub operator_consented_to_canary: bool,
+}
+
+impl OfflineAutomarkerWinDivertReadiness {
+    /// Returns every missing gate instead of silently selecting a weaker path.
+    pub fn missing_gates(self) -> Vec<OfflineAutomarkerWinDivertReadinessGate> {
+        let checks = [
+            (
+                self.exact_release_hashes,
+                OfflineAutomarkerWinDivertReadinessGate::ExactReleaseHashes,
+            ),
+            (
+                self.driver_signature_valid,
+                OfflineAutomarkerWinDivertReadinessGate::DriverSignature,
+            ),
+            (
+                self.driver_version_2_2,
+                OfflineAutomarkerWinDivertReadinessGate::DriverVersion,
+            ),
+            (
+                self.administrator,
+                OfflineAutomarkerWinDivertReadinessGate::Administrator,
+            ),
+            (
+                self.base_filtering_engine_available,
+                OfflineAutomarkerWinDivertReadinessGate::BaseFilteringEngine,
+            ),
+            (
+                self.exact_process_owned_epoch,
+                OfflineAutomarkerWinDivertReadinessGate::ExactProcessOwnedEpoch,
+            ),
+            (
+                self.syn_observed,
+                OfflineAutomarkerWinDivertReadinessGate::SynObserved,
+            ),
+            (
+                self.exact_filter_compiled,
+                OfflineAutomarkerWinDivertReadinessGate::FilterCompiled,
+            ),
+            (
+                self.no_same_priority_windivert_handle,
+                OfflineAutomarkerWinDivertReadinessGate::NoSamePriorityWinDivertHandle,
+            ),
+            (
+                self.checksum_path_proven,
+                OfflineAutomarkerWinDivertReadinessGate::ChecksumPath,
+            ),
+            (
+                self.wfp_coexistence_proven,
+                OfflineAutomarkerWinDivertReadinessGate::WfpCoexistence,
+            ),
+            (
+                !self.exitlag_enabled || self.exitlag_authoritative_leg_proven,
+                OfflineAutomarkerWinDivertReadinessGate::ExitLagAuthoritativeLeg,
+            ),
+            (
+                self.operator_consented_to_canary,
+                OfflineAutomarkerWinDivertReadinessGate::OperatorConsent,
+            ),
+        ];
+        checks
+            .into_iter()
+            .filter_map(|(passed, gate)| (!passed).then_some(gate))
+            .collect()
+    }
+
+    pub fn active_handle_allowed(self) -> bool {
+        self.missing_gates().is_empty()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AutomarkerIpv4Endpoint {
     pub address: Ipv4Addr,
@@ -451,6 +644,77 @@ mod tests {
                 &[connection(), connection()]
             ),
             Err(OfflineAutomarkerBindingError::AmbiguousOwnedSocket)
+        );
+    }
+
+    #[test]
+    fn windivert_active_filter_is_exact_outbound_payload_tuple() {
+        assert_eq!(
+            offline_automarker_windivert_active_filter(connection()),
+            "outbound and ip and tcp and tcp.PayloadLength > 0 and ip.SrcAddr == 10.0.0.2 and tcp.SrcPort == 50000 and ip.DstAddr == 203.0.113.7 and tcp.DstPort == 44321"
+        );
+        assert_eq!(
+            AUTOMARKER_WINDIVERT_ACTIVE_NETWORK_POLICY,
+            OfflineAutomarkerWinDivertHandlePolicy {
+                layer: OfflineAutomarkerWinDivertLayer::Network,
+                priority: 0,
+                sniff: false,
+                recv_only: false,
+                no_install: true,
+            }
+        );
+        assert!(AUTOMARKER_WINDIVERT_DISCOVERY_NETWORK_POLICY.sniff);
+        assert!(AUTOMARKER_WINDIVERT_DISCOVERY_NETWORK_POLICY.recv_only);
+        assert!(AUTOMARKER_WINDIVERT_DISCOVERY_NETWORK_POLICY.no_install);
+        assert_eq!(AUTOMARKER_WINDIVERT_DISCOVERY_NETWORK_POLICY.priority, 1);
+    }
+
+    #[test]
+    fn windivert_readiness_refuses_every_missing_gate() {
+        let absent = OfflineAutomarkerWinDivertReadiness {
+            exact_release_hashes: false,
+            driver_signature_valid: false,
+            driver_version_2_2: false,
+            administrator: false,
+            base_filtering_engine_available: false,
+            exact_process_owned_epoch: false,
+            syn_observed: false,
+            exact_filter_compiled: false,
+            no_same_priority_windivert_handle: false,
+            checksum_path_proven: false,
+            wfp_coexistence_proven: false,
+            exitlag_enabled: true,
+            exitlag_authoritative_leg_proven: false,
+            operator_consented_to_canary: false,
+        };
+        assert!(!absent.active_handle_allowed());
+        assert_eq!(absent.missing_gates().len(), 13);
+
+        let ready_without_exitlag = OfflineAutomarkerWinDivertReadiness {
+            exact_release_hashes: true,
+            driver_signature_valid: true,
+            driver_version_2_2: true,
+            administrator: true,
+            base_filtering_engine_available: true,
+            exact_process_owned_epoch: true,
+            syn_observed: true,
+            exact_filter_compiled: true,
+            no_same_priority_windivert_handle: true,
+            checksum_path_proven: true,
+            wfp_coexistence_proven: true,
+            exitlag_enabled: false,
+            exitlag_authoritative_leg_proven: false,
+            operator_consented_to_canary: true,
+        };
+        assert!(ready_without_exitlag.active_handle_allowed());
+
+        let unresolved_exitlag = OfflineAutomarkerWinDivertReadiness {
+            exitlag_enabled: true,
+            ..ready_without_exitlag
+        };
+        assert_eq!(
+            unresolved_exitlag.missing_gates(),
+            vec![OfflineAutomarkerWinDivertReadinessGate::ExitLagAuthoritativeLeg]
         );
     }
 

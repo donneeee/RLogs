@@ -86,10 +86,16 @@ pub use actor_presentation::{
     resolve_actor_combat_presentation, resolve_actor_profile_identity,
 };
 pub use automarker_inline_transport::{
+    AUTOMARKER_WINDIVERT_ACTIVE_NETWORK_POLICY, AUTOMARKER_WINDIVERT_DISCOVERY_FLOW_POLICY,
+    AUTOMARKER_WINDIVERT_DISCOVERY_NETWORK_POLICY, AUTOMARKER_WINDIVERT_REFLECT_POLICY,
+    AUTOMARKER_WINDIVERT_RELEASE_TAG_COMMIT, AUTOMARKER_WINDIVERT_VERSION,
+    AUTOMARKER_WINDIVERT_X64_DLL_SHA256, AUTOMARKER_WINDIVERT_X64_DRIVER_SHA256,
     AutomarkerIpv4Endpoint, AutomarkerOwnedTcpConnection, OfflineAutomarkerBindingError,
     OfflineAutomarkerConnectionEpochBinding, OfflineAutomarkerIpv4TcpAdapter,
     OfflineAutomarkerIpv4TcpProof, OfflineAutomarkerIpv4TcpReason, OfflineAutomarkerIpv4TcpResult,
-    bind_offline_automarker_connection_epoch,
+    OfflineAutomarkerWinDivertHandlePolicy, OfflineAutomarkerWinDivertLayer,
+    OfflineAutomarkerWinDivertReadiness, OfflineAutomarkerWinDivertReadinessGate,
+    bind_offline_automarker_connection_epoch, offline_automarker_windivert_active_filter,
 };
 pub use automarker_request::{
     AUTOMARKER_REQUEST_BUILD, AUTOMARKER_REQUEST_PACK_DIGEST, AutomarkerRequestAttributes,

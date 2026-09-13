@@ -1,0 +1,197 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "automarker-windivert-backend-decision",
+  "game_build": 25247556,
+  "decision": {
+    "backend": "windivert",
+    "upstream_version": "2.2.2",
+    "upstream_tag_commit": "1789526ecfb9ff5397c94f9f54c1a3dc2fb60440",
+    "live_activation_implemented": false,
+    "live_activation_allowed": false,
+    "reason": "The dependency-neutral policy is reviewed, but an on-game-PC WFP/ExitLag ordering canary and remaining activation gates are not proven."
+  },
+  "distribution": {
+    "release_url": "https://github.com/basil00/WinDivert/releases/tag/v2.2.2",
+    "asset_name": "WinDivert-2.2.2-A.zip",
+    "asset_sha256_observed": "63cb41763bb4b20f600b6de04e991a9c2be73279e317d4d82f237b150c5f3f15",
+    "x64_dll": {
+      "path": "x64/WinDivert.dll",
+      "sha256_observed": "c1e060ee19444a259b2162f8af0f3fe8c4428a1c6f694dce20de194ac8d7d9a2",
+      "authenticode": "not-signed"
+    },
+    "x64_driver": {
+      "path": "x64/WinDivert64.sys",
+      "sha256_observed": "8da085332782708d8767bcace5327a6ec7283c17cfb85e40b03cd2323a90ddc2",
+      "authenticode": "valid",
+      "signer_thumbprint": "043589F75FCE2795E7F2CC3E526D46784D5DDAB3"
+    },
+    "required_runtime_files": [
+      "WinDivert.dll",
+      "WinDivert64.sys"
+    ],
+    "license": {
+      "upstream_choice": [
+        "LGPL-3.0-or-later",
+        "GPL-2.0"
+      ],
+      "packaging_requirements": [
+        "vendor the unmodified reviewed binaries",
+        "ship the upstream LICENSE and copyright notices",
+        "identify the exact upstream source tag and offer corresponding source as required",
+        "complete release/legal review before distribution"
+      ]
+    }
+  },
+  "platform": {
+    "supported_by_upstream": [
+      "Windows 10",
+      "Windows 11",
+      "Windows Server"
+    ],
+    "rlogs_target": "x86_64-pc-windows-msvc",
+    "administrator_required_for_first_open_and_driver_install": true,
+    "base_filtering_engine_required": true,
+    "driver_install_policy": "explicit-user-enabled setup or elevated helper; never silently enabled by Automarkers",
+    "no_install_preflight": true
+  },
+  "handles": [
+    {
+      "purpose": "network-discovery",
+      "layer": "NETWORK",
+      "priority": 1,
+      "flags": [
+        "SNIFF",
+        "RECV_ONLY",
+        "NO_INSTALL"
+      ],
+      "filter": "ip and tcp",
+      "capability": "passive SYN, ACK, tuple, loopback, impostor, and checksum-path evidence"
+    },
+    {
+      "purpose": "process-ownership",
+      "layer": "FLOW",
+      "priority": 0,
+      "flags": [
+        "SNIFF",
+        "RECV_ONLY",
+        "NO_INSTALL"
+      ],
+      "filter_template": "tcp and processId == <exact-game-pid>",
+      "capability": "PID and five-tuple flow events; misses flows established before handle open"
+    },
+    {
+      "purpose": "windivert-coexistence-inventory",
+      "layer": "REFLECT",
+      "priority": 0,
+      "flags": [
+        "SNIFF",
+        "RECV_ONLY",
+        "NO_INSTALL"
+      ],
+      "filter": "true",
+      "capability": "existing and future WinDivert handle inventory; cannot inventory arbitrary non-WinDivert WFP callouts"
+    },
+    {
+      "purpose": "single-epoch-substitution",
+      "layer": "NETWORK",
+      "priority": 0,
+      "flags": [
+        "NO_INSTALL"
+      ],
+      "filter_template": "outbound and ip and tcp and tcp.PayloadLength > 0 and ip.SrcAddr == <local-ip> and tcp.SrcPort == <local-port> and ip.DstAddr == <remote-ip> and tcp.DstPort == <remote-port>",
+      "capability": "divert one exact outbound IPv4/TCP payload leg and reinject original-or-rewritten packets"
+    }
+  ],
+  "packet_contract": {
+    "receive_api": "WinDivertRecv",
+    "send_api": "WinDivertSend",
+    "batching_initially_allowed": false,
+    "overlapped_io_initially_allowed": false,
+    "max_userspace_inflight_packets": 1,
+    "preserve_received_address": true,
+    "preserved_address_fields": [
+      "Outbound",
+      "Impostor",
+      "Network.IfIdx",
+      "Network.SubIfIdx"
+    ],
+    "checksum_policy": "recalculate IPv4 and TCP checksums after any change and update WINDIVERT_ADDRESS checksum flags; pass through an unchanged received packet/address pair without inventing checksum validity",
+    "loopback_policy": "do not exclude loopback; bind only an exact process-owned tuple and record the Loopback flag",
+    "impostor_policy": "do not exclude or clear Impostor during discovery; refuse activation until the authoritative ExitLag leg and WFP ordering are proven",
+    "fragment_policy": "do not set FRAGMENTS and reject any fragmented outbound carrier",
+    "send_length_policy": "require sent length to equal received length exactly",
+    "per_packet_failure_policy": "synchronously reinject the original packet; if original reinjection fails, stop receiving and close immediately"
+  },
+  "queue_policy": {
+    "initial_length": 4096,
+    "initial_time_ms": 2000,
+    "initial_size_bytes": 4194304,
+    "source": "WinDivert 2.2 defaults",
+    "rule": "read back every configured value; do not increase before measured load testing; any observed queue loss disables placement for the epoch"
+  },
+  "shutdown_policy": [
+    "disable new placement operations",
+    "call WinDivertShutdown(RECV), never BOTH while diverted originals remain",
+    "drain queued packets until ERROR_NO_DATA and synchronously reinject each original-or-verified rewrite",
+    "close the active handle",
+    "clear the TCP rewrite ledger and exact epoch binding",
+    "close passive discovery handles"
+  ],
+  "activation_gates": [
+    "exact-release-hashes",
+    "valid-driver-signature",
+    "driver-version-2.2",
+    "administrator",
+    "base-filtering-engine",
+    "exact-process-owned-epoch",
+    "syn-observed",
+    "exact-filter-compiled",
+    "no-same-priority-windivert-handle",
+    "checksum-path-proven",
+    "wfp-coexistence-proven",
+    "exitlag-authoritative-leg-proven-when-enabled",
+    "operator-consent-to-canary"
+  ],
+  "known_residual_risks": [
+    "NETWORK packets do not carry PID, so ownership is necessarily correlated across FLOW/IP Helper/SYN evidence and has a process-termination race",
+    "queue or internal work-queue exhaustion can drop packets",
+    "a packet already returned to user mode can be lost if the process terminates before reinjection",
+    "two block-clone-reinject WFP drivers can create mutual loops ending in ERROR_HOST_UNREACHABLE",
+    "WinDivert priority orders WinDivert handles but does not prove ordering against ExitLag or arbitrary WFP providers",
+    "server acceptance, anti-cheat response, and far-coordinate authorization are not established by wire conservation"
+  ],
+  "exitlag_decision": {
+    "supported_now": false,
+    "reason": "No official WinDivert or Microsoft contract can establish the relative callout order or plaintext leg used by ExitLag.",
+    "required_evidence": [
+      "run on the game computer, not a mirrored capture computer",
+      "observe exactly one process-owned candidate leg with ExitLag off",
+      "observe exactly one process-owned candidate leg with ExitLag on",
+      "prove which leg contains the exact BPSR request before any diverting handle is opened",
+      "run an explicit short passthrough-only canary and reject loops, duplicate observations, TTL decay, send errors, queue loss, or connection reset",
+      "persist the ExitLag setting as opt-in and bind the evidence to the connection epoch"
+    ]
+  },
+  "official_sources": [
+    {
+      "kind": "release",
+      "url": "https://github.com/basil00/WinDivert/releases/tag/v2.2.2"
+    },
+    {
+      "kind": "tagged-header",
+      "url": "https://github.com/basil00/WinDivert/blob/v2.2.2/include/windivert.h"
+    },
+    {
+      "kind": "api-documentation",
+      "url": "https://reqrypt.org/windivert-doc.html"
+    },
+    {
+      "kind": "tagged-driver-cleanup-source",
+      "url": "https://github.com/basil00/WinDivert/blob/v2.2.2/sys/windivert.c"
+    },
+    {
+      "kind": "microsoft-wfp-filter-arbitration",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/fwp/filter-arbitration"
+    }
+  ]
+}
