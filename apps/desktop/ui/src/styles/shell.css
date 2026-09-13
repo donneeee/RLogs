@@ -8097,7 +8097,8 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
 }
 
 .combat-history-graph-metric-toggle,
-.combat-history-graph-window-toggle {
+.combat-history-graph-window-toggle,
+.combat-history-timeline-viewport-controls {
   display: flex;
   flex: 0 0 auto;
   overflow: hidden;
@@ -8107,7 +8108,8 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
 }
 
 .combat-history-graph-metric-toggle button,
-.combat-history-graph-window-toggle button {
+.combat-history-graph-window-toggle button,
+.combat-history-timeline-viewport-controls button {
   min-width: 45px;
   padding: 5px 9px;
   border: 0;
@@ -8120,14 +8122,38 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
 }
 
 .combat-history-graph-metric-toggle button:first-child,
-.combat-history-graph-window-toggle button:first-child {
+.combat-history-graph-window-toggle button:first-child,
+.combat-history-timeline-viewport-controls button:first-child {
   border-left: 0;
 }
 
 .combat-history-graph-metric-toggle button:hover,
-.combat-history-graph-window-toggle button:hover {
+.combat-history-graph-window-toggle button:hover,
+.combat-history-timeline-viewport-controls button:hover:not(:disabled) {
   color: var(--text);
   background: rgb(255 255 255 / 5%);
+}
+
+.combat-history-timeline-viewport-controls button:disabled {
+  cursor: default;
+  opacity: .4;
+}
+
+.combat-history-timeline-viewport-status {
+  display: inline-flex;
+  min-width: 112px;
+  align-items: center;
+  padding: 0 8px;
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.combat-history-timeline-viewport-body {
+  display: grid;
+  gap: 10px;
 }
 
 .combat-history-graph-metric-toggle button[data-selected="true"],

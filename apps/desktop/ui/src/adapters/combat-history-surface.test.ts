@@ -16,6 +16,7 @@ import {
   catalogParticipantLabel,
   catalogParticipantTooltip,
   comparePartySortValues,
+  clampHistoryTimelineViewport,
   completeHistoryStatusSpans,
   combatPresentationDisplayName,
   compactSpecializationName,
@@ -36,10 +37,32 @@ import {
   loadoutTierForPresentation,
   participantRows,
   partyBarPercentage,
+  panHistoryTimelineViewport,
   sortDisplayedAbilities,
   supplementalDifficultyLabel,
   terminalPresentationLabel,
+  zoomHistoryTimelineViewport,
 } from "./combat-history-surface";
+
+describe("Combat History timeline viewport", () => {
+  it("clamps, zooms around an elapsed-time anchor, and pans on published boundaries", () => {
+    expect(clampHistoryTimelineViewport(2_200_000, 2, 2, "start"))
+      .toEqual({ startBoundary: 1, endBoundary: 2 });
+    expect(clampHistoryTimelineViewport(2_200_000, 2, 2, "end"))
+      .toEqual({ startBoundary: 2, endBoundary: 3 });
+
+    const zoomed = zoomHistoryTimelineViewport(
+      10_000_000, { startBoundary: 0, endBoundary: 10 }, 2, 8_000_000,
+    );
+    expect(zoomed).toEqual({ startBoundary: 4, endBoundary: 9 });
+    expect(zoomHistoryTimelineViewport(10_000_000, zoomed, 0.1, 8_000_000))
+      .toEqual({ startBoundary: 0, endBoundary: 10 });
+    expect(panHistoryTimelineViewport(10_000_000, { startBoundary: 2, endBoundary: 6 }, 3))
+      .toEqual({ startBoundary: 5, endBoundary: 9 });
+    expect(panHistoryTimelineViewport(10_000_000, { startBoundary: 2, endBoundary: 6 }, -20))
+      .toEqual({ startBoundary: 0, endBoundary: 4 });
+  });
+});
 
 describe("Combat History canonical rDPS graph", () => {
   const actor = {

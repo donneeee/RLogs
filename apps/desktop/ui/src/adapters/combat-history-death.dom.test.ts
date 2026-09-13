@@ -505,6 +505,86 @@ describe("Combat History death presentation", () => {
     rendered.remove();
   });
 
+  it("shares one zoomed viewport across the curve, lanes, clustering, and playhead", async () => {
+    const ui = await loadUiLocalizer("en-US");
+    const actor = {
+      actor_id: "alice", display_name: "Alice", actor_kind: "player",
+      death_events: [{ at_micros: 2_000_000, cause: null }], death_seconds: [],
+      skill_events: [
+        { at_micros: 4_000_000, ability_id: "100" },
+        { at_micros: 4_010_000, ability_id: "200" },
+      ],
+      status_events: [], abilities: [
+        { ability_id: "100", presentation_name: "First" },
+        { ability_id: "200", presentation_name: "Second" },
+      ],
+      series: Array.from({ length: 6 }, (_, second) => ({
+        second, damage: (second + 1) * 100, effective_healing: 0, damage_taken: 0,
+      })), targets: [],
+    } as unknown as HistoryActorSummary;
+    const rendered = renderMetricGraph(
+      [actor],
+      { metric: "damage", title: "Damage", rateLabel: "DPS", description: "Damage rate" },
+      5_000_000, new Set(), new Map([[actor.actor_id, "#35c2ff"]]),
+      null, () => undefined, ui,
+    );
+    document.body.append(rendered);
+
+    expect(rendered.querySelectorAll(".combat-history-skill-event")).toHaveLength(1);
+    expect(rendered.querySelector(".combat-history-skill-event")?.getAttribute("data-event-count")).toBe("2");
+    expect(rendered.querySelectorAll(".combat-history-event-lanes .combat-history-death-marker"))
+      .toHaveLength(1);
+    expect(rendered.querySelector("[data-timeline-play]")).toBeNull();
+
+    let chart = rendered.querySelector<SVGSVGElement>(".combat-history-chart")!;
+    vi.spyOn(chart, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 0, left: 0, top: 0, right: 1_120, bottom: 330,
+      width: 1_120, height: 330, toJSON: () => ({}),
+    });
+    const wheel = new WheelEvent("wheel", { clientX: 587, deltaY: -100, bubbles: true, cancelable: true });
+    chart.dispatchEvent(wheel);
+    expect(wheel.defaultPrevented).toBe(true);
+
+    const zoomIn = rendered.querySelector<HTMLButtonElement>("[data-history-timeline-zoom-in]")!;
+    while (!zoomIn.disabled) zoomIn.click();
+    expect(rendered.querySelector("[data-history-timeline-viewport-status]")?.textContent)
+      .toBe("0:04.000–0:05.000");
+    expect(rendered.querySelectorAll(".combat-history-skill-event")).toHaveLength(2);
+    expect(rendered.querySelectorAll(".combat-history-event-lanes .combat-history-death-marker"))
+      .toHaveLength(0);
+
+    chart = rendered.querySelector<SVGSVGElement>(".combat-history-chart")!;
+    const lanes = rendered.querySelector<SVGSVGElement>(".combat-history-event-lanes")!;
+    expect(chart.dataset.viewportStartBoundary).toBe("4");
+    expect(chart.dataset.viewportEndBoundary).toBe("5");
+    expect(lanes.dataset.viewportStartBoundary).toBe(chart.dataset.viewportStartBoundary);
+    expect(lanes.dataset.viewportEndBoundary).toBe(chart.dataset.viewportEndBoundary);
+    const points = chart.querySelector(".combat-history-character-line")?.getAttribute("points")
+      ?.trim().split(" ") ?? [];
+    expect(points).toHaveLength(2);
+    expect(points[0]?.split(",")[0]).toBe("78.00");
+    expect(points[1]?.split(",")[0]).toBe("1096.00");
+    chart.focus();
+    chart.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
+    expect(rendered.querySelector(".combat-history-event-lanes-playhead")?.getAttribute("x1"))
+      .toBe("1096.00");
+
+    rendered.querySelector<HTMLButtonElement>("[data-history-timeline-pan-earlier]")!.click();
+    rendered.querySelector<HTMLButtonElement>("[data-history-timeline-pan-earlier]")!.click();
+    expect(rendered.querySelector("[data-history-timeline-viewport-status]")?.textContent)
+      .toBe("0:02.000–0:03.000");
+    expect(rendered.querySelectorAll(".combat-history-skill-event")).toHaveLength(0);
+    expect(rendered.querySelectorAll(".combat-history-event-lanes .combat-history-death-marker"))
+      .toHaveLength(1);
+
+    rendered.querySelector<HTMLButtonElement>("[data-history-timeline-viewport-reset]")!.click();
+    expect(rendered.querySelector<HTMLButtonElement>("[data-history-timeline-viewport-reset]")!.disabled)
+      .toBe(true);
+    expect(rendered.querySelector("[data-history-timeline-viewport-status]")?.textContent)
+      .toBe("Full timeline · 0:05.000");
+    rendered.remove();
+  });
+
   it("keeps a neutral glyph for mixed-ability clusters instead of showing a misleading icon", async () => {
     const ui = await loadUiLocalizer("en-US");
     const actor = {

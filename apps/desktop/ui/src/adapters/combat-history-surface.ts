@@ -3425,18 +3425,38 @@ export function renderMetricGraph(
       color: actorColors.get(actor.actor_id) ?? graphColor(index),
     }]);
   const hasHostileCasts = showHostileEvents && (historyView?.hostile_casts?.length ?? 0) > 0;
-  const inspectionState = createGraphInspectionState();
-  const eventLanes = recordedEventLanes(
-    visibleEventParticipants,
-    elapsedMicros,
-    localizer,
-    historyView,
-    showHostileEvents,
-    inspectionState,
-  );
   const scaleMaximum = graphScaleMaximum(
     visibleSeries.map((entry) => entry.values),
   );
+  let viewport = clampHistoryTimelineViewport(elapsedMicros, 0, historyGraphMaximumBoundary(elapsedMicros));
+  const viewportBody = element("div", "combat-history-timeline-viewport-body");
+  const viewportControls = element("div", "combat-history-timeline-viewport-controls");
+  viewportControls.setAttribute("role", "group");
+  viewportControls.setAttribute("aria-label", "Timeline viewport");
+  const panEarlier = button("←", "");
+  panEarlier.dataset.historyTimelinePanEarlier = "";
+  panEarlier.setAttribute("aria-label", "Pan timeline earlier");
+  panEarlier.title = "Pan earlier";
+  const zoomOut = button("−", "");
+  zoomOut.dataset.historyTimelineZoomOut = "";
+  zoomOut.setAttribute("aria-label", "Zoom timeline out");
+  zoomOut.title = "Zoom out";
+  const zoomIn = button("+", "");
+  zoomIn.dataset.historyTimelineZoomIn = "";
+  zoomIn.setAttribute("aria-label", "Zoom timeline in");
+  zoomIn.title = "Zoom in";
+  const panLater = button("→", "");
+  panLater.dataset.historyTimelinePanLater = "";
+  panLater.setAttribute("aria-label", "Pan timeline later");
+  panLater.title = "Pan later";
+  const resetViewport = button("Reset", "");
+  resetViewport.dataset.historyTimelineViewportReset = "";
+  resetViewport.setAttribute("aria-label", "Reset timeline viewport");
+  const viewportStatus = document.createElement("output");
+  viewportStatus.className = "combat-history-timeline-viewport-status";
+  viewportStatus.dataset.historyTimelineViewportStatus = "";
+  viewportStatus.setAttribute("aria-live", "polite");
+  viewportControls.append(panEarlier, zoomOut, zoomIn, panLater, resetViewport, viewportStatus);
   card.append(
     element(
       "div",
@@ -3447,10 +3467,15 @@ export function renderMetricGraph(
         "combat-history-graph-controls",
         renderGraphMetricToggle(definition.metric, selectMetric, localizer),
         renderGraphWindowToggle(windowSeconds, selectWindow, localizer),
+        viewportControls,
       ),
     ),
   );
-  if (allSeries.length === 0 && !hasHostileCasts && eventLanes === null) {
+  const hasPlayerEvents = visibleEventParticipants.some(({ actor }) => graphActorKind(actor) === "player" && (
+    (actor.skill_events?.length ?? 0) > 0 || (actor.death_events?.length ?? 0) > 0 ||
+    (actor.status_events?.length ?? 0) > 0 || actor.death_seconds.length > 0));
+  if (allSeries.length === 0 && !hasHostileCasts && !hasPlayerEvents) {
+    viewportControls.remove();
     card.append(
       element(
         "p",
@@ -3469,31 +3494,70 @@ export function renderMetricGraph(
       ),
     );
   }
-  if (allSeries.length > 0 || hasHostileCasts) {
-    card.append(
-      partyLineChart(
-        visibleSeries,
-        definition,
-        durationSeconds,
-        elapsedMicros,
-        scaleMaximum,
-        targetActorId === null,
-        localizer,
-        historyView,
-        targetActorId,
-        inspectionState,
-      ),
-    );
-  } else {
-    card.append(
-      element(
-        "p",
-        "combat-history-graph-note",
+  const refreshViewportControls = () => {
+    const maximum = historyGraphMaximumBoundary(elapsedMicros);
+    const full = viewport.startBoundary === 0 && viewport.endBoundary === maximum;
+    const span = viewport.endBoundary - viewport.startBoundary;
+    panEarlier.disabled = viewport.startBoundary === 0;
+    panLater.disabled = viewport.endBoundary === maximum;
+    zoomIn.disabled = span <= 1;
+    zoomOut.disabled = full;
+    resetViewport.disabled = full;
+    viewportStatus.value = full
+      ? `Full timeline · ${formatExactGraphTime(elapsedMicros)}`
+      : `${formatExactGraphTime(historyGraphBoundaryElapsedMicros(elapsedMicros, viewport.startBoundary))}–${formatExactGraphTime(historyGraphBoundaryElapsedMicros(elapsedMicros, viewport.endBoundary))}`;
+  };
+  const renderViewport = () => {
+    const inspectionState = createGraphInspectionState();
+    const commitViewport = (next: HistoryTimelineViewport): boolean => {
+      const applied = clampHistoryTimelineViewport(elapsedMicros, next.startBoundary, next.endBoundary);
+      if (applied.startBoundary === viewport.startBoundary && applied.endBoundary === viewport.endBoundary) return false;
+      viewport = applied;
+      renderViewport();
+      return true;
+    };
+    const children: HTMLElement[] = [];
+    if (allSeries.length > 0 || hasHostileCasts) {
+      children.push(partyLineChart(
+        visibleSeries, definition, durationSeconds, elapsedMicros, scaleMaximum,
+        targetActorId === null, localizer, historyView, targetActorId, inspectionState,
+        viewport, commitViewport,
+      ));
+    } else {
+      children.push(element(
+        "p", "combat-history-graph-note",
         localizer.t("ui.combat_history.graph.no_values", { rate: definition.rateLabel }),
-      ),
+      ));
+    }
+    const eventLanes = recordedEventLanes(
+      visibleEventParticipants, elapsedMicros, localizer, historyView,
+      showHostileEvents, inspectionState, viewport, commitViewport,
     );
-  }
-  if (eventLanes) card.append(eventLanes);
+    if (eventLanes) children.push(eventLanes);
+    viewportBody.replaceChildren(...children);
+    refreshViewportControls();
+  };
+  const zoomBy = (factor: number) => {
+    const start = historyGraphBoundaryElapsedMicros(elapsedMicros, viewport.startBoundary);
+    const end = historyGraphBoundaryElapsedMicros(elapsedMicros, viewport.endBoundary);
+    viewport = zoomHistoryTimelineViewport(elapsedMicros, viewport, factor, (start + end) / 2);
+    renderViewport();
+  };
+  const panBy = (direction: -1 | 1) => {
+    const span = viewport.endBoundary - viewport.startBoundary;
+    viewport = panHistoryTimelineViewport(elapsedMicros, viewport, direction * Math.max(1, Math.round(span / 2)));
+    renderViewport();
+  };
+  zoomIn.addEventListener("click", () => zoomBy(1.25));
+  zoomOut.addEventListener("click", () => zoomBy(1 / 1.25));
+  panEarlier.addEventListener("click", () => panBy(-1));
+  panLater.addEventListener("click", () => panBy(1));
+  resetViewport.addEventListener("click", () => {
+    viewport = clampHistoryTimelineViewport(elapsedMicros, 0, historyGraphMaximumBoundary(elapsedMicros));
+    renderViewport();
+  });
+  card.append(viewportBody);
+  renderViewport();
   const stats = element("div", "combat-history-graph-stats");
   for (const entry of visibleSeries) {
     const item = element("div", "");
@@ -3527,6 +3591,8 @@ function recordedEventLanes(
   historyView?: CombatHistoryView,
   showHostileEvents = true,
   inspectionState?: GraphInspectionState,
+  viewport: HistoryTimelineViewport = clampHistoryTimelineViewport(durationMicros, 0, historyGraphMaximumBoundary(durationMicros)),
+  commitViewport?: (viewport: HistoryTimelineViewport) => boolean,
 ): HTMLElement | null {
   const playerLanes = series.filter(({ actor }) => graphActorKind(actor) === "player" && (
     (actor.skill_events?.length ?? 0) > 0 || (actor.death_events?.length ?? 0) > 0 ||
@@ -3539,6 +3605,8 @@ function recordedEventLanes(
   const plotWidth = width - left - right;
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.classList.add("combat-history-event-lanes");
+  svg.dataset.viewportStartBoundary = String(viewport.startBoundary);
+  svg.dataset.viewportEndBoundary = String(viewport.endBoundary);
   svg.setAttribute("viewBox", `0 0 ${width} ${(hostileLanes.length + playerLanes.length) * laneHeight}`);
   svg.setAttribute("role", "group");
   svg.setAttribute("aria-label", localizer.t("ui.combat_history.graph.recorded_events_aria"));
@@ -3548,9 +3616,12 @@ function recordedEventLanes(
     actor: string;
     eventLabels: string[];
   }> = [];
+  const viewportStartMicros = historyGraphBoundaryElapsedMicros(durationMicros, viewport.startBoundary);
+  const viewportEndMicros = historyGraphBoundaryElapsedMicros(durationMicros, viewport.endBoundary);
+  const visibleAt = (micros: number) => micros >= viewportStartMicros && micros <= viewportEndMicros;
   const xFor = (micros: number) => left +
-    (Math.min(Math.max(0, durationMicros), Math.max(0, micros)) /
-      Math.max(1, durationMicros)) * plotWidth;
+    ((Math.min(viewportEndMicros, Math.max(viewportStartMicros, micros)) - viewportStartMicros) /
+      Math.max(1, viewportEndMicros - viewportStartMicros)) * plotWidth;
   hostileLanes.forEach(({ sourceActorId, casts }, laneIndex) => {
     const y = laneIndex * laneHeight + laneHeight / 2;
     const sourceActor = historyView?.actors.find((actor) => actor.actor_id === sourceActorId);
@@ -3565,7 +3636,7 @@ function recordedEventLanes(
       svgNode("circle", "combat-history-event-lane-swatch", { cx: 10, cy: y, r: 3 }),
       svgText(18, y + 4, compactEventLaneLabel(source), "combat-history-event-lane-label", "start"),
     );
-    for (const cluster of clusterHistoryHostileCasts(casts, xFor)) {
+    for (const cluster of clusterHistoryHostileCasts(casts.filter((cast) => visibleAt(cast.at_micros)), xFor)) {
       const first = cluster.events[0]!;
       const presentations = cluster.events.map((cast) =>
         hostileActionPresentation(sourceActor, cast.action_id, localizer));
@@ -3636,7 +3707,8 @@ function recordedEventLanes(
       svgNode("circle", "combat-history-event-lane-swatch", { cx: 10, cy: y, r: 3 }),
       svgText(18, y + 4, compactEventLaneLabel(actorLabel(actor)), "combat-history-event-lane-label", "start"),
     );
-    for (const span of completeHistoryStatusSpans(actor.status_events ?? [])) {
+    for (const span of completeHistoryStatusSpans(actor.status_events ?? []).filter((span) =>
+      span.applied.at_micros <= viewportEndMicros && span.terminal.at_micros >= viewportStartMicros)) {
       const presentation = historyView?.status_effect_presentations?.find(
         (candidate) => candidate.effect_id === span.applied.effect_id &&
           Boolean(candidate.presentation_name.trim()) &&
@@ -3669,7 +3741,7 @@ function recordedEventLanes(
       marker.append(svgTitle(summary));
       row.append(marker);
     }
-    for (const cluster of clusterHistorySkillEvents(actor.skill_events ?? [], xFor)) {
+    for (const cluster of clusterHistorySkillEvents((actor.skill_events ?? []).filter((event) => visibleAt(event.at_micros)), xFor)) {
       const first = cluster.events[0]!;
       const abilityNames = [...new Set(cluster.events.map((event) => {
         const ability = actor.abilities.find((candidate) => candidate.ability_id === event.ability_id);
@@ -3741,6 +3813,7 @@ function recordedEventLanes(
         precision: "one_second_bucket" as const,
       }));
     for (const { death, precision } of deaths) {
+      if (!visibleAt(death.at_micros)) continue;
       const marker = historyDeathMarker(
         xFor(death.at_micros), y,
         historyDeathSummary(actorLabel(actor), death, localizer, precision, durationMicros),
@@ -3759,7 +3832,7 @@ function recordedEventLanes(
   });
   playhead.setAttribute("hidden", "");
   inspectionState?.subscribe((boundary) => {
-    if (boundary === null) {
+    if (boundary === null || boundary < viewport.startBoundary || boundary > viewport.endBoundary) {
       playhead.setAttribute("hidden", "");
       delete playhead.dataset.inspectedBoundary;
       return;
@@ -3771,6 +3844,7 @@ function recordedEventLanes(
     playhead.setAttribute("x2", x.toFixed(2));
   });
   svg.append(playhead);
+  wireHistoryTimelineViewportGestures(svg, durationMicros, viewport, left, plotWidth, commitViewport);
   const frame = element(
     "section",
     "combat-history-event-lanes-frame",
@@ -4165,6 +4239,84 @@ function historyGraphMaximumBoundary(durationMicros: number): number {
   return Math.max(1, Math.ceil(Math.max(0, durationMicros) / 1_000_000));
 }
 
+export interface HistoryTimelineViewport {
+  startBoundary: number;
+  endBoundary: number;
+}
+
+export function clampHistoryTimelineViewport(
+  durationMicros: number,
+  startBoundary: number,
+  endBoundary: number,
+  changed: "start" | "end" = "end",
+): HistoryTimelineViewport {
+  const maximum = historyGraphMaximumBoundary(durationMicros);
+  let start = Math.max(0, Math.min(maximum - 1,
+    Math.round(Number.isFinite(startBoundary) ? startBoundary : 0)));
+  let end = Math.max(1, Math.min(maximum,
+    Math.round(Number.isFinite(endBoundary) ? endBoundary : maximum)));
+  if (start >= end) {
+    if (changed === "start") start = Math.max(0, end - 1);
+    else end = Math.min(maximum, start + 1);
+  }
+  return { startBoundary: start, endBoundary: end };
+}
+
+function historyTimelineViewportAtStart(
+  durationMicros: number,
+  viewport: HistoryTimelineViewport,
+  desiredStartBoundary: number,
+): HistoryTimelineViewport {
+  const current = clampHistoryTimelineViewport(
+    durationMicros, viewport.startBoundary, viewport.endBoundary,
+  );
+  const span = current.endBoundary - current.startBoundary;
+  const maximumStart = historyGraphMaximumBoundary(durationMicros) - span;
+  const startBoundary = Math.max(0, Math.min(maximumStart,
+    Math.round(Number.isFinite(desiredStartBoundary) ? desiredStartBoundary : current.startBoundary)));
+  return { startBoundary, endBoundary: startBoundary + span };
+}
+
+export function zoomHistoryTimelineViewport(
+  durationMicros: number,
+  viewport: HistoryTimelineViewport,
+  factor: number,
+  anchorElapsedMicros: number,
+): HistoryTimelineViewport {
+  const current = clampHistoryTimelineViewport(
+    durationMicros, viewport.startBoundary, viewport.endBoundary,
+  );
+  if (!Number.isFinite(factor) || factor <= 0) return current;
+  const maximum = historyGraphMaximumBoundary(durationMicros);
+  const currentSpan = current.endBoundary - current.startBoundary;
+  const nextSpan = factor > 1
+    ? Math.max(1, Math.floor(currentSpan / factor))
+    : Math.min(maximum, Math.ceil(currentSpan / factor));
+  if (nextSpan === currentSpan) return current;
+  const startElapsed = historyGraphBoundaryElapsedMicros(durationMicros, current.startBoundary);
+  const endElapsed = historyGraphBoundaryElapsedMicros(durationMicros, current.endBoundary);
+  const anchor = Math.max(startElapsed, Math.min(endElapsed,
+    Number.isFinite(anchorElapsedMicros) ? anchorElapsedMicros : (startElapsed + endElapsed) / 2));
+  const ratio = (anchor - startElapsed) / Math.max(1, endElapsed - startElapsed);
+  const anchorBoundary = historyGraphClosestBoundary(durationMicros, anchor);
+  return historyTimelineViewportAtStart(
+    durationMicros, { startBoundary: 0, endBoundary: nextSpan },
+    Math.round(anchorBoundary - ratio * nextSpan),
+  );
+}
+
+export function panHistoryTimelineViewport(
+  durationMicros: number,
+  viewport: HistoryTimelineViewport,
+  deltaBoundaries: number,
+): HistoryTimelineViewport {
+  const current = clampHistoryTimelineViewport(
+    durationMicros, viewport.startBoundary, viewport.endBoundary,
+  );
+  const delta = Number.isFinite(deltaBoundaries) ? Math.round(deltaBoundaries) : 0;
+  return historyTimelineViewportAtStart(durationMicros, current, current.startBoundary + delta);
+}
+
 function historyGraphBoundaryElapsedMicros(durationMicros: number, boundary: number): number {
   const maximumBoundary = historyGraphMaximumBoundary(durationMicros);
   const bounded = Math.max(0, Math.min(maximumBoundary, Math.round(boundary)));
@@ -4319,6 +4471,8 @@ function partyLineChart(
   historyView?: CombatHistoryView,
   targetActorId: string | null = null,
   inspectionState: GraphInspectionState = createGraphInspectionState(),
+  viewport: HistoryTimelineViewport = clampHistoryTimelineViewport(durationMicros, 0, historyGraphMaximumBoundary(durationMicros)),
+  commitViewport?: (viewport: HistoryTimelineViewport) => boolean,
 ): HTMLElement {
   const width = 1_120;
   const height = 330;
@@ -4328,11 +4482,17 @@ function partyLineChart(
   const bottom = 48;
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
-  const scale = niceScale(scaleMaximum, 4);
-  const exactDurationSeconds = Math.max(0.001, durationMicros / 1_000_000);
-  const timeTicks = graphTimeTicks(exactDurationSeconds);
+  const viewportStartMicros = historyGraphBoundaryElapsedMicros(durationMicros, viewport.startBoundary);
+  const viewportEndMicros = historyGraphBoundaryElapsedMicros(durationMicros, viewport.endBoundary);
+  const viewportScaleMaximum = graphScaleMaximum(series.map((entry) =>
+    entry.values.slice(viewport.startBoundary, viewport.endBoundary + 1)));
+  const scale = niceScale(Math.min(scaleMaximum, viewportScaleMaximum), 4);
+  const timeTicks = Array.from({ length: 5 }, (_, index) =>
+    (viewportStartMicros + (viewportEndMicros - viewportStartMicros) * index / 4) / 1_000_000);
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.classList.add("combat-history-chart");
+  svg.dataset.viewportStartBoundary = String(viewport.startBoundary);
+  svg.dataset.viewportEndBoundary = String(viewport.endBoundary);
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   svg.setAttribute("role", "img");
   svg.setAttribute(
@@ -4346,7 +4506,8 @@ function partyLineChart(
   svg.tabIndex = 0;
 
   const xForElapsed = (second: number) =>
-    left + (Math.min(exactDurationSeconds, Math.max(0, second)) / exactDurationSeconds) * plotWidth;
+    left + ((Math.min(viewportEndMicros, Math.max(viewportStartMicros, second * 1_000_000)) - viewportStartMicros) /
+      Math.max(1, viewportEndMicros - viewportStartMicros)) * plotWidth;
   const xForBoundary = (boundary: number) => xForElapsed(
     historyGraphBoundaryElapsedMicros(durationMicros, boundary) / 1_000_000,
   );
@@ -4386,7 +4547,9 @@ function partyLineChart(
 
   for (const entry of series) {
     const points = entry.values
-      .map((value, second) => `${xForBoundary(second).toFixed(2)},${yFor(value).toFixed(2)}`)
+      .map((value, second) => ({ value, second }))
+      .filter(({ second }) => second >= viewport.startBoundary && second <= viewport.endBoundary)
+      .map(({ value, second }) => `${xForBoundary(second).toFixed(2)},${yFor(value).toFixed(2)}`)
       .join(" ");
     const polyline = svgNode("polyline", "combat-history-character-line", {
       points,
@@ -4418,6 +4581,7 @@ function partyLineChart(
       }));
     for (const { death, precision } of deaths) {
       const second = Math.min(durationSeconds, death.at_micros / 1_000_000);
+      if (death.at_micros < viewportStartMicros || death.at_micros > viewportEndMicros) continue;
       const value = entry.values[Math.round(second)] ?? 0;
       svg.append(historyDeathMarker(
         xForElapsed(second),
@@ -4533,22 +4697,26 @@ function partyLineChart(
     const bounds = svg.getBoundingClientRect();
     if (bounds.width <= 0) return;
     const viewX = ((event.clientX - bounds.left) / bounds.width) * width;
-    const elapsedMicros = ((viewX - left) / plotWidth) * durationMicros;
+    const elapsedMicros = viewportStartMicros + ((viewX - left) / plotWidth) *
+      (viewportEndMicros - viewportStartMicros);
     inspectionState.setBoundary(historyGraphClosestBoundary(durationMicros, elapsedMicros));
   });
   svg.addEventListener("pointerleave", () => inspectionState.setBoundary(null));
-  svg.addEventListener("focus", () => inspectionState.setBoundary(inspectionState.boundary ?? 0));
+  svg.addEventListener("focus", () => inspectionState.setBoundary(
+    inspectionState.boundary ?? viewport.startBoundary,
+  ));
   svg.addEventListener("blur", () => inspectionState.setBoundary(null));
   svg.addEventListener("keydown", (event) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
     const next = event.key === "Home"
-      ? 0
+      ? viewport.startBoundary
       : event.key === "End"
-        ? durationSeconds
-        : (inspectionState.boundary ?? 0) + (event.key === "ArrowLeft" ? -1 : 1);
-    inspectionState.setBoundary(next);
+        ? viewport.endBoundary
+        : (inspectionState.boundary ?? viewport.startBoundary) + (event.key === "ArrowLeft" ? -1 : 1);
+    inspectionState.setBoundary(Math.max(viewport.startBoundary, Math.min(viewport.endBoundary, next)));
   });
+  wireHistoryTimelineViewportGestures(svg, durationMicros, viewport, left, plotWidth, commitViewport);
   const deathSummary = element("div", "combat-history-death-summary");
   deathSummary.id = `combat-history-death-summary-${historyDeathSummarySequence++}`;
   deathSummary.setAttribute("role", "tooltip");
@@ -4559,6 +4727,37 @@ function partyLineChart(
   );
   frame.append(svg, readout, deathSummary);
   return frame;
+}
+
+function wireHistoryTimelineViewportGestures(
+  svg: SVGSVGElement,
+  durationMicros: number,
+  viewport: HistoryTimelineViewport,
+  plotLeft: number,
+  plotWidth: number,
+  commitViewport?: (viewport: HistoryTimelineViewport) => boolean,
+): void {
+  if (!commitViewport) return;
+  svg.addEventListener("wheel", (event) => {
+    if (event.deltaY === 0) return;
+    const bounds = svg.getBoundingClientRect();
+    if (bounds.width <= 0) return;
+    const viewBoxWidth = svg.viewBox.baseVal.width || 1_120;
+    const viewX = ((event.clientX - bounds.left) / bounds.width) * viewBoxWidth;
+    if (viewX < plotLeft || viewX > plotLeft + plotWidth) return;
+    const fraction = (viewX - plotLeft) / plotWidth;
+    const start = historyGraphBoundaryElapsedMicros(durationMicros, viewport.startBoundary);
+    const end = historyGraphBoundaryElapsedMicros(durationMicros, viewport.endBoundary);
+    const next = zoomHistoryTimelineViewport(
+      durationMicros, viewport, event.deltaY < 0 ? 1.25 : 1 / 1.25,
+      start + fraction * (end - start),
+    );
+    if (commitViewport(next)) event.preventDefault();
+  }, { passive: false });
+  svg.addEventListener("dblclick", (event) => {
+    const full = clampHistoryTimelineViewport(durationMicros, 0, historyGraphMaximumBoundary(durationMicros));
+    if (commitViewport(full)) event.preventDefault();
+  });
 }
 
 export function graphScaleMaximum(
@@ -4725,16 +4924,6 @@ function formatExactGraphTime(micros: number): string {
   const seconds = Math.floor(totalMillis / 1_000) % 60;
   const millis = totalMillis % 1_000;
   return `${minutes}:${seconds.toString().padStart(2, "0")}.${millis.toString().padStart(3, "0")}`;
-}
-
-function graphTimeTicks(durationSeconds: number): number[] {
-  const choices = [1, 2, 5, 10, 15, 30, 60, 120, 180, 300, 600, 900];
-  const desired = durationSeconds / 6;
-  const step = choices.find((candidate) => candidate >= desired) ?? choices.at(-1)!;
-  const ticks = [0];
-  for (let second = step; second < durationSeconds; second += step) ticks.push(second);
-  if (ticks.at(-1) !== durationSeconds) ticks.push(durationSeconds);
-  return ticks;
 }
 
 function niceScale(maximum: number, desiredSteps: number): { maximum: number; ticks: number[] } {
