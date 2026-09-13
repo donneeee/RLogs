@@ -128,6 +128,10 @@ mod windows {
     const IL2CPP_CLASS_ELEMENT_SIZE: usize = 0x100;
     const IL2CPP_CLASS_RANK: usize = 0x12E;
     const GENERIC_CONTEXT_INFLATED_CLASS: usize = 0x10;
+    // Exact build 25247556 ZDictionary<TKey, TValue>.Rent RGCTX slot used for
+    // EqualityComparer<TKey>.get_Default. The dictionary FindEntry path always
+    // dereferences comparer_ and never treats null as the default comparer.
+    const ZDICTIONARY_DEFAULT_COMPARER_METHOD: usize = 0x30;
     const STATIC_SINGLETON_INSTANCE: usize = 0;
     const ENTITY_MGR_PLAYER_ENT: usize = 0x18;
     const PLAYER_ENT_PURE_COMPONENTS: usize = 0x20;
@@ -497,6 +501,7 @@ mod windows {
         control_dictionary_count: usize,
         control_dictionary_free_count: usize,
         control_dictionary_version: i32,
+        control_dictionary_comparer: usize,
         control_dictionary_fingerprint: [u8; 32],
         resolved_control_data: usize,
         resolved_control_skill_id: i32,
@@ -596,6 +601,7 @@ mod windows {
         count: usize,
         free_count: usize,
         version: i32,
+        comparer: usize,
         fingerprint: [u8; 32],
     }
 
@@ -3569,6 +3575,7 @@ mod windows {
             control_dictionary_count: control_dictionary.count,
             control_dictionary_free_count: control_dictionary.free_count,
             control_dictionary_version: control_dictionary.version,
+            control_dictionary_comparer: control_dictionary.comparer,
             control_dictionary_fingerprint: control_dictionary.fingerprint,
             resolved_control_data,
             resolved_control_skill_id,
@@ -3962,16 +3969,15 @@ mod windows {
         {
             return Err(ReviewedDictionaryError::Shape);
         }
-        if usize_at(
+        let comparer = pointer_at(
             memory,
             checked_add(object, ZDICTIONARY_COMPARER)
                 .map_err(|_| ReviewedDictionaryError::Header)?,
+            true,
         )
-        .map_err(|_| ReviewedDictionaryError::Header)?
-            != 0
-        {
-            return Err(ReviewedDictionaryError::Class);
-        }
+        .map_err(|_| ReviewedDictionaryError::Class)?;
+        validate_default_int_comparer(memory, object, comparer)
+            .map_err(|_| ReviewedDictionaryError::Class)?;
         let buckets = pointer_at(
             memory,
             checked_add(object, ZDICTIONARY_BUCKETS)
@@ -4119,10 +4125,11 @@ mod windows {
                 .map_err(|_| ReviewedDictionaryError::Header)?,
         )
         .map_err(|_| ReviewedDictionaryError::Header)?;
-        let second_comparer = usize_at(
+        let second_comparer = pointer_at(
             memory,
             checked_add(object, ZDICTIONARY_COMPARER)
                 .map_err(|_| ReviewedDictionaryError::Header)?,
+            true,
         )
         .map_err(|_| ReviewedDictionaryError::Header)?;
         let second_buckets_capacity = usize_at(
@@ -4154,7 +4161,7 @@ mod windows {
             count,
             free_count,
             version,
-            0,
+            comparer,
             buckets_capacity,
             entries_length,
         ) {
@@ -4169,8 +4176,66 @@ mod windows {
             count,
             free_count,
             version,
+            comparer,
             fingerprint: fingerprint.finalize().into(),
         })
+    }
+
+    fn validate_default_int_comparer(
+        memory: &impl Memory,
+        dictionary: usize,
+        comparer: usize,
+    ) -> Result<(), AcquireError> {
+        let dictionary_class = pointer_at(memory, dictionary, false)?;
+        let dictionary_rgctx = pointer_at(
+            memory,
+            checked_add(dictionary_class, IL2CPP_CLASS_GENERIC_CONTEXT)?,
+            true,
+        )?;
+        let get_default = pointer_at(
+            memory,
+            checked_add(dictionary_rgctx, ZDICTIONARY_DEFAULT_COMPARER_METHOD)?,
+            true,
+        )?;
+        let method_name = address_at(memory, checked_add(get_default, METHOD_INFO_NAME)?)?;
+        if c_string(memory, method_name)? != "get_Default" {
+            return Err(AcquireError::Identity);
+        }
+        let equality_comparer_class =
+            pointer_at(memory, checked_add(get_default, METHOD_INFO_KLASS)?, false)?;
+        validate_class(
+            memory,
+            equality_comparer_class,
+            "EqualityComparer`1",
+            "System.Collections.Generic",
+        )?;
+        let equality_comparer_rgctx = pointer_at(
+            memory,
+            checked_add(equality_comparer_class, IL2CPP_CLASS_GENERIC_CONTEXT)?,
+            true,
+        )?;
+        let inflated_equality_comparer_class = pointer_at(
+            memory,
+            checked_add(equality_comparer_rgctx, GENERIC_CONTEXT_INFLATED_CLASS)?,
+            false,
+        )?;
+        if inflated_equality_comparer_class != equality_comparer_class {
+            return Err(AcquireError::Identity);
+        }
+        let static_fields = pointer_at(
+            memory,
+            checked_add(equality_comparer_class, IL2CPP_CLASS_STATIC_FIELDS)?,
+            true,
+        )?;
+        if pointer_at(memory, static_fields, true)? != comparer {
+            return Err(AcquireError::Identity);
+        }
+        validate_object(
+            memory,
+            comparer,
+            "GenericEqualityComparer`1",
+            "System.Collections.Generic",
+        )
     }
 
     fn object_dictionary_value_by_int_key(
@@ -5534,6 +5599,13 @@ mod windows {
             let continuous_array_class = 0x3D_2000;
             let control_data_class = 0x3E_0000;
             let int_array_class = 0x3F_0000;
+            let dictionary_rgctx = 0x3F_1000;
+            let get_default_method = 0x3F_2000;
+            let equality_comparer_class = 0x3F_3000;
+            let equality_comparer_rgctx = 0x3F_4000;
+            let equality_comparer_static_fields = 0x3F_5000;
+            let default_int_comparer = 0x3F_6000;
+            let default_int_comparer_class = 0x3F_7000;
             m.ptr(data_mgr, data_mgr_class);
             m.ptr(base + SKILL_CONTROL_DATA_MGR_TYPE_INFO_RVA, data_mgr_class);
             m.ptr(data_mgr_class + IL2CPP_CLASS_NAME, 0xA5_0000);
@@ -5596,6 +5668,45 @@ mod windows {
             m.text(0xA5_0300, "ZUtil.Pool.Collections");
             m.ptr(control_dictionary, control_dictionary_class);
             m.ptr(
+                control_dictionary_class + IL2CPP_CLASS_GENERIC_CONTEXT,
+                dictionary_rgctx,
+            );
+            m.ptr(
+                dictionary_rgctx + ZDICTIONARY_DEFAULT_COMPARER_METHOD,
+                get_default_method,
+            );
+            m.ptr(get_default_method + METHOD_INFO_NAME, 0xA5_0800);
+            m.ptr(
+                get_default_method + METHOD_INFO_KLASS,
+                equality_comparer_class,
+            );
+            m.text(0xA5_0800, "get_Default");
+            m.ptr(equality_comparer_class + IL2CPP_CLASS_NAME, 0xA5_0900);
+            m.ptr(equality_comparer_class + IL2CPP_CLASS_NAMESPACE, 0xA5_0A00);
+            m.text(0xA5_0900, "EqualityComparer`1");
+            m.text(0xA5_0A00, "System.Collections.Generic");
+            m.ptr(
+                equality_comparer_class + IL2CPP_CLASS_GENERIC_CONTEXT,
+                equality_comparer_rgctx,
+            );
+            m.ptr(
+                equality_comparer_rgctx + GENERIC_CONTEXT_INFLATED_CLASS,
+                equality_comparer_class,
+            );
+            m.ptr(
+                equality_comparer_class + IL2CPP_CLASS_STATIC_FIELDS,
+                equality_comparer_static_fields,
+            );
+            m.ptr(equality_comparer_static_fields, default_int_comparer);
+            m.ptr(default_int_comparer, default_int_comparer_class);
+            m.ptr(default_int_comparer_class + IL2CPP_CLASS_NAME, 0xA5_0B00);
+            m.ptr(
+                default_int_comparer_class + IL2CPP_CLASS_NAMESPACE,
+                0xA5_0C00,
+            );
+            m.text(0xA5_0B00, "GenericEqualityComparer`1");
+            m.text(0xA5_0C00, "System.Collections.Generic");
+            m.ptr(
                 base + ZDICTIONARY_INT_SKILL_CONTROL_DATA_TYPE_INFO_RVA,
                 control_dictionary_class,
             );
@@ -5618,7 +5729,10 @@ mod windows {
                 control_dictionary + ZDICTIONARY_FREE_COUNT,
                 &0i32.to_le_bytes(),
             );
-            m.ptr(control_dictionary + ZDICTIONARY_COMPARER, 0);
+            m.ptr(
+                control_dictionary + ZDICTIONARY_COMPARER,
+                default_int_comparer,
+            );
             m.ptr(control_entries, control_array_class);
             m.ptr(control_entries + MANAGED_ARRAY_LENGTH, 1);
             m.put(control_array_class + IL2CPP_CLASS_RANK, &[1]);
@@ -6357,6 +6471,33 @@ mod windows {
             assert_eq!(
                 read_marker_skill_resolution_sample(&wrong_bucket_length, 0x10_0000, &roots),
                 Err(MarkerSkillResolutionError::ControlDictionaryShape)
+            );
+        }
+
+        #[test]
+        fn marker_skill_resolution_requires_the_exact_initialized_default_int_comparer() {
+            let mut null_comparer = valid_memory();
+            null_comparer.ptr(0x87_0000 + ZDICTIONARY_COMPARER, 0);
+            let roots = acquire_roots(&null_comparer, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&null_comparer, 0x10_0000, &roots),
+                Err(MarkerSkillResolutionError::ControlDictionaryClass)
+            );
+
+            let mut mismatched_default = valid_memory();
+            mismatched_default.ptr(0x3F_5000, 0x3F_6008);
+            let roots = acquire_roots(&mismatched_default, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&mismatched_default, 0x10_0000, &roots),
+                Err(MarkerSkillResolutionError::ControlDictionaryClass)
+            );
+
+            let mut wrong_concrete_class = valid_memory();
+            wrong_concrete_class.ptr(0x3F_6000, 0x3C_0000);
+            let roots = acquire_roots(&wrong_concrete_class, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&wrong_concrete_class, 0x10_0000, &roots),
+                Err(MarkerSkillResolutionError::ControlDictionaryClass)
             );
         }
 

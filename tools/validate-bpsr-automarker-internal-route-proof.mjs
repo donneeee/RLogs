@@ -163,7 +163,7 @@ assert.equal(markerSkillProof.exact_type_info_pointer_slot_rvas["Panda.ZGame.Ski
 assert.equal(markerSkillProof.exact_type_info_pointer_slot_rvas["int[]"], "0x9614E08");
 assert.equal(markerSkillProof.concrete_zdictionary_layout.entry_int_int.stride_bytes, 16);
 assert.equal(markerSkillProof.concrete_zdictionary_layout.entry_int_object.stride_bytes, 24);
-assert.equal(markerSkillProof.runtime_acceptance_contract.length, 8);
+assert.equal(markerSkillProof.runtime_acceptance_contract.length, 9);
 assert.deepEqual(markerSkillProof.sanitized_receipt.success, {
   proven: true,
   reason: "proven-read-only-marker-1-skill-resolution",

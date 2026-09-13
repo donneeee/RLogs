@@ -101,7 +101,7 @@
       "rva_hex": "0x1108160",
       "byte_length": 592,
       "sha256": "b7518aa2d8b1bb49ad49393bb3e4bdb82f49252fa42816488cf8dbc32ff53478",
-      "meaning": "masks the integer hash sign bit, selects buckets_[hash % bucketsLen_], and follows direct zero-based next indexes"
+      "meaning": "requires non-null comparer_, invokes it for integer hashing/equality, masks the resulting hash sign bit, selects buckets_[hash % bucketsLen_], and follows direct zero-based next indexes"
     },
     {
       "identity": "Panda.ZGame.PlayerSkillInputComp.GetSkillControlData",
@@ -146,6 +146,7 @@
     "exact-validate skillContinuousDict_ at +0x40, accept its native-valid zero-count no-storage state, reproduce its physical first-match enumeration by BeginContinuousSkillId, and use the matching entry key as the effective lookup ID",
     "require skillControlDatas_ to have the exact reviewed ZDictionary<int, SkillControlData> TypeInfo and its buckets_ to have the exact reviewed int[] TypeInfo",
     "require positive bounded bucket length and count, freeCount no larger than count, bucket array length equal to bucketsLen, and a rank-one managed entry array with the exact 24-byte element size",
+    "follow the exact dictionary generic-context EqualityComparer<int>.get_Default MethodInfo, class-validate its inflated owner and concrete GenericEqualityComparer<int>, and require comparer_ to pointer-equal the initialized static default object; exact-build Rent and FindEntry disassembly prove comparer_ is non-null",
     "follow the native default-int-comparer bucket and collision chain for the effective skill ID, rejecting out-of-range indexes and cycles",
     "require the resolved object to have the exact reviewed Panda.ZGame.SkillControlData TypeInfo and skillId_ equal to the effective lookup ID",
     "bookend every mutable dictionary scan with identical header, version, storage, and array-length reads, then repeat after the stability interval and require identical manager, dictionary objects, arrays, capacities, counts, versions, remap result, structure fingerprints, and resolved-object identity; skillSlotDict_ is not read or gated"

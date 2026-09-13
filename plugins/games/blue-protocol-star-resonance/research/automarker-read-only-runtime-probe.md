@@ -363,8 +363,15 @@ route does not consult `skillSlotDict_` at `+0x28`. That slot dictionary belongs
 to the separate `TryGetSkillDataBySlotId` UI lookup and is intentionally not an
 activation gate for direct dispatch. The read-only gate requires the exact
 reviewed generic dictionary TypeInfo, the exact `int[]` bucket TypeInfo, a
-rank-one 24-byte entry array, bounded coherent counts, a null/default integer
-comparer, and native-equivalent bucket-chain reachability for the effective
+rank-one 24-byte entry array, bounded coherent counts, and the exact initialized
+`EqualityComparer<int>.Default` object recovered from the dictionary's reviewed
+generic-context `get_Default` MethodInfo. Exact-build `Rent` and `FindEntry`
+disassembly proves that `comparer_` is non-null and is invoked for both hashing
+and equality; the earlier null-comparer assumption rejected every normally
+initialized dictionary. The corrected gate class-validates both the generic
+owner and concrete `GenericEqualityComparer<int>` identity before applying the
+proven integer identity-hash/equality semantics and native-equivalent
+bucket-chain reachability for the effective
 skill ID. Bucket and collision indexes are bounded and cycles are rejected. It
 then requires the resolved object to have the exact reviewed `SkillControlData`
 TypeInfo and a `skillId_` equal to the effective lookup ID. The entire query is
