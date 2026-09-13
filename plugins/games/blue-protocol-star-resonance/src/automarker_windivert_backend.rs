@@ -67,6 +67,57 @@ struct ReflectInventory {
     sentinel_seen: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ActiveLifetimeArbitrationStatus {
+    Healthy,
+    PeerConflict,
+    MonitorFailure,
+}
+
+/// Pure state machine shared by the synchronous post-open barrier and the
+/// continuously owned REFLECT monitor. Conflict is intentionally latched: a
+/// same-priority peer that opens and immediately closes still invalidates the
+/// active lifetime.
+struct ActiveLifetimeInventory {
+    inventory: ReflectInventory,
+    owner_process_id: u32,
+    target_priority: i16,
+    active_identity: Option<ReflectedHandleIdentity>,
+    status: ActiveLifetimeArbitrationStatus,
+}
+
+impl ActiveLifetimeInventory {
+    fn after_clear_barrier(inventory: ReflectInventory) -> Self {
+        Self {
+            owner_process_id: inventory.sentinel_process_id,
+            target_priority: inventory.target_priority,
+            inventory,
+            active_identity: None,
+            status: ActiveLifetimeArbitrationStatus::Healthy,
+        }
+    }
+
+    fn observe(&mut self, event: ReflectedHandleEvent) -> Result<(), &'static str> {
+        self.inventory.observe(event)?;
+        if event.kind == ReflectEventKind::Open
+            && event.identity.layer == LAYER_NETWORK
+            && event.identity.priority == self.target_priority
+        {
+            if self.active_identity.is_none() && event.identity.process_id == self.owner_process_id
+            {
+                self.active_identity = Some(event.identity);
+            } else if self.active_identity != Some(event.identity) {
+                self.status = ActiveLifetimeArbitrationStatus::PeerConflict;
+            }
+        }
+        Ok(())
+    }
+
+    fn post_open_affirmative(&self) -> bool {
+        self.active_identity.is_some() && self.status == ActiveLifetimeArbitrationStatus::Healthy
+    }
+}
+
 impl ReflectInventory {
     fn new(
         sentinel_process_id: u32,
@@ -133,7 +184,10 @@ mod windows_backend {
         os::windows::ffi::OsStrExt,
         path::Path,
         ptr,
-        sync::{Arc, Mutex},
+        sync::{
+            Arc, Mutex,
+            atomic::{AtomicBool, AtomicU8, Ordering},
+        },
         thread,
         time::Duration,
     };
@@ -241,6 +295,7 @@ mod windows_backend {
     pub(crate) struct WinDivertHandle {
         raw: HANDLE,
         loaded: Arc<LoadedApi>,
+        lifetime_monitor: Option<ReflectLifetimeMonitor>,
     }
 
     unsafe impl Send for WinDivertHandle {}
@@ -250,7 +305,118 @@ mod windows_backend {
         fn drop(&mut self) {
             if !self.raw.is_null() && self.raw != INVALID_HANDLE_VALUE {
                 unsafe { (self.loaded.api.close)(self.raw) };
+                self.raw = INVALID_HANDLE_VALUE;
             }
+            // The NETWORK handle is closed before its REFLECT observer. This
+            // preserves continuous observation for the complete active span.
+            drop(self.lifetime_monitor.take());
+        }
+    }
+
+    struct ReflectLifetimeMonitor {
+        reflect: Arc<WinDivertHandle>,
+        stop: Arc<AtomicBool>,
+        status: Arc<AtomicU8>,
+        worker: Option<thread::JoinHandle<()>>,
+    }
+
+    impl ReflectLifetimeMonitor {
+        fn spawn(
+            reflect: Arc<WinDivertHandle>,
+            mut inventory: ActiveLifetimeInventory,
+        ) -> Result<Self, String> {
+            let stop = Arc::new(AtomicBool::new(false));
+            let status = Arc::new(AtomicU8::new(encode_status(inventory.status)));
+            let worker_reflect = Arc::clone(&reflect);
+            let worker_stop = Arc::clone(&stop);
+            let worker_status = Arc::clone(&status);
+            let worker = thread::Builder::new()
+                .name("rlogs-automarker-reflect".into())
+                .spawn(move || {
+                    loop {
+                        match worker_reflect.receive(65_535) {
+                            Ok(Some((_, address))) => {
+                                let observed = decode_reflect_event(&address)
+                                    .map_err(|_| ())
+                                    .and_then(|event| inventory.observe(event).map_err(|_| ()));
+                                if observed.is_err() {
+                                    store_terminal_status(
+                                        &worker_status,
+                                        ActiveLifetimeArbitrationStatus::MonitorFailure,
+                                    );
+                                    break;
+                                }
+                                store_terminal_status(&worker_status, inventory.status);
+                            }
+                            Ok(None) if worker_stop.load(Ordering::Acquire) => break,
+                            Ok(None) | Err(_) => {
+                                store_terminal_status(
+                                    &worker_status,
+                                    ActiveLifetimeArbitrationStatus::MonitorFailure,
+                                );
+                                break;
+                            }
+                        }
+                    }
+                })
+                .map_err(|error| format!("failed to spawn REFLECT lifetime monitor: {error}"))?;
+            Ok(Self {
+                reflect,
+                stop,
+                status,
+                worker: Some(worker),
+            })
+        }
+
+        fn status(&self) -> ActiveLifetimeArbitrationStatus {
+            decode_status(self.status.load(Ordering::Acquire))
+        }
+
+        fn stop_join(&mut self) {
+            self.stop.store(true, Ordering::Release);
+            let _ = self.reflect.shutdown_receive();
+            if let Some(worker) = self.worker.take() {
+                if worker.join().is_err() {
+                    store_terminal_status(
+                        &self.status,
+                        ActiveLifetimeArbitrationStatus::MonitorFailure,
+                    );
+                }
+            }
+        }
+    }
+
+    impl Drop for ReflectLifetimeMonitor {
+        fn drop(&mut self) {
+            self.stop_join();
+        }
+    }
+
+    fn encode_status(status: ActiveLifetimeArbitrationStatus) -> u8 {
+        match status {
+            ActiveLifetimeArbitrationStatus::Healthy => 0,
+            ActiveLifetimeArbitrationStatus::PeerConflict => 1,
+            ActiveLifetimeArbitrationStatus::MonitorFailure => 2,
+        }
+    }
+
+    fn decode_status(status: u8) -> ActiveLifetimeArbitrationStatus {
+        match status {
+            0 => ActiveLifetimeArbitrationStatus::Healthy,
+            1 => ActiveLifetimeArbitrationStatus::PeerConflict,
+            _ => ActiveLifetimeArbitrationStatus::MonitorFailure,
+        }
+    }
+
+    fn store_terminal_status(status: &AtomicU8, next: ActiveLifetimeArbitrationStatus) {
+        let next = encode_status(next);
+        if next != encode_status(ActiveLifetimeArbitrationStatus::Healthy) {
+            let _ = status.compare_exchange(
+                encode_status(ActiveLifetimeArbitrationStatus::Healthy),
+                next,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            );
         }
     }
 
@@ -324,12 +490,34 @@ mod windows_backend {
             let _serialization = ARBITRATION_LOCK
                 .lock()
                 .map_err(|_| "REFLECT arbitration lock was poisoned")?;
-            if !self.reflect_inventory_is_clear(priority)? {
+            let flags_reflect = FLAG_SNIFF | FLAG_RECV_ONLY | FLAG_NO_INSTALL;
+            let reflect =
+                Arc::new(self.open_at_layer("true", LAYER_REFLECT_ABI, 0, flags_reflect)?);
+            if reflect.get_param(PARAM_VERSION_MAJOR)? != 2
+                || reflect.get_param(PARAM_VERSION_MINOR)? != 2
+            {
+                return Err("REFLECT arbitration requires loaded WinDivert driver 2.2".into());
+            }
+            let inventory = self.reflect_inventory_through_barrier(
+                Arc::clone(&reflect),
+                ReflectInventory::new(
+                    std::process::id(),
+                    SENTINEL_PRIORITY,
+                    flags_reflect,
+                    priority,
+                ),
+            )?;
+            if !inventory.affirmative()? {
                 return Ok(ArbitratedNetworkOpen::Conflict);
             }
-            Ok(ArbitratedNetworkOpen::Open(
-                self.open_network(filter, priority, flags)?,
-            ))
+            let mut active = self.open_network(filter, priority, flags)?;
+            let lifetime = ActiveLifetimeInventory::after_clear_barrier(inventory);
+            let lifetime = self.reflect_post_open_barrier(Arc::clone(&reflect), lifetime)?;
+            if !lifetime.post_open_affirmative() {
+                return Ok(ArbitratedNetworkOpen::Conflict);
+            }
+            active.lifetime_monitor = Some(ReflectLifetimeMonitor::spawn(reflect, lifetime)?);
+            Ok(ArbitratedNetworkOpen::Open(active))
         }
 
         pub(crate) fn compile_network_filter(&self, filter: &str) -> Result<(), Box<dyn Error>> {
@@ -374,33 +562,28 @@ mod windows_backend {
             Ok(WinDivertHandle {
                 raw: handle,
                 loaded: Arc::clone(&self.0),
+                lifetime_monitor: None,
             })
         }
 
-        fn reflect_inventory_is_clear(&self, target_priority: i16) -> Result<bool, Box<dyn Error>> {
-            let flags = FLAG_SNIFF | FLAG_RECV_ONLY | FLAG_NO_INSTALL;
-            let reflect = Arc::new(self.open_at_layer("true", LAYER_REFLECT_ABI, 0, flags)?);
-            if reflect.get_param(PARAM_VERSION_MAJOR)? != 2
-                || reflect.get_param(PARAM_VERSION_MINOR)? != 2
-            {
-                return Err("REFLECT arbitration requires loaded WinDivert driver 2.2".into());
-            }
-
+        fn reflect_inventory_through_barrier(
+            &self,
+            reflect: Arc<WinDivertHandle>,
+            mut inventory: ReflectInventory,
+        ) -> Result<ReflectInventory, Box<dyn Error>> {
             let stop_handle = Arc::clone(&reflect);
             let (timer_send, timer_receive) = std::sync::mpsc::channel();
             let timer = thread::spawn(move || {
-                let _ = timer_receive.recv_timeout(BARRIER_TIMEOUT);
-                stop_handle.shutdown_receive()
+                if timer_receive.recv_timeout(BARRIER_TIMEOUT).is_err() {
+                    let _ = stop_handle.shutdown_receive();
+                    Err("REFLECT inventory barrier timed out".to_owned())
+                } else {
+                    Ok(())
+                }
             });
-            let sentinel = self.open_network("false", SENTINEL_PRIORITY, flags);
-            let result = (|| -> Result<bool, Box<dyn Error>> {
+            let sentinel = self.open_network("false", SENTINEL_PRIORITY, inventory.sentinel_flags);
+            let result = (|| -> Result<ReflectInventory, Box<dyn Error>> {
                 let _sentinel = sentinel?;
-                let mut inventory = ReflectInventory::new(
-                    std::process::id(),
-                    SENTINEL_PRIORITY,
-                    flags,
-                    target_priority,
-                );
                 loop {
                     let (_, address) = reflect
                         .receive(65_535)?
@@ -410,7 +593,7 @@ mod windows_backend {
                             .map_err(|error| format!("invalid REFLECT address: {error}"))?,
                     )?;
                     if inventory.sentinel_seen {
-                        return inventory.affirmative().map_err(|error| error.into());
+                        return Ok(inventory);
                     }
                 }
             })();
@@ -420,9 +603,62 @@ mod windows_backend {
                 .map_err(|_| "REFLECT arbitration timer panicked")??;
             result
         }
+
+        fn reflect_post_open_barrier(
+            &self,
+            reflect: Arc<WinDivertHandle>,
+            mut inventory: ActiveLifetimeInventory,
+        ) -> Result<ActiveLifetimeInventory, Box<dyn Error>> {
+            let stop_handle = Arc::clone(&reflect);
+            let (timer_send, timer_receive) = std::sync::mpsc::channel();
+            let timer = thread::spawn(move || {
+                if timer_receive.recv_timeout(BARRIER_TIMEOUT).is_err() {
+                    let _ = stop_handle.shutdown_receive();
+                    Err("REFLECT post-open barrier timed out".to_owned())
+                } else {
+                    Ok(())
+                }
+            });
+            let sentinel = self.open_network(
+                "false",
+                SENTINEL_PRIORITY,
+                inventory.inventory.sentinel_flags,
+            );
+            let result = (|| -> Result<ActiveLifetimeInventory, Box<dyn Error>> {
+                let _sentinel = sentinel?;
+                loop {
+                    let (_, address) = reflect
+                        .receive(65_535)?
+                        .ok_or("REFLECT inventory ended before its post-open barrier")?;
+                    let event = decode_reflect_event(&address)
+                        .map_err(|error| format!("invalid REFLECT address: {error}"))?;
+                    let is_new_sentinel = event.kind == ReflectEventKind::Open
+                        && event.identity.process_id == inventory.owner_process_id
+                        && event.identity.layer == LAYER_NETWORK
+                        && event.identity.priority == SENTINEL_PRIORITY
+                        && event.identity.flags == inventory.inventory.sentinel_flags;
+                    inventory.observe(event)?;
+                    if is_new_sentinel {
+                        return Ok(inventory);
+                    }
+                }
+            })();
+            let _ = timer_send.send(());
+            timer
+                .join()
+                .map_err(|_| "REFLECT post-open timer panicked")??;
+            result
+        }
     }
 
     impl WinDivertHandle {
+        pub(crate) fn active_lifetime_arbitration_status(&self) -> ActiveLifetimeArbitrationStatus {
+            self.lifetime_monitor
+                .as_ref()
+                .map_or(ActiveLifetimeArbitrationStatus::MonitorFailure, |monitor| {
+                    monitor.status()
+                })
+        }
         /// Starts one overlapped receive while borrowing this handle.
         ///
         /// The returned value owns every pointer passed to WinDivertRecvEx. A
@@ -548,6 +784,7 @@ mod windows_backend {
                 ));
             }
             self.raw = INVALID_HANDLE_VALUE;
+            drop(self.lifetime_monitor.take());
             Ok(())
         }
     }
@@ -918,6 +1155,107 @@ mod tests {
         assert_eq!(inventory.affirmative(), Ok(true));
     }
 
+    fn post_clear_lifetime() -> ActiveLifetimeInventory {
+        let sentinel = ReflectedHandleIdentity {
+            opened_timestamp: 2,
+            process_id: 42,
+            layer: LAYER_NETWORK,
+            flags: 21,
+            priority: -1000,
+        };
+        let mut inventory = ReflectInventory::new(42, -1000, 21, 0);
+        inventory
+            .observe(event(ReflectEventKind::Open, sentinel))
+            .unwrap();
+        assert_eq!(inventory.affirmative(), Ok(true));
+        ActiveLifetimeInventory::after_clear_barrier(inventory)
+    }
+
+    #[test]
+    fn post_open_barrier_requires_the_owned_active_handle() {
+        let mut lifetime = post_clear_lifetime();
+        assert!(!lifetime.post_open_affirmative());
+        lifetime
+            .observe(event(
+                ReflectEventKind::Open,
+                ReflectedHandleIdentity {
+                    opened_timestamp: 3,
+                    process_id: 42,
+                    layer: LAYER_NETWORK,
+                    flags: 16,
+                    priority: 0,
+                },
+            ))
+            .unwrap();
+        assert!(lifetime.post_open_affirmative());
+    }
+
+    #[test]
+    fn same_priority_cross_process_open_is_latched_after_immediate_close() {
+        let mut lifetime = post_clear_lifetime();
+        let owned = ReflectedHandleIdentity {
+            opened_timestamp: 3,
+            process_id: 42,
+            layer: LAYER_NETWORK,
+            flags: 16,
+            priority: 0,
+        };
+        let peer = ReflectedHandleIdentity {
+            opened_timestamp: 4,
+            process_id: 7,
+            layer: LAYER_NETWORK,
+            flags: 0,
+            priority: 0,
+        };
+        lifetime
+            .observe(event(ReflectEventKind::Open, owned))
+            .unwrap();
+        lifetime
+            .observe(event(ReflectEventKind::Open, peer))
+            .unwrap();
+        lifetime
+            .observe(event(ReflectEventKind::Close, peer))
+            .unwrap();
+        assert_eq!(
+            lifetime.status,
+            ActiveLifetimeArbitrationStatus::PeerConflict
+        );
+        assert!(!lifetime.post_open_affirmative());
+    }
+
+    #[test]
+    fn other_priority_and_non_network_peers_do_not_invalidate_lifetime() {
+        let mut lifetime = post_clear_lifetime();
+        for identity in [
+            ReflectedHandleIdentity {
+                opened_timestamp: 3,
+                process_id: 42,
+                layer: LAYER_NETWORK,
+                flags: 16,
+                priority: 0,
+            },
+            ReflectedHandleIdentity {
+                opened_timestamp: 4,
+                process_id: 7,
+                layer: LAYER_NETWORK,
+                flags: 0,
+                priority: 1,
+            },
+            ReflectedHandleIdentity {
+                opened_timestamp: 5,
+                process_id: 7,
+                layer: 1,
+                flags: 0,
+                priority: 0,
+            },
+        ] {
+            lifetime
+                .observe(event(ReflectEventKind::Open, identity))
+                .unwrap();
+        }
+        assert!(lifetime.post_open_affirmative());
+    }
+
     #[cfg(windows)]
     #[test]
     fn overlapped_wait_timeout_conversion_is_bounded_and_never_infinite() {
@@ -957,5 +1295,56 @@ mod tests {
         assert!(windows_backend::validate_receive_completion(100, 101, address_size).is_err());
         assert!(windows_backend::validate_receive_completion(100, 100, address_size - 1).is_err());
         assert!(windows_backend::validate_receive_completion(100, 100, address_size + 1).is_err());
+    }
+
+    /// Manual integration gate for an elevated Windows host with the pinned
+    /// 2.2.2 driver already running. Set `RLOGS_WINDIVERT_TEST_DIRECTORY` to
+    /// the directory containing WinDivert.dll before explicitly selecting
+    /// this ignored test.
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires elevated Windows host with pinned WinDivert 2.2.2 driver"]
+    fn live_reflect_monitor_latches_a_late_same_priority_handle() {
+        use std::{path::PathBuf, thread, time::Duration};
+
+        let directory = PathBuf::from(
+            std::env::var_os("RLOGS_WINDIVERT_TEST_DIRECTORY")
+                .expect("RLOGS_WINDIVERT_TEST_DIRECTORY must be set"),
+        );
+        let backend = unsafe {
+            windows_backend::PinnedWinDivertBackend::load(&directory.join("WinDivert.dll"))
+        }
+        .unwrap();
+        let active = match backend
+            .open_arbitrated_network("false", 0, windows_backend::FLAG_NO_INSTALL)
+            .unwrap()
+        {
+            windows_backend::ArbitratedNetworkOpen::Open(handle) => handle,
+            windows_backend::ArbitratedNetworkOpen::Conflict => {
+                panic!("test host already had a priority-0 NETWORK handle")
+            }
+        };
+        assert_eq!(
+            active.active_lifetime_arbitration_status(),
+            ActiveLifetimeArbitrationStatus::Healthy
+        );
+
+        let late_peer = backend
+            .open_network("false", 0, windows_backend::FLAG_NO_INSTALL)
+            .unwrap();
+        for _ in 0..100 {
+            if active.active_lifetime_arbitration_status()
+                == ActiveLifetimeArbitrationStatus::PeerConflict
+            {
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(
+            active.active_lifetime_arbitration_status(),
+            ActiveLifetimeArbitrationStatus::PeerConflict
+        );
+        drop(late_peer);
+        assert!(active.try_close().is_ok());
     }
 }

@@ -25,9 +25,9 @@ use crate::{
         ActiveAutomarkerBackend, ActiveAutomarkerPacket, ActiveAutomarkerWake,
     },
     automarker_windivert_backend::{
-        ArbitratedNetworkOpen, FLAG_NO_INSTALL, OverlappedReceive, OverlappedReceiveWait,
-        PARAM_VERSION_MAJOR, PARAM_VERSION_MINOR, PinnedWinDivertBackend, ReceiveControlEvent,
-        WinDivertAddress, WinDivertHandle,
+        ActiveLifetimeArbitrationStatus, ArbitratedNetworkOpen, FLAG_NO_INSTALL, OverlappedReceive,
+        OverlappedReceiveWait, PARAM_VERSION_MAJOR, PARAM_VERSION_MINOR, PinnedWinDivertBackend,
+        ReceiveControlEvent, WinDivertAddress, WinDivertHandle,
     },
 };
 
@@ -215,6 +215,12 @@ impl WindowsActiveAutomarkerBackend {
 }
 
 impl ActiveAutomarkerBackend for WindowsActiveAutomarkerBackend {
+    fn active_lifetime_arbitration_healthy(&self) -> bool {
+        self.handle.as_ref().is_some_and(|handle| {
+            handle.active_lifetime_arbitration_status() == ActiveLifetimeArbitrationStatus::Healthy
+        })
+    }
+
     fn receive(&mut self) -> Result<ActiveAutomarkerWake, String> {
         self.receive_checked()
     }
@@ -224,6 +230,9 @@ impl ActiveAutomarkerBackend for WindowsActiveAutomarkerBackend {
         original: &ActiveAutomarkerPacket,
         approved_changed_bytes: &[u8],
     ) -> Result<AutomarkerPacketSendPreparation, String> {
+        if !self.active_lifetime_arbitration_healthy() {
+            return Err("active WinDivert lifetime arbitration was lost".into());
+        }
         let inspection = self.filter_plan.inspect(&original.bytes).map_err(|error| {
             format!("modified carrier failed exact filter inspection: {error:?}")
         })?;

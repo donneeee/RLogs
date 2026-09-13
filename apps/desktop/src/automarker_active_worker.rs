@@ -39,6 +39,13 @@ pub(crate) enum ActiveAutomarkerWake {
 }
 
 pub(crate) trait ActiveAutomarkerBackend: Send + 'static {
+    /// Continuously sampled before receive, after receive, and immediately
+    /// before any modified-send preparation. Once false, the worker latches a
+    /// drain-only exit and never authorizes another carrier.
+    fn active_lifetime_arbitration_healthy(&self) -> bool {
+        true
+    }
+
     /// Receive one intercepted packet or return `Timeout` within a bounded
     /// polling interval. This must not close or shut down interception; stop
     /// requests still need the same handle to observe ACK/FIN retirement.
@@ -199,6 +206,9 @@ pub(crate) enum ActiveAutomarkerWorkerExit {
     ConnectionTerminated,
     BackendFailure,
     CoordinatorAbort,
+    /// The continuously owned REFLECT monitor observed a same-priority peer
+    /// or could no longer prove the active handle's arbitration lifetime.
+    LifetimeArbitrationLost,
     /// An ordinary exit was requested after a modified emission. The worker
     /// stayed alive until an exact ACK or connection-termination observation
     /// retired the rewrite obligation.
@@ -631,12 +641,18 @@ fn run_worker(
         loop {
             let rewrite_obligation = owned.coordinator().rewrite_obligation_active();
             shared_rewrite_obligation.store(rewrite_obligation, Ordering::Release);
+            if !owned.backend().active_lifetime_arbitration_healthy() {
+                pending_exit.get_or_insert(ActiveAutomarkerWorkerExit::LifetimeArbitrationLost);
+            }
             if pending_exit.is_some() && rewrite_obligation {
                 shared_termination_required.store(true, Ordering::Release);
             } else if let Some(exit) = pending_exit {
                 report.exit = if shared_termination_required.load(Ordering::Acquire)
-                    && exit != ActiveAutomarkerWorkerExit::CoordinatorAbort
-                {
+                    && !matches!(
+                        exit,
+                        ActiveAutomarkerWorkerExit::CoordinatorAbort
+                            | ActiveAutomarkerWorkerExit::LifetimeArbitrationLost
+                    ) {
                     ActiveAutomarkerWorkerExit::RequiresConnectionTermination
                 } else {
                     exit
@@ -688,6 +704,10 @@ fn run_worker(
                 }
                 ActiveAutomarkerWake::Packet(packet) => {
                     report.packets_received = report.packets_received.saturating_add(1);
+                    if !owned.backend().active_lifetime_arbitration_healthy() {
+                        pending_exit
+                            .get_or_insert(ActiveAutomarkerWorkerExit::LifetimeArbitrationLost);
+                    }
                     if stop_requested.load(Ordering::Acquire) {
                         pending_exit.get_or_insert(ActiveAutomarkerWorkerExit::Stopped);
                         stop_acknowledged.store(true, Ordering::Release);
@@ -726,10 +746,15 @@ fn run_worker(
                         ActiveAutomarkerDisposition::HoldExactCarrier {
                             preparation_id,
                             approved_changed_bytes,
-                        } => match owned
-                            .backend()
-                            .prepare_modified_send(&packet, &approved_changed_bytes)
-                        {
+                        } => match if owned.backend().active_lifetime_arbitration_healthy() {
+                            owned
+                                .backend()
+                                .prepare_modified_send(&packet, &approved_changed_bytes)
+                        } else {
+                            pending_exit
+                                .get_or_insert(ActiveAutomarkerWorkerExit::LifetimeArbitrationLost);
+                            Err("active lifetime arbitration was lost".to_owned())
+                        } {
                             Ok(AutomarkerPacketSendPreparation::ModifiedAuthorized {
                                 packet: repaired,
                                 address,
@@ -961,6 +986,7 @@ mod tests {
         block_carrier_commit: bool,
         carrier_commit_entered: bool,
         release_carrier_commit: bool,
+        arbitration_lost: bool,
     }
 
     #[derive(Clone, Default)]
@@ -1029,11 +1055,21 @@ mod tests {
             lock.lock().unwrap().release_send = true;
             ready.notify_all();
         }
+
+        fn lose_arbitration(&self) {
+            let (lock, ready) = &*self.0;
+            lock.lock().unwrap().arbitration_lost = true;
+            ready.notify_all();
+        }
     }
 
     struct FakeBackend(Harness);
 
     impl ActiveAutomarkerBackend for FakeBackend {
+        fn active_lifetime_arbitration_healthy(&self) -> bool {
+            !self.0.0.0.lock().unwrap().arbitration_lost
+        }
+
         fn receive(&mut self) -> Result<ActiveAutomarkerWake, String> {
             let (lock, ready) = &*self.0.0;
             let mut state = lock.lock().unwrap();
@@ -1388,6 +1424,64 @@ mod tests {
                 Event::Commit(7, ActiveAutomarkerSendOutcome::Complete),
             ]
         );
+    }
+
+    #[test]
+    fn lifetime_arbitration_loss_closes_cleanly_before_any_new_rewrite() {
+        let harness = Harness::default();
+        let bundle = ActiveAutomarkerWorkerBundle::spawn(
+            FakeBackend(harness.clone()),
+            FakeCoordinator::new(harness.clone()),
+        )
+        .unwrap();
+        harness.lose_arbitration();
+        let report = bundle.join().unwrap().report;
+        assert_eq!(
+            report.exit,
+            ActiveAutomarkerWorkerExit::LifetimeArbitrationLost
+        );
+        assert_eq!(report.modified_sent, 0);
+        assert_eq!(
+            &harness.events()[..2],
+            &[Event::BackendClosed, Event::LedgerDiscarded]
+        );
+    }
+
+    #[test]
+    fn lifetime_arbitration_loss_drains_existing_rewrite_until_ack() {
+        let harness = Harness::default();
+        harness.push(ActiveAutomarkerWake::Packet(packet(b"carrier")));
+        let bundle = ActiveAutomarkerWorkerBundle::spawn(
+            FakeBackend(harness.clone()),
+            FakeCoordinator::new(harness.clone()),
+        )
+        .unwrap();
+        harness.wait_for_event(&Event::Commit(7, ActiveAutomarkerSendOutcome::Complete));
+        harness.lose_arbitration();
+        harness.push(ActiveAutomarkerWake::Packet(packet(b"carrier")));
+        harness.push(ActiveAutomarkerWake::Packet(packet(b"ack")));
+        let report = bundle.join().unwrap().report;
+        assert_eq!(
+            report.exit,
+            ActiveAutomarkerWorkerExit::LifetimeArbitrationLost
+        );
+        assert_eq!(report.modified_sent, 1);
+        assert_eq!(report.unchanged_sent, 2);
+        assert!(harness.events().contains(&sent(b"carrier")));
+        let events = harness.events();
+        let ack = events
+            .iter()
+            .position(|event| event == &Event::AckRetired)
+            .unwrap();
+        let close = events
+            .iter()
+            .position(|event| event == &Event::BackendClosed)
+            .unwrap();
+        let discard = events
+            .iter()
+            .position(|event| event == &Event::LedgerDiscarded)
+            .unwrap();
+        assert!(ack < close && close < discard);
     }
 
     #[test]
