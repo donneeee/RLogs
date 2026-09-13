@@ -369,6 +369,8 @@ impl MechanicsMapFeed {
         if active {
             if let Some(native) = state.native_scene.clone() {
                 state.reconciled_scene = Some(native);
+            } else if state.reconciled_scene == previous_native {
+                state.reconciled_scene = None;
             }
         } else if state.reconciled_scene == previous_native {
             state.reconciled_scene = state
@@ -475,6 +477,25 @@ fn effective_snapshot(state: &MechanicsMapFeedState) -> MechanicsMapSnapshot {
             snapshot.mechanics.clear();
             snapshot.markers.clear();
         }
+    } else if state.native_scene_active && state.native_scene.is_none() {
+        snapshot.scene_id = None;
+        snapshot.map_id = None;
+        snapshot.scene_name = None;
+        snapshot.map_layout = None;
+        snapshot.background_asset_url = None;
+        snapshot.encounter_pack = None;
+        snapshot.encounter_pack_reviewed = false;
+        snapshot.local_actor_id = None;
+        snapshot.local_position_observed = false;
+        snapshot.player = None;
+        snapshot.party.clear();
+        snapshot.action_controls.clear();
+        snapshot.resources.clear();
+        snapshot.dungeon = None;
+        snapshot.target = None;
+        snapshot.entities.clear();
+        snapshot.mechanics.clear();
+        snapshot.markers.clear();
     }
     snapshot
 }
@@ -4407,6 +4428,18 @@ mod tests {
             Some((6_515, 6_515, Some("Chaotic - Mech Facility".into()))),
         );
         assert_eq!(feed.current().snapshot.scene_id, Some(6_515));
+        feed.set_native_scene_presentation(true, None);
+        let unavailable = feed.current();
+        assert_eq!(
+            unavailable.snapshot.scene_id, None,
+            "an unavailable native observation must not retain the prior Mech Facility scene"
+        );
+        assert_eq!(unavailable.snapshot.map_id, None);
+        assert_eq!(unavailable.snapshot.scene_name, None);
+        feed.set_native_scene_presentation(
+            true,
+            Some((6_515, 6_515, Some("Chaotic - Mech Facility".into()))),
+        );
 
         feed.publish(MechanicsMapSnapshot {
             revision: 8,

@@ -1,0 +1,428 @@
+//! Private desktop-owned lifecycle for the future one-marker native bridge.
+//!
+//! This module intentionally exposes no HTTP or plug-in surface and performs
+//! no driver load, handle open, packet mutation, or send. It binds the private
+//! parser evidence to the exact capture session and scene context that a future
+//! in-process `AutomarkerBridgeCoordinator` must use, and gives all future
+//! native resources one invalidation/shutdown domain.
+
+use std::sync::Mutex;
+
+use rlogs_game_bpsr::AutomarkerBridgeCoordinator;
+
+#[cfg(windows)]
+use crate::automarker_windivert_backend::WinDivertHandle;
+use crate::{
+    automarker_bridge_evidence::{
+        AutomarkerBridgeEvidenceSnapshot, AutomarkerBridgeSessionIdentity,
+    },
+    automarker_presets::AutomarkerSceneContext,
+};
+
+const LIVE_PACKET_MUTATION_WIRED: bool = false;
+const STOP_DRAIN_JOIN_RESOURCE_BUNDLE_WIRED: bool = false;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BridgeContinuity {
+    capture_session_id: String,
+    deployment_id: String,
+    client_build: String,
+    protocol_pack_digest: String,
+    scene_id: i32,
+    map_id: u32,
+    activity_family_id: String,
+}
+
+impl BridgeContinuity {
+    fn from_session_scene(
+        session: &AutomarkerBridgeSessionIdentity,
+        scene: &AutomarkerSceneContext,
+    ) -> Option<Self> {
+        if !session.protocol_supported
+            || session.capture_session_id.trim().is_empty()
+            || session.deployment_id.trim().is_empty()
+            || session.client_build.trim().is_empty()
+            || session.protocol_pack_digest.trim().is_empty()
+            || scene.client_build != session.client_build
+            || scene.activity_family_id.trim().is_empty()
+            || scene.scene_id <= 0
+            || scene.map_id == 0
+        {
+            return None;
+        }
+        Some(Self {
+            capture_session_id: session.capture_session_id.clone(),
+            deployment_id: session.deployment_id.clone(),
+            client_build: session.client_build.clone(),
+            protocol_pack_digest: session.protocol_pack_digest.clone(),
+            scene_id: scene.scene_id,
+            map_id: scene.map_id,
+            activity_family_id: scene.activity_family_id.clone(),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct NativeGateState {
+    exact_local_process: bool,
+    exact_syn_owned_tuple_epoch: bool,
+    pinned_backend: bool,
+    reflect_arbitrated: bool,
+    exact_build_pack_scene: bool,
+    fresh_world_use_slot_carrier: bool,
+    checksum_helper_ready: bool,
+    authoritative_inbound_decoder_ready: bool,
+}
+
+impl NativeGateState {
+    fn all_satisfied(self) -> bool {
+        self.exact_local_process
+            && self.exact_syn_owned_tuple_epoch
+            && self.pinned_backend
+            && self.reflect_arbitrated
+            && self.exact_build_pack_scene
+            && self.fresh_world_use_slot_carrier
+            && self.checksum_helper_ready
+            && self.authoritative_inbound_decoder_ready
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum LifecyclePhase {
+    #[default]
+    Dormant,
+    Observing,
+    Invalidated,
+    Shutdown,
+    Poisoned,
+}
+
+#[derive(Default)]
+struct NativeBridgeState {
+    phase: LifecyclePhase,
+    generation: u64,
+    session: Option<AutomarkerBridgeSessionIdentity>,
+    continuity: Option<BridgeContinuity>,
+    parser_evidence: Option<AutomarkerBridgeEvidenceSnapshot>,
+    gates: NativeGateState,
+    #[cfg(windows)]
+    active_handle: Option<WinDivertHandle>,
+    // Declared after the native handle so ordinary struct drop also closes
+    // interception before discarding the coordinator's retransmission ledger.
+    coordinator: Option<AutomarkerBridgeCoordinator>,
+}
+
+#[derive(Default)]
+struct DetachedNativeResources {
+    #[cfg(windows)]
+    active_handle: Option<WinDivertHandle>,
+    coordinator: Option<AutomarkerBridgeCoordinator>,
+}
+
+impl DetachedNativeResources {
+    /// Interception must be closed before the retransmission ledger is
+    /// discarded. Both drops happen only after the lifecycle mutex is free.
+    fn drop_in_shutdown_order(self) {
+        #[cfg(windows)]
+        drop(self.active_handle);
+        drop(self.coordinator);
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct AutomarkerNativeBridgeLifecycle {
+    state: Mutex<NativeBridgeState>,
+}
+
+impl AutomarkerNativeBridgeLifecycle {
+    pub(crate) fn begin_session(&self, session: AutomarkerBridgeSessionIdentity) {
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            return;
+        };
+        if state.phase == LifecyclePhase::Poisoned {
+            return;
+        }
+        let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Observing, true);
+        state.session = Some(session);
+        drop(state);
+        detached.drop_in_shutdown_order();
+    }
+
+    /// Bind private parser evidence to one exact session/build/pack/scene.
+    /// Any mismatch invalidates the coordinator and all native gate state.
+    pub(crate) fn accept_parser_evidence(
+        &self,
+        scene: Option<&AutomarkerSceneContext>,
+        evidence: AutomarkerBridgeEvidenceSnapshot,
+    ) -> bool {
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            return false;
+        };
+        if !matches!(
+            state.phase,
+            LifecyclePhase::Observing | LifecyclePhase::Invalidated
+        ) {
+            return false;
+        }
+        let Some(session) = state.session.as_ref() else {
+            return Self::invalidate_and_release(state);
+        };
+        let Some(scene) = scene else {
+            return Self::invalidate_and_release(state);
+        };
+        let Some(continuity) = BridgeContinuity::from_session_scene(session, scene) else {
+            return Self::invalidate_and_release(state);
+        };
+        if evidence.markers.iter().any(|marker| {
+            marker.capture_session_id != continuity.capture_session_id
+                || marker.deployment_id != continuity.deployment_id
+                || marker.client_build != continuity.client_build
+                || marker.protocol_pack_digest != continuity.protocol_pack_digest
+                || marker.scene_id != continuity.scene_id
+                || marker.map_id != continuity.map_id
+                || marker.activity_family_id != continuity.activity_family_id
+        }) {
+            return Self::invalidate_and_release(state);
+        }
+        if state
+            .parser_evidence
+            .as_ref()
+            .is_some_and(|previous| evidence.feed_revision < previous.feed_revision)
+        {
+            return Self::invalidate_and_release(state);
+        }
+        if state
+            .continuity
+            .as_ref()
+            .is_some_and(|current| current != &continuity)
+        {
+            return Self::invalidate_and_release(state);
+        }
+        state.continuity = Some(continuity);
+        state.parser_evidence = Some(evidence);
+        state.phase = LifecyclePhase::Observing;
+        // Parser continuity is necessary but insufficient. It cannot assert
+        // process ownership, REFLECT arbitration, or packet-send readiness.
+        state.gates.exact_build_pack_scene = true;
+        true
+    }
+
+    pub(crate) fn reconcile_context(&self, scene: Option<&AutomarkerSceneContext>) -> bool {
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            return false;
+        };
+        let Some(session) = state.session.as_ref() else {
+            return false;
+        };
+        let next = scene.and_then(|scene| BridgeContinuity::from_session_scene(session, scene));
+        if state.continuity == next {
+            return false;
+        }
+        let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Invalidated, false);
+        drop(state);
+        detached.drop_in_shutdown_order();
+        true
+    }
+
+    pub(crate) fn finish_session(&self, session_id: &str) {
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            return;
+        };
+        if state
+            .session
+            .as_ref()
+            .is_some_and(|session| session.capture_session_id == session_id)
+        {
+            let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Shutdown, true);
+            drop(state);
+            detached.drop_in_shutdown_order();
+        }
+    }
+
+    /// Production placement remains disabled. Even a future all-positive gate
+    /// snapshot cannot enable sending until the in-process packet loop itself
+    /// is reviewed and this compile-time boundary is deliberately changed.
+    pub(crate) fn placement_enabled(&self) -> bool {
+        let Some(state) = self.lock_or_poison_shutdown() else {
+            return false;
+        };
+        state.phase == LifecyclePhase::Observing
+            && state.continuity.is_some()
+            && state.coordinator.is_some()
+            && {
+                #[cfg(windows)]
+                {
+                    state.active_handle.is_some()
+                }
+                #[cfg(not(windows))]
+                {
+                    false
+                }
+            }
+            && state.gates.all_satisfied()
+            && LIVE_PACKET_MUTATION_WIRED
+            && STOP_DRAIN_JOIN_RESOURCE_BUNDLE_WIRED
+    }
+
+    fn detach_owned_state(
+        state: &mut NativeBridgeState,
+        phase: LifecyclePhase,
+        clear_session: bool,
+    ) -> DetachedNativeResources {
+        state.generation = state.generation.wrapping_add(1);
+        state.phase = phase;
+        if clear_session {
+            state.session = None;
+        }
+        state.continuity = None;
+        state.parser_evidence = None;
+        state.gates = NativeGateState::default();
+        DetachedNativeResources {
+            #[cfg(windows)]
+            active_handle: state.active_handle.take(),
+            coordinator: state.coordinator.take(),
+        }
+    }
+
+    fn invalidate_and_release(mut state: std::sync::MutexGuard<'_, NativeBridgeState>) -> bool {
+        let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Invalidated, false);
+        drop(state);
+        detached.drop_in_shutdown_order();
+        false
+    }
+
+    /// Mutex poison means a lifecycle mutation may have stopped halfway. Take
+    /// every resource from the poisoned state, mark it terminal, unlock, then
+    /// close interception before dropping the coordinator ledger.
+    fn lock_or_poison_shutdown(&self) -> Option<std::sync::MutexGuard<'_, NativeBridgeState>> {
+        match self.state.lock() {
+            Ok(state) => Some(state),
+            Err(poisoned) => {
+                let mut state = poisoned.into_inner();
+                let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Poisoned, true);
+                drop(state);
+                detached.drop_in_shutdown_order();
+                self.state.clear_poison();
+                None
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state(
+        bridge: &AutomarkerNativeBridgeLifecycle,
+    ) -> std::sync::MutexGuard<'_, NativeBridgeState> {
+        bridge.state.lock().expect("test lifecycle mutex")
+    }
+
+    fn session() -> AutomarkerBridgeSessionIdentity {
+        AutomarkerBridgeSessionIdentity {
+            capture_session_id: "capture-a".into(),
+            deployment_id: "global".into(),
+            client_build: "25247556".into(),
+            protocol_pack_digest: "sha256:exact".into(),
+            protocol_supported: true,
+        }
+    }
+
+    fn scene(family: &str) -> AutomarkerSceneContext {
+        AutomarkerSceneContext {
+            client_build: "25247556".into(),
+            scene_id: 6525,
+            map_id: 6525,
+            activity_family_id: family.into(),
+            scene_name: None,
+        }
+    }
+
+    #[test]
+    fn shutdown_clears_every_owned_domain_and_cannot_be_revived() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        assert!(bridge.accept_parser_evidence(
+            Some(&scene("mech-facility")),
+            AutomarkerBridgeEvidenceSnapshot::default(),
+        ));
+        let before = state(&bridge).generation;
+        bridge.finish_session("capture-a");
+        let snapshot = state(&bridge);
+        assert_eq!(snapshot.phase, LifecyclePhase::Shutdown);
+        assert!(snapshot.generation > before);
+        assert!(snapshot.session.is_none());
+        assert!(snapshot.continuity.is_none());
+        assert!(snapshot.parser_evidence.is_none());
+        assert!(snapshot.coordinator.is_none());
+        drop(snapshot);
+        assert!(!bridge.accept_parser_evidence(
+            Some(&scene("mech-facility")),
+            AutomarkerBridgeEvidenceSnapshot::default(),
+        ));
+    }
+
+    #[test]
+    fn context_change_invalidates_coordinator_domain() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        assert!(bridge.accept_parser_evidence(
+            Some(&scene("mech-facility")),
+            AutomarkerBridgeEvidenceSnapshot::default(),
+        ));
+        assert!(bridge.reconcile_context(Some(&scene("sea-ringed-reef"))));
+        let snapshot = state(&bridge);
+        assert_eq!(snapshot.phase, LifecyclePhase::Invalidated);
+        assert!(snapshot.session.is_some());
+        assert!(snapshot.continuity.is_none());
+        assert!(snapshot.coordinator.is_none());
+        assert_eq!(snapshot.gates, NativeGateState::default());
+    }
+
+    #[test]
+    fn no_send_before_all_gates_or_before_packet_loop_is_reviewed() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        assert!(bridge.accept_parser_evidence(
+            Some(&scene("mech-facility")),
+            AutomarkerBridgeEvidenceSnapshot::default(),
+        ));
+        assert!(!bridge.placement_enabled());
+        {
+            let mut snapshot = state(&bridge);
+            snapshot.gates = NativeGateState {
+                exact_local_process: true,
+                exact_syn_owned_tuple_epoch: true,
+                pinned_backend: true,
+                reflect_arbitrated: true,
+                exact_build_pack_scene: true,
+                fresh_world_use_slot_carrier: true,
+                checksum_helper_ready: true,
+                authoritative_inbound_decoder_ready: true,
+            };
+        }
+        // No coordinator and no reviewed packet loop: still impossible.
+        assert!(!bridge.placement_enabled());
+    }
+
+    #[test]
+    fn mutex_poison_is_terminal_and_cannot_be_rearmed() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = bridge.state.lock().expect("test lifecycle mutex");
+            panic!("poison lifecycle mutex");
+        }));
+
+        assert!(!bridge.placement_enabled());
+        let snapshot = state(&bridge);
+        assert_eq!(snapshot.phase, LifecyclePhase::Poisoned);
+        assert!(snapshot.session.is_none());
+        assert!(snapshot.coordinator.is_none());
+        drop(snapshot);
+
+        bridge.begin_session(session());
+        assert_eq!(state(&bridge).phase, LifecyclePhase::Poisoned);
+    }
+}
