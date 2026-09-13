@@ -8,6 +8,8 @@ private, read-only Automarker connection-readiness worker.
 - `WinDivert64.sys` SHA-256: `8da085332782708d8767bcace5327a6ec7283c17cfb85e40b03cd2323a90ddc2`
 
 The desktop verifies these exact hashes and the Windows driver signature before
-opening even the passive sniff-only handle. Active packet interception and
-Automarker placement remain disabled until their separate lifecycle is fully
-verified.
+opening even the passive sniff-only handle. An elevated desktop may install or
+start this pinned driver through a temporary false-filter, read-only handle;
+the retained readiness observer remains `SNIFF | RECV_ONLY`. Active packet
+interception, mutation, sending, and Automarker placement remain disabled until
+their separate lifecycle is fully verified.

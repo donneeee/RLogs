@@ -43,6 +43,7 @@ use crate::{
 };
 
 const GAME_PROCESS_NAME: &str = "BPSR_STEAM.exe";
+const PASSIVE_READINESS_FLAGS: u64 = FLAG_SNIFF | FLAG_RECV_ONLY;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AutomarkerNativeReadinessEvidence {
@@ -89,6 +90,9 @@ impl AutomarkerPassiveReadinessWorker {
         if process_id == 0 || connection_epoch == 0 {
             return Err("passive readiness requires a process and connection epoch".into());
         }
+        if !is_elevated()? {
+            return Err("Automarker native readiness requires an elevated rLogs process".into());
+        }
         // Verify pinned bytes/signature before loading the backend used by the
         // passive handle.
         drop(PinnedWinDivertChecksumHelper::load(dependency_directory)?);
@@ -99,10 +103,26 @@ impl AutomarkerPassiveReadinessWorker {
         backend
             .compile_network_filter(FILTER)
             .map_err(|error| error.to_string())?;
-        let handle = match backend
-            .open_arbitrated_network(FILTER, 1, FLAG_SNIFF | FLAG_RECV_ONLY | FLAG_NO_INSTALL)
-            .map_err(|error| error.to_string())?
+        // WinDivert's REFLECT arbitration opens with NO_INSTALL, so establish
+        // the reviewed driver first through a false-filter, read-only handle.
+        // The temporary handle is dropped before arbitration and cannot
+        // receive, divert, mutate, or send a game packet.
+        let driver_start = backend
+            .open_network("false", 0, PASSIVE_READINESS_FLAGS)
+            .map_err(|error| error.to_string())?;
+        if driver_start.get_param(PARAM_VERSION_MAJOR)? != 2
+            || driver_start.get_param(PARAM_VERSION_MINOR)? != 2
         {
+            return Err("loaded WinDivert driver is not version 2.2".into());
+        }
+        let observer = backend
+            .open_arbitrated_network(FILTER, 1, PASSIVE_READINESS_FLAGS)
+            .map_err(|error| error.to_string());
+        // Keep the provisioning handle alive until REFLECT arbitration and
+        // the retained observer open have both finished, then close it on
+        // every outcome before handling the result.
+        drop(driver_start);
+        let handle = match observer? {
             ArbitratedNetworkOpen::Open(handle) => Arc::new(handle),
             ArbitratedNetworkOpen::Conflict => {
                 return Err("a same-priority passive WinDivert handle is already open".into());
@@ -466,6 +486,13 @@ fn is_exact_process(process_id: u32, expected: &str) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn passive_readiness_flags_are_read_only_and_allow_reviewed_driver_start() {
+        assert_ne!(PASSIVE_READINESS_FLAGS & FLAG_SNIFF, 0);
+        assert_ne!(PASSIVE_READINESS_FLAGS & FLAG_RECV_ONLY, 0);
+        assert_eq!(PASSIVE_READINESS_FLAGS & FLAG_NO_INSTALL, 0);
+    }
 
     #[test]
     fn capture_tuple_maps_without_persisting_any_packet_bytes() {
