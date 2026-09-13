@@ -4959,16 +4959,13 @@ struct LiveSessionRequest {
 
 #[cfg(windows)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct AutomarkerPassiveHostKey {
+struct AutomarkerPassiveStartKey {
     process_id: u32,
     connection_epoch: u64,
     capture_session_id: String,
     deployment_id: String,
     client_build: String,
     protocol_pack_digest: String,
-    scene_id: i32,
-    map_id: u32,
-    activity_family_id: String,
 }
 
 #[cfg(windows)]
@@ -4982,14 +4979,12 @@ fn automarker_native_dependency_directory(install_root: &Path) -> PathBuf {
 }
 
 #[cfg(windows)]
-fn automarker_passive_host_key(
+fn automarker_passive_start_key(
     process_id: u32,
     connection_epoch: u64,
     session: &AutomarkerBridgeSessionIdentity,
-    scene: Option<&AutomarkerSceneContext>,
     dependency_directory: &Path,
-) -> Option<AutomarkerPassiveHostKey> {
-    let scene = scene?;
+) -> Option<AutomarkerPassiveStartKey> {
     if process_id == 0
         || connection_epoch == 0
         || !session.protocol_supported
@@ -4997,25 +4992,18 @@ fn automarker_passive_host_key(
         || session.deployment_id.trim().is_empty()
         || session.client_build.trim().is_empty()
         || session.protocol_pack_digest.trim().is_empty()
-        || scene.client_build != session.client_build
-        || scene.scene_id <= 0
-        || scene.map_id == 0
-        || scene.activity_family_id.trim().is_empty()
         || !dependency_directory.join("WinDivert.dll").is_file()
         || !dependency_directory.join("WinDivert64.sys").is_file()
     {
         return None;
     }
-    Some(AutomarkerPassiveHostKey {
+    Some(AutomarkerPassiveStartKey {
         process_id,
         connection_epoch,
         capture_session_id: session.capture_session_id.clone(),
         deployment_id: session.deployment_id.clone(),
         client_build: session.client_build.clone(),
         protocol_pack_digest: session.protocol_pack_digest.clone(),
-        scene_id: scene.scene_id,
-        map_id: scene.map_id,
-        activity_family_id: scene.activity_family_id.clone(),
     })
 }
 
@@ -9644,9 +9632,29 @@ impl RuntimeController {
         };
         self.live_automarker_bridge_evidence
             .begin_session(automarker_bridge_session.clone());
-        let automarker_passive_session = automarker_bridge_session.clone();
         self.live_automarker_native_bridge
-            .begin_session_with_pack(automarker_bridge_session, pack.clone());
+            .begin_session_with_pack(automarker_bridge_session.clone(), pack.clone());
+        // Start the passive SYN observer before capture ingress can deliver
+        // its first confirmed connection or scene. It retains no packet
+        // bytes, and a result remains only a private candidate until the
+        // ordinary capture and exact parser context independently correlate.
+        let initial_automarker_connection_epoch = 1_u64;
+        let initial_automarker_dependency_directory =
+            automarker_native_dependency_directory(&self.install_root);
+        if let Some(start) = automarker_passive_start_key(
+            request.process_id,
+            initial_automarker_connection_epoch,
+            &automarker_bridge_session,
+            &initial_automarker_dependency_directory,
+        ) {
+            let _ = self
+                .live_automarker_native_bridge
+                .start_passive_readiness_worker(
+                    start.process_id,
+                    &initial_automarker_dependency_directory,
+                    start.connection_epoch,
+                );
+        }
         let initial_automarker_context = self.live_automarker_scene_context.current();
         self.live_automarker_bridge_evidence
             .reconcile_context(initial_automarker_context.as_ref());
@@ -9741,8 +9749,8 @@ impl RuntimeController {
                 // Keep the independent presentation observer alive for exactly
                 // the lifetime of this capture worker.
                 let _native_scene_observer = native_scene_observer;
-                let mut automarker_native_connection_epoch = 1_u64;
-                let mut automarker_passive_attempt: Option<AutomarkerPassiveHostKey> = None;
+                let mut automarker_native_connection_epoch =
+                    initial_automarker_connection_epoch;
                 let capture_result = (|| -> Result<_, String> {
                     let mut last_confirmed_connections = Vec::new();
                     let mut capture = BoundedCaptureIngress::spawn(
@@ -10006,6 +10014,11 @@ impl RuntimeController {
                                 .snapshot()
                                 .refresh_interval_millis,
                         ));
+                        // Poll before consuming this frame's connection-set
+                        // update so a just-observed SYN candidate can be
+                        // matched by SignatureFlowCapture in the same turn.
+                        let _ = live_automarker_native_bridge
+                            .poll_passive_readiness_worker();
                         if let Some(confirmed_connections) = confirmed_connections {
                             if live_automarker_native_bridge
                                 .confirmed_connections_require_restart(&confirmed_connections)
@@ -10014,9 +10027,14 @@ impl RuntimeController {
                                     automarker_native_connection_epoch.checked_add(1).ok_or(
                                         "Automarker native connection epoch exhausted",
                                     )?;
-                                automarker_passive_attempt = None;
                                 live_automarker_bridge_evidence.invalidate();
                                 live_automarker_native_bridge.invalidate_connection_epoch();
+                                let _ = live_automarker_native_bridge
+                                    .start_passive_readiness_worker(
+                                        automarker_native_process_id,
+                                        &automarker_native_dependency_directory,
+                                        automarker_native_connection_epoch,
+                                    );
                             }
                             recorder
                                 .add_connections(
@@ -10564,42 +10582,6 @@ impl RuntimeController {
                                 bridge_scene.as_ref(),
                                 live_automarker_bridge_evidence.current(),
                             );
-                        }
-                        let automarker_scene = live_automarker_scene_context.current();
-                        let automarker_evidence = live_automarker_bridge_evidence.current();
-                        let passive_key = automarker_passive_host_key(
-                            automarker_native_process_id,
-                            automarker_native_connection_epoch,
-                            &automarker_passive_session,
-                            automarker_scene.as_ref(),
-                            &automarker_native_dependency_directory,
-                        );
-                        if let Some(passive_key) = passive_key {
-                            let parser_context_accepted =
-                                live_automarker_native_bridge.accept_parser_evidence(
-                                    automarker_scene.as_ref(),
-                                    automarker_evidence.clone(),
-                                );
-                            if parser_context_accepted
-                                && automarker_passive_attempt.as_ref() != Some(&passive_key)
-                            {
-                                automarker_passive_attempt = Some(passive_key.clone());
-                                let _ = live_automarker_native_bridge
-                                    .start_passive_readiness_worker(
-                                        passive_key.process_id,
-                                        &automarker_native_dependency_directory,
-                                        passive_key.connection_epoch,
-                                    );
-                            }
-                            // A completed SYN result is accepted only after
-                            // the parser has observed a fresh exact carrier on
-                            // the same context and tuple.
-                            if automarker_evidence.outbound_carrier.is_some() {
-                                let _ = live_automarker_native_bridge
-                                    .poll_passive_readiness_worker();
-                            }
-                        } else {
-                            automarker_passive_attempt = None;
                         }
                         if let Some(error) = training_recording_error {
                             return Err(error);
@@ -16787,7 +16769,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn passive_automarker_host_key_requires_exact_context_and_local_dependencies() {
+    fn passive_automarker_start_key_precedes_scene_and_requires_exact_session_dependencies() {
         let root = temporary_root();
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join("WinDivert.dll"), b"test").unwrap();
@@ -16799,24 +16781,12 @@ mod tests {
             protocol_pack_digest: "sha256:exact".into(),
             protocol_supported: true,
         };
-        let scene = AutomarkerSceneContext {
-            client_build: "25247556".into(),
-            scene_id: 6525,
-            map_id: 6525,
-            activity_family_id: "mech-facility".into(),
-            scene_name: None,
-        };
-        let key = automarker_passive_host_key(42, 7, &session, Some(&scene), &root).unwrap();
+        let key = automarker_passive_start_key(42, 7, &session, &root).unwrap();
         assert_eq!(key.process_id, 42);
         assert_eq!(key.connection_epoch, 7);
         assert_eq!(key.capture_session_id, "capture-a");
-        assert_eq!(key.activity_family_id, "mech-facility");
-        assert!(automarker_passive_host_key(0, 7, &session, Some(&scene), &root).is_none());
-        assert!(automarker_passive_host_key(42, 0, &session, Some(&scene), &root).is_none());
-        assert!(automarker_passive_host_key(42, 7, &session, None, &root).is_none());
-        let mut wrong_scene = scene.clone();
-        wrong_scene.client_build = "other".into();
-        assert!(automarker_passive_host_key(42, 7, &session, Some(&wrong_scene), &root).is_none());
+        assert!(automarker_passive_start_key(0, 7, &session, &root).is_none());
+        assert!(automarker_passive_start_key(42, 0, &session, &root).is_none());
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -16840,7 +16810,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn passive_automarker_host_key_changes_across_scene_and_connection_epoch() {
+    fn passive_automarker_start_key_changes_only_across_connection_epoch() {
         let root = temporary_root();
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join("WinDivert.dll"), b"test").unwrap();
@@ -16852,21 +16822,9 @@ mod tests {
             protocol_pack_digest: "sha256:exact".into(),
             protocol_supported: true,
         };
-        let mut scene = AutomarkerSceneContext {
-            client_build: "25247556".into(),
-            scene_id: 6525,
-            map_id: 6525,
-            activity_family_id: "mech-facility".into(),
-            scene_name: None,
-        };
-        let first = automarker_passive_host_key(42, 7, &session, Some(&scene), &root).unwrap();
-        let next_epoch = automarker_passive_host_key(42, 8, &session, Some(&scene), &root).unwrap();
+        let first = automarker_passive_start_key(42, 7, &session, &root).unwrap();
+        let next_epoch = automarker_passive_start_key(42, 8, &session, &root).unwrap();
         assert_ne!(first, next_epoch);
-        scene.scene_id = 7001;
-        scene.map_id = 7001;
-        scene.activity_family_id = "sea-ringed-reef".into();
-        let next_scene = automarker_passive_host_key(42, 8, &session, Some(&scene), &root).unwrap();
-        assert_ne!(next_epoch, next_scene);
         std::fs::remove_dir_all(root).unwrap();
     }
 

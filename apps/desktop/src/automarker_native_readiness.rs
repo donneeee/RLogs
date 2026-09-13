@@ -155,7 +155,7 @@ pub(crate) struct AutomarkerNativeReadinessRequest<'a> {
     pub syn_observed_micros: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct AutomarkerPassiveReadinessObservation {
     pub readiness: AutomarkerNativeReadinessEvidence,
     pub syn_ordinal: u64,

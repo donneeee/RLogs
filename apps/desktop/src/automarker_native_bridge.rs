@@ -161,11 +161,27 @@ struct NativeBridgeState {
     #[cfg(windows)]
     passive_readiness_worker: Option<AutomarkerPassiveReadinessWorker>,
     #[cfg(windows)]
+    pending_passive_readiness: Option<PendingPassiveReadiness>,
+    #[cfg(windows)]
     active_handle: Option<WinDivertHandle>,
     // Declared after the native handle so ordinary struct drop also closes
     // interception before discarding the coordinator's retransmission ledger.
     coordinator: Option<AutomarkerBridgeCoordinator>,
 }
+
+#[cfg(windows)]
+struct PendingPassiveReadiness {
+    observation: crate::automarker_native_readiness::AutomarkerPassiveReadinessObservation,
+    received_at: Instant,
+    generation: u64,
+    capture_session_id: String,
+    process_id: u32,
+    connection_epoch: u64,
+    capture_tuple_confirmed: bool,
+}
+
+#[cfg(windows)]
+const PASSIVE_READINESS_CANDIDATE_TTL: std::time::Duration = std::time::Duration::from_secs(2);
 
 #[derive(Default)]
 struct DetachedNativeResources {
@@ -247,7 +263,10 @@ impl AutomarkerNativeBridgeLifecycle {
             return Self::invalidate_and_release(state);
         };
         let Some(scene) = scene else {
-            return Self::invalidate_and_release(state);
+            let detached = Self::clear_scene_bound_preserving_passive(&mut state);
+            drop(state);
+            detached.drop_in_shutdown_order();
+            return false;
         };
         let Some(continuity) = BridgeContinuity::from_session_scene(session, scene) else {
             return Self::invalidate_and_release(state);
@@ -345,6 +364,8 @@ impl AutomarkerNativeBridgeLifecycle {
         // carrier gate belongs to a future active game-PC interception loop
         // holding the exact packet it can synchronously return.
         state.gates.fresh_world_use_slot_carrier = false;
+        #[cfg(windows)]
+        Self::try_promote_pending_readiness_locked(&mut state);
         true
     }
 
@@ -502,6 +523,13 @@ impl AutomarkerNativeBridgeLifecycle {
         let Some(mut state) = self.lock_or_poison_shutdown() else {
             return false;
         };
+        if state
+            .pending_passive_readiness
+            .as_ref()
+            .is_some_and(|pending| pending.received_at.elapsed() > PASSIVE_READINESS_CANDIDATE_TTL)
+        {
+            state.pending_passive_readiness = None;
+        }
         let outcome = state
             .passive_readiness_worker
             .as_ref()
@@ -517,19 +545,24 @@ impl AutomarkerNativeBridgeLifecycle {
             Ok(observation)
                 if observation.readiness.reflect_preflight_clear
                     && observation.readiness.pinned_backend_ready
-                    && observation.readiness.checksum_helper_ready
-                    && Self::retain_native_flow_locked(
-                        &mut state,
-                        observation.readiness.binding,
-                        observation.syn_ordinal,
-                        observation.syn_observed_micros,
-                    ) =>
+                    && observation.readiness.checksum_helper_ready =>
             {
-                state.gates.pinned_backend = true;
-                state.gates.checksum_helper_ready = true;
-                // A passive preflight is not authorization for a future
-                // active exact-tuple open; that operation must re-arbitrate.
-                state.gates.reflect_arbitrated = false;
+                // This is only a bounded process-owned SYN candidate. The
+                // ordinary parser capture must independently confirm its BPSR
+                // tuple before it may satisfy any native readiness gate.
+                state.pending_passive_readiness = Some(PendingPassiveReadiness {
+                    observation,
+                    received_at: Instant::now(),
+                    generation: state.generation,
+                    capture_session_id: state
+                        .session
+                        .as_ref()
+                        .map(|session| session.capture_session_id.clone())
+                        .unwrap_or_default(),
+                    process_id: observation.readiness.binding.process_id(),
+                    connection_epoch: observation.readiness.binding.connection_epoch(),
+                    capture_tuple_confirmed: false,
+                });
                 state.native_failure = None;
                 drop(state);
                 worker.stop_drain_join();
@@ -583,7 +616,10 @@ impl AutomarkerNativeBridgeLifecycle {
             && state.gates.exact_syn_owned_tuple_epoch
             && state.gates.pinned_backend
             && state.gates.checksum_helper_ready;
-        let native_readiness_proven = worker_readiness_proven || retained_readiness_proven;
+        // A worker milestone is only an uncorrelated candidate. Never expose
+        // it as readiness until SignatureFlowCapture and the parser carrier
+        // have both matched the exact tuple.
+        let native_readiness_proven = retained_readiness_proven;
         let marker_carrier_present = state
             .parser_evidence
             .as_ref()
@@ -603,11 +639,15 @@ impl AutomarkerNativeBridgeLifecycle {
         let failure_category = failure.map(AutomarkerNativeFailureCategory::as_str);
         AutomarkerNativeOperatorStatus {
             waiting_for_new_syn: state.phase == LifecyclePhase::Observing
-                && state.continuity.is_some()
                 && !native_readiness_proven
+                && !worker_readiness_proven
+                && state.pending_passive_readiness.is_none()
                 && !failure_present,
             native_readiness_proven,
-            waiting_for_marker_carrier: native_readiness_proven && !marker_carrier_present,
+            waiting_for_marker_carrier: (worker_readiness_proven
+                || state.pending_passive_readiness.is_some()
+                || native_readiness_proven)
+                && !marker_carrier_present,
             return_confirmed: state
                 .parser_evidence
                 .as_ref()
@@ -799,7 +839,7 @@ impl AutomarkerNativeBridgeLifecycle {
         if state.continuity == next {
             return false;
         }
-        let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Invalidated, false);
+        let detached = Self::clear_scene_bound_preserving_passive(&mut state);
         drop(state);
         detached.drop_in_shutdown_order();
         true
@@ -830,12 +870,33 @@ impl AutomarkerNativeBridgeLifecycle {
         &self,
         confirmed: &[rlogs_capture::TcpConnection],
     ) -> bool {
-        let Some(state) = self.lock_or_poison_shutdown() else {
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
             return false;
         };
         #[cfg(windows)]
         if state.passive_readiness_worker.is_some() {
             return false;
+        }
+        #[cfg(windows)]
+        if let Some(pending) = state.pending_passive_readiness.as_mut() {
+            if pending.received_at.elapsed() > PASSIVE_READINESS_CANDIDATE_TTL {
+                state.pending_passive_readiness = None;
+                return true;
+            }
+            let connection = pending.observation.readiness.binding.connection();
+            let matched = confirmed.iter().any(|candidate| {
+                candidate.client.address == std::net::IpAddr::V4(connection.local.address)
+                    && candidate.client.port == connection.local.port
+                    && candidate.server.address == std::net::IpAddr::V4(connection.remote.address)
+                    && candidate.server.port == connection.remote.port
+            });
+            if matched {
+                pending.capture_tuple_confirmed = true;
+                Self::try_promote_pending_readiness_locked(&mut state);
+                return false;
+            }
+            state.pending_passive_readiness = None;
+            return true;
         }
         let Some(flow) = state.native_flow.as_ref() else {
             return true;
@@ -914,6 +975,7 @@ impl AutomarkerNativeBridgeLifecycle {
         #[cfg(windows)]
         {
             state.native_failure = None;
+            state.pending_passive_readiness = None;
         }
         DetachedNativeResources {
             #[cfg(windows)]
@@ -922,6 +984,71 @@ impl AutomarkerNativeBridgeLifecycle {
             active_handle: state.active_handle.take(),
             coordinator: state.coordinator.take(),
         }
+    }
+
+    /// Scene presentation may arrive after the process-owned SYN. Clear only
+    /// scene-bound correlation while retaining the one bounded passive worker
+    /// or candidate inside the same capture-session generation.
+    #[cfg(windows)]
+    fn clear_scene_bound_preserving_passive(
+        state: &mut NativeBridgeState,
+    ) -> DetachedNativeResources {
+        let worker = state.passive_readiness_worker.take();
+        let pending = state.pending_passive_readiness.take();
+        let mut detached = Self::detach_owned_state(state, LifecyclePhase::Observing, false);
+        state.passive_readiness_worker = worker;
+        state.pending_passive_readiness = pending.map(|mut pending| {
+            pending.generation = state.generation;
+            pending
+        });
+        detached.passive_readiness_worker = None;
+        detached
+    }
+
+    #[cfg(not(windows))]
+    fn clear_scene_bound_preserving_passive(
+        state: &mut NativeBridgeState,
+    ) -> DetachedNativeResources {
+        Self::detach_owned_state(state, LifecyclePhase::Observing, false)
+    }
+
+    #[cfg(windows)]
+    fn try_promote_pending_readiness_locked(state: &mut NativeBridgeState) -> bool {
+        let Some(pending) = state.pending_passive_readiness.as_ref() else {
+            return false;
+        };
+        let Some(session) = state.session.as_ref() else {
+            return false;
+        };
+        if pending.received_at.elapsed() > PASSIVE_READINESS_CANDIDATE_TTL
+            || pending.generation != state.generation
+            || pending.capture_session_id != session.capture_session_id
+            || pending.process_id != pending.observation.readiness.binding.process_id()
+            || pending.connection_epoch != pending.observation.readiness.binding.connection_epoch()
+            || !pending.capture_tuple_confirmed
+            || state
+                .parser_evidence
+                .as_ref()
+                .and_then(|evidence| evidence.outbound_carrier.as_ref())
+                .is_none()
+        {
+            return false;
+        }
+        let observation = pending.observation;
+        if !Self::retain_native_flow_locked(
+            state,
+            observation.readiness.binding,
+            observation.syn_ordinal,
+            observation.syn_observed_micros,
+        ) {
+            return false;
+        }
+        state.pending_passive_readiness = None;
+        state.gates.pinned_backend = true;
+        state.gates.checksum_helper_ready = true;
+        state.gates.reflect_arbitrated = false;
+        state.native_failure = None;
+        true
     }
 
     fn invalidate_and_release(mut state: std::sync::MutexGuard<'_, NativeBridgeState>) -> bool {
@@ -1034,6 +1161,17 @@ mod tests {
             server_address: Ipv4Addr::new(10, 0, 0, 3),
             server_port: 443,
         }
+    }
+
+    #[cfg(windows)]
+    fn confirmed_connection() -> rlogs_capture::TcpConnection {
+        rlogs_capture::TcpConnection::new(
+            rlogs_capture::TcpEndpoint::new(
+                std::net::IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)),
+                50_000,
+            ),
+            rlogs_capture::TcpEndpoint::new(std::net::IpAddr::V4(Ipv4Addr::new(10, 0, 0, 3)), 443),
+        )
     }
 
     fn parser_evidence() -> AutomarkerBridgeEvidenceSnapshot {
@@ -1182,7 +1320,7 @@ mod tests {
         ));
         assert!(bridge.reconcile_context(Some(&scene("sea-ringed-reef"))));
         let snapshot = state(&bridge);
-        assert_eq!(snapshot.phase, LifecyclePhase::Invalidated);
+        assert_eq!(snapshot.phase, LifecyclePhase::Observing);
         assert!(snapshot.session.is_some());
         assert!(snapshot.continuity.is_none());
         assert!(snapshot.coordinator.is_none());
@@ -1191,16 +1329,19 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn context_change_stops_and_joins_passive_worker() {
+    fn context_change_preserves_pre_correlation_passive_worker() {
         let bridge = AutomarkerNativeBridgeLifecycle::default();
         bridge.begin_session(session());
         assert!(bridge.accept_parser_evidence(Some(&scene("mech-facility")), parser_evidence()));
         let joined = install_completed_worker(&bridge, Ok(passive_observation()));
         assert!(bridge.reconcile_context(Some(&scene("sea-ringed-reef"))));
-        assert!(joined.load(Ordering::SeqCst));
+        assert!(!joined.load(Ordering::SeqCst));
         let snapshot = state(&bridge);
-        assert_eq!(snapshot.phase, LifecyclePhase::Invalidated);
-        assert!(snapshot.passive_readiness_worker.is_none());
+        assert_eq!(snapshot.phase, LifecyclePhase::Observing);
+        assert!(snapshot.passive_readiness_worker.is_some());
+        drop(snapshot);
+        bridge.finish_session("capture-a");
+        assert!(joined.load(Ordering::SeqCst));
     }
 
     #[test]
@@ -1340,10 +1481,12 @@ mod tests {
     fn passive_worker_result_retains_only_readiness_and_cannot_send() {
         let bridge = AutomarkerNativeBridgeLifecycle::default();
         bridge.begin_session(session());
-        assert!(bridge.accept_parser_evidence(Some(&scene("mech-facility")), parser_evidence()));
         let joined = install_completed_worker(&bridge, Ok(passive_observation()));
         assert!(bridge.poll_passive_readiness_worker());
         assert!(joined.load(Ordering::SeqCst));
+        assert!(!bridge.sanitized_operator_status().native_readiness_proven);
+        assert!(!bridge.confirmed_connections_require_restart(&[confirmed_connection()]));
+        assert!(bridge.accept_parser_evidence(Some(&scene("mech-facility")), parser_evidence()));
         let snapshot = state(&bridge);
         assert!(snapshot.passive_readiness_worker.is_none());
         assert!(snapshot.gates.exact_local_process);
@@ -1351,6 +1494,31 @@ mod tests {
         assert!(snapshot.gates.pinned_backend);
         assert!(snapshot.gates.checksum_helper_ready);
         assert!(!snapshot.gates.reflect_arbitrated);
+        drop(snapshot);
+        assert!(!bridge.placement_enabled());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn unrelated_process_owned_syn_candidate_is_rejected_before_parser_correlation() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        let joined = install_completed_worker(&bridge, Ok(passive_observation()));
+        assert!(bridge.poll_passive_readiness_worker());
+        assert!(joined.load(Ordering::SeqCst));
+
+        let unrelated = rlogs_capture::TcpConnection::new(
+            rlogs_capture::TcpEndpoint::new(
+                std::net::IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)),
+                50_001,
+            ),
+            rlogs_capture::TcpEndpoint::new(std::net::IpAddr::V4(Ipv4Addr::new(10, 0, 0, 4)), 443),
+        );
+        assert!(bridge.confirmed_connections_require_restart(&[unrelated]));
+        let snapshot = state(&bridge);
+        assert!(snapshot.pending_passive_readiness.is_none());
+        assert!(snapshot.native_flow.is_none());
+        assert_eq!(snapshot.gates, NativeGateState::default());
         drop(snapshot);
         assert!(!bridge.placement_enabled());
     }
@@ -1366,7 +1534,7 @@ mod tests {
         ));
         let joined = install_completed_worker(&bridge, Ok(passive_observation()));
         let status = bridge.sanitized_operator_status();
-        assert!(status.native_readiness_proven);
+        assert!(!status.native_readiness_proven);
         assert!(status.waiting_for_marker_carrier);
         assert!(!status.waiting_for_new_syn);
         assert!(!status.return_confirmed);
