@@ -55,7 +55,9 @@ bounded 64 KiB private prefix window is not exhausted first.
 
 Place exactly one marker through the normal game UI during the 30-second
 window. A separate standard and ExitLag run makes the comparison unambiguous.
-Only the file ending in `.safe.v2.json` is created.
+Only the file ending in `.safe.v3.json` is created. Schema 3 adds sanitized
+stage counters for signature filtering, BPSR framing, route matching, and exact
+marker decoding so a zero marker count identifies where recognition stopped.
 
 ## What the receipt establishes
 
