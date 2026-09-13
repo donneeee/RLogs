@@ -25,6 +25,11 @@ use crate::automarker_native_readiness::{
 #[cfg(windows)]
 use crate::automarker_windivert_backend::WinDivertHandle;
 use crate::{
+    automarker_active_worker::{
+        ActiveAutomarkerBoundProcess, ActiveAutomarkerFatalOwnership,
+        ActiveAutomarkerFatalRecovery, ActiveAutomarkerFatalRecoveryStatus,
+        ActiveAutomarkerStopDisposition, ActiveAutomarkerWorkerBundle,
+    },
     automarker_bridge_evidence::{
         AutomarkerBridgeCaptureTcpConnection, AutomarkerBridgeEvidenceSnapshot,
         AutomarkerBridgeSessionIdentity,
@@ -70,6 +75,13 @@ pub(crate) struct AutomarkerNativeOperatorStatus {
 
 const LIVE_PACKET_MUTATION_WIRED: bool = false;
 const STOP_DRAIN_JOIN_RESOURCE_BUNDLE_WIRED: bool = false;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AutomarkerActiveLifetimeArbitration {
+    /// No continuously owned REFLECT/lifetime monitor exists yet. A one-time
+    /// preflight cannot satisfy the active-handle lifetime requirement.
+    Unresolved,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct BridgeContinuity {
@@ -143,7 +155,19 @@ enum LifecyclePhase {
     Observing,
     Invalidated,
     Shutdown,
+    /// An active worker or its fatal completion still owns interception. No
+    /// session transition or placement may occur until explicit recovery.
+    OwnershipRecoveryRequired,
     Poisoned,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AutomarkerActiveOwnershipStatus {
+    Idle,
+    WorkerRunning,
+    RecoveryRequired {
+        bound_process: Option<ActiveAutomarkerBoundProcess>,
+    },
 }
 
 #[derive(Default)]
@@ -157,6 +181,9 @@ struct NativeBridgeState {
     protocol_pack: Option<ProtocolPack>,
     native_flow: Option<NativeFlowEvidence>,
     gates: NativeGateState,
+    active_worker: Option<ActiveAutomarkerWorkerBundle>,
+    fatal_ownership: Option<ActiveAutomarkerFatalOwnership>,
+    shutdown_requested_while_active: bool,
     #[cfg(windows)]
     native_failure: Option<AutomarkerNativeFailureCategory>,
     #[cfg(windows)]
@@ -213,6 +240,116 @@ pub(crate) struct AutomarkerNativeBridgeLifecycle {
 }
 
 impl AutomarkerNativeBridgeLifecycle {
+    pub(crate) fn active_lifetime_arbitration(&self) -> AutomarkerActiveLifetimeArbitration {
+        AutomarkerActiveLifetimeArbitration::Unresolved
+    }
+    /// Transfer the sole active worker owner into the bridge lifecycle. This
+    /// is private until the activation review deliberately wires construction.
+    #[allow(dead_code)]
+    pub(crate) fn retain_active_worker(
+        &self,
+        worker: ActiveAutomarkerWorkerBundle,
+    ) -> Result<(), ActiveAutomarkerWorkerBundle> {
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            return Err(worker);
+        };
+        if state.active_worker.is_some()
+            || state.fatal_ownership.is_some()
+            || !matches!(state.phase, LifecyclePhase::Observing)
+        {
+            return Err(worker);
+        }
+        state.active_worker = Some(worker);
+        Ok(())
+    }
+
+    /// Poll a terminal worker without blocking. Every fatal completion is
+    /// moved into persistent lifecycle ownership before this method returns.
+    #[allow(dead_code)]
+    pub(crate) fn poll_active_ownership(&self) -> AutomarkerActiveOwnershipStatus {
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            return AutomarkerActiveOwnershipStatus::RecoveryRequired {
+                bound_process: None,
+            };
+        };
+        Self::collect_finished_worker_locked(&mut state);
+        if state.active_worker.is_none()
+            && state.fatal_ownership.is_none()
+            && state.shutdown_requested_while_active
+        {
+            state.shutdown_requested_while_active = false;
+            let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Shutdown, true);
+            drop(state);
+            detached.drop_in_shutdown_order();
+            AutomarkerActiveOwnershipStatus::Idle
+        } else {
+            Self::active_ownership_status_locked(&state)
+        }
+    }
+
+    /// Advance retained fatal ownership with one bounded, typed recovery
+    /// observation. Activation remains closed until recovery releases it.
+    #[allow(dead_code)]
+    pub(crate) fn recover_active_ownership(
+        &self,
+        recovery: ActiveAutomarkerFatalRecovery,
+    ) -> Result<AutomarkerActiveOwnershipStatus, String> {
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            return Err("Automarker native lifecycle is poisoned".to_owned());
+        };
+        Self::collect_finished_worker_locked(&mut state);
+        let Some(fatal) = state.fatal_ownership.as_mut() else {
+            return Err("no retained Automarker fatal ownership is available".to_owned());
+        };
+        if fatal.recover(recovery)? == ActiveAutomarkerFatalRecoveryStatus::Released {
+            let released = state.fatal_ownership.take();
+            drop(released);
+            if state.shutdown_requested_while_active {
+                state.shutdown_requested_while_active = false;
+                let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Shutdown, true);
+                drop(state);
+                detached.drop_in_shutdown_order();
+                return Ok(AutomarkerActiveOwnershipStatus::Idle);
+            }
+            state.phase = LifecyclePhase::Invalidated;
+        }
+        Ok(Self::active_ownership_status_locked(&state))
+    }
+
+    fn collect_finished_worker_locked(state: &mut NativeBridgeState) {
+        let Some(worker) = state.active_worker.as_mut() else {
+            return;
+        };
+        let completion = match worker.try_join_finished() {
+            Ok(Some(completion)) => completion,
+            Ok(None) => return,
+            Err(_) => {
+                state.active_worker = None;
+                state.phase = LifecyclePhase::Poisoned;
+                return;
+            }
+        };
+        state.active_worker = None;
+        if let Some(fatal) = completion.fatal_ownership {
+            state.fatal_ownership = Some(fatal);
+            state.phase = LifecyclePhase::OwnershipRecoveryRequired;
+        }
+    }
+
+    fn active_ownership_status_locked(
+        state: &NativeBridgeState,
+    ) -> AutomarkerActiveOwnershipStatus {
+        if let Some(fatal) = state.fatal_ownership.as_ref() {
+            AutomarkerActiveOwnershipStatus::RecoveryRequired {
+                bound_process: fatal.retained_bound_process(),
+            }
+        } else if state.active_worker.is_some() {
+            AutomarkerActiveOwnershipStatus::WorkerRunning
+        } else {
+            AutomarkerActiveOwnershipStatus::Idle
+        }
+    }
+
     #[allow(dead_code)] // Tests and pack-less fail-closed embeddings.
     pub(crate) fn begin_session(&self, session: AutomarkerBridgeSessionIdentity) {
         self.begin_session_inner(session, None);
@@ -235,6 +372,11 @@ impl AutomarkerNativeBridgeLifecycle {
             return;
         };
         if state.phase == LifecyclePhase::Poisoned {
+            return;
+        }
+        Self::collect_finished_worker_locked(&mut state);
+        if state.active_worker.is_some() || state.fatal_ownership.is_some() {
+            state.phase = LifecyclePhase::OwnershipRecoveryRequired;
             return;
         }
         let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Observing, true);
@@ -966,6 +1108,28 @@ impl AutomarkerNativeBridgeLifecycle {
             .as_ref()
             .is_some_and(|session| session.capture_session_id == session_id)
         {
+            Self::collect_finished_worker_locked(&mut state);
+            if state.active_worker.is_some() {
+                state.shutdown_requested_while_active = true;
+                let worker = state
+                    .active_worker
+                    .as_ref()
+                    .expect("active worker checked above");
+                let stop = worker.request_stop();
+                Self::collect_finished_worker_locked(&mut state);
+                if state.active_worker.is_some() || state.fatal_ownership.is_some() {
+                    state.phase = LifecyclePhase::OwnershipRecoveryRequired;
+                    if !matches!(stop, Ok(ActiveAutomarkerStopDisposition::StopRequested)) {
+                        return;
+                    }
+                    return;
+                }
+            }
+            if state.fatal_ownership.is_some() {
+                state.shutdown_requested_while_active = true;
+                state.phase = LifecyclePhase::OwnershipRecoveryRequired;
+                return;
+            }
             let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Shutdown, true);
             drop(state);
             detached.drop_in_shutdown_order();
@@ -986,6 +1150,8 @@ impl AutomarkerNativeBridgeLifecycle {
         state.phase == LifecyclePhase::Observing
             && state.continuity.is_some()
             && state.coordinator.is_some()
+            && state.active_worker.is_none()
+            && state.fatal_ownership.is_none()
             && {
                 #[cfg(windows)]
                 {
@@ -1006,6 +1172,12 @@ impl AutomarkerNativeBridgeLifecycle {
         phase: LifecyclePhase,
         clear_session: bool,
     ) -> DetachedNativeResources {
+        Self::collect_finished_worker_locked(state);
+        if state.active_worker.is_some() || state.fatal_ownership.is_some() {
+            state.phase = LifecyclePhase::OwnershipRecoveryRequired;
+            state.shutdown_requested_while_active |= phase == LifecyclePhase::Shutdown;
+            return DetachedNativeResources::default();
+        }
         state.generation = state.generation.wrapping_add(1);
         state.phase = phase;
         if clear_session {
@@ -1128,6 +1300,32 @@ impl AutomarkerNativeBridgeLifecycle {
     }
 }
 
+impl Drop for AutomarkerNativeBridgeLifecycle {
+    fn drop(&mut self) {
+        let state = match self.state.get_mut() {
+            Ok(state) => state,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        Self::collect_finished_worker_locked(state);
+        if state.fatal_ownership.is_some() {
+            eprintln!("fatal: Automarker lifecycle exited with retained interception ownership");
+            std::process::abort();
+        }
+        let Some(mut worker) = state.active_worker.take() else {
+            return;
+        };
+        match worker.stop_drain_join() {
+            Ok(completion) if completion.fatal_ownership.is_none() => {}
+            Ok(_) | Err(_) => {
+                eprintln!(
+                    "fatal: Automarker lifecycle could not drain active interception during teardown"
+                );
+                std::process::abort();
+            }
+        }
+    }
+}
+
 fn binding_matches_capture(
     binding: OfflineAutomarkerConnectionEpochBinding,
     capture: AutomarkerBridgeCaptureTcpConnection,
@@ -1144,6 +1342,12 @@ fn binding_matches_capture(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::automarker_active_worker::{
+        ActiveAutomarkerBackend, ActiveAutomarkerCancelDisposition,
+        ActiveAutomarkerClassificationMode, ActiveAutomarkerCommitDisposition,
+        ActiveAutomarkerCoordinator, ActiveAutomarkerDisposition, ActiveAutomarkerPacket,
+        ActiveAutomarkerSendOutcome, ActiveAutomarkerTimeoutDisposition, ActiveAutomarkerWake,
+    };
     use crate::automarker_bridge_evidence::{
         AutomarkerBridgeOutboundCarrierEvidence, AutomarkerBridgeRecordProvenance,
     };
@@ -1151,17 +1355,138 @@ mod tests {
         AUTOMARKER_REQUEST_BUILD, AutomarkerIpv4Endpoint, DecoderKind, FragmentKind,
         MappingProvenance, PacketDirection, bind_offline_automarker_connection_epoch,
     };
-    use std::net::Ipv4Addr;
     #[cfg(windows)]
-    use std::sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::{
+        collections::VecDeque,
+        net::Ipv4Addr,
+        sync::{Arc, Mutex as TestMutex},
+        thread,
+        time::Duration,
     };
 
     fn state(
         bridge: &AutomarkerNativeBridgeLifecycle,
     ) -> std::sync::MutexGuard<'_, NativeBridgeState> {
         bridge.state.lock().expect("test lifecycle mutex")
+    }
+
+    #[derive(Clone, Default)]
+    struct ActiveLifecycleHarness(Arc<TestMutex<VecDeque<Result<ActiveAutomarkerWake, String>>>>);
+
+    impl ActiveLifecycleHarness {
+        fn push(&self, wake: ActiveAutomarkerWake) {
+            self.0.lock().unwrap().push_back(Ok(wake));
+        }
+    }
+
+    struct ActiveLifecycleBackend(ActiveLifecycleHarness);
+
+    impl ActiveAutomarkerBackend for ActiveLifecycleBackend {
+        fn receive(&mut self) -> Result<ActiveAutomarkerWake, String> {
+            self.0
+                .0
+                .lock()
+                .unwrap()
+                .pop_front()
+                .unwrap_or(Ok(ActiveAutomarkerWake::Timeout))
+        }
+
+        fn prepare_modified_send(
+            &mut self,
+            _original: &ActiveAutomarkerPacket,
+            _approved_changed_bytes: &[u8],
+        ) -> Result<rlogs_game_bpsr::AutomarkerPacketSendPreparation, String> {
+            Err("not used by lifecycle ownership test".to_owned())
+        }
+
+        fn send(&mut self, packet: &ActiveAutomarkerPacket) -> Result<usize, String> {
+            Ok(packet.bytes.len())
+        }
+
+        fn close_interception(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    struct ActiveLifecycleCoordinator {
+        obligation: bool,
+    }
+
+    impl ActiveAutomarkerCoordinator for ActiveLifecycleCoordinator {
+        fn classify(
+            &mut self,
+            packet: &ActiveAutomarkerPacket,
+            _mode: ActiveAutomarkerClassificationMode,
+        ) -> ActiveAutomarkerDisposition {
+            if packet.bytes == b"exact-rst" {
+                self.obligation = false;
+                ActiveAutomarkerDisposition::ConnectionTerminatedAfterPassThrough
+            } else {
+                ActiveAutomarkerDisposition::PassThrough
+            }
+        }
+
+        fn cancel_after_checksum_failure(
+            &mut self,
+            _preparation_id: u64,
+        ) -> ActiveAutomarkerCancelDisposition {
+            ActiveAutomarkerCancelDisposition::AbortWithoutReinject
+        }
+
+        fn commit_send(
+            &mut self,
+            _preparation_id: u64,
+            _outcome: ActiveAutomarkerSendOutcome,
+        ) -> ActiveAutomarkerCommitDisposition {
+            ActiveAutomarkerCommitDisposition::AbortWithoutReinject
+        }
+
+        fn record_modified_send_may_begin(
+            &mut self,
+            _preparation_id: u64,
+        ) -> ActiveAutomarkerCommitDisposition {
+            ActiveAutomarkerCommitDisposition::AbortWithoutReinject
+        }
+
+        fn observe_timeout(&mut self) -> ActiveAutomarkerTimeoutDisposition {
+            ActiveAutomarkerTimeoutDisposition::Continue
+        }
+
+        fn rewrite_obligation_active(&self) -> bool {
+            self.obligation
+        }
+
+        fn drain_unsent_originals(&mut self) -> Vec<ActiveAutomarkerPacket> {
+            Vec::new()
+        }
+
+        fn discard_retransmission_ledger(&mut self) {}
+
+        fn retained_bound_process(&self) -> Option<ActiveAutomarkerBoundProcess> {
+            Some(ActiveAutomarkerBoundProcess {
+                process_id: 42,
+                connection_epoch: 9,
+            })
+        }
+
+        fn observe_bound_process_terminated(
+            &mut self,
+            proof: ActiveAutomarkerBoundProcess,
+        ) -> bool {
+            if self.retained_bound_process() != Some(proof) {
+                return false;
+            }
+            self.obligation = false;
+            true
+        }
+    }
+
+    fn active_lifecycle_packet(bytes: &[u8]) -> ActiveAutomarkerPacket {
+        ActiveAutomarkerPacket {
+            bytes: bytes.to_vec(),
+            address: rlogs_game_bpsr::AutomarkerWinDivertAddress::from_opaque_bytes([0; 80]),
+        }
     }
 
     fn session() -> AutomarkerBridgeSessionIdentity {
@@ -1349,6 +1674,70 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn session_finish_retains_fatal_worker_until_exact_rst_is_drained() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        let harness = ActiveLifecycleHarness::default();
+        harness.push(ActiveAutomarkerWake::EndOfStream);
+        let worker = ActiveAutomarkerWorkerBundle::spawn(
+            ActiveLifecycleBackend(harness.clone()),
+            ActiveLifecycleCoordinator { obligation: true },
+        )
+        .unwrap();
+        if let Err(worker) = bridge.retain_active_worker(worker) {
+            // Preserve the owner even on a broken test setup so the safety
+            // Drop path cannot mask the assertion with a process abort.
+            std::mem::forget(worker);
+            panic!("test lifecycle rejected its first active worker");
+        }
+
+        bridge.finish_session("capture-a");
+        let started = Instant::now();
+        let retained = loop {
+            let status = bridge.poll_active_ownership();
+            if matches!(
+                status,
+                AutomarkerActiveOwnershipStatus::RecoveryRequired { .. }
+            ) {
+                break status;
+            }
+            assert!(started.elapsed() < Duration::from_secs(1));
+            thread::yield_now();
+        };
+        assert_eq!(
+            retained,
+            AutomarkerActiveOwnershipStatus::RecoveryRequired {
+                bound_process: Some(ActiveAutomarkerBoundProcess {
+                    process_id: 42,
+                    connection_epoch: 9,
+                }),
+            }
+        );
+        {
+            let snapshot = state(&bridge);
+            assert_eq!(snapshot.phase, LifecyclePhase::OwnershipRecoveryRequired);
+            assert!(snapshot.session.is_some());
+            assert!(snapshot.fatal_ownership.is_some());
+        }
+        assert!(!bridge.placement_enabled());
+
+        harness.push(ActiveAutomarkerWake::Packet(active_lifecycle_packet(
+            b"exact-rst",
+        )));
+        assert_eq!(
+            bridge
+                .recover_active_ownership(ActiveAutomarkerFatalRecovery::DrainOneReceive)
+                .unwrap(),
+            AutomarkerActiveOwnershipStatus::Idle
+        );
+        let snapshot = state(&bridge);
+        assert_eq!(snapshot.phase, LifecyclePhase::Shutdown);
+        assert!(snapshot.session.is_none());
+        assert!(snapshot.active_worker.is_none());
+        assert!(snapshot.fatal_ownership.is_none());
+    }
+
     #[cfg(windows)]
     #[test]
     fn session_shutdown_stops_and_joins_passive_worker() {
@@ -1398,6 +1787,10 @@ mod tests {
     #[test]
     fn no_send_before_all_gates_or_before_packet_loop_is_reviewed() {
         let bridge = AutomarkerNativeBridgeLifecycle::default();
+        assert_eq!(
+            bridge.active_lifetime_arbitration(),
+            AutomarkerActiveLifetimeArbitration::Unresolved
+        );
         bridge.begin_session(session());
         assert!(bridge.accept_parser_evidence(
             Some(&scene("mech-facility")),

@@ -9,7 +9,6 @@
 #![allow(dead_code)]
 
 use std::{
-    mem::ManuallyDrop,
     ops::Deref,
     panic::{AssertUnwindSafe, catch_unwind},
     sync::{
@@ -155,6 +154,41 @@ pub(crate) trait ActiveAutomarkerCoordinator: Send + 'static {
     fn drain_unsent_originals(&mut self) -> Vec<ActiveAutomarkerPacket>;
 
     fn discard_retransmission_ledger(&mut self);
+
+    /// Return the exact process/connection epoch whose retransmission state is
+    /// retained. Fatal recovery may use this identity only after the host has
+    /// independently proven that this same process has terminated.
+    fn retained_bound_process(&self) -> Option<ActiveAutomarkerBoundProcess> {
+        None
+    }
+
+    /// Retire the connection only when `proof` exactly matches the retained
+    /// process/epoch identity. Implementations must not accept a PID alone.
+    fn observe_bound_process_terminated(&mut self, _proof: ActiveAutomarkerBoundProcess) -> bool {
+        false
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ActiveAutomarkerBoundProcess {
+    pub process_id: u32,
+    pub connection_epoch: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ActiveAutomarkerFatalRecovery {
+    /// Continue receiving through the retained intercepting handle. Only the
+    /// coordinator can recognize an exact reverse ACK or matching RST.
+    DrainOneReceive,
+    /// The host independently observed termination of the exact retained PID
+    /// and connection epoch. PID reuse or an epoch mismatch must fail closed.
+    BoundProcessTerminated(ActiveAutomarkerBoundProcess),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ActiveAutomarkerFatalRecoveryStatus {
+    StillRetained,
+    Released,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,21 +223,121 @@ pub(crate) struct ActiveAutomarkerWorkerReport {
     pub send_failures: u64,
 }
 
+#[must_use = "fatal Automarker ownership must remain retained until explicit recovery"]
 pub(crate) struct ActiveAutomarkerFatalOwnership {
-    backend: ManuallyDrop<Box<dyn ActiveAutomarkerBackend>>,
-    coordinator: ManuallyDrop<Box<dyn ActiveAutomarkerCoordinator>>,
+    backend: Option<Box<dyn ActiveAutomarkerBackend>>,
+    coordinator: Option<Box<dyn ActiveAutomarkerCoordinator>>,
     indeterminate_packet: Option<ActiveAutomarkerPacket>,
     released: bool,
 }
 
 impl ActiveAutomarkerFatalOwnership {
+    fn backend(&mut self) -> Result<&mut dyn ActiveAutomarkerBackend, String> {
+        self.backend
+            .as_deref_mut()
+            .ok_or_else(|| "Automarker fatal ownership was already released".to_owned())
+    }
+
+    fn coordinator(&mut self) -> Result<&mut dyn ActiveAutomarkerCoordinator, String> {
+        self.coordinator
+            .as_deref_mut()
+            .ok_or_else(|| "Automarker fatal ownership was already released".to_owned())
+    }
+
+    pub(crate) fn retained_bound_process(&self) -> Option<ActiveAutomarkerBoundProcess> {
+        self.coordinator
+            .as_deref()
+            .and_then(ActiveAutomarkerCoordinator::retained_bound_process)
+    }
+
+    /// Make one bounded recovery step without surrendering ownership. Exact
+    /// ACK/RST traffic is classified in drain-only mode and passed through
+    /// byte-for-byte. An independently proven death of the exact retained
+    /// process/epoch is the only non-packet recovery input.
+    pub(crate) fn recover(
+        &mut self,
+        recovery: ActiveAutomarkerFatalRecovery,
+    ) -> Result<ActiveAutomarkerFatalRecoveryStatus, String> {
+        if self.released {
+            return Err("Automarker fatal ownership was already released".to_owned());
+        }
+        match recovery {
+            ActiveAutomarkerFatalRecovery::DrainOneReceive => {
+                let wake = self.backend()?.receive()?;
+                match wake {
+                    ActiveAutomarkerWake::Packet(packet) => {
+                        let disposition = self.coordinator()?.classify(
+                            &packet,
+                            ActiveAutomarkerClassificationMode::DrainExistingOnly,
+                        );
+                        match disposition {
+                            ActiveAutomarkerDisposition::PassThrough
+                            | ActiveAutomarkerDisposition::FinObservedPassThrough => {
+                                self.send_recovery_packet(&packet)?;
+                            }
+                            ActiveAutomarkerDisposition::ConnectionTerminatedAfterPassThrough => {
+                                self.send_recovery_packet(&packet)?;
+                                self.indeterminate_packet = None;
+                            }
+                            ActiveAutomarkerDisposition::AbortWithoutReinject
+                            | ActiveAutomarkerDisposition::HoldExactCarrier { .. } => {
+                                return Err("Automarker fatal recovery could not prove a safe packet disposition".to_owned());
+                            }
+                        }
+                        if !self.coordinator()?.rewrite_obligation_active() {
+                            // A coordinator-proven exact cumulative ACK (or
+                            // exact RST above) retires any earlier ambiguous
+                            // send result for this connection epoch.
+                            self.indeterminate_packet = None;
+                        }
+                    }
+                    ActiveAutomarkerWake::PassThroughOnly(packet) => {
+                        self.send_recovery_packet(&packet)?;
+                    }
+                    ActiveAutomarkerWake::Timeout => {
+                        return Ok(ActiveAutomarkerFatalRecoveryStatus::StillRetained);
+                    }
+                    ActiveAutomarkerWake::EndOfStream => {
+                        return Err("Automarker fatal recovery reached end of stream without exact termination proof".to_owned());
+                    }
+                }
+            }
+            ActiveAutomarkerFatalRecovery::BoundProcessTerminated(proof) => {
+                let retained = self.retained_bound_process();
+                if retained != Some(proof)
+                    || !self.coordinator()?.observe_bound_process_terminated(proof)
+                {
+                    return Err("Automarker bound-process termination proof did not match the retained connection epoch".to_owned());
+                }
+                self.indeterminate_packet = None;
+            }
+        }
+        if self.coordinator()?.rewrite_obligation_active() || self.indeterminate_packet.is_some() {
+            return Ok(ActiveAutomarkerFatalRecoveryStatus::StillRetained);
+        }
+        self.retry_close_and_discard()?;
+        Ok(ActiveAutomarkerFatalRecoveryStatus::Released)
+    }
+
+    fn send_recovery_packet(&mut self, packet: &ActiveAutomarkerPacket) -> Result<(), String> {
+        let sent = self.backend()?.send(packet)?;
+        if sent != packet.bytes.len() {
+            self.indeterminate_packet = Some(packet.clone());
+            return Err(format!(
+                "Automarker fatal recovery send was short: expected {}, sent {sent}",
+                packet.bytes.len()
+            ));
+        }
+        Ok(())
+    }
+
     /// Retry the previously unconfirmed close. Only a confirmed close permits
     /// the ledger to be discarded and both owners to be released.
     pub(crate) fn retry_close_and_discard(&mut self) -> Result<(), String> {
         if self.released {
             return Err("Automarker fatal ownership was already released".to_owned());
         }
-        if self.coordinator.rewrite_obligation_active() {
+        if self.coordinator()?.rewrite_obligation_active() {
             return Err(
                 "cannot discard Automarker ownership while retransmission obligation remains"
                     .to_owned(),
@@ -215,14 +349,11 @@ impl ActiveAutomarkerFatalOwnership {
                     .to_owned(),
             );
         }
-        self.backend.close_interception()?;
-        self.coordinator.discard_retransmission_ledger();
-        // SAFETY: `released` makes these one-shot and Drop deliberately does
-        // not touch unresolved owners.
-        unsafe {
-            ManuallyDrop::drop(&mut self.backend);
-            ManuallyDrop::drop(&mut self.coordinator);
-        }
+        self.backend()?.close_interception()?;
+        self.coordinator()?.discard_retransmission_ledger();
+        // Drop interception before its retransmission ledger.
+        drop(self.backend.take());
+        drop(self.coordinator.take());
         self.released = true;
         Ok(())
     }
@@ -230,11 +361,18 @@ impl ActiveAutomarkerFatalOwnership {
 
 impl Drop for ActiveAutomarkerFatalOwnership {
     fn drop(&mut self) {
-        // Unreleased ownership is intentionally retained. This is an explicit
-        // fatal result, not a successful teardown; callers may retry closure.
+        if !self.released {
+            // Closing a live divert handle here could discard intercepted
+            // packets, while leaking it silently loses the only recovery
+            // owner. An unreleased owner escaping its lifecycle is therefore
+            // process-fatal and cannot become an ordinary teardown path.
+            eprintln!("fatal: unresolved Automarker interception ownership was discarded");
+            std::process::abort();
+        }
     }
 }
 
+#[must_use = "worker completion may contain fatal interception ownership"]
 pub(crate) struct ActiveAutomarkerWorkerCompletion {
     pub report: ActiveAutomarkerWorkerReport,
     pub fatal_ownership: Option<ActiveAutomarkerFatalOwnership>,
@@ -317,6 +455,26 @@ impl ActiveAutomarkerWorkerBundle {
         )
     }
 
+    pub(crate) fn is_finished(&self) -> bool {
+        self.worker.as_ref().is_none_or(JoinHandle::is_finished)
+    }
+
+    pub(crate) fn try_join_finished(
+        &mut self,
+    ) -> Result<Option<ActiveAutomarkerWorkerCompletion>, String> {
+        if !self.is_finished() {
+            return Ok(None);
+        }
+        self.worker
+            .take()
+            .map(|worker| {
+                worker
+                    .join()
+                    .map_err(|_| "Automarker active worker panicked".to_owned())
+            })
+            .transpose()
+    }
+
     pub(crate) fn stop_drain_join(&mut self) -> Result<ActiveAutomarkerWorkerCompletion, String> {
         if self.request_stop()? == ActiveAutomarkerStopDisposition::BlockedByRewriteObligation {
             return Err(
@@ -396,10 +554,8 @@ impl ActiveWorkerOwnership {
     fn take_fatal_ownership(&mut self) -> ActiveAutomarkerFatalOwnership {
         self.interception_closed = true;
         ActiveAutomarkerFatalOwnership {
-            backend: ManuallyDrop::new(self.backend.take().expect("backend remains owned")),
-            coordinator: ManuallyDrop::new(
-                self.coordinator.take().expect("coordinator remains owned"),
-            ),
+            backend: self.backend.take(),
+            coordinator: self.coordinator.take(),
             indeterminate_packet: self.indeterminate_packet.take(),
             released: false,
         }
@@ -1124,6 +1280,24 @@ mod tests {
                 .events
                 .push(Event::LedgerDiscarded);
         }
+
+        fn retained_bound_process(&self) -> Option<ActiveAutomarkerBoundProcess> {
+            Some(ActiveAutomarkerBoundProcess {
+                process_id: 42,
+                connection_epoch: 9,
+            })
+        }
+
+        fn observe_bound_process_terminated(
+            &mut self,
+            proof: ActiveAutomarkerBoundProcess,
+        ) -> bool {
+            if self.retained_bound_process() != Some(proof) {
+                return false;
+            }
+            self.rewritten_sequence_active = false;
+            true
+        }
     }
 
     impl Drop for FakeCoordinator {
@@ -1164,6 +1338,23 @@ mod tests {
             ActiveAutomarkerWorkerBundle::spawn(FakeBackend(harness.clone()), coordinator).unwrap();
         harness.push(ActiveAutomarkerWake::EndOfStream);
         bundle.join().unwrap().report
+    }
+
+    fn recover_fatal_with_rst(
+        harness: &Harness,
+        completion: &mut ActiveAutomarkerWorkerCompletion,
+    ) {
+        harness.0.0.lock().unwrap().panic_on_classify = false;
+        harness.push(ActiveAutomarkerWake::Packet(packet(b"rst")));
+        assert_eq!(
+            completion
+                .fatal_ownership
+                .as_mut()
+                .unwrap()
+                .recover(ActiveAutomarkerFatalRecovery::DrainOneReceive)
+                .unwrap(),
+            ActiveAutomarkerFatalRecoveryStatus::Released
+        );
     }
 
     #[test]
@@ -1248,7 +1439,7 @@ mod tests {
         assert!(!harness.events().contains(&Event::BackendClosed));
         assert!(!harness.events().contains(&Event::LedgerDiscarded));
         harness.push(ActiveAutomarkerWake::Packet(packet(b"ack")));
-        let completion = bundle.join().unwrap();
+        let mut completion = bundle.join().unwrap();
         assert_eq!(completion.send_failures, 2);
         assert_eq!(
             completion.exit,
@@ -1256,6 +1447,7 @@ mod tests {
         );
         assert!(completion.fatal_ownership.is_some());
         assert!(!harness.events().contains(&sent(b"carrier")));
+        recover_fatal_with_rst(&harness, &mut completion);
     }
 
     #[test]
@@ -1311,6 +1503,7 @@ mod tests {
                     .retry_close_and_discard()
                     .is_err()
             );
+            recover_fatal_with_rst(&harness, &mut completion);
         }
     }
 
@@ -1659,6 +1852,8 @@ mod tests {
                 .retry_close_and_discard()
                 .is_err()
         );
+        harness.0.0.lock().unwrap().panic_on_send = false;
+        recover_fatal_with_rst(&harness, &mut completion);
     }
 
     #[test]
@@ -1671,7 +1866,7 @@ mod tests {
             FakeCoordinator::new(harness.clone()),
         )
         .unwrap();
-        let completion = bundle.join().unwrap();
+        let mut completion = bundle.join().unwrap();
         assert_eq!(
             completion.exit,
             ActiveAutomarkerWorkerExit::FatalOwnershipRetained
@@ -1683,6 +1878,8 @@ mod tests {
         )));
         assert!(!harness.events().contains(&Event::BackendClosed));
         assert!(!harness.events().contains(&Event::LedgerDiscarded));
+        harness.0.0.lock().unwrap().panic_on_commit = false;
+        recover_fatal_with_rst(&harness, &mut completion);
     }
 
     #[test]
@@ -1700,14 +1897,51 @@ mod tests {
                 FakeCoordinator::new(harness.clone()),
             )
             .unwrap();
-            let completion = bundle.join().unwrap();
+            let mut completion = bundle.join().unwrap();
             assert_eq!(
                 completion.exit,
                 ActiveAutomarkerWorkerExit::FatalOwnershipRetained
             );
             assert!(completion.fatal_ownership.is_some());
             assert!(!harness.events().contains(&Event::LedgerDiscarded));
+            recover_fatal_with_rst(&harness, &mut completion);
         }
+    }
+
+    #[test]
+    fn bound_process_recovery_requires_exact_pid_and_epoch() {
+        let harness = Harness::default();
+        harness.push(ActiveAutomarkerWake::Packet(packet(b"carrier")));
+        harness.push_error("injected receive failure");
+        let bundle = ActiveAutomarkerWorkerBundle::spawn(
+            FakeBackend(harness.clone()),
+            FakeCoordinator::new(harness.clone()),
+        )
+        .unwrap();
+        let mut completion = bundle.join().unwrap();
+        let fatal = completion.fatal_ownership.as_mut().unwrap();
+        assert!(
+            fatal
+                .recover(ActiveAutomarkerFatalRecovery::BoundProcessTerminated(
+                    ActiveAutomarkerBoundProcess {
+                        process_id: 43,
+                        connection_epoch: 9,
+                    },
+                ))
+                .is_err()
+        );
+        assert!(!harness.events().contains(&Event::BackendClosed));
+        assert_eq!(
+            fatal
+                .recover(ActiveAutomarkerFatalRecovery::BoundProcessTerminated(
+                    ActiveAutomarkerBoundProcess {
+                        process_id: 42,
+                        connection_epoch: 9,
+                    },
+                ))
+                .unwrap(),
+            ActiveAutomarkerFatalRecoveryStatus::Released
+        );
     }
 
     #[test]
