@@ -1015,6 +1015,8 @@ struct PresentedLiveCombatUpdate {
 struct LiveOverlayEncounterPresentation {
     scene_id: Option<i32>,
     scene_name: Option<String>,
+    difficulty_family: Option<String>,
+    difficulty_tier: Option<u32>,
     bosses: Vec<LiveOverlayBossPresentation>,
     timer_source: String,
     /// Browser-specific, bounded projection. The canonical history model also
@@ -1784,6 +1786,14 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
     } else {
         "ambient_inactivity"
     };
+    let difficulty_family = update
+        .run_projection
+        .as_ref()
+        .and_then(|run| run.difficulty_family.clone());
+    let difficulty_tier = update
+        .run_projection
+        .as_ref()
+        .and_then(|run| run.difficulty_tier);
     let encounter_presentation = update
         .snapshot
         .as_ref()
@@ -1870,6 +1880,8 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
                     .flatten()
                     .map(str::to_owned)
                 }),
+                difficulty_family: difficulty_family.clone(),
+                difficulty_tier,
                 bosses,
                 timer_source: timer_source.into(),
                 run_projection: update.run_projection.as_ref().map(|run| {
@@ -1883,6 +1895,8 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
             }
         })
         .unwrap_or_else(|| LiveOverlayEncounterPresentation {
+            difficulty_family,
+            difficulty_tier,
             timer_source: timer_source.into(),
             run_projection: update
                 .run_projection
@@ -2004,6 +2018,11 @@ struct LiveCombatFeedState {
     /// leaves the previous snapshot's scene visible indefinitely.
     reconciled_scene_observed: bool,
     reconciled_scene_packet: bool,
+    /// Scene invalidated by an exact run terminal. A delayed native poll may
+    /// still report this identity while the client is changing worlds; do not
+    /// let that stale sample resurrect the closed dungeon.
+    #[cfg(windows)]
+    invalidated_native_scene_id: Option<i32>,
 }
 
 #[cfg(windows)]
@@ -2052,13 +2071,19 @@ impl LiveCombatFeed {
             && (!state.reconciled_scene_observed || prior_native_owned)
         {
             if let Some(scene) = scene {
-                state.reconciled_scene_id = Some(scene.scene_id);
-                state.reconciled_scene_observed = true;
+                if state.invalidated_native_scene_id != Some(scene.scene_id) {
+                    state.invalidated_native_scene_id = None;
+                    state.reconciled_scene_id = Some(scene.scene_id);
+                    state.reconciled_scene_observed = true;
+                }
             } else if previous_native
                 .is_some_and(|scene| state.reconciled_scene_id == Some(scene.scene_id))
             {
                 state.reconciled_scene_id = None;
                 state.reconciled_scene_observed = true;
+                state.invalidated_native_scene_id = None;
+            } else if scene.is_none() {
+                state.invalidated_native_scene_id = None;
             }
         }
         state.revision = state.revision.saturating_add(1);
@@ -2073,11 +2098,32 @@ impl LiveCombatFeed {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let unchanged = state.reconciled_scene_observed && state.reconciled_scene_id == scene_id;
         state.reconciled_scene_packet = true;
+        #[cfg(windows)]
+        {
+            state.invalidated_native_scene_id = None;
+        }
         if unchanged {
             return;
         }
         state.reconciled_scene_id = scene_id;
         state.reconciled_scene_observed = true;
+        state.revision = state.revision.saturating_add(1);
+        state.activity_revision = state.activity_revision.saturating_add(1);
+        self.changed.notify_all();
+    }
+
+    fn invalidate_scene_epoch(&self, departed_scene_id: Option<i32>) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.reconciled_scene_id = None;
+        state.reconciled_scene_observed = true;
+        state.reconciled_scene_packet = false;
+        #[cfg(windows)]
+        {
+            state.invalidated_native_scene_id = departed_scene_id;
+        }
         state.revision = state.revision.saturating_add(1);
         state.activity_revision = state.activity_revision.saturating_add(1);
         self.changed.notify_all();
@@ -2135,6 +2181,10 @@ impl LiveCombatFeed {
             state.reconciled_scene_id = None;
             state.reconciled_scene_observed = false;
             state.reconciled_scene_packet = false;
+            #[cfg(windows)]
+            {
+                state.invalidated_native_scene_id = None;
+            }
         }
         state.snapshot = snapshot;
         state.run_projection = run_projection;
@@ -6115,6 +6165,8 @@ struct AutomarkerSceneContextState {
     native_active: bool,
     #[cfg(windows)]
     native: Option<AutomarkerSceneContext>,
+    #[cfg(windows)]
+    invalidated_native_scene_id: Option<i32>,
 }
 
 impl AutomarkerSceneContextFeed {
@@ -6125,6 +6177,10 @@ impl AutomarkerSceneContextFeed {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         state.packet = None;
         state.packet_observed = false;
+        #[cfg(windows)]
+        {
+            state.invalidated_native_scene_id = None;
+        }
         #[cfg(windows)]
         {
             state.current = if state.native_active {
@@ -6184,11 +6240,17 @@ impl AutomarkerSceneContextFeed {
         if active {
             // Native observation is startup recovery only. Once packet evidence
             // exists, a delayed/stale native poll must never replace it.
-            state.current = if state.packet_observed {
-                state.packet.clone()
-            } else {
-                state.native.clone()
-            };
+            state.current =
+                if state.packet_observed {
+                    state.packet.clone()
+                } else if state.native.as_ref().is_some_and(|native| {
+                    state.invalidated_native_scene_id == Some(native.scene_id)
+                }) {
+                    None
+                } else {
+                    state.invalidated_native_scene_id = None;
+                    state.native.clone()
+                };
         } else {
             state.current = state.packet.clone();
         }
@@ -6217,7 +6279,25 @@ impl AutomarkerSceneContextFeed {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         state.packet = next.clone();
         state.packet_observed = true;
+        #[cfg(windows)]
+        {
+            state.invalidated_native_scene_id = None;
+        }
         state.current = next;
+    }
+
+    fn invalidate_scene_epoch(&self, departed_scene_id: Option<i32>) {
+        let mut state = self
+            .context
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.packet = None;
+        state.packet_observed = false;
+        state.current = None;
+        #[cfg(windows)]
+        {
+            state.invalidated_native_scene_id = departed_scene_id;
+        }
     }
 
     fn observe(
@@ -6264,6 +6344,10 @@ impl AutomarkerSceneContextFeed {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         state.packet = next;
         state.packet_observed = true;
+        #[cfg(windows)]
+        {
+            state.invalidated_native_scene_id = None;
+        }
         state.current = state.packet.clone();
     }
 }
@@ -6339,6 +6423,23 @@ fn reconcile_live_scene(
     consumers
         .mechanics_feed
         .reconcile_scene_presentation(Some((scene_id, map_id, scene_name)));
+    mechanics_dirty
+}
+
+fn invalidate_live_scene_epoch(
+    departed_scene_id: Option<i32>,
+    consumers: LiveSceneConsumers<'_>,
+) -> bool {
+    consumers
+        .combat_feed
+        .invalidate_scene_epoch(departed_scene_id);
+    consumers
+        .automarker_feed
+        .invalidate_scene_epoch(departed_scene_id);
+    let mechanics_dirty = consumers.mechanics_projector.clear_scene();
+    consumers
+        .mechanics_feed
+        .invalidate_scene_epoch(departed_scene_id);
     mechanics_dirty
 }
 
@@ -10711,6 +10812,7 @@ impl RuntimeController {
                                         frozen_capture_time_identities.clone();
                                     capture_time_identities.clear();
                                     live_dungeon_active = false;
+                                    let closed_scene_id = live_dungeon_scene_id;
                                     live_dungeon_scene_id = None;
                                     live_boundary_changed = true;
                                     if clears_live_world_context_after_terminal(
@@ -10725,7 +10827,21 @@ impl RuntimeController {
                                         last_world_context_event = None;
                                         live_run_scene_fallback_gate =
                                             LiveRunSceneFallbackGate::default();
-                                        live_automarker_scene_context.reset();
+                                        let mut mechanics_projector =
+                                            live_mechanics_map_cell.borrow_mut();
+                                        let consumers = LiveSceneConsumers {
+                                            combat_feed: &live_combat_feed,
+                                            automarker_feed: &live_automarker_scene_context,
+                                            mechanics_projector: &mut mechanics_projector,
+                                            mechanics_feed: &live_mechanics_map_feed,
+                                        };
+                                        mechanics_map_dirty.set(
+                                            mechanics_map_dirty.get()
+                                                | invalidate_live_scene_epoch(
+                                                    closed_scene_id,
+                                                    consumers,
+                                                ),
+                                        );
                                         live_automarker_bridge_evidence.invalidate();
                                     }
                                     if departed_live_dungeon {
@@ -18988,6 +19104,80 @@ mod tests {
             Some(AUTOMARKER_REQUEST_BUILD)
         );
         assert_eq!(mechanics_feed.current().snapshot.scene_id, Some(6_565));
+
+        assert!(invalidate_live_scene_epoch(
+            Some(6_565),
+            LiveSceneConsumers {
+                combat_feed: &combat,
+                automarker_feed: &automarker,
+                mechanics_projector: &mut mechanics,
+                mechanics_feed: &mechanics_feed,
+            },
+        ));
+        assert_eq!(
+            present_live_combat_update(combat.current())
+                .encounter_presentation
+                .scene_id,
+            None
+        );
+        assert_eq!(automarker.current(), None);
+        assert_eq!(mechanics.snapshot().scene_id, None);
+        assert_eq!(mechanics_feed.current().snapshot.scene_id, None);
+
+        assert!(reconcile_live_world(
+            &WorldContext {
+                scene_id: Some(SceneId(8)),
+                map_id: Some(8),
+                line_id: Some(2),
+                scene_instance_id: Some("asterleeds".into()),
+                dungeon_instance_id: None,
+            },
+            LiveSceneRuntimeContext {
+                deployment_id: "global",
+                client_build: AUTOMARKER_REQUEST_BUILD,
+                protocol_pack_digest: AUTOMARKER_REQUEST_PACK_DIGEST,
+                scene_families: &families,
+            },
+            LiveSceneConsumers {
+                combat_feed: &combat,
+                automarker_feed: &automarker,
+                mechanics_projector: &mut mechanics,
+                mechanics_feed: &mechanics_feed,
+            },
+        ));
+        assert_eq!(
+            present_live_combat_update(combat.current())
+                .encounter_presentation
+                .scene_name
+                .as_deref(),
+            Some("Asterleeds")
+        );
+        assert_eq!(automarker.current(), None);
+
+        assert!(reconcile_live_world(
+            &WorldContext {
+                scene_id: Some(SceneId(6_565)),
+                map_id: Some(6_565),
+                line_id: None,
+                scene_instance_id: Some("reef".into()),
+                dungeon_instance_id: Some("reef-run".into()),
+            },
+            LiveSceneRuntimeContext {
+                deployment_id: "global",
+                client_build: AUTOMARKER_REQUEST_BUILD,
+                protocol_pack_digest: AUTOMARKER_REQUEST_PACK_DIGEST,
+                scene_families: &families,
+            },
+            LiveSceneConsumers {
+                combat_feed: &combat,
+                automarker_feed: &automarker,
+                mechanics_projector: &mut mechanics,
+                mechanics_feed: &mechanics_feed,
+            },
+        ));
+        assert_eq!(automarker.current().unwrap().scene_id, 6_565);
+        assert_eq!(mechanics.snapshot().scene_id, Some(6_565));
+        assert_eq!(mechanics_feed.current().snapshot.scene_id, Some(6_565));
     }
 
     #[test]
@@ -19206,6 +19396,44 @@ mod tests {
             6_561,
             "a reducer reset must not strand an unchanged stable native scene"
         );
+
+        feed.invalidate_scene_epoch(Some(6_561));
+        feed.set_native_scene_presentation(
+            true,
+            Some(native_scene_observer::NativeSceneIdentity {
+                scene_id: 6_561,
+                map_id: 6_561,
+            }),
+            "global",
+            "25247556",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+            &families,
+        );
+        assert_eq!(
+            feed.current(),
+            None,
+            "a delayed native family cannot resurrect the terminal scene"
+        );
+        feed.set_native_scene_presentation(
+            true,
+            None,
+            "global",
+            "25247556",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+            &families,
+        );
+        feed.set_native_scene_presentation(
+            true,
+            Some(native_scene_observer::NativeSceneIdentity {
+                scene_id: 6_515,
+                map_id: 6_515,
+            }),
+            "global",
+            "25247556",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+            &families,
+        );
+        assert_eq!(feed.current().unwrap().scene_id, 6_515);
     }
 
     #[cfg(windows)]
@@ -19345,6 +19573,29 @@ mod tests {
             }),
         );
         assert_eq!(feed.current().snapshot.unwrap().scene_id, Some(6_561));
+
+        feed.invalidate_scene_epoch(Some(6_561));
+        feed.set_native_scene_presentation(
+            true,
+            Some(native_scene_observer::NativeSceneIdentity {
+                scene_id: 6_561,
+                map_id: 6_561,
+            }),
+        );
+        assert_eq!(
+            feed.current().snapshot.unwrap().scene_id,
+            None,
+            "a delayed native sample cannot resurrect the terminal scene"
+        );
+        feed.set_native_scene_presentation(true, None);
+        feed.set_native_scene_presentation(
+            true,
+            Some(native_scene_observer::NativeSceneIdentity {
+                scene_id: 6_565,
+                map_id: 6_565,
+            }),
+        );
+        assert_eq!(feed.current().snapshot.unwrap().scene_id, Some(6_565));
     }
 
     #[test]

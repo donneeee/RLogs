@@ -619,23 +619,14 @@ impl<'a> ProtocolRuntime<'a> {
         for draft in &mut drafts {
             self.attach_objective_catalog(draft);
         }
-        let mut current_world = self.profile.current_world.clone();
-        for draft in &mut drafts {
-            if let CanonicalEventDraftKind::WorldChanged(world) = &mut draft.kind {
-                *world = merge_world_context(current_world.as_ref(), world);
-                current_world = Some(world.clone());
-            }
-        }
+        let current_world =
+            reconcile_world_context_drafts(self.profile.current_world.as_ref(), &mut drafts);
         drafts.retain(|draft| self.state_deduplicator.retain(draft));
         // Keep the dungeon snapshot fallback coherent with every reviewed
         // packet surface that can announce a world. Consumers still apply
         // their own exact-scene authority to the canonical event.
-        for draft in &drafts {
-            if let CanonicalEventDraftKind::WorldChanged(world) = &draft.kind {
-                self.dungeon.current_scene_id = world.scene_id;
-                self.profile.current_world = Some(world.clone());
-            }
-        }
+        self.dungeon.current_scene_id = current_world.as_ref().and_then(|world| world.scene_id);
+        self.profile.current_world = current_world;
         let events = drafts
             .into_iter()
             .map(|draft| self.envelopes.emit(draft))
@@ -784,6 +775,51 @@ fn merge_world_context(previous: Option<&WorldContext>, patch: &WorldContext) ->
                 .clone()
                 .or_else(|| previous.and_then(|world| world.dungeon_instance_id.clone()))
         },
+    }
+}
+
+fn reconcile_world_context_drafts(
+    previous: Option<&WorldContext>,
+    drafts: &mut [CanonicalEventDraft],
+) -> Option<WorldContext> {
+    let starting_identity = previous.and_then(world_context_identity);
+    let mut current = previous.cloned();
+    let mut advanced_to_different_world = false;
+    for draft in drafts {
+        match &mut draft.kind {
+            CanonicalEventDraftKind::WorldChanged(world) => {
+                *world = merge_world_context(current.as_ref(), world);
+                current = Some(world.clone());
+                let identity = world_context_identity(world);
+                advanced_to_different_world |= identity.is_some() && identity != starting_identity;
+            }
+            kind if closes_world_context_epoch(kind) && !advanced_to_different_world => {
+                // The terminal belongs to the starting dungeon unless a newer
+                // exact world identity already preceded it in source order.
+                // Do not allow a later line-only patch to inherit that closed
+                // dungeon through the cross-frame profile cache.
+                current = None;
+            }
+            _ => {}
+        }
+    }
+    current
+}
+
+fn world_context_identity(world: &WorldContext) -> Option<(SceneId, u32)> {
+    world.scene_id.zip(world.map_id)
+}
+
+fn closes_world_context_epoch(kind: &CanonicalEventDraftKind) -> bool {
+    match kind {
+        CanonicalEventDraftKind::Dungeon(event) => matches!(
+            event.kind,
+            DungeonEventKind::Failed | DungeonEventKind::Exited
+        ),
+        CanonicalEventDraftKind::Timeline(TimelineEventKind::RunBoundary { state, .. }) => {
+            matches!(state, RunState::Failed | RunState::Exited)
+        }
+        _ => false,
     }
 }
 
@@ -6678,6 +6714,83 @@ mod tests {
             },
         );
         assert_eq!(contradiction, previous);
+    }
+
+    #[test]
+    fn terminal_world_epoch_does_not_let_partial_patch_resurrect_departed_scene() {
+        let previous = WorldContext {
+            scene_id: Some(SceneId(1_633)),
+            map_id: Some(1_633),
+            line_id: Some(1),
+            scene_instance_id: Some("tina-instance".into()),
+            dungeon_instance_id: Some("tina-run".into()),
+        };
+        let event = |kind| CanonicalEventDraft {
+            time: EventTime {
+                observed_micros: 1,
+                game_time_millis: None,
+            },
+            provenance: EventProvenance::wire(1, 1, 1),
+            sensitivity: EventSensitivity::PublicGameplay,
+            kind,
+        };
+        let terminal = || {
+            event(CanonicalEventDraftKind::Timeline(
+                TimelineEventKind::RunBoundary {
+                    state: RunState::Exited,
+                    scene_id: Some(SceneId(1_633)),
+                    reason: BoundaryReason::AuthoritativePacket,
+                },
+            ))
+        };
+        let partial = || {
+            event(CanonicalEventDraftKind::WorldChanged(WorldContext {
+                scene_id: None,
+                map_id: None,
+                line_id: Some(2),
+                scene_instance_id: Some("town-line".into()),
+                dungeon_instance_id: None,
+            }))
+        };
+        let town = || {
+            event(CanonicalEventDraftKind::WorldChanged(WorldContext {
+                scene_id: Some(SceneId(8)),
+                map_id: Some(8),
+                line_id: Some(2),
+                scene_instance_id: Some("asterleeds".into()),
+                dungeon_instance_id: None,
+            }))
+        };
+
+        let mut terminal_then_partial = vec![terminal(), partial()];
+        let after = reconcile_world_context_drafts(Some(&previous), &mut terminal_then_partial)
+            .expect("partial context remains available");
+        assert_eq!(after.scene_id, None);
+        assert_eq!(after.map_id, None);
+
+        let mut town_then_terminal = vec![town(), terminal()];
+        let after = reconcile_world_context_drafts(Some(&previous), &mut town_then_terminal)
+            .expect("newer town identity must survive the old terminal");
+        assert_eq!(world_context_identity(&after), Some((SceneId(8), 8)));
+
+        let mut terminal_then_town = vec![terminal(), town()];
+        let after = reconcile_world_context_drafts(Some(&previous), &mut terminal_then_town)
+            .expect("town identity follows the terminal");
+        assert_eq!(world_context_identity(&after), Some((SceneId(8), 8)));
+
+        let mut reef = vec![event(CanonicalEventDraftKind::WorldChanged(WorldContext {
+            scene_id: Some(SceneId(6_565)),
+            map_id: Some(6_565),
+            line_id: None,
+            scene_instance_id: Some("reef".into()),
+            dungeon_instance_id: Some("reef-run".into()),
+        }))];
+        let after =
+            reconcile_world_context_drafts(Some(&after), &mut reef).expect("next dungeon identity");
+        assert_eq!(
+            world_context_identity(&after),
+            Some((SceneId(6_565), 6_565))
+        );
     }
 
     #[test]

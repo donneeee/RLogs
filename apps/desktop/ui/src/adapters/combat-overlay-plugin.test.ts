@@ -858,6 +858,39 @@ describe("Combat Overlay plug-in settings", () => {
     }, { scene_id: 6525, actors: [] })).toBe("Chaotic - Mech Facility");
   });
 
+  it("adds authoritative difficulty to the live scene title", () => {
+    expect(overlaySceneName({
+      scene_id: 1633,
+      scene_name: "Chaotic - Tina's Mindrealm",
+      difficulty_family: "master",
+      difficulty_tier: 20,
+      bosses: [],
+      run_projection: null,
+    }, { scene_id: 1633, actors: [] })).toBe("Chaotic - Tina's Mindrealm · Master 20");
+
+    expect(overlaySceneName({
+      scene_id: 1633,
+      scene_name: "Chaotic - Tina's Mindrealm",
+      difficulty_family: "master",
+      difficulty_tier: null,
+      bosses: [],
+      run_projection: null,
+    }, { scene_id: 1633, actors: [] })).toBe(
+      "Chaotic - Tina's Mindrealm · Master (tier unresolved)",
+    );
+  });
+
+  it("does not repeat a difficulty already contained in the scene title", () => {
+    expect(overlaySceneName({
+      scene_id: 12023,
+      scene_name: "Guild Hunt - Hard",
+      difficulty_family: "hard",
+      difficulty_tier: null,
+      bosses: [],
+      run_projection: null,
+    }, { scene_id: 12023, actors: [] })).toBe("Guild Hunt - Hard");
+  });
+
   it("gives older summary layouts safe semantic rows", () => {
     const settings = editableSummarySettings();
     const legacy = JSON.parse(JSON.stringify(settings));
@@ -1073,6 +1106,31 @@ describe("Combat Overlay plug-in settings", () => {
       backgroundMode: "custom",
       customBackgroundRevision: 9,
     })).not.toBe(key(settings));
+  });
+
+  it("repaints when difficulty arrives after the scene identity", () => {
+    const settings = editableSummarySettings();
+    const key = (difficultyFamily: string | null, difficultyTier: number | null) =>
+      runtimeOverlayStateKey(
+        settings,
+        [],
+        { actors: [], scene_id: 1633 },
+        {
+          scene_id: 1633,
+          scene_name: "Chaotic - Tina's Mindrealm",
+          difficulty_family: difficultyFamily,
+          difficulty_tier: difficultyTier,
+          bosses: [],
+          run_projection: null,
+        },
+        null,
+        "party-meter",
+        [],
+        [],
+        [],
+      );
+
+    expect(key(null, null)).not.toBe(key("master", 20));
   });
 
   it("coalesces burst updates to the configured overlay refresh cadence", () => {

@@ -229,6 +229,8 @@ export function runtimeOverlayStateKey(
   const visualEncounterPresentation = encounterPresentation === null ? null : {
     scene_id: encounterPresentation.scene_id,
     scene_name: encounterPresentation.scene_name,
+    difficulty_family: encounterPresentation.difficulty_family,
+    difficulty_tier: encounterPresentation.difficulty_tier,
     bosses: selectedView?.kind === "mobbing" ? [] : encounterPresentation.bosses,
     run_projection: projection === null || projection === undefined ? projection : {
       rdps_status: projection.rdps_status,
@@ -470,6 +472,8 @@ interface OverlayBossPresentation {
 interface OverlayEncounterPresentation {
   scene_id?: number | null;
   scene_name?: string | null;
+  difficulty_family?: string | null;
+  difficulty_tier?: number | null;
   bosses: readonly OverlayBossPresentation[];
   timer_source?: "reviewed_dungeon" | "ambient_inactivity" | string;
   run_projection?: OverlayRunProjection | null;
@@ -4256,9 +4260,34 @@ export function overlaySceneName(
   presentation: OverlayEncounterPresentation | null | undefined,
   snapshot: OverlaySnapshot | null | undefined,
 ): string {
-  if (presentation?.scene_name?.trim()) return presentation.scene_name.trim();
+  const sceneName = presentation?.scene_name?.trim();
   const sceneId = presentation?.scene_id ?? snapshot?.scene_id;
-  return sceneId === null || sceneId === undefined ? "Waiting for scene" : `Scene ${sceneId}`;
+  const base = sceneName || (sceneId === null || sceneId === undefined ? "Waiting for scene" : `Scene ${sceneId}`);
+  const difficulty = overlayDifficultyLabel(
+    presentation?.difficulty_family,
+    presentation?.difficulty_tier,
+  );
+  if (difficulty === null || normalizedOverlayLabel(base).includes(normalizedOverlayLabel(difficulty))) {
+    return base;
+  }
+  return `${base} · ${difficulty}`;
+}
+
+function overlayDifficultyLabel(
+  family: string | null | undefined,
+  tier: number | null | undefined,
+): string | null {
+  const normalizedFamily = family?.trim().toLocaleLowerCase() ?? "";
+  if (normalizedFamily === "master") {
+    return tier === null || tier === undefined ? "Master (tier unresolved)" : `Master ${tier}`;
+  }
+  if (normalizedFamily.length === 0) return null;
+  const label = normalizedFamily.replace(/(^|[\s_-])\p{L}/gu, (match) => match.toLocaleUpperCase());
+  return tier === null || tier === undefined ? label : `${label} ${tier}`;
+}
+
+function normalizedOverlayLabel(value: string): string {
+  return ` ${value.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
 }
 
 function formatOverlayTime(micros: number): string {

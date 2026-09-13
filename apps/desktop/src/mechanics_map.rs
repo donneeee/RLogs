@@ -328,6 +328,7 @@ struct MechanicsMapFeedState {
     reconciled_scene: Option<(i32, u32, Option<String>)>,
     reconciled_scene_observed: bool,
     reconciled_scene_packet: bool,
+    invalidated_native_scene_id: Option<i32>,
 }
 
 impl MechanicsMapFeed {
@@ -379,11 +380,17 @@ impl MechanicsMapFeed {
             && (!state.reconciled_scene_observed || prior_native_owned)
         {
             if let Some(native) = state.native_scene.clone() {
-                state.reconciled_scene = Some(native);
-                state.reconciled_scene_observed = true;
+                if state.invalidated_native_scene_id != Some(native.0) {
+                    state.invalidated_native_scene_id = None;
+                    state.reconciled_scene = Some(native);
+                    state.reconciled_scene_observed = true;
+                }
             } else if state.reconciled_scene == previous_native {
                 state.reconciled_scene = None;
                 state.reconciled_scene_observed = true;
+                state.invalidated_native_scene_id = None;
+            } else {
+                state.invalidated_native_scene_id = None;
             }
         } else if !active && prior_native_owned && state.reconciled_scene == previous_native {
             state.reconciled_scene = state
@@ -404,11 +411,25 @@ impl MechanicsMapFeed {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let unchanged = state.reconciled_scene_observed && state.reconciled_scene == scene;
         state.reconciled_scene_packet = true;
+        state.invalidated_native_scene_id = None;
         if unchanged {
             return;
         }
         state.reconciled_scene = scene;
         state.reconciled_scene_observed = true;
+        state.snapshot.revision = state.snapshot.revision.saturating_add(1);
+        self.changed.notify_all();
+    }
+
+    pub fn invalidate_scene_epoch(&self, departed_scene_id: Option<i32>) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.reconciled_scene = None;
+        state.reconciled_scene_observed = true;
+        state.reconciled_scene_packet = false;
+        state.invalidated_native_scene_id = departed_scene_id;
         state.snapshot.revision = state.snapshot.revision.saturating_add(1);
         self.changed.notify_all();
     }
@@ -426,6 +447,7 @@ impl MechanicsMapFeed {
         state.reconciled_scene = None;
         state.reconciled_scene_observed = false;
         state.reconciled_scene_packet = false;
+        state.invalidated_native_scene_id = None;
         state.native_scene_active = false;
         state.native_scene = None;
         self.changed.notify_all();
@@ -656,6 +678,26 @@ impl MechanicsMapProjector {
         }
         self.scene_id = Some(scene_id);
         self.map_id = Some(map_id);
+        self.entities.clear();
+        self.attack_targets.clear();
+        self.target_statuses.clear();
+        self.cooldowns.clear();
+        self.resource_values.clear();
+        self.signals.clear();
+        self.markers.clear();
+        self.local_markers.clear();
+        self.dungeon = None;
+        self.data_gap = None;
+        self.revision = self.revision.saturating_add(1);
+        true
+    }
+
+    pub fn clear_scene(&mut self) -> bool {
+        if self.scene_id.is_none() && self.map_id.is_none() {
+            return false;
+        }
+        self.scene_id = None;
+        self.map_id = None;
         self.entities.clear();
         self.attack_targets.clear();
         self.target_statuses.clear();
@@ -4510,6 +4552,23 @@ mod tests {
             Some((6_565, 6_565, Some("Sea-Ringed Reef - Master".into()))),
         );
         assert_eq!(feed.current().snapshot.scene_id, Some(6_561));
+
+        feed.invalidate_scene_epoch(Some(6_561));
+        feed.set_native_scene_presentation(
+            true,
+            Some((6_561, 6_561, Some("Sea-Ringed Reef".into()))),
+        );
+        assert_eq!(
+            feed.current().snapshot.scene_id,
+            None,
+            "a delayed native map sample cannot resurrect the terminal scene"
+        );
+        feed.set_native_scene_presentation(true, None);
+        feed.set_native_scene_presentation(
+            true,
+            Some((6_565, 6_565, Some("Sea-Ringed Reef - Master".into()))),
+        );
+        assert_eq!(feed.current().snapshot.scene_id, Some(6_565));
     }
 
     #[test]
