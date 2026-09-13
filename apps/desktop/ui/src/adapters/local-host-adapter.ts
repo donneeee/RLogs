@@ -704,7 +704,7 @@ function createLocalHostAdapter(localizer: UiLocalizer): DesktopHostAdapter {
             showOverlay: async () => { await showOverlayCanvas(invoke); },
             editOverlay: async () => { await openEditableOverlayCanvas(invoke); },
             hideOverlay: async () => { await hideOverlayCanvas(invoke); },
-          });
+          }, localizer);
         case `builtin://${OVERLAY_PLUGIN_ID}/mechanics-map`:
           return mountMechanicsMapSurface(container, {
             async loadSnapshot() {
@@ -765,7 +765,7 @@ function createLocalHostAdapter(localizer: UiLocalizer): DesktopHostAdapter {
             async openOverlay() {
               await openEditableOverlayCanvas(invoke);
             },
-          });
+          }, localizer);
         case `builtin://${OVERLAY_PLUGIN_ID}/trackers`:
           return mountOverlayStatsTrackerSurface(container, {
             async loadCatalog() {
@@ -787,7 +787,7 @@ function createLocalHostAdapter(localizer: UiLocalizer): DesktopHostAdapter {
                 }),
               );
             },
-          });
+          }, localizer);
         case `builtin://${CUSTOM_TRIGGERS_PLUGIN_ID}/overview`:
         case `builtin://${CUSTOM_TRIGGERS_PLUGIN_ID}/rules`:
         case `builtin://${CUSTOM_TRIGGERS_PLUGIN_ID}/library`:

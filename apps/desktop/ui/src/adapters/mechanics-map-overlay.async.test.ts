@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 
-import type { UiLocalizer } from "../localization/ui-locale";
+import { loadUiLocalizer } from "../localization/ui-locale";
 import { AUTOMARKER_PREVIEW_STORAGE_KEY, AUTOMARKER_PREVIEW_TTL_MILLIS, parseAutomarkerPreview, type AutomarkerPresetView } from "./automarker-presets";
 import type { MechanicsMapSnapshot, MechanicsMapUpdate } from "./mechanics-map";
 import { mountMechanicsMapOverlay } from "./mechanics-map-overlay";
@@ -137,23 +137,8 @@ function catalog(sceneId: number, familyId: string, name: string): AutomarkerPre
   };
 }
 
-const localizer: UiLocalizer = {
-  locale: "en-US",
-  loadedLocales: ["en-US"],
-  t: (key) => ({
-    "ui.overlay_canvas.controls.aria": "Canvas layout controls",
-    "ui.overlay_canvas.controls.label": "Canvas layout",
-    "ui.overlay_canvas.controls.mode": "EDIT MODE",
-    "ui.overlay_canvas.controls.lock": "Lock",
-    "ui.overlay_canvas.controls.unlock": "Unlock",
-    "ui.overlay_canvas.controls.lock_help": "Lock the canvas and return overlays to click-through mode",
-    "ui.overlay_canvas.controls.hide": "Hide",
-    "ui.overlay_canvas.controls.hide_help": "Hide all overlays; restore them from Show overlays in the main app or press Scroll Lock",
-    "ui.overlay_canvas.controls.done": "Done",
-    "ui.overlay_canvas.controls.done_help": "Exit editing and keep overlays visible",
-  })[key] ?? key,
-  formatNumber: (value) => String(value),
-};
+const loadedLocalizer = await loadUiLocalizer("en-US");
+const localizer = { ...loadedLocalizer, formatNumber: (value: number) => String(value) };
 
 async function flushPromises(): Promise<void> {
   await Promise.resolve();

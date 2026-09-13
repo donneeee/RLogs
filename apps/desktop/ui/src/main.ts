@@ -241,7 +241,7 @@ if (isCombatOverlayRuntime) {
   installInterfaceZoom();
   const localizer = await loadUiLocalizer(navigator.languages[0] ?? navigator.language);
   const adapter =
-    (await createLocalHostAdapterIfAvailable(localizer)) ?? createDevelopmentAdapter();
+    (await createLocalHostAdapterIfAvailable(localizer)) ?? createDevelopmentAdapter(localizer);
   const applicationVersion = await getVersion().catch(() => "development");
   const shell = new DesktopShell(root, adapter, applicationVersion);
   void shell.start();

@@ -1,6 +1,6 @@
 import type { MountedSurface } from "../shell/types";
+import type { UiLocalizer } from "../localization/ui-locale";
 import {
-  fightAttributeComponentLabel,
   formatFightAttributeValue,
   resolveLiveCharacterStatFamilies,
   type FightAttributePresentationCatalog,
@@ -66,6 +66,7 @@ export function selectMainCharacterStatFamilies(
 export function mountOverlayStatsTrackerSurface(
   container: HTMLElement,
   dependencies: OverlayStatsTrackerDependencies,
+  localizer: UiLocalizer,
 ): MountedSurface {
   let alive = true;
   let catalog: FightAttributePresentationCatalog | null = null;
@@ -77,52 +78,49 @@ export function mountOverlayStatsTrackerSurface(
   const header = element("section", "content-card overlay-workspace-intro");
   const heading = element("div", "overlay-workspace-heading");
   heading.append(
-    text("span", "LIVE INFORMATION", "eyebrow"),
-    text("h2", "Combat Stats"),
+    text("span", localizer.t("ui.overlay_stats.eyebrow"), "eyebrow"),
+    text("h2", localizer.t("ui.overlay_stats.title")),
     text(
       "p",
-      "See the latest complete local snapshot and temporary packet-observed changes without publishing combat-only values to your profile.",
+      localizer.t("ui.overlay_stats.description"),
       "card-copy",
     ),
   );
-  const state = text("span", "CONNECTING", "overlay-menu-preview-badge");
+  const state = text("span", localizer.t("ui.overlay_stats.status.connecting"), "overlay-menu-preview-badge");
   header.append(heading, state);
 
   const statsCard = element("section", "content-card overlay-stats-card");
   const statsHeading = element("header", "overlay-stats-heading");
   const statsCopy = element("div");
   statsCopy.append(
-    text("span", "LOCAL CHARACTER", "eyebrow"),
-    text("h3", "Waiting for a complete character snapshot"),
-    text("p", "Open the game and enter a scene that publishes your character attributes.", "card-copy"),
+    text("span", localizer.t("ui.overlay_stats.local_character"), "eyebrow"),
+    text("h3", localizer.t("ui.overlay_stats.snapshot.waiting")),
+    text("p", localizer.t("ui.overlay_stats.snapshot.help"), "card-copy"),
   );
   const search = document.createElement("input");
   search.type = "search";
-  search.placeholder = "Filter stats";
-  search.setAttribute("aria-label", "Filter combat stats");
+  search.placeholder = localizer.t("ui.overlay_stats.filter.placeholder");
+  search.setAttribute("aria-label", localizer.t("ui.overlay_stats.filter.aria"));
   search.hidden = true;
   const viewAll = element("button", "secondary-button overlay-stats-view-all");
   viewAll.type = "button";
-  viewAll.textContent = "View all observed stats";
+  viewAll.textContent = localizer.t("ui.overlay_stats.view_all");
   const headingActions = element("div", "overlay-stats-heading-actions");
   headingActions.append(search, viewAll);
   statsHeading.append(statsCopy, headingActions);
   const statsBody = element("div", "overlay-stats-grid");
-  statsBody.append(text("p", "No local character-stat snapshot has been observed yet.", "runtime-empty-result"));
+  statsBody.append(text("p", localizer.t("ui.overlay_stats.snapshot.empty"), "runtime-empty-result"));
   statsCard.append(statsHeading, statsBody);
 
   const planned = element("section", "overlay-menu-grid");
-  for (const [title, description] of [
-    ["Skills & Cooldowns", "Equipped skills, charges, cooldowns, recasts, and availability states."],
-    ["Effects & Auras", "Buffs, debuffs, durations, stacks, missing effects, and proc states."],
-    ["Energy & Gauges", "Class resources, gauges, stacks, and spend-and-gain systems."],
-    ["Party & Support", "Party cooldowns, mitigation, support effects, and role-relevant availability."],
+  for (const [titleKey, descriptionKey] of [
+    ["skills", "skills"], ["effects", "effects"], ["energy", "energy"], ["party", "party"],
   ] as const) {
     const card = element("article", "content-card overlay-menu-card overlay-planned-card");
     card.append(
-      text("span", "PLANNED", "eyebrow"),
-      text("h3", title),
-      text("p", description, "card-copy"),
+      text("span", localizer.t("ui.overlay_stats.planned.eyebrow"), "eyebrow"),
+      text("h3", localizer.t(`ui.overlay_stats.planned.${titleKey}.title`)),
+      text("p", localizer.t(`ui.overlay_stats.planned.${descriptionKey}.description`), "card-copy"),
     );
     planned.append(card);
   }
@@ -136,7 +134,7 @@ export function mountOverlayStatsTrackerSurface(
   viewAll.addEventListener("click", () => {
     showAllStats = !showAllStats;
     search.hidden = !showAllStats;
-    viewAll.textContent = showAllStats ? "Hide observed stats" : "View all observed stats";
+    viewAll.textContent = localizer.t(showAllStats ? "ui.overlay_stats.hide_all" : "ui.overlay_stats.view_all");
     if (!showAllStats) {
       search.value = "";
       searchValue = "";
@@ -161,7 +159,7 @@ export function mountOverlayStatsTrackerSurface(
       }
     } catch (error) {
       if (!alive) return;
-      state.textContent = "UNAVAILABLE";
+      state.textContent = localizer.t("ui.overlay_stats.status.unavailable");
       state.dataset.state = "error";
       statsBody.replaceChildren(
         text("p", error instanceof Error ? error.message : String(error), "runtime-empty-result"),
@@ -179,29 +177,35 @@ export function mountOverlayStatsTrackerSurface(
         family.name.toLocaleLowerCase().includes(searchValue) ||
         family.description?.toLocaleLowerCase().includes(searchValue),
     );
-    state.textContent = snapshot.character === null ? "WAITING" : "LIVE LOCAL";
+    state.textContent = localizer.t(snapshot.character === null
+      ? "ui.overlay_stats.status.waiting"
+      : "ui.overlay_stats.status.live_local");
     state.dataset.state = snapshot.character === null ? "waiting" : "live";
     const changed = observedFamilies.filter((family) => family.changed).length;
     const observedMainCount = mainFamilies.filter((family) => family.components.length > 0).length;
     statsCopy.querySelector("h3")!.textContent = snapshot.character === null
-      ? "Waiting for a complete character snapshot"
+      ? localizer.t("ui.overlay_stats.snapshot.waiting")
       : observedMainCount === mainFamilies.length
-        ? `${mainFamilies.length.toLocaleString()} main stats`
-        : `${observedMainCount.toLocaleString()} of ${mainFamilies.length.toLocaleString()} main stats observed`;
+        ? localizer.t("ui.overlay_stats.snapshot.main_complete", { count: localizer.formatNumber(mainFamilies.length) })
+        : localizer.t("ui.overlay_stats.snapshot.main_partial", {
+            observed: localizer.formatNumber(observedMainCount), total: localizer.formatNumber(mainFamilies.length),
+          });
     statsCopy.querySelector("p")!.textContent = snapshot.character === null
-      ? "Open the game and enter a scene that publishes your character attributes."
-      : `${observedFamilies.length.toLocaleString()} observed stat families · ${changed.toLocaleString()} temporarily changed`;
+      ? localizer.t("ui.overlay_stats.snapshot.help")
+      : localizer.t("ui.overlay_stats.snapshot.summary", {
+          families: localizer.formatNumber(observedFamilies.length), changed: localizer.formatNumber(changed),
+        });
     statsBody.replaceChildren();
     if (mainFamilies.length === 0) {
       statsBody.append(text(
         "p",
-        "The current snapshot does not contain the main character-stat families yet.",
+        localizer.t("ui.overlay_stats.snapshot.no_main"),
         "runtime-empty-result",
       ));
       return;
     }
     const main = element("section", "overlay-main-stats");
-    main.append(text("h4", "Main stats", "overlay-stats-section-title"));
+    main.append(text("h4", localizer.t("ui.overlay_stats.main.title"), "overlay-stats-section-title"));
     const mainGrid = element("div", "overlay-main-stats-grid");
     for (const family of mainFamilies) {
       const primary = family.components.find(
@@ -215,7 +219,7 @@ export function mountOverlayStatsTrackerSurface(
         text(
           "strong",
           primary === null
-            ? "Not observed"
+            ? localizer.t("ui.overlay_stats.value.not_observed")
             : formatFightAttributeValue(
                 primary.currentValue,
                 primary.presentation.number_type,
@@ -231,7 +235,7 @@ export function mountOverlayStatsTrackerSurface(
     if (!showAllStats) return;
 
     const detail = element("section", "overlay-observed-stats");
-    detail.append(text("h4", "All observed stats", "overlay-stats-section-title"));
+    detail.append(text("h4", localizer.t("ui.overlay_stats.all.title"), "overlay-stats-section-title"));
     const detailGrid = element("div", "overlay-observed-stats-grid");
     for (const family of families) {
       const primary = family.components.find(
@@ -243,7 +247,7 @@ export function mountOverlayStatsTrackerSurface(
       const copy = element("div");
       copy.append(
         text("strong", family.name),
-        text("span", family.description ?? "Observed combat attribute"),
+        text("span", family.description ?? localizer.t("ui.overlay_stats.value.description_fallback")),
       );
       const value = text(
         "strong",
@@ -258,20 +262,20 @@ export function mountOverlayStatsTrackerSurface(
       card.append(cardHeading);
       if (family.changed) {
         const prior = primary.snapshotValue === null
-          ? "Snapshot unavailable"
-          : `Snapshot ${formatFightAttributeValue(
+          ? localizer.t("ui.overlay_stats.value.snapshot_unavailable")
+          : localizer.t("ui.overlay_stats.value.snapshot", { value: formatFightAttributeValue(
               primary.snapshotValue,
               primary.presentation.number_type,
               primary.presentation.format_type,
-            )}`;
+            ) });
         card.append(text("span", prior, "overlay-stat-change"));
       }
       const details = element("details", "overlay-stat-breakdown");
-      details.append(text("summary", "Exact breakdown"));
+      details.append(text("summary", localizer.t("ui.overlay_stats.breakdown.title")));
       const rows = element("dl", "overlay-stat-component-list");
       for (const component of family.components) {
         rows.append(
-          text("dt", fightAttributeComponentLabel(component.presentation.component)),
+          text("dt", localizer.t(`ui.overlay_stats.component.${component.presentation.component}`)),
           text(
             "dd",
             formatFightAttributeValue(
@@ -287,7 +291,7 @@ export function mountOverlayStatsTrackerSurface(
       detailGrid.append(card);
     }
     if (families.length === 0) {
-      detailGrid.append(text("p", "No observed stats match this filter.", "runtime-empty-result"));
+      detailGrid.append(text("p", localizer.t("ui.overlay_stats.filter.empty"), "runtime-empty-result"));
     }
     detail.append(detailGrid);
     statsBody.append(detail);

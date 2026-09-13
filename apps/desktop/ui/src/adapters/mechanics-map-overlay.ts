@@ -331,12 +331,14 @@ export function mountMechanicsMapOverlay(
     scheduleDraw();
   });
   const center = button(localizer.t("ui.mechanics_map.toolbar.center"), false, centerOnPlayer);
-  const markerPresets = button("Marker presets", false, () => {
+  const markerPresets = button(localizer.t("ui.mechanics_map.automarkers.title"), false, () => {
     automarkerPanel.hidden = !automarkerPanel.hidden;
     markerPresets.dataset.active = String(!automarkerPanel.hidden);
     if (!automarkerPanel.hidden) void refreshAutomarkerPresets();
   });
-  const expand = button(preferences.expanded ? "Window" : "Full map", preferences.expanded, () => {
+  const expand = button(localizer.t(preferences.expanded
+    ? "ui.mechanics_map.toolbar.window"
+    : "ui.mechanics_map.toolbar.full_map"), preferences.expanded, () => {
     setExpanded(!preferences.expanded);
   });
   actions.append(rotate, monsters, dim, contrast, fit, center, markerPresets, expand);
@@ -345,18 +347,18 @@ export function mountMechanicsMapOverlay(
   const viewport = element("section", "mechanics-map-overlay-viewport");
   const canvas = document.createElement("canvas");
   canvas.className = "mechanics-map-overlay-canvas";
-  canvas.setAttribute("aria-label", "Live packet-observed Mechanics Map canvas");
+  canvas.setAttribute("aria-label", localizer.t("ui.mechanics_map.canvas.aria"));
   const notice = text("p", localizer.t("ui.mechanics_map.notice.waiting_for_position"), "mechanics-map-overlay-notice");
   viewport.append(canvas, notice);
   const footer = element("footer", "mechanics-map-overlay-footer");
   const mapSource = text("span", localizer.t("ui.mechanics_map.source.radar_fallback"));
   const mapCoordinates = text("span", "X — · Z —");
-  const mapMetrics = text("span", "1× · 0 entities");
+  const mapMetrics = text("span", localizer.t("ui.mechanics_map.metrics.initial"));
   footer.append(mapSource, mapCoordinates, mapMetrics);
   const resize = element("button", "mechanics-map-overlay-resize");
   resize.type = "button";
-  resize.title = "Resize Mechanics Map overlay";
-  resize.setAttribute("aria-label", "Resize Mechanics Map overlay");
+  resize.title = localizer.t("ui.mechanics_map.resize.map");
+  resize.setAttribute("aria-label", localizer.t("ui.mechanics_map.resize.map"));
   resize.addEventListener("pointerdown", (event) => {
     if (preferences.expanded) return;
     event.preventDefault();
@@ -369,47 +371,47 @@ export function mountMechanicsMapOverlay(
   panel.append(toolbar, viewport, footer, resize);
   const playerPanel = element("section", "player-frame-overlay-runtime");
   const playerToolbar = element("header", "player-frame-overlay-toolbar");
-  const playerTitle = text("strong", "Player");
-  const playerStatus = text("span", "WAITING");
+  const playerTitle = text("strong", localizer.t("ui.mechanics_map.player.title"));
+  const playerStatus = text("span", localizer.t("ui.mechanics_map.status.waiting"));
   playerToolbar.append(playerTitle, playerStatus);
   const playerBody = element("section", "player-frame-overlay-body");
   const playerResizeHandle = element("button", "player-frame-overlay-resize");
   playerResizeHandle.type = "button";
-  playerResizeHandle.title = "Resize player frame";
-  playerResizeHandle.setAttribute("aria-label", "Resize player frame");
+  playerResizeHandle.title = localizer.t("ui.mechanics_map.resize.player");
+  playerResizeHandle.setAttribute("aria-label", localizer.t("ui.mechanics_map.resize.player"));
   playerPanel.append(playerToolbar, playerBody, playerResizeHandle);
   const actionsPanel = element("section", "action-controls-overlay-runtime");
   const actionsToolbar = element("header", "action-controls-overlay-toolbar");
-  const actionsTitle = text("strong", "Action cooldowns");
-  const actionsStatus = text("span", "WAITING");
+  const actionsTitle = text("strong", localizer.t("ui.mechanics_map.actions.title"));
+  const actionsStatus = text("span", localizer.t("ui.mechanics_map.status.waiting"));
   actionsToolbar.append(actionsTitle, actionsStatus);
   const actionsBody = element("section", "action-controls-overlay-body");
   const actionsResizeHandle = element("button", "action-controls-overlay-resize");
   actionsResizeHandle.type = "button";
-  actionsResizeHandle.title = "Resize action cooldowns";
-  actionsResizeHandle.setAttribute("aria-label", "Resize action cooldowns");
+  actionsResizeHandle.title = localizer.t("ui.mechanics_map.resize.actions");
+  actionsResizeHandle.setAttribute("aria-label", localizer.t("ui.mechanics_map.resize.actions"));
   actionsPanel.append(actionsToolbar, actionsBody, actionsResizeHandle);
   const partyPanel = element("section", "party-frame-overlay-runtime");
   const partyToolbar = element("header", "party-frame-overlay-toolbar");
-  const partyTitle = text("strong", "Party");
-  const partyStatus = text("span", "WAITING");
+  const partyTitle = text("strong", localizer.t("ui.mechanics_map.party.title"));
+  const partyStatus = text("span", localizer.t("ui.mechanics_map.status.waiting"));
   partyToolbar.append(partyTitle, partyStatus);
   const partyBody = element("section", "party-frame-overlay-body");
   const partyResizeHandle = element("button", "party-frame-overlay-resize");
   partyResizeHandle.type = "button";
-  partyResizeHandle.title = "Resize party frames";
-  partyResizeHandle.setAttribute("aria-label", "Resize party frames");
+  partyResizeHandle.title = localizer.t("ui.mechanics_map.resize.party");
+  partyResizeHandle.setAttribute("aria-label", localizer.t("ui.mechanics_map.resize.party"));
   partyPanel.append(partyToolbar, partyBody, partyResizeHandle);
   const targetPanel = element("section", "target-frame-overlay-runtime");
   const targetToolbar = element("header", "target-frame-overlay-toolbar");
-  const targetTitle = text("strong", "Current target");
-  const targetStatus = text("span", "NO TARGET");
+  const targetTitle = text("strong", localizer.t("ui.mechanics_map.target.title"));
+  const targetStatus = text("span", localizer.t("ui.mechanics_map.target.no_target"));
   targetToolbar.append(targetTitle, targetStatus);
   const targetBody = element("section", "target-frame-overlay-body");
   const targetResizeHandle = element("button", "target-frame-overlay-resize");
   targetResizeHandle.type = "button";
-  targetResizeHandle.title = "Resize target frame";
-  targetResizeHandle.setAttribute("aria-label", "Resize target frame");
+  targetResizeHandle.title = localizer.t("ui.mechanics_map.resize.target");
+  targetResizeHandle.setAttribute("aria-label", localizer.t("ui.mechanics_map.resize.target"));
   targetPanel.append(targetToolbar, targetBody, targetResizeHandle);
   const objectivesPanel = element("section", "dungeon-objectives-overlay-runtime");
   const objectivesToolbar = element("header", "dungeon-objectives-overlay-toolbar");
@@ -424,29 +426,29 @@ export function mountMechanicsMapOverlay(
   objectivesPanel.append(objectivesToolbar, objectivesBody, objectivesResizeHandle);
   const alertsPanel = element("section", "mechanic-alerts-overlay-runtime");
   const alertsToolbar = element("header", "mechanic-alerts-overlay-toolbar");
-  const alertsTitle = text("strong", "Mechanic alerts");
-  const alertsStatus = text("span", "WAITING");
+  const alertsTitle = text("strong", localizer.t("ui.mechanics_map.alerts.title"));
+  const alertsStatus = text("span", localizer.t("ui.mechanics_map.status.waiting"));
   alertsToolbar.append(alertsTitle, alertsStatus);
   const alertsBody = element("section", "mechanic-alerts-overlay-body");
   const alertsResizeHandle = element("button", "mechanic-alerts-overlay-resize");
   alertsResizeHandle.type = "button";
-  alertsResizeHandle.title = "Resize mechanic alerts";
-  alertsResizeHandle.setAttribute("aria-label", "Resize mechanic alerts");
+  alertsResizeHandle.title = localizer.t("ui.mechanics_map.resize.alerts");
+  alertsResizeHandle.setAttribute("aria-label", localizer.t("ui.mechanics_map.resize.alerts"));
   alertsPanel.append(alertsToolbar, alertsBody, alertsResizeHandle);
   const automarkerPanel = element("section", "automarker-overlay-picker");
   automarkerPanel.hidden = true;
-  const automarkerTitle = text("strong", "Marker presets");
+  const automarkerTitle = text("strong", localizer.t("ui.mechanics_map.automarkers.title"));
   const automarkerSelect = document.createElement("select");
-  const automarkerPreviewButton = button("Preview locally", false, previewSelectedAutomarkerPreset);
-  const automarkerNote = text("small", "Current dungeon-family presets only");
+  const automarkerPreviewButton = button(localizer.t("ui.mechanics_map.automarkers.preview"), false, previewSelectedAutomarkerPreset);
+  const automarkerNote = text("small", localizer.t("ui.mechanics_map.automarkers.current_family"));
   automarkerPanel.append(automarkerTitle, automarkerSelect, automarkerPreviewButton, automarkerNote);
   const moduleToggles = [
-    moduleVisibilityButton("Player", "showPlayer", playerPanel),
-    moduleVisibilityButton("Actions", "showActions", actionsPanel),
-    moduleVisibilityButton("Party", "showParty", partyPanel),
-    moduleVisibilityButton("Target", "showTarget", targetPanel),
+    moduleVisibilityButton(localizer.t("ui.mechanics_map.player.title"), "showPlayer", playerPanel),
+    moduleVisibilityButton(localizer.t("ui.mechanics_map.actions.toggle"), "showActions", actionsPanel),
+    moduleVisibilityButton(localizer.t("ui.mechanics_map.party.title"), "showParty", partyPanel),
+    moduleVisibilityButton(localizer.t("ui.mechanics_map.target.toggle"), "showTarget", targetPanel),
     moduleVisibilityButton(localizer.t("ui.mechanics_map.objectives.toggle"), "showObjectives", objectivesPanel),
-    moduleVisibilityButton("Alerts", "showAlerts", alertsPanel),
+    moduleVisibilityButton(localizer.t("ui.mechanics_map.alerts.toggle"), "showAlerts", alertsPanel),
   ];
   const canvasControls = mountOverlayCanvasControls({
     moduleControls: moduleToggles,
@@ -665,7 +667,7 @@ export function mountMechanicsMapOverlay(
       }
     } catch (cause) {
       if (!alive) return;
-      status.textContent = "UNAVAILABLE";
+      status.textContent = localizer.t("ui.mechanics_map.status.unavailable");
       status.dataset.state = "error";
       notice.hidden = false;
       notice.textContent = cause instanceof Error ? cause.message : String(cause);
@@ -694,7 +696,7 @@ export function mountMechanicsMapOverlay(
         mechanicsMapAutomarkerSnapshotKey(update?.snapshot),
       )) return;
       automarkerView = null;
-      automarkerSelect.replaceChildren(new Option("Preset catalog unavailable", ""));
+      automarkerSelect.replaceChildren(new Option(localizer.t("ui.mechanics_map.automarkers.unavailable"), ""));
       automarkerSelect.disabled = true;
       automarkerPreviewButton.disabled = true;
       automarkerNote.textContent = error instanceof Error ? error.message : String(error);
@@ -714,7 +716,11 @@ export function mountMechanicsMapOverlay(
     if (JSON.stringify(next) === JSON.stringify(automarkerPreview)) return;
     automarkerPreview = next;
     if (next !== null) {
-      automarkerNote.textContent = `${next.name}: ${next.points.length} local preview marker${next.points.length === 1 ? "" : "s"}. No game transmission.`;
+      automarkerNote.textContent = localizer.t(next.points.length === 1
+        ? "ui.mechanics_map.automarkers.preview_one"
+        : "ui.mechanics_map.automarkers.preview_many", {
+          name: next.name, count: localizer.formatNumber(next.points.length),
+        });
     }
     scheduleDraw();
   }
@@ -723,14 +729,18 @@ export function mountMechanicsMapOverlay(
     automarkerSelect.replaceChildren();
     const presets = automarkerView?.presets ?? [];
     if (presets.length === 0) {
-      automarkerSelect.append(new Option(automarkerView?.context === null ? "Enter a scene" : "No setups for this dungeon family", ""));
+      automarkerSelect.append(new Option(localizer.t(automarkerView?.context === null
+        ? "ui.mechanics_map.automarkers.enter_scene"
+        : "ui.mechanics_map.automarkers.no_setups"), ""));
     } else {
-      for (const preset of presets) automarkerSelect.append(new Option(`${preset.name} · ${preset.points.length} marks`, preset.presetId));
+      for (const preset of presets) automarkerSelect.append(new Option(localizer.t("ui.mechanics_map.automarkers.preset", {
+        name: preset.name, count: localizer.formatNumber(preset.points.length),
+      }), preset.presetId));
     }
     automarkerSelect.disabled = presets.length === 0;
     automarkerPreviewButton.disabled = presets.length === 0 || automarkerView?.context === null;
-    automarkerPreviewButton.title = "Draw the selected setup on this local Mechanics Map only";
-    automarkerNote.textContent = "Local preview only. Nothing is sent to the game; native placement remains locked.";
+    automarkerPreviewButton.title = localizer.t("ui.mechanics_map.automarkers.preview_help");
+    automarkerNote.textContent = localizer.t("ui.mechanics_map.automarkers.safety");
   }
 
   function previewSelectedAutomarkerPreset(): void {
@@ -766,7 +776,7 @@ export function mountMechanicsMapOverlay(
     }
     title.textContent = snapshot.scene_name ?? (snapshot.scene_id === null
       ? localizer.t("ui.mechanics_map.status.waiting_for_scene")
-      : `Scene ${snapshot.scene_id}`);
+      : localizer.t("ui.mechanics_map.scene", { id: snapshot.scene_id }));
     status.textContent = snapshot.local_position_observed
       ? localizer.t("ui.mechanics_map.status.live")
       : snapshot.scene_id === null
@@ -820,14 +830,14 @@ export function mountMechanicsMapOverlay(
     const availability = mechanicsMapAssetAvailability(snapshot, imageReady);
     if (availability === "unsupported") {
       notice.hidden = false;
-      notice.textContent = "Map unavailable: this identified scene has no reviewed game-map asset.";
+      notice.textContent = localizer.t("ui.mechanics_map.notice.unsupported");
       return;
     }
     if (availability === "asset_pending") {
       notice.hidden = false;
       notice.textContent = preparingAsset
-        ? "Map unavailable while the reviewed game-map asset is prepared."
-        : "Map unavailable: the reviewed game-map asset is not available locally.";
+        ? localizer.t("ui.mechanics_map.notice.preparing")
+        : localizer.t("ui.mechanics_map.notice.asset_pending");
       return;
     }
     notice.hidden = snapshot.local_position_observed && snapshot.data_gap === null;
@@ -864,10 +874,12 @@ export function mountMechanicsMapOverlay(
       .filter((signal) => signal.mechanic_kind !== null)
       .slice(-8)
       .reverse();
-    alertsStatus.textContent = signals.length === 0 ? "WAITING" : `${signals.length} OBSERVED`;
+    alertsStatus.textContent = signals.length === 0
+      ? localizer.t("ui.mechanics_map.status.waiting")
+      : localizer.t("ui.mechanics_map.status.observed_count", { count: localizer.formatNumber(signals.length) });
     alertsStatus.dataset.state = signals.length === 0 ? "waiting" : "live";
     if (signals.length === 0) {
-      nextBody.append(text("p", "Waiting for reviewed packet mechanic signals…", "mechanic-alerts-overlay-empty"));
+      nextBody.append(text("p", localizer.t("ui.mechanics_map.alerts.waiting"), "mechanic-alerts-overlay-empty"));
       reconcileChildren(alertsBody, nextBody);
       return;
     }
@@ -882,17 +894,18 @@ export function mountMechanicsMapOverlay(
       row.dataset.snapshotObservedMicros = snapshot.last_observed_micros === null
         ? ""
         : String(snapshot.last_observed_micros);
-      row.title = `Packet effect ID: ${signal.effect_id}`;
+      row.title = localizer.t("ui.mechanics_map.alerts.effect_id", { id: signal.effect_id });
+      const mechanicName = localizedMechanicKind(signal.mechanic_kind!, localizer);
       const identity = element("span", "mechanic-alerts-overlay-identity");
       identity.append(
-        text("strong", signal.presentation_name ?? humanizeDungeonState(signal.mechanic_kind!)),
-        text("small", humanizeDungeonState(signal.mechanic_kind!)),
+        text("strong", signal.presentation_name ?? mechanicName),
+        text("small", mechanicName),
       );
       const detail = element("span", "mechanic-alerts-overlay-detail");
       if (signal.stacks !== null && signal.stacks > 1) {
         detail.append(text("small", `×${signal.stacks}`, "mechanic-alerts-overlay-stacks"));
       }
-      detail.append(text("b", "OBSERVED", "mechanic-alerts-overlay-time"));
+      detail.append(text("b", localizer.t("ui.mechanics_map.status.observed"), "mechanic-alerts-overlay-time"));
       row.append(identity, detail);
       nextBody.append(row);
     }
@@ -1016,11 +1029,11 @@ export function mountMechanicsMapOverlay(
     stopActionsTimer();
     const nextBody = actionsBody.cloneNode(false) as HTMLElement;
     actionsStatus.textContent = snapshot.action_controls.length === 0
-      ? "WAITING"
-      : `${snapshot.action_controls.length} OBSERVED`;
+      ? localizer.t("ui.mechanics_map.status.waiting")
+      : localizer.t("ui.mechanics_map.status.observed_count", { count: localizer.formatNumber(snapshot.action_controls.length) });
     actionsStatus.dataset.state = snapshot.action_controls.length === 0 ? "waiting" : "live";
     if (snapshot.action_controls.length === 0) {
-      nextBody.append(text("p", "Waiting for packet-observed cooldown state…", "action-controls-overlay-empty"));
+      nextBody.append(text("p", localizer.t("ui.mechanics_map.actions.waiting"), "action-controls-overlay-empty"));
       reconcileChildren(actionsBody, nextBody);
       return;
     }
@@ -1029,7 +1042,8 @@ export function mountMechanicsMapOverlay(
       entry.dataset.renderKey = `action:${control.skill_level_id}`;
       entry.dataset.remainingMillis = control.remaining_millis === null ? "" : String(control.remaining_millis);
       entry.dataset.durationMillis = control.duration_millis === null ? "" : String(control.duration_millis);
-      entry.title = `${control.presentation_name ?? `Skill ${control.skill_level_id}`}\nPacket SkillLevel ID: ${control.skill_level_id}`;
+      const skillName = control.presentation_name ?? localizer.t("ui.mechanics_map.actions.skill", { id: control.skill_level_id });
+      entry.title = localizer.t("ui.mechanics_map.actions.skill_help", { name: skillName, id: control.skill_level_id });
       const icon = element("span", "action-controls-overlay-icon");
       if (control.icon_asset_path) {
         const image = document.createElement("img");
@@ -1045,7 +1059,7 @@ export function mountMechanicsMapOverlay(
       if (control.charge_count !== null) {
         icon.append(text("small", String(control.charge_count), "action-controls-overlay-charges"));
       }
-      const label = text("small", control.presentation_name ?? `Skill ${control.skill_level_id}`, "action-controls-overlay-label");
+      const label = text("small", skillName, "action-controls-overlay-label");
       entry.append(icon, label);
       nextBody.append(entry);
     }
@@ -1096,10 +1110,12 @@ export function mountMechanicsMapOverlay(
 
   function renderParty(snapshot: MechanicsMapSnapshot): void {
     const nextBody = partyBody.cloneNode(false) as HTMLElement;
-    partyStatus.textContent = snapshot.party.length === 0 ? "WAITING" : `${snapshot.party.length} JOINED`;
+    partyStatus.textContent = snapshot.party.length === 0
+      ? localizer.t("ui.mechanics_map.status.waiting")
+      : localizer.t("ui.mechanics_map.party.joined", { count: localizer.formatNumber(snapshot.party.length) });
     partyStatus.dataset.state = snapshot.party.length === 0 ? "waiting" : "live";
     if (snapshot.party.length === 0) {
-      nextBody.append(text("p", "Waiting for rostered party actors…", "party-frame-overlay-empty"));
+      nextBody.append(text("p", localizer.t("ui.mechanics_map.party.waiting"), "party-frame-overlay-empty"));
       reconcileChildren(partyBody, nextBody);
       return;
     }
@@ -1110,10 +1126,12 @@ export function mountMechanicsMapOverlay(
       row.dataset.stale = String(member.stale);
       const identity = element("div", "party-frame-overlay-identity");
       const name = element("div", "party-frame-overlay-name");
-      name.append(text("strong", member.display_name ?? `Player ${member.actor_id}`));
+      name.append(text("strong", member.display_name ?? localizer.t("ui.mechanics_map.player.actor", { id: member.actor_id })));
       identity.append(
         name,
-        text("span", member.dead ? "DEFEATED" : member.stale ? "STALE" : formatTargetHealth(member.current_hp, member.max_hp, localizer)),
+        text("span", member.dead
+          ? localizer.t("ui.mechanics_map.status.defeated")
+          : member.stale ? localizer.t("ui.mechanics_map.status.stale") : formatTargetHealth(member.current_hp, member.max_hp, localizer)),
       );
       const health = element("div", "party-frame-overlay-health");
       health.dataset.observed = String(member.hp_percent !== null);
@@ -1140,19 +1158,21 @@ export function mountMechanicsMapOverlay(
     const nextBody = playerBody.cloneNode(false) as HTMLElement;
     playerPanel.dataset.stale = String(player?.stale ?? false);
     if (player === null) {
-      playerTitle.textContent = "Player";
-      playerStatus.textContent = "WAITING";
+      playerTitle.textContent = localizer.t("ui.mechanics_map.player.title");
+      playerStatus.textContent = localizer.t("ui.mechanics_map.status.waiting");
       playerStatus.dataset.state = "waiting";
-      nextBody.append(text("p", "Waiting for packet-observed player vitals…", "player-frame-overlay-empty"));
+      nextBody.append(text("p", localizer.t("ui.mechanics_map.player.waiting"), "player-frame-overlay-empty"));
       reconcileChildren(playerBody, nextBody);
       return;
     }
-    playerTitle.textContent = player.display_name ?? `Player ${player.actor_id}`;
-    playerStatus.textContent = player.dead ? "DEFEATED" : player.stale ? "STALE" : "LIVE";
+    playerTitle.textContent = player.display_name ?? localizer.t("ui.mechanics_map.player.actor", { id: player.actor_id });
+    playerStatus.textContent = localizer.t(player.dead
+      ? "ui.mechanics_map.status.defeated"
+      : player.stale ? "ui.mechanics_map.status.stale" : "ui.mechanics_map.status.live");
     playerStatus.dataset.state = player.dead ? "dead" : player.stale ? "waiting" : "live";
     const identity = element("div", "player-frame-overlay-identity");
     identity.append(
-      text("strong", "HP"),
+      text("strong", localizer.t("ui.mechanics_map.vitals.hp")),
       text("span", formatTargetHealth(player.current_hp, player.max_hp, localizer)),
     );
     const vitals = element("div", "player-frame-overlay-vitals");
@@ -1167,23 +1187,23 @@ export function mountMechanicsMapOverlay(
       const shieldFill = element("span");
       shieldFill.style.width = `${player.shield_percent ?? (player.current_shield > 0 ? 100 : 0)}%`;
       shield.dataset.observed = String(player.shield_percent !== null);
-      shield.title = `Shield ${formatTargetHealth(player.current_shield, player.max_shield, localizer)}`;
+      shield.title = localizer.t("ui.mechanics_map.vitals.shield_value", { value: formatTargetHealth(player.current_shield, player.max_shield, localizer) });
       shield.append(shieldFill);
       vitals.append(
         shield,
-        text("small", `SHIELD ${formatTargetHealth(player.current_shield, player.max_shield, localizer)}`, "player-frame-overlay-shield-label"),
+        text("small", localizer.t("ui.mechanics_map.vitals.shield_value_upper", { value: formatTargetHealth(player.current_shield, player.max_shield, localizer) }), "player-frame-overlay-shield-label"),
       );
     }
     const statuses = element("div", "player-frame-overlay-statuses");
-    statuses.setAttribute("aria-label", "Player status effects");
+    statuses.setAttribute("aria-label", localizer.t("ui.mechanics_map.player.statuses_aria"));
     for (const effect of player.statuses) {
       const entry = element("span", "player-frame-overlay-status-entry");
       entry.dataset.renderKey = `status:${effect.instance_id ?? `${effect.effect_id}:${effect.source_actor_id ?? "unknown"}:${effect.applied_at_micros}`}`;
       const item = element("span", "player-frame-overlay-status");
-      const effectName = effect.presentation_name ?? `Effect ${effect.effect_id}`;
+      const effectName = effect.presentation_name ?? localizer.t("ui.mechanics_map.effect", { id: effect.effect_id });
       const sourceName = effect.source_display_name ??
-        (effect.source_actor_id === null ? "not supplied" : "unresolved actor");
-      entry.title = `${effectName}\nSource: ${sourceName}`;
+        localizer.t(effect.source_actor_id === null ? "ui.mechanics_map.source.not_supplied" : "ui.mechanics_map.source.unresolved_actor");
+      entry.title = localizer.t("ui.mechanics_map.effect_help", { name: effectName, source: sourceName });
       if (effect.icon_asset_path) {
         const icon = document.createElement("img");
         icon.src = effect.icon_asset_path;
@@ -1194,7 +1214,7 @@ export function mountMechanicsMapOverlay(
       }
       if ((effect.stacks ?? 0) > 1) item.append(text("b", String(effect.stacks)));
       if (effect.remaining_millis !== null) {
-        const timer = text("span", formatDebuffRemaining(effect.remaining_millis), "player-frame-overlay-status-time");
+        const timer = text("span", formatDebuffRemaining(effect.remaining_millis, localizer), "player-frame-overlay-status-time");
         timer.dataset.playerStatusRemaining = String(effect.remaining_millis);
         item.append(timer);
       }
@@ -1202,7 +1222,7 @@ export function mountMechanicsMapOverlay(
       statuses.append(entry);
     }
     const resources = element("div", "player-resource-overlay-list");
-    resources.setAttribute("aria-label", "Packet-observed class resources");
+    resources.setAttribute("aria-label", localizer.t("ui.mechanics_map.player.resources_aria"));
     for (const resource of snapshot.resources) {
       const resourceRow = element("section", "player-resource-overlay-row");
       resourceRow.dataset.renderKey = `resource:${resource.kind}:${resource.current_id}:${resource.max_id}`;
@@ -1210,7 +1230,7 @@ export function mountMechanicsMapOverlay(
       const resourceIdentity = element("div", "player-resource-overlay-identity");
       resourceIdentity.append(
         text("strong", resource.label),
-        text("span", `${resource.current.toLocaleString()} / ${resource.max.toLocaleString()}`),
+        text("span", `${localizer.formatNumber(resource.current)} / ${localizer.formatNumber(resource.max)}`),
       );
       const resourceTrack = element("div", "player-resource-overlay-track");
       const resourceFill = element("span");
@@ -1238,7 +1258,7 @@ export function mountMechanicsMapOverlay(
       const base = Number(timer.dataset.playerStatusRemaining);
       const remaining = targetDebuffRemainingMillis({ remaining_millis: base }, elapsed) ?? 0;
       entry.hidden = remaining <= 0;
-      timer.textContent = formatDebuffRemaining(remaining);
+      timer.textContent = formatDebuffRemaining(remaining, localizer);
     }
   }
 
@@ -1254,16 +1274,20 @@ export function mountMechanicsMapOverlay(
     const nextBody = targetBody.cloneNode(false) as HTMLElement;
     targetPanel.dataset.stale = String(target?.stale ?? false);
     if (target === null) {
-      targetStatus.textContent = "NO TARGET";
+      targetStatus.textContent = localizer.t("ui.mechanics_map.target.no_target");
       targetStatus.dataset.state = "waiting";
-      nextBody.append(text("p", "Select a target in game.", "target-frame-overlay-empty"));
+      nextBody.append(text("p", localizer.t("ui.mechanics_map.target.select"), "target-frame-overlay-empty"));
       reconcileChildren(targetBody, nextBody);
       return;
     }
-    targetStatus.textContent = target.dead ? "DEFEATED" : target.stale ? "STALE" : "LIVE";
+    targetStatus.textContent = localizer.t(target.dead
+      ? "ui.mechanics_map.status.defeated"
+      : target.stale ? "ui.mechanics_map.status.stale" : "ui.mechanics_map.status.live");
     targetStatus.dataset.state = target.dead ? "dead" : target.stale ? "waiting" : "live";
     const identity = element("div", "target-frame-overlay-identity");
-    const name = text("strong", target.display_name ?? (target.monster_id === null ? "Unknown target" : `Monster ${target.monster_id}`));
+    const name = text("strong", target.display_name ?? localizer.t(target.monster_id === null
+      ? "ui.mechanics_map.target.unknown"
+      : "ui.mechanics_map.target.monster", { id: target.monster_id ?? "" }));
     const health = text("span", formatTargetHealth(target.current_hp, target.max_hp, localizer));
     identity.append(name, health);
     const track = element("div", "target-frame-overlay-health");
@@ -1278,26 +1302,28 @@ export function mountMechanicsMapOverlay(
       const shieldFill = element("span");
       shieldFill.style.width = `${target.shield_percent ?? (target.current_shield > 0 ? 100 : 0)}%`;
       shield.dataset.observed = String(target.shield_percent !== null);
-      shield.title = `Shield ${formatTargetHealth(target.current_shield, target.max_shield, localizer)}`;
+      shield.title = localizer.t("ui.mechanics_map.vitals.shield_value", { value: formatTargetHealth(target.current_shield, target.max_shield, localizer) });
       shield.append(shieldFill);
-      const shieldLabel = text("small", `SHIELD ${formatTargetHealth(target.current_shield, target.max_shield, localizer)}`, "target-frame-overlay-shield-label");
+      const shieldLabel = text("small", localizer.t("ui.mechanics_map.vitals.shield_value_upper", { value: formatTargetHealth(target.current_shield, target.max_shield, localizer) }), "target-frame-overlay-shield-label");
       vitals.append(shield, shieldLabel);
     }
     if (target.breaking_stage !== null) {
-      const breaking = text("small", formatBreakingStage(target.breaking_stage), "target-frame-overlay-breaking");
+      const breaking = text("small", formatBreakingStage(target.breaking_stage, localizer), "target-frame-overlay-breaking");
       breaking.dataset.stage = String(target.breaking_stage);
       vitals.append(breaking);
     }
     const debuffs = element("div", "target-frame-overlay-debuffs");
-    debuffs.setAttribute("aria-label", "Target debuffs");
+    debuffs.setAttribute("aria-label", localizer.t("ui.mechanics_map.target.debuffs_aria"));
     for (const effect of target.debuffs) {
       const entry = element("span", "target-frame-overlay-debuff-entry");
       entry.dataset.renderKey = `debuff:${effect.instance_id ?? `${effect.effect_id}:${effect.source_actor_id ?? "unknown"}:${effect.applied_at_micros}`}`;
       entry.dataset.localOwned = String(effect.owned_by_local_player);
       const item = element("span", "target-frame-overlay-debuff");
-      const effectName = effect.presentation_name ?? `Effect ${effect.effect_id}`;
-      const sourceName = effect.source_display_name ?? (effect.source_actor_id === null ? "not supplied" : "unresolved actor");
-      entry.title = `${effectName}\nSource: ${sourceName}`;
+      const effectName = effect.presentation_name ?? localizer.t("ui.mechanics_map.effect", { id: effect.effect_id });
+      const sourceName = effect.source_display_name ?? localizer.t(effect.source_actor_id === null
+        ? "ui.mechanics_map.source.not_supplied"
+        : "ui.mechanics_map.source.unresolved_actor");
+      entry.title = localizer.t("ui.mechanics_map.effect_help", { name: effectName, source: sourceName });
       if (effect.icon_asset_path) {
         const icon = document.createElement("img");
         icon.src = effect.icon_asset_path;
@@ -1308,24 +1334,24 @@ export function mountMechanicsMapOverlay(
       }
       if ((effect.stacks ?? 0) > 1) item.append(text("b", String(effect.stacks)));
       if (effect.owned_by_local_player) {
-        const localOwner = text("i", "YOU", "target-frame-overlay-debuff-local-owner");
-        localOwner.setAttribute("aria-label", "Applied by you or your Battle Imagine");
+        const localOwner = text("i", localizer.t("ui.mechanics_map.target.you"), "target-frame-overlay-debuff-local-owner");
+        localOwner.setAttribute("aria-label", localizer.t("ui.mechanics_map.target.you_aria"));
         item.append(localOwner);
       }
       if (effect.remaining_millis !== null) {
-        const timer = text("span", formatDebuffRemaining(effect.remaining_millis), "target-frame-overlay-debuff-time");
+        const timer = text("span", formatDebuffRemaining(effect.remaining_millis, localizer), "target-frame-overlay-debuff-time");
         timer.dataset.targetDebuffRemaining = String(effect.remaining_millis);
         item.append(timer);
       }
       const owner = text(
         "small",
-        effect.owned_by_local_player ? "Yours" : effect.source_display_name ?? "—",
+        effect.owned_by_local_player ? localizer.t("ui.mechanics_map.target.yours") : effect.source_display_name ?? "—",
         "target-frame-overlay-debuff-owner",
       );
       entry.append(item, owner);
       debuffs.append(entry);
     }
-    const noDebuffs = text("span", "No packet-classified debuffs", "target-frame-overlay-no-debuffs");
+    const noDebuffs = text("span", localizer.t("ui.mechanics_map.target.no_debuffs"), "target-frame-overlay-no-debuffs");
     noDebuffs.hidden = target.debuffs.length > 0;
     debuffs.append(noDebuffs);
     nextBody.append(identity, vitals, debuffs);
@@ -1337,10 +1363,10 @@ export function mountMechanicsMapOverlay(
     }
   }
 
-  function formatBreakingStage(stage: number): string {
-    if (stage === 0) return "BREAKING";
-    if (stage === 1) return "BREAK ENDED";
-    return `BREAK STAGE ${stage}`;
+  function formatBreakingStage(stage: number, ui: UiLocalizer): string {
+    if (stage === 0) return ui.t("ui.mechanics_map.target.breaking");
+    if (stage === 1) return ui.t("ui.mechanics_map.target.break_ended");
+    return ui.t("ui.mechanics_map.target.break_stage", { stage: ui.formatNumber(stage) });
   }
 
   function updateTargetTimers(): void {
@@ -1357,7 +1383,7 @@ export function mountMechanicsMapOverlay(
       const remaining = targetDebuffRemainingMillis({ remaining_millis: base }, elapsed) ?? 0;
       entry.hidden = remaining <= 0;
       if (!entry.hidden) visible += 1;
-      timer.textContent = formatDebuffRemaining(remaining);
+      timer.textContent = formatDebuffRemaining(remaining, localizer);
     }
     const empty = targetBody.querySelector<HTMLElement>(".target-frame-overlay-no-debuffs");
     if (empty) empty.hidden = visible > 0;
@@ -1439,7 +1465,7 @@ export function mountMechanicsMapOverlay(
     context.translate(content.x, content.y);
     context.scale(content.width / width, content.height / height);
     drawRegions(context, activeSnapshot, width, height, preferences.highContrastMechanics);
-    drawEntities(context, activeSnapshot, width, height, preferences, automarkerPreview?.points ?? []);
+    drawEntities(context, activeSnapshot, width, height, preferences, automarkerPreview?.points ?? [], localizer);
     context.restore();
     context.restore();
   }
@@ -1566,7 +1592,9 @@ export function mountMechanicsMapOverlay(
   function setExpanded(value: boolean): void {
     preferences.expanded = value;
     panel.dataset.expanded = String(value);
-    expand.textContent = value ? "Window" : "Full map";
+    expand.textContent = localizer.t(value
+      ? "ui.mechanics_map.toolbar.window"
+      : "ui.mechanics_map.toolbar.full_map");
     expand.dataset.active = String(value);
     moduleDrag = null;
     moduleResize = null;
@@ -2120,6 +2148,7 @@ function drawEntities(
   height: number,
   preferences: MechanicsMapCanvasPreferences,
   previewPoints: readonly AutomarkerPoint[],
+  localizer: UiLocalizer,
 ): void {
   const sceneMap = snapshot.map_model === "absolute_scene_map";
   const entities = projectMechanicsMapEntities(snapshot, sceneMap ? false : preferences.rotateWithPlayer)
@@ -2218,7 +2247,7 @@ function drawEntities(
     context.textBaseline = "middle";
     drawOutlinedText(context, marker.label, x, y, 5);
     context.font = "800 9px system-ui";
-    drawOutlinedText(context, "PREVIEW", x, y + 23, 4);
+    drawOutlinedText(context, localizer.t("ui.mechanics_map.automarkers.preview_badge"), x, y + 23, 4);
     context.restore();
   }
   for (const annotation of projectVoidTowerMapAnnotations(snapshot)) {
@@ -2413,12 +2442,20 @@ function formatTargetHealth(current: number | null, maximum: number | null, loca
   if (current !== null && maximum !== null) return `${format(current)} / ${format(maximum)}`;
   if (current !== null) return format(current);
   if (maximum !== null) return `— / ${format(maximum)}`;
-  return "HP not observed";
+  return localizer.t("ui.mechanics_map.vitals.hp_not_observed");
 }
 
-function formatDebuffRemaining(value: number): string {
+function formatDebuffRemaining(value: number, localizer: UiLocalizer): string {
   const seconds = Math.max(0, value) / 1_000;
-  return seconds >= 10 ? `${Math.ceil(seconds)}s` : `${Math.ceil(seconds * 10) / 10}s`;
+  return localizer.t("ui.mechanics_map.surface.seconds", {
+    seconds: localizer.formatNumber(seconds >= 10 ? Math.ceil(seconds) : Math.ceil(seconds * 10) / 10),
+  });
+}
+
+function localizedMechanicKind(kind: string, localizer: UiLocalizer): string {
+  const key = `ui.mechanics_map.mechanic.${kind}`;
+  const translated = localizer.t(key);
+  return translated === key ? humanizeDungeonState(kind) : translated;
 }
 
 function formatActionRemaining(value: number | null): string {

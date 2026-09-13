@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createDevelopmentAdapter } from "./development-adapter";
+import { loadUiLocalizer } from "../localization/ui-locale";
 import { customTriggerRuleMenuGroups } from "./custom-triggers-workspace-surface";
 
 describe("development desktop workspaces", () => {
@@ -8,7 +9,7 @@ describe("development desktop workspaces", () => {
 
   it("keeps Automarkers independent from Overlay and the design-only Custom Triggers menu locally testable", async () => {
     vi.stubGlobal("window", { location: { search: "" } });
-    const workspaces = await createDevelopmentAdapter().loadWorkspaces();
+    const workspaces = await createDevelopmentAdapter(await loadUiLocalizer("en-US")).loadWorkspaces();
     const overlay = workspaces.find(({ id }) => id === "app.rlogs.overlay");
     const automarkers = workspaces.find(({ id }) => id === "app.rlogs.automarkers");
     const triggers = workspaces.find(({ id }) => id === "app.rlogs.custom-triggers");

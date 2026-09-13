@@ -3,7 +3,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActivateAutomarkerPresetRequest, AutomarkerLocalLoadResult, AutomarkerNativeActivationResult, AutomarkerPresetView, ObservedMarkerSnapshot } from "./automarker-presets";
-import { mountAutomarkerPresetsSurface, operatorPlacementCanaryCommand } from "./automarker-presets-surface";
+import { loadUiLocalizer } from "../localization/ui-locale";
+import {
+  mountAutomarkerPresetsSurface as mountLocalizedAutomarkerPresetsSurface,
+  operatorPlacementCanaryCommand as localizedOperatorPlacementCanaryCommand,
+  type AutomarkerPresetDependencies,
+} from "./automarker-presets-surface";
+
+const localizer = await loadUiLocalizer("en-US");
+const mountAutomarkerPresetsSurface = (container: HTMLElement, dependencies: AutomarkerPresetDependencies) =>
+  mountLocalizedAutomarkerPresetsSurface(container, dependencies, localizer);
+const operatorPlacementCanaryCommand = (
+  view: Parameters<typeof localizedOperatorPlacementCanaryCommand>[0],
+  selectedPresetId: string | null,
+) => localizedOperatorPlacementCanaryCommand(view, selectedPresetId, localizer);
 
 interface Deferred<T> {
   promise: Promise<T>;

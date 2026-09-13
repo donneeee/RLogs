@@ -1,8 +1,13 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mountOverlayLayoutEditorSurface } from "./overlay-layout-editor-surface";
+import { loadUiLocalizer } from "../localization/ui-locale";
+import { mountOverlayLayoutEditorSurface as mountLocalizedOverlayLayoutEditorSurface, type OverlayLayoutEditorDependencies } from "./overlay-layout-editor-surface";
 import { parseOverlayLayoutSettings, type OverlayLayoutSettings } from "./overlay-layout";
 import { LocalHostHttpError } from "../shell/local-host-http";
+
+const localizer = await loadUiLocalizer("en-US");
+const mountOverlayLayoutEditorSurface = (container: HTMLElement, dependencies: OverlayLayoutEditorDependencies) =>
+  mountLocalizedOverlayLayoutEditorSurface(container, dependencies, localizer);
 
 function layout(): OverlayLayoutSettings {
   const modules = Object.fromEntries(["map", "player", "actions", "party", "target", "objectives", "alerts"].map((id, index) => [id, {

@@ -1,4 +1,5 @@
 import type { MountedSurface } from "../shell/types";
+import type { UiLocalizer } from "../localization/ui-locale";
 import { mountOverlayLayoutEditorSurface, type OverlayLayoutEditorDependencies } from "./overlay-layout-editor-surface";
 import { requestWorkspaceNavigation } from "../shell/workspace-navigation";
 
@@ -222,8 +223,12 @@ export function mountOverlayWorkspaceSurface(
   container: HTMLElement,
   page: OverlayWorkspacePage,
   editorDependencies?: OverlayLayoutEditorDependencies,
+  localizer?: UiLocalizer,
 ): MountedSurface {
-  if (page === "editor" && editorDependencies !== undefined) return mountOverlayLayoutEditorSurface(container, editorDependencies);
+  if (page === "editor" && editorDependencies !== undefined) {
+    if (localizer === undefined) throw new Error("Overlay editor localization is required.");
+    return mountOverlayLayoutEditorSurface(container, editorDependencies, localizer);
+  }
   const definition = PAGE_DEFINITIONS[page];
   const root = element("div", "plugin-surface overlay-workspace-surface");
 

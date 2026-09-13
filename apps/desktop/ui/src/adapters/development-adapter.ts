@@ -5,6 +5,7 @@ import type {
   WorkspaceDescriptor,
   WorkspaceTabDescriptor,
 } from "../shell/types";
+import type { UiLocalizer } from "../localization/ui-locale";
 import { mountModuleOptimizerSurface } from "./module-optimizer-surface";
 import {
   mountCustomTriggersWorkspaceSurface,
@@ -187,7 +188,7 @@ const DEFAULT_PREFERENCES: ShellPreferences = {
   lockSectionDragging: false,
 };
 
-export function createDevelopmentAdapter(): DesktopHostAdapter {
+export function createDevelopmentAdapter(localizer: UiLocalizer): DesktopHostAdapter {
   return {
     modeLabel: "Shell prototype",
 
@@ -217,10 +218,12 @@ export function createDevelopmentAdapter(): DesktopHostAdapter {
         return mountOverlayWorkspaceSurface(
           container,
           developmentSurfacePage(tab.entrypoint) as OverlayWorkspacePage,
+          undefined,
+          localizer,
         );
       }
       if (tab.entrypoint === "builtin://app.rlogs.automarkers/automarkers") {
-        return mountDevelopmentAutomarkers(container);
+        return mountDevelopmentAutomarkers(container, localizer);
       }
       if (tab.entrypoint.startsWith("builtin://app.rlogs.custom-triggers/")) {
         return mountCustomTriggersWorkspaceSurface(
@@ -243,7 +246,7 @@ export function createDevelopmentAdapter(): DesktopHostAdapter {
   };
 }
 
-function mountDevelopmentAutomarkers(container: HTMLElement): MountedSurface {
+function mountDevelopmentAutomarkers(container: HTMLElement, localizer: UiLocalizer): MountedSurface {
   const presets = developmentAutomarkerPresetView();
   return mountAutomarkerPresetsSurface(container, {
     loadPresets: async () => presets,
@@ -251,7 +254,7 @@ function mountDevelopmentAutomarkers(container: HTMLElement): MountedSurface {
     saveCurrent: async () => presets,
     loadPreset: async () => { throw new Error("Enter a live scene to load an automarker preset."); },
     openOverlay: async () => undefined,
-  });
+  }, localizer);
 }
 
 function developmentAutomarkerPresetView(): AutomarkerPresetView {

@@ -63,6 +63,48 @@ describe("desktop UI locale packages", () => {
     }
   });
 
+  it("keeps overlay-surface message keys complete and rejects direct English UI literals", async () => {
+    const paths = [
+      "../adapters/overlay-stats-tracker-surface.ts",
+      "../adapters/overlay-layout-editor-surface.ts",
+      "../adapters/automarker-presets-surface.ts",
+      "../adapters/mechanics-map-overlay.ts",
+    ] as const;
+    const sources = paths.map((path) => ({ path, source: readFileSync(new URL(path, import.meta.url), "utf8") }));
+    const localizer = await loadUiLocalizer("en-US");
+    const keys = new Set(sources.flatMap(({ source }) =>
+      (source.match(/ui\.(?:overlay_stats|overlay_layout|automarkers|mechanics_map)\.[a-z0-9_.]+/g) ?? [])
+        .filter((key) => !key.endsWith("."))));
+    expect(keys.size).toBeGreaterThan(100);
+    for (const key of keys) expect(localizer.t(key), key).not.toBe(key);
+    for (const key of [
+      ...["skills", "effects", "energy", "party"].flatMap((name) => [
+        `ui.overlay_stats.planned.${name}.title`,
+        `ui.overlay_stats.planned.${name}.description`,
+      ]),
+      ...["final", "total", "add", "extra_add", "percent", "extra_percent"]
+        .map((name) => `ui.overlay_stats.component.${name}`),
+      ...["map", "player", "actions", "party", "target", "objectives", "alerts"]
+        .map((name) => `ui.overlay_layout.module.${name}`),
+      ...["x", "y", "width", "height", "opacity", "background_opacity", "scale", "layer"]
+        .map((name) => `ui.overlay_layout.field.${name}`),
+    ]) expect(localizer.t(key), key).not.toBe(key);
+
+    const directLiteralPatterns = [
+      /(?:text|button)\(\s*"[^"]+"\s*,\s*"([A-Za-z][^"]*)"/g,
+      /(?:textContent|placeholder|title)\s*=\s*"([A-Za-z][^"]*)"/g,
+      /setAttribute\(\s*"aria-label"\s*,\s*"([A-Za-z][^"]*)"/g,
+      /(?:new Option|confirm|createTextNode)\(\s*"([A-Za-z][^"]*)"/g,
+    ];
+    const allowedIdentities = new Set(["X — · Z —"]);
+    const hardcoded = sources.flatMap(({ path, source }) => directLiteralPatterns.flatMap((pattern) =>
+      [...source.matchAll(pattern)]
+        .map((match) => match[1]!)
+        .filter((value) => !allowedIdentities.has(value))
+        .map((value) => `${path}: ${value}`)));
+    expect(hardcoded).toEqual([]);
+  });
+
   it("loads the shipped combat history browser and graph inspection shard", async () => {
     const localizer = await loadUiLocalizer("en-US");
     for (const key of [
