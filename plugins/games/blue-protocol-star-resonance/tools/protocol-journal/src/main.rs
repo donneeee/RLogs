@@ -1,14 +1,20 @@
+use std::collections::BTreeSet;
 use std::ffi::{OsStr, OsString};
 use std::fs::{File, OpenOptions};
-use std::io::BufWriter;
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
-use rlogs_capture::{CaptureSource, OfflineCapture, ValidatedCapture};
-use rlogs_core::ResearchConnectionFile;
+use rlogs_capture::{
+    CaptureSource, OfflineCapture, SignatureFlowCapture, SignatureFlowCaptureConfig, TcpConnection,
+    TcpPayloadPrefixSignature, ValidatedCapture,
+};
+use rlogs_core::{GameConnection, RESEARCH_CONNECTIONS_SCHEMA_VERSION, ResearchConnectionFile};
 use rlogs_game_bpsr::{
     BpsrFrameUpLayout, BpsrFramerSetConfig, BpsrFramingConfig, CaptureAdapter, CaptureSession,
     GameBuild, JsonlJournalWriter, ProtocolPack, ProtocolPackJournalAuthority, ResearchPipeline,
+    classify_bpsr_tcp_prefix,
 };
+use rlogs_network::IpEndpoint;
 
 fn main() {
     if let Err(error) = run() {
@@ -26,10 +32,29 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         )
         .into());
     }
+    if arguments
+        .discover_bpsr_connections
+        .as_ref()
+        .is_some_and(|path| path.exists())
+    {
+        return Err("refusing to overwrite discovered BPSR connection sidecar".into());
+    }
 
     let pack = ProtocolPack::from_json(&std::fs::read(&arguments.pack)?)?;
-    let connections: ResearchConnectionFile =
-        serde_json::from_slice(&std::fs::read(&arguments.connections)?)?;
+    let connections = if let Some(path) = &arguments.discover_bpsr_connections {
+        let connections = discover_bpsr_connections(&arguments.input)?;
+        write_connection_sidecar(path, &connections)?;
+        ResearchConnectionFile {
+            schema_version: RESEARCH_CONNECTIONS_SCHEMA_VERSION,
+            connections,
+        }
+    } else {
+        let path = arguments
+            .connections
+            .as_ref()
+            .expect("argument validation requires a connection source");
+        serde_json::from_slice(&std::fs::read(path)?)?
+    };
     let connections = connections.validate()?;
     let target = &pack.definition().target;
     let pack_build = GameBuild {
@@ -120,6 +145,69 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn discover_bpsr_connections(
+    input: &Path,
+) -> Result<Vec<GameConnection>, Box<dyn std::error::Error>> {
+    let offline = OfflineCapture::open(input)?;
+    discover_bpsr_connections_from_source(offline, classify_bpsr_tcp_prefix)
+}
+
+fn discover_bpsr_connections_from_source<S: CaptureSource>(
+    source: S,
+    signature: TcpPayloadPrefixSignature,
+) -> Result<Vec<GameConnection>, Box<dyn std::error::Error>> {
+    let filtered =
+        SignatureFlowCapture::new_prefix(source, signature, SignatureFlowCaptureConfig::default())?;
+    let mut capture = ValidatedCapture::new(filtered);
+    let mut confirmed = BTreeSet::<TcpConnection>::new();
+    while capture.next_frame()?.is_some() {
+        confirmed.extend(capture.source().confirmed_connections());
+    }
+    if confirmed.is_empty() {
+        return Err("capture contains no BPSR-signature-confirmed TCP connection; captures that begin after the connection's early server signature cannot be discovered safely".into());
+    }
+    Ok(confirmed
+        .into_iter()
+        .map(|connection| GameConnection {
+            client: IpEndpoint::new(connection.client.address, connection.client.port),
+            server: IpEndpoint::new(connection.server.address, connection.server.port),
+        })
+        .collect())
+}
+
+fn write_connection_sidecar(
+    path: &Path,
+    connections: &[GameConnection],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let partial = partial_path(path)?;
+    if partial.exists() {
+        return Err(format!(
+            "refusing to overwrite existing output {}",
+            partial.display()
+        )
+        .into());
+    }
+    let file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&partial)?;
+    let mut writer = BufWriter::new(file);
+    serde_json::to_writer_pretty(
+        &mut writer,
+        &ResearchConnectionFile {
+            schema_version: RESEARCH_CONNECTIONS_SCHEMA_VERSION,
+            connections: connections.to_vec(),
+        },
+    )?;
+    writer.write_all(b"\n")?;
+    writer.flush()?;
+    writer.get_ref().sync_all()?;
+    drop(writer);
+    std::fs::hard_link(&partial, path)?;
+    std::fs::remove_file(partial)?;
+    Ok(())
+}
+
 fn process_frame(
     pipeline: &mut ResearchPipeline,
     writer: &mut JsonlJournalWriter<BufWriter<File>>,
@@ -154,7 +242,8 @@ fn append_pipeline_records(
 #[derive(Debug, PartialEq, Eq)]
 struct Arguments {
     pack: PathBuf,
-    connections: PathBuf,
+    connections: Option<PathBuf>,
+    discover_bpsr_connections: Option<PathBuf>,
     capture_id: String,
     input: PathBuf,
     output: PathBuf,
@@ -170,6 +259,7 @@ fn arguments() -> Result<Arguments, String> {
 fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Arguments, String> {
     let mut pack = None;
     let mut connections = None;
+    let mut discover_bpsr_connections = None;
     let mut capture_id = None;
     let mut private_research = false;
     let mut nested_frame_up = false;
@@ -187,6 +277,12 @@ fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Argu
             pack = unique_value(pack, arguments.next(), "--pack")?;
         } else if argument == OsStr::new("--connections") {
             connections = unique_value(connections, arguments.next(), "--connections")?;
+        } else if argument == OsStr::new("--discover-bpsr-connections") {
+            discover_bpsr_connections = unique_value(
+                discover_bpsr_connections,
+                arguments.next(),
+                "--discover-bpsr-connections",
+            )?;
         } else if argument == OsStr::new("--capture-id") {
             capture_id = unique_value(capture_id, arguments.next(), "--capture-id")?;
         } else if argument == OsStr::new("--captured-build") {
@@ -221,10 +317,16 @@ fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Argu
     if captured_build.is_some() != unverified_carry_forward_pack_source_build.is_some() {
         return Err("--captured-build and --unverified-carry-forward-pack-source-build must be supplied together".into());
     }
+    if connections.is_some() == discover_bpsr_connections.is_some() {
+        return Err(
+            "exactly one of --connections or --discover-bpsr-connections is required".into(),
+        );
+    }
 
     Ok(Arguments {
         pack: pack.map(PathBuf::from).ok_or_else(usage)?,
-        connections: connections.map(PathBuf::from).ok_or_else(usage)?,
+        connections: connections.map(PathBuf::from),
+        discover_bpsr_connections: discover_bpsr_connections.map(PathBuf::from),
         capture_id,
         input: positional.remove(0),
         output: positional.remove(0),
@@ -314,12 +416,101 @@ fn partial_path(output: &Path) -> Result<PathBuf, String> {
 }
 
 fn usage() -> String {
-    "usage: rlogs-protocol-journal --private-research [--nested-frame-up] [--captured-build <actual-build> --unverified-carry-forward-pack-source-build <pack-build>] --pack <pack.json> --connections <connections.json> --capture-id <id> <capture.pcapng> <output.jsonl>".into()
+    "usage: rlogs-protocol-journal --private-research [--nested-frame-up] [--captured-build <actual-build> --unverified-carry-forward-pack-source-build <pack-build>] --pack <pack.json> (--connections <connections.json> | --discover-bpsr-connections <create-only.connections.json>) --capture-id <id> <capture.pcapng> <output.jsonl>".into()
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+    use std::net::{IpAddr, Ipv4Addr};
+
+    use bytes::Bytes;
+    use etherparse::PacketBuilder;
+    use rlogs_capture::{
+        CaptureFileFormat, CaptureLinkType, CaptureSourceKind, CaptureSourceMetadata,
+        CapturedFrame, TimestampNormalization,
+    };
+    use rlogs_game_bpsr::{CaptureRecordKind, FragmentKind};
+
     use super::*;
+
+    #[derive(Debug)]
+    struct FixtureCapture {
+        metadata: CaptureSourceMetadata,
+        frames: VecDeque<CapturedFrame>,
+    }
+
+    impl CaptureSource for FixtureCapture {
+        fn metadata(&self) -> &CaptureSourceMetadata {
+            &self.metadata
+        }
+
+        fn next_frame(&mut self) -> Result<Option<CapturedFrame>, rlogs_capture::CaptureError> {
+            Ok(self.frames.pop_front())
+        }
+    }
+
+    fn endpoint(last: u8, port: u16) -> rlogs_capture::TcpEndpoint {
+        rlogs_capture::TcpEndpoint::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, last)), port)
+    }
+
+    fn tcp_frame(
+        sequence: u64,
+        source: rlogs_capture::TcpEndpoint,
+        destination: rlogs_capture::TcpEndpoint,
+        tcp_sequence: u32,
+        payload: &[u8],
+    ) -> CapturedFrame {
+        let IpAddr::V4(source_address) = source.address else {
+            unreachable!()
+        };
+        let IpAddr::V4(destination_address) = destination.address else {
+            unreachable!()
+        };
+        let builder = PacketBuilder::ipv4(
+            source_address.octets(),
+            destination_address.octets(),
+            64,
+        )
+        .tcp(source.port, destination.port, tcp_sequence, 16_384);
+        let mut bytes = Vec::with_capacity(builder.size(payload.len()));
+        builder.write(&mut bytes, payload).unwrap();
+        CapturedFrame {
+            sequence,
+            observed_micros: sequence * 100,
+            source_timestamp_nanos: Some(sequence as i64 * 100_000),
+            timestamp_normalization: TimestampNormalization::Exact,
+            interface_id: Some(0),
+            link_type: CaptureLinkType::RawIpv4,
+            original_length: bytes.len() as u32,
+            bytes: Bytes::from(bytes),
+        }
+    }
+
+    fn signed_unknown_notify(method_id: u32) -> Vec<u8> {
+        let service_id = 1_664_308_034_u64;
+        let frame_length = 6 + 16;
+        let mut payload = vec![0_u8; 10];
+        payload.extend_from_slice(&(frame_length as u32).to_be_bytes());
+        payload.extend_from_slice(&FragmentKind::Notify.wire_id().to_be_bytes());
+        payload.extend_from_slice(&service_id.to_be_bytes());
+        payload.extend_from_slice(&0_u32.to_be_bytes());
+        payload.extend_from_slice(&method_id.to_be_bytes());
+        payload
+    }
+
+    fn fixture_source(frames: Vec<CapturedFrame>) -> FixtureCapture {
+        FixtureCapture {
+            metadata: CaptureSourceMetadata {
+                source_id: "mixed-offline-fixture".into(),
+                display_name: "mixed offline fixture".into(),
+                kind: CaptureSourceKind::Replay,
+                link_types: vec![CaptureLinkType::RawIpv4],
+                file_format: Some(CaptureFileFormat::PcapNg),
+            },
+            frames: frames.into(),
+        }
+    }
 
     fn os(values: &[&str]) -> Vec<OsString> {
         values.iter().map(OsString::from).collect()
@@ -409,6 +600,121 @@ mod tests {
             ]))
             .is_err()
         );
+        let discovered = parse_arguments(os(&[
+            "--private-research",
+            "--pack",
+            "pack.json",
+            "--discover-bpsr-connections",
+            "capture.bpsr.connections.json",
+            "--capture-id",
+            "controlled-005",
+            "capture.pcapng",
+            "capture.jsonl",
+        ]))
+        .unwrap();
+        assert_eq!(discovered.connections, None);
+        assert_eq!(
+            discovered.discover_bpsr_connections,
+            Some(PathBuf::from("capture.bpsr.connections.json"))
+        );
+        assert!(
+            parse_arguments(os(&[
+                "--private-research",
+                "--pack",
+                "pack.json",
+                "--connections",
+                "connections.json",
+                "--discover-bpsr-connections",
+                "capture.bpsr.connections.json",
+                "--capture-id",
+                "controlled-006",
+                "capture.pcapng",
+                "capture.jsonl",
+            ]))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn signature_discovery_removes_mixed_traffic_gaps_and_retains_unknown_routes() {
+        let first_client = endpoint(1, 31_001);
+        let first_server = endpoint(2, 20_054);
+        let unrelated_client = endpoint(3, 31_002);
+        let unrelated_server = endpoint(4, 443);
+        let second_client = endpoint(5, 31_003);
+        let second_server = endpoint(6, 20_054);
+        let frames = vec![
+            tcp_frame(
+                1,
+                unrelated_server,
+                unrelated_client,
+                1_000,
+                b"unrelated encrypted traffic",
+            ),
+            tcp_frame(
+                2,
+                first_server,
+                first_client,
+                2_000,
+                &signed_unknown_notify(90_001),
+            ),
+            tcp_frame(
+                3,
+                second_server,
+                second_client,
+                3_000,
+                &signed_unknown_notify(90_002),
+            ),
+        ];
+        let connections = discover_bpsr_connections_from_source(
+            fixture_source(frames.clone()),
+            classify_bpsr_tcp_prefix,
+        )
+        .unwrap();
+        assert_eq!(connections.len(), 2);
+
+        let filter = ResearchConnectionFile {
+            schema_version: RESEARCH_CONNECTIONS_SCHEMA_VERSION,
+            connections,
+        }
+        .validate()
+        .unwrap();
+        let mut pipeline = ResearchPipeline::new(filter);
+        let mut records = Vec::new();
+        for frame in &frames {
+            pipeline.process_frame(frame, |record| records.push(record));
+        }
+        pipeline.finish(|record| records.push(record));
+
+        let packet_connection_ids = records
+            .iter()
+            .filter_map(|record| match &record.kind {
+                CaptureRecordKind::Packet(packet) => Some(packet.connection_id),
+                CaptureRecordKind::Gap(_) => None,
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(packet_connection_ids.len(), 2);
+        assert!(records.iter().all(|record| {
+            match &record.kind {
+                CaptureRecordKind::Gap(gap) => gap
+                    .connection_id
+                    .is_some_and(|connection_id| packet_connection_ids.contains(&connection_id)),
+                CaptureRecordKind::Packet(packet) => packet.source.as_ref().is_none_or(|source| {
+                    source.address != unrelated_server.address.to_string()
+                        || source.port != unrelated_server.port
+                }),
+            }
+        }));
+        let methods = records
+            .iter()
+            .filter_map(|record| match &record.kind {
+                CaptureRecordKind::Packet(packet) => {
+                    packet.route.as_ref().map(|route| route.key.method_id)
+                }
+                CaptureRecordKind::Gap(_) => None,
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(methods, BTreeSet::from([90_001, 90_002]));
     }
 
     #[test]

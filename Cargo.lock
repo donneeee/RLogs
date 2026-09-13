@@ -3445,9 +3445,12 @@ dependencies = [
 name = "rlogs-protocol-journal"
 version = "0.1.0"
 dependencies = [
+ "bytes",
+ "etherparse",
  "rlogs-capture",
  "rlogs-core",
  "rlogs-game-bpsr",
+ "rlogs-network",
  "serde_json",
 ]
 

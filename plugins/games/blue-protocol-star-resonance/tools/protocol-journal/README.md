@@ -36,6 +36,27 @@ Frames outside those exact bidirectional flows are ignored before TCP
 reassembly. Output creation is non-overwriting and uses a visible partial file
 until processing completes.
 
+For a private host-superset capture from a mirrored client, the journaler can
+make a first pass that retains only connections proven by the exact early BPSR
+server signature, writes a create-only sidecar, and then reopens the capture for
+normal journaling:
+
+```text
+cargo run -p rlogs-protocol-journal -- \
+  --private-research \
+  --pack plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json \
+  --discover-bpsr-connections private/controlled-001.bpsr.connections.json \
+  --capture-id controlled-001 \
+  private/controlled-001.pcapng \
+  private/controlled-001.jsonl
+```
+
+This mode does not broaden the signature to recover a connection captured
+after its early server prefix. Such a late capture fails closed when no BPSR
+connection can be proven. Start capture before a replacement world connection
+is opened. Protocol packs still control decoding, not research packet
+retention, so valid pack-unknown routes remain in the private journal.
+
 By default the selected protocol pack is exact for the capture and supplies the
 journal's `game_build`. The journal also applies the pack's reviewed
 `acquisition.frame_up_layout`; `--nested-frame-up` remains available only as an

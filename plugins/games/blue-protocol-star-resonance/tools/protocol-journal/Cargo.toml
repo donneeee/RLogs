@@ -9,4 +9,9 @@ rust-version.workspace = true
 rlogs-capture = { path = "../../../../../engine/capture" }
 rlogs-core = { path = "../../../../../engine/core" }
 rlogs-game-bpsr = { path = "../.." }
+rlogs-network = { path = "../../../../../engine/network" }
 serde_json.workspace = true
+
+[dev-dependencies]
+bytes.workspace = true
+etherparse.workspace = true
