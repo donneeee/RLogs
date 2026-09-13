@@ -28,11 +28,36 @@ ambiguous context abort before mutation. The frame is armed at
 The established TCP ledger retains the mapping for matching segmentation,
 overlap, retransmission, wrap, and cumulative ACK behavior.
 
+The outbound API is explicitly two phase. `prepare_outbound_segment` returns an
+owned original and proposed replacement plus an opaque preparation ID and the
+full held-packet length. Preparation does **not** set the rewrite revision,
+advance into confirmation, or claim that any changed byte was sent. The bridge
+must apply the replacement to a copy, complete and verify external checksum
+repair, and then call `commit_prepared_rewrite`. Only a successful send whose
+reported byte count equals the complete held-packet length commits the first
+rewrite revision and monotonic time. Retransmission commits never move that
+pinned stamp.
+
+If checksum preparation fails before any send attempt,
+`cancel_prepared_rewrite_before_send` discards the uncommitted mapping and
+returns the exact original payload for reinjection. A false send return, a
+short send, or a reported successful length other than the complete held packet
+is indeterminate. Those outcomes never authorize the original overlapping
+bytes. Likewise, an overlap that contains zero changed bytes is returned as the
+exact original and never requests checksum repair.
+
 After any modified range is sent, a conflicting overlap, poisoned ledger,
 epoch change, send ambiguity, or context change must not fail open. The bridge
 must stop reinjection, close the active handle, and require the game connection
 to reconnect. Otherwise a retransmission could expose original and replacement
 bytes at the same TCP sequence numbers.
+
+A logical abort after a committed or indeterminate modified send is terminal:
+ACKs or later traffic cannot revive it. Its retained ledger nevertheless keeps
+rewriting every matching overlapping retransmission deterministically and lets
+non-overlapping traffic pass byte-identically. That transport obligation ends
+only when the exact operation is cumulatively ACKed or the bridge reports a
+FIN/RST/otherwise-proven connection termination.
 
 Success requires all three observations after the rewrite:
 

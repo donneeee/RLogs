@@ -17,7 +17,16 @@ for (const required of [
   "intercept_complete_carrier_segment",
   "CarrierFrameNotExact",
   "AbortWithoutReinject",
-  "RewrittenPayloadNeedsPacketChecksumRepair",
+  "prepare_outbound_segment",
+  "PreparedRewriteNeedsPacketChecksumRepair",
+  "cancel_prepared_rewrite_before_send",
+  "commit_prepared_rewrite",
+  "SingleMarkerXyzExternalSendOutcome",
+  "IndeterminateModifiedSend",
+  "committed_rewrite_stamp",
+  "observation_monotonic_millis",
+  "expected_packet_send_len",
+  "observe_connection_terminated",
   "WinDivertHelperCalcChecksums",
   "observe_cumulative_ack",
   "observe_rpc_return",
@@ -42,6 +51,12 @@ assert.ok(docs.includes("boolean is explicitly an assertion"));
 assert.ok(source.includes("proof.allowed_mutable_bytes == 16"));
 assert.ok(source.includes("proof.all_other_bytes_identical"));
 assert.ok(source.includes("proof.game_owned_values_identical"));
+assert.match(docs, /explicitly two phase/);
+assert.match(docs, /Only a successful send whose[\s\S]*complete held-packet length[\s\S]*commits/);
+assert.match(docs, /Retransmission commits never move that[\s\S]*pinned stamp/);
+assert.match(docs, /zero changed bytes[\s\S]*never requests checksum repair/);
+assert.match(docs, /false send return[\s\S]*short send[\s\S]*indeterminate/);
+assert.match(docs, /retained ledger[\s\S]*matching overlapping retransmission/);
 
 for (const forbidden of [
   "WinDivertOpen",

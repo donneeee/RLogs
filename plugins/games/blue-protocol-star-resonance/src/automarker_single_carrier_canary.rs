@@ -33,6 +33,9 @@ pub struct SingleMarkerXyzCanaryContext<'a> {
     pub game_build: &'a str,
     pub current_scene_family: &'a str,
     pub runtime_revision: u64,
+    /// Monotonic bridge clock sampled with `runtime_revision`. This is pinned
+    /// only when the first complete modified packet send is committed.
+    pub observation_monotonic_millis: u64,
     pub observation_age_millis: u64,
     /// Caller assertion only. The core cannot verify roster provenance; the
     /// future live bridge must derive this from a fresh trusted local roster.
@@ -44,6 +47,7 @@ pub enum SingleMarkerXyzCanaryState {
     DryRun,
     AwaitingFreshCarrier,
     AwaitingRewrite,
+    AwaitingExternalSend,
     AwaitingAcknowledgement {
         transport_ack_observed: bool,
         successful_rpc_return_observed: bool,
@@ -72,6 +76,9 @@ pub enum SingleMarkerXyzCanaryError {
     RewriteArmRejected,
     RewriteRejected,
     RewriteDidNotChangeApprovedBytes,
+    PreparedRewriteMismatch,
+    PreSendPreparationFailed,
+    IndeterminateModifiedSend,
     ConfirmationBeforeRewrite,
     WrongRpcCallId,
     NegativeRpcReturn,
@@ -82,6 +89,7 @@ pub enum SingleMarkerXyzCanaryError {
     ConnectionEpochChanged,
     SceneOrLeadershipChanged,
     TimedOut,
+    ConnectionTerminated,
 }
 
 /// An explicit send/no-send decision for the live bridge. Once any changed
@@ -96,8 +104,50 @@ pub enum SingleMarkerXyzSegmentDisposition {
     /// transmission. The Windows bridge must install it into the held packet,
     /// run the pinned `WinDivertHelperCalcChecksums` on that packet and its
     /// mutable 80-byte address, verify the helper/flags, then send the packet.
-    RewrittenPayloadNeedsPacketChecksumRepair(Vec<u8>),
+    PreparedRewriteNeedsPacketChecksumRepair(SingleMarkerXyzPreparedRewrite),
     AbortWithoutReinject(SingleMarkerXyzCanaryError),
+}
+
+/// Owned two-phase handoff to the Windows bridge. The payload may be copied
+/// into the held packet and checksum-repaired, but the canary remains
+/// uncommitted until `commit_prepared_rewrite` receives proof that the entire
+/// packet was sent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SingleMarkerXyzPreparedRewrite {
+    pub preparation_id: u64,
+    pub original_payload: Vec<u8>,
+    pub rewritten_payload: Vec<u8>,
+    pub expected_packet_send_len: usize,
+    pub changed_bytes: usize,
+    pub first_modified_emission: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SingleMarkerXyzExternalSendOutcome {
+    /// WinDivert reported success and supplied this exact sent byte count.
+    Complete { bytes_sent: usize },
+    /// A false return has ambiguous delivery semantics for this boundary.
+    Failed,
+    /// A short successful return is also indeterminate.
+    Short { bytes_sent: usize },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SingleMarkerXyzCommitDisposition {
+    Committed,
+    AbortWithoutReinject(SingleMarkerXyzCanaryError),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SingleMarkerXyzCommittedRewriteStamp {
+    pub runtime_revision: u64,
+    pub monotonic_millis: u64,
+}
+
+#[derive(Debug, Clone)]
+struct PendingRewrite {
+    preparation: SingleMarkerXyzPreparedRewrite,
+    stamp: SingleMarkerXyzCommittedRewriteStamp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,6 +166,8 @@ pub struct SingleMarkerXyzInterceptedSegment<'a> {
     /// Monotonic age measured by the intercepting bridge when it still owns
     /// the held packet. This must never be replaced by a constant zero.
     pub observed_age_millis: u64,
+    /// Full held NETWORK-layer packet size expected from the external send.
+    pub held_packet_len: usize,
     pub payload: &'a [u8],
 }
 
@@ -128,11 +180,14 @@ pub struct SingleMarkerXyzCanary {
     ledger: Option<OfflineAutomarkerTcpRewriteLedger>,
     state: SingleMarkerXyzCanaryState,
     carrier: Option<SingleMarkerXyzCarrierIdentity>,
-    rewritten_once: bool,
+    rewrite_obligation_active: bool,
+    modified_send_committed: bool,
     transport_ack_observed: bool,
     rpc_return_observed: bool,
     authoritative_add_observed: bool,
-    rewrite_runtime_revision: Option<u64>,
+    committed_rewrite_stamp: Option<SingleMarkerXyzCommittedRewriteStamp>,
+    pending_rewrite: Option<PendingRewrite>,
+    next_preparation_id: u64,
 }
 
 impl SingleMarkerXyzCanary {
@@ -144,11 +199,14 @@ impl SingleMarkerXyzCanary {
             ledger: None,
             state: SingleMarkerXyzCanaryState::DryRun,
             carrier: None,
-            rewritten_once: false,
+            rewrite_obligation_active: false,
+            modified_send_committed: false,
             transport_ack_observed: false,
             rpc_return_observed: false,
             authoritative_add_observed: false,
-            rewrite_runtime_revision: None,
+            committed_rewrite_stamp: None,
+            pending_rewrite: None,
+            next_preparation_id: 1,
         }
     }
 
@@ -182,11 +240,14 @@ impl SingleMarkerXyzCanary {
             ledger: Some(OfflineAutomarkerTcpRewriteLedger::new(epoch)),
             state: SingleMarkerXyzCanaryState::AwaitingFreshCarrier,
             carrier: None,
-            rewritten_once: false,
+            rewrite_obligation_active: false,
+            modified_send_committed: false,
             transport_ack_observed: false,
             rpc_return_observed: false,
             authoritative_add_observed: false,
-            rewrite_runtime_revision: None,
+            committed_rewrite_stamp: None,
+            pending_rewrite: None,
+            next_preparation_id: 1,
         })
     }
 
@@ -266,16 +327,24 @@ impl SingleMarkerXyzCanary {
         Ok(identity)
     }
 
-    /// Delegates segmentation, overlap, retransmission, and conflict behavior
-    /// to the reviewed TCP ledger. A rejected or ambiguous first emission
-    /// aborts the one-shot canary; later matching retransmissions remain valid.
-    pub fn rewrite_outbound_segment(
+    /// Phase one of the outbound boundary. This computes a deterministic
+    /// replacement but does not claim it was sent and does not advance the
+    /// confirmation clock. The bridge must either cancel before attempting a
+    /// send or report the exact result through `commit_prepared_rewrite`.
+    pub fn prepare_outbound_segment(
         &mut self,
         connection_epoch: u64,
         sequence_start: u32,
         payload: &[u8],
+        expected_packet_send_len: usize,
         context: SingleMarkerXyzCanaryContext<'_>,
     ) -> SingleMarkerXyzSegmentDisposition {
+        if self.pending_rewrite.is_some() {
+            self.abort_in_place(SingleMarkerXyzCanaryError::PreparedRewriteMismatch);
+            return SingleMarkerXyzSegmentDisposition::AbortWithoutReinject(
+                SingleMarkerXyzCanaryError::PreparedRewriteMismatch,
+            );
+        }
         if !matches!(
             self.state,
             SingleMarkerXyzCanaryState::AwaitingRewrite
@@ -286,7 +355,7 @@ impl SingleMarkerXyzCanary {
         }
         if self.connection_epoch() != Some(connection_epoch) {
             self.abort_in_place(SingleMarkerXyzCanaryError::ConnectionEpochChanged);
-            return if self.rewritten_once {
+            return if self.rewrite_obligation_active {
                 SingleMarkerXyzSegmentDisposition::AbortWithoutReinject(
                     SingleMarkerXyzCanaryError::ConnectionEpochChanged,
                 )
@@ -294,45 +363,54 @@ impl SingleMarkerXyzCanary {
                 SingleMarkerXyzSegmentDisposition::SendOriginal(payload.to_vec())
             };
         }
-        if self
-            .require_context_and_epoch(connection_epoch, context)
-            .is_err()
-        {
-            return if self.rewritten_once {
-                SingleMarkerXyzSegmentDisposition::AbortWithoutReinject(
-                    SingleMarkerXyzCanaryError::SceneOrLeadershipChanged,
-                )
-            } else {
-                SingleMarkerXyzSegmentDisposition::SendOriginal(payload.to_vec())
-            };
+        // A logical abort after a committed modified send is terminal for the
+        // one-shot outcome, but cannot erase the TCP rewrite obligation.
+        // Matching retransmissions must still receive identical bytes until
+        // the operation is ACKed or the connection terminates.
+        if validate_context(&self.config, context).is_err() {
+            self.abort_in_place(SingleMarkerXyzCanaryError::SceneOrLeadershipChanged);
+            if !self.rewrite_obligation_active {
+                return SingleMarkerXyzSegmentDisposition::SendOriginal(payload.to_vec());
+            }
         }
-        let result = self
-            .ledger
-            .as_mut()
-            .expect("armed canary owns ledger")
-            .rewrite_segment(connection_epoch, sequence_start, payload);
+        let Some(ledger) = self.ledger.as_mut() else {
+            return SingleMarkerXyzSegmentDisposition::SendOriginal(payload.to_vec());
+        };
+        let result = ledger.rewrite_segment(connection_epoch, sequence_start, payload);
         match result {
             OfflineAutomarkerTcpSegmentResult::Rewritten { changed_bytes, .. }
                 if changed_bytes > 0 =>
             {
-                self.rewritten_once = true;
-                self.rewrite_runtime_revision = Some(context.runtime_revision);
-                self.refresh_confirmation_state();
-                SingleMarkerXyzSegmentDisposition::RewrittenPayloadNeedsPacketChecksumRepair(
-                    result.payload().to_vec(),
+                let preparation = SingleMarkerXyzPreparedRewrite {
+                    preparation_id: self.next_preparation_id,
+                    original_payload: payload.to_vec(),
+                    rewritten_payload: result.payload().to_vec(),
+                    expected_packet_send_len,
+                    changed_bytes,
+                    first_modified_emission: !self.rewrite_obligation_active,
+                };
+                self.next_preparation_id = self.next_preparation_id.wrapping_add(1).max(1);
+                self.pending_rewrite = Some(PendingRewrite {
+                    preparation: preparation.clone(),
+                    stamp: SingleMarkerXyzCommittedRewriteStamp {
+                        runtime_revision: context.runtime_revision,
+                        monotonic_millis: context.observation_monotonic_millis,
+                    },
+                });
+                if !matches!(self.state, SingleMarkerXyzCanaryState::Aborted(_)) {
+                    self.state = SingleMarkerXyzCanaryState::AwaitingExternalSend;
+                }
+                SingleMarkerXyzSegmentDisposition::PreparedRewriteNeedsPacketChecksumRepair(
+                    preparation,
                 )
             }
-            OfflineAutomarkerTcpSegmentResult::Rewritten { payload, .. }
-                if !self.rewritten_once =>
-            {
-                self.abort_in_place(SingleMarkerXyzCanaryError::RewriteDidNotChangeApprovedBytes);
-                let _ = payload;
-                SingleMarkerXyzSegmentDisposition::AbortWithoutReinject(
-                    SingleMarkerXyzCanaryError::RewriteDidNotChangeApprovedBytes,
-                )
+            // An overlap can cover only immutable bytes in the registered
+            // frame. No output byte changed, so checksum repair is forbidden.
+            OfflineAutomarkerTcpSegmentResult::Rewritten { payload, .. } => {
+                SingleMarkerXyzSegmentDisposition::SendOriginal(payload)
             }
             OfflineAutomarkerTcpSegmentResult::OriginalUnchanged { payload, reason }
-                if !self.rewritten_once =>
+                if !self.rewrite_obligation_active =>
             {
                 self.abort_in_place(SingleMarkerXyzCanaryError::RewriteRejected);
                 let _ = reason;
@@ -348,17 +426,92 @@ impl SingleMarkerXyzCanary {
                     )
                 }
             }
-            OfflineAutomarkerTcpSegmentResult::Rewritten { payload, .. } => {
-                SingleMarkerXyzSegmentDisposition::RewrittenPayloadNeedsPacketChecksumRepair(
-                    payload,
-                )
-            }
         }
+    }
+
+    /// Abandons a prepared rewrite before checksum repair or any send attempt.
+    /// Because no modified bytes may have left the host, this is the only
+    /// failure path that authorizes reinjection of the exact held original.
+    pub fn cancel_prepared_rewrite_before_send(
+        &mut self,
+        preparation_id: u64,
+    ) -> SingleMarkerXyzSegmentDisposition {
+        let Some(pending) = self.pending_rewrite.take() else {
+            self.abort_in_place(SingleMarkerXyzCanaryError::PreparedRewriteMismatch);
+            return SingleMarkerXyzSegmentDisposition::AbortWithoutReinject(
+                SingleMarkerXyzCanaryError::PreparedRewriteMismatch,
+            );
+        };
+        if pending.preparation.preparation_id != preparation_id {
+            self.pending_rewrite = Some(pending);
+            self.abort_in_place(SingleMarkerXyzCanaryError::PreparedRewriteMismatch);
+            return SingleMarkerXyzSegmentDisposition::AbortWithoutReinject(
+                SingleMarkerXyzCanaryError::PreparedRewriteMismatch,
+            );
+        }
+        let original = pending.preparation.original_payload;
+        self.abort_in_place(SingleMarkerXyzCanaryError::PreSendPreparationFailed);
+        if self.rewrite_obligation_active {
+            SingleMarkerXyzSegmentDisposition::AbortWithoutReinject(
+                SingleMarkerXyzCanaryError::PreSendPreparationFailed,
+            )
+        } else {
+            SingleMarkerXyzSegmentDisposition::SendOriginal(original)
+        }
+    }
+
+    /// Phase two of the outbound boundary. Only an exact full-packet send
+    /// commits the first rewrite stamp. False or short sends are indeterminate:
+    /// the original overlap is never authorized afterward.
+    pub fn commit_prepared_rewrite(
+        &mut self,
+        preparation_id: u64,
+        outcome: SingleMarkerXyzExternalSendOutcome,
+    ) -> SingleMarkerXyzCommitDisposition {
+        let Some(pending) = self.pending_rewrite.take() else {
+            self.abort_in_place(SingleMarkerXyzCanaryError::PreparedRewriteMismatch);
+            return SingleMarkerXyzCommitDisposition::AbortWithoutReinject(
+                SingleMarkerXyzCanaryError::PreparedRewriteMismatch,
+            );
+        };
+        if pending.preparation.preparation_id != preparation_id {
+            self.pending_rewrite = Some(pending);
+            self.abort_in_place(SingleMarkerXyzCanaryError::PreparedRewriteMismatch);
+            return SingleMarkerXyzCommitDisposition::AbortWithoutReinject(
+                SingleMarkerXyzCanaryError::PreparedRewriteMismatch,
+            );
+        }
+        let complete = matches!(
+            outcome,
+            SingleMarkerXyzExternalSendOutcome::Complete { bytes_sent }
+                if bytes_sent == pending.preparation.expected_packet_send_len
+        );
+        if !complete {
+            // The bridge attempted a modified send. A false or short result
+            // cannot prove that no replacement byte reached the stack.
+            self.rewrite_obligation_active = true;
+            self.abort_in_place(SingleMarkerXyzCanaryError::IndeterminateModifiedSend);
+            return SingleMarkerXyzCommitDisposition::AbortWithoutReinject(
+                SingleMarkerXyzCanaryError::IndeterminateModifiedSend,
+            );
+        }
+        self.rewrite_obligation_active = true;
+        if !self.modified_send_committed {
+            self.modified_send_committed = true;
+            self.committed_rewrite_stamp = Some(pending.stamp);
+        }
+        self.refresh_confirmation_state();
+        SingleMarkerXyzCommitDisposition::Committed
+    }
+
+    pub fn committed_rewrite_stamp(&self) -> Option<SingleMarkerXyzCommittedRewriteStamp> {
+        self.committed_rewrite_stamp
     }
 
     /// First-canary entry point: the exact 197-byte frame must be wholly
     /// present in the packet currently held by the divert boundary. Split
     /// frames and SYN-with-payload are rejected before any mutation is armed.
+    #[must_use = "a prepared rewrite must be externally sent and committed or explicitly cancelled"]
     pub fn intercept_complete_carrier_segment(
         &mut self,
         pack: &ProtocolPack,
@@ -389,10 +542,11 @@ impl SingleMarkerXyzCanary {
             frame,
             context,
         )?;
-        Ok(self.rewrite_outbound_segment(
+        Ok(self.prepare_outbound_segment(
             segment.connection_epoch,
             segment.tcp_sequence_start,
             segment.payload,
+            segment.held_packet_len,
             context,
         ))
     }
@@ -403,15 +557,23 @@ impl SingleMarkerXyzCanary {
         cumulative_ack: u32,
         context: SingleMarkerXyzCanaryContext<'_>,
     ) -> OfflineAutomarkerTcpAckResult {
-        if self
-            .require_context_and_epoch(connection_epoch, context)
-            .is_err()
-        {
+        if self.connection_epoch() != Some(connection_epoch) || self.ledger.is_none() {
+            self.abort_in_place(SingleMarkerXyzCanaryError::ConnectionEpochChanged);
             return OfflineAutomarkerTcpAckResult {
                 retired_operations: 0,
                 active_operations: 0,
                 ledger_poisoned: true,
             };
+        }
+        if validate_context(&self.config, context).is_err() {
+            self.abort_in_place(SingleMarkerXyzCanaryError::SceneOrLeadershipChanged);
+            if !self.rewrite_obligation_active {
+                return OfflineAutomarkerTcpAckResult {
+                    retired_operations: 0,
+                    active_operations: 0,
+                    ledger_poisoned: true,
+                };
+            }
         }
         let result = self
             .ledger
@@ -420,11 +582,26 @@ impl SingleMarkerXyzCanary {
             .observe_cumulative_ack(connection_epoch, cumulative_ack);
         if self.connection_epoch() != Some(connection_epoch) || result.ledger_poisoned {
             self.abort_in_place(SingleMarkerXyzCanaryError::ConnectionEpochChanged);
-        } else if self.rewritten_once && result.retired_operations == 1 {
+        } else if self.modified_send_committed && result.retired_operations == 1 {
             self.transport_ack_observed = true;
             self.refresh_confirmation_state();
         }
         result
+    }
+
+    /// FIN/RST (or an externally proven connection teardown) ends every
+    /// retransmission obligation for this epoch. It never turns an incomplete
+    /// canary into success.
+    pub fn observe_connection_terminated(&mut self, connection_epoch: u64) {
+        if self.connection_epoch() != Some(connection_epoch) {
+            self.abort_in_place(SingleMarkerXyzCanaryError::ConnectionEpochChanged);
+            return;
+        }
+        self.ledger = None;
+        self.pending_rewrite = None;
+        if !matches!(self.state, SingleMarkerXyzCanaryState::Succeeded) {
+            self.abort_in_place(SingleMarkerXyzCanaryError::ConnectionTerminated);
+        }
     }
 
     pub fn observe_rpc_return(
@@ -434,7 +611,12 @@ impl SingleMarkerXyzCanary {
         observation_runtime_revision: u64,
     ) -> Result<(), SingleMarkerXyzCanaryError> {
         self.require_confirmation_phase()?;
-        if observation_runtime_revision <= self.rewrite_runtime_revision.unwrap_or(u64::MAX) {
+        if observation_runtime_revision
+            <= self
+                .committed_rewrite_stamp
+                .map(|stamp| stamp.runtime_revision)
+                .unwrap_or(u64::MAX)
+        {
             return self.abort(SingleMarkerXyzCanaryError::StaleConfirmation);
         }
         if self.carrier.map(|carrier| carrier.rpc_call_id) != Some(call_id) {
@@ -456,7 +638,12 @@ impl SingleMarkerXyzCanary {
         new_instance_assertion: bool,
     ) -> Result<(), SingleMarkerXyzCanaryError> {
         self.require_confirmation_phase()?;
-        if observation_runtime_revision <= self.rewrite_runtime_revision.unwrap_or(u64::MAX) {
+        if observation_runtime_revision
+            <= self
+                .committed_rewrite_stamp
+                .map(|stamp| stamp.runtime_revision)
+                .unwrap_or(u64::MAX)
+        {
             return self.abort(SingleMarkerXyzCanaryError::StaleConfirmation);
         }
         // This is explicitly only a bridge assertion. Activation remains
@@ -489,7 +676,7 @@ impl SingleMarkerXyzCanary {
     }
 
     fn require_confirmation_phase(&mut self) -> Result<(), SingleMarkerXyzCanaryError> {
-        if !self.rewritten_once {
+        if !self.modified_send_committed {
             return self.abort(SingleMarkerXyzCanaryError::ConfirmationBeforeRewrite);
         }
         if let SingleMarkerXyzCanaryState::Aborted(reason) = self.state {
@@ -532,13 +719,13 @@ impl SingleMarkerXyzCanary {
         if matches!(self.state, SingleMarkerXyzCanaryState::Aborted(_)) {
             return;
         }
-        if self.rewritten_once
+        if self.modified_send_committed
             && self.transport_ack_observed
             && self.rpc_return_observed
             && self.authoritative_add_observed
         {
             self.state = SingleMarkerXyzCanaryState::Succeeded;
-        } else if self.rewritten_once {
+        } else if self.modified_send_committed {
             self.state = SingleMarkerXyzCanaryState::AwaitingAcknowledgement {
                 transport_ack_observed: self.transport_ack_observed,
                 successful_rpc_return_observed: self.rpc_return_observed,
@@ -556,12 +743,16 @@ impl SingleMarkerXyzCanary {
     }
 
     fn abort_in_place(&mut self, reason: SingleMarkerXyzCanaryError) {
+        if matches!(self.state, SingleMarkerXyzCanaryState::Aborted(_)) {
+            return;
+        }
         self.state = SingleMarkerXyzCanaryState::Aborted(reason);
         // Retain the mapping after a modified send so matching retransmissions
         // can still receive the same replacement bytes. A poisoned/conflicting
         // overlap is returned as AbortWithoutReinject and requires reconnect.
-        if !self.rewritten_once {
+        if !self.rewrite_obligation_active {
             self.ledger = None;
+            self.pending_rewrite = None;
         }
     }
 }
@@ -626,10 +817,20 @@ mod tests {
     }
 
     fn context<'a>(family: &'a str, leader: bool) -> SingleMarkerXyzCanaryContext<'a> {
+        context_at(family, leader, 100, 1_000)
+    }
+
+    fn context_at<'a>(
+        family: &'a str,
+        leader: bool,
+        runtime_revision: u64,
+        observation_monotonic_millis: u64,
+    ) -> SingleMarkerXyzCanaryContext<'a> {
         SingleMarkerXyzCanaryContext {
             game_build: AUTOMARKER_REQUEST_BUILD,
             current_scene_family: family,
-            runtime_revision: 100,
+            runtime_revision,
+            observation_monotonic_millis,
             observation_age_millis: 0,
             asserted_local_player_is_party_leader: leader,
         }
@@ -682,6 +883,37 @@ mod tests {
         .unwrap()
     }
 
+    fn armed_with_carrier(sequence_start: u32) -> (SingleMarkerXyzCanary, Vec<u8>) {
+        let frame = crate::automarker_request::tests_support::synthetic_frame_for_adapter();
+        assert_eq!(frame.len(), EXACT_FRAME_BYTES);
+        let mut canary = armed();
+        canary
+            .observe_fresh_carrier(
+                &current_pack(),
+                9,
+                sequence_start,
+                0,
+                &frame,
+                context("mech-facility", true),
+            )
+            .unwrap();
+        (canary, frame)
+    }
+
+    fn prepare_full(
+        canary: &mut SingleMarkerXyzCanary,
+        sequence_start: u32,
+        frame: &[u8],
+        context: SingleMarkerXyzCanaryContext<'_>,
+    ) -> SingleMarkerXyzPreparedRewrite {
+        match canary.prepare_outbound_segment(9, sequence_start, frame, 40 + frame.len(), context) {
+            SingleMarkerXyzSegmentDisposition::PreparedRewriteNeedsPacketChecksumRepair(
+                prepared,
+            ) => prepared,
+            other => panic!("expected prepared rewrite, got {other:?}"),
+        }
+    }
+
     fn awaiting_confirmation() -> SingleMarkerXyzCanary {
         let mut canary = armed();
         canary.state = SingleMarkerXyzCanaryState::AwaitingAcknowledgement {
@@ -694,8 +926,12 @@ mod tests {
             rpc_call_id: 20,
             session_sequence: 30,
         });
-        canary.rewritten_once = true;
-        canary.rewrite_runtime_revision = Some(100);
+        canary.rewrite_obligation_active = true;
+        canary.modified_send_committed = true;
+        canary.committed_rewrite_stamp = Some(SingleMarkerXyzCommittedRewriteStamp {
+            runtime_revision: 100,
+            monotonic_millis: 1_000,
+        });
         canary
     }
 
@@ -840,6 +1076,7 @@ mod tests {
                 tcp_syn: false,
                 frame_payload_offset: 0,
                 observed_age_millis: SINGLE_MARKER_XYZ_MAX_CARRIER_AGE_MILLIS + 1,
+                held_packet_len: 40 + payload.len(),
                 payload: &payload,
             },
             context("mech-facility", true),
@@ -869,6 +1106,248 @@ mod tests {
         assert_eq!(
             canary.state(),
             SingleMarkerXyzCanaryState::Aborted(SingleMarkerXyzCanaryError::TimedOut)
+        );
+    }
+
+    #[test]
+    fn preparation_does_not_commit_and_pre_send_failure_returns_exact_original() {
+        let sequence = 1_000;
+        let (mut canary, frame) = armed_with_carrier(sequence);
+        let prepared = prepare_full(
+            &mut canary,
+            sequence,
+            &frame,
+            context_at("mech-facility", true, 101, 1_100),
+        );
+        assert_eq!(
+            canary.state(),
+            SingleMarkerXyzCanaryState::AwaitingExternalSend
+        );
+        assert_eq!(canary.committed_rewrite_stamp(), None);
+        assert_ne!(prepared.rewritten_payload, frame);
+        assert_eq!(prepared.original_payload, frame);
+        assert_eq!(
+            canary.cancel_prepared_rewrite_before_send(prepared.preparation_id),
+            SingleMarkerXyzSegmentDisposition::SendOriginal(frame.clone())
+        );
+        assert_eq!(
+            canary.state(),
+            SingleMarkerXyzCanaryState::Aborted(
+                SingleMarkerXyzCanaryError::PreSendPreparationFailed
+            )
+        );
+        assert!(canary.ledger.is_none());
+    }
+
+    #[test]
+    fn only_a_full_successful_send_commits_and_pins_the_first_stamp() {
+        let sequence = 2_000;
+        let (mut canary, frame) = armed_with_carrier(sequence);
+        let first_context = context_at("mech-facility", true, 101, 1_100);
+        let prepared = prepare_full(&mut canary, sequence, &frame, first_context);
+        assert_eq!(
+            canary.commit_prepared_rewrite(
+                prepared.preparation_id,
+                SingleMarkerXyzExternalSendOutcome::Complete {
+                    bytes_sent: prepared.expected_packet_send_len,
+                },
+            ),
+            SingleMarkerXyzCommitDisposition::Committed
+        );
+        let first_stamp = SingleMarkerXyzCommittedRewriteStamp {
+            runtime_revision: 101,
+            monotonic_millis: 1_100,
+        };
+        assert_eq!(canary.committed_rewrite_stamp(), Some(first_stamp));
+
+        let retransmission = prepare_full(
+            &mut canary,
+            sequence,
+            &frame,
+            context_at("mech-facility", true, 222, 9_999),
+        );
+        assert!(!retransmission.first_modified_emission);
+        assert_eq!(
+            canary.commit_prepared_rewrite(
+                retransmission.preparation_id,
+                SingleMarkerXyzExternalSendOutcome::Complete {
+                    bytes_sent: retransmission.expected_packet_send_len,
+                },
+            ),
+            SingleMarkerXyzCommitDisposition::Committed
+        );
+        assert_eq!(canary.committed_rewrite_stamp(), Some(first_stamp));
+    }
+
+    #[test]
+    fn false_and_short_sends_are_indeterminate_and_never_authorize_original_overlap() {
+        for outcome in [
+            SingleMarkerXyzExternalSendOutcome::Failed,
+            SingleMarkerXyzExternalSendOutcome::Short { bytes_sent: 12 },
+            SingleMarkerXyzExternalSendOutcome::Complete { bytes_sent: 12 },
+        ] {
+            let sequence = 3_000;
+            let (mut canary, frame) = armed_with_carrier(sequence);
+            let prepared = prepare_full(
+                &mut canary,
+                sequence,
+                &frame,
+                context_at("mech-facility", true, 101, 1_100),
+            );
+            assert_eq!(
+                canary.commit_prepared_rewrite(prepared.preparation_id, outcome),
+                SingleMarkerXyzCommitDisposition::AbortWithoutReinject(
+                    SingleMarkerXyzCanaryError::IndeterminateModifiedSend
+                )
+            );
+            assert_eq!(canary.committed_rewrite_stamp(), None);
+            let retransmission = match canary.prepare_outbound_segment(
+                9,
+                sequence,
+                &frame,
+                40 + frame.len(),
+                context("mech-facility", true),
+            ) {
+                SingleMarkerXyzSegmentDisposition::PreparedRewriteNeedsPacketChecksumRepair(
+                    prepared,
+                ) => prepared,
+                other => panic!("indeterminate send lost rewrite obligation: {other:?}"),
+            };
+            assert_eq!(
+                canary.cancel_prepared_rewrite_before_send(retransmission.preparation_id),
+                SingleMarkerXyzSegmentDisposition::AbortWithoutReinject(
+                    SingleMarkerXyzCanaryError::PreSendPreparationFailed
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn zero_changed_overlap_passes_exact_original_without_checksum_repair() {
+        let sequence = 4_000;
+        let (mut canary, frame) = armed_with_carrier(sequence);
+        assert_eq!(
+            canary.prepare_outbound_segment(
+                9,
+                sequence,
+                &frame[..1],
+                41,
+                context("mech-facility", true),
+            ),
+            SingleMarkerXyzSegmentDisposition::SendOriginal(frame[..1].to_vec())
+        );
+        assert_eq!(canary.state(), SingleMarkerXyzCanaryState::AwaitingRewrite);
+        assert_eq!(canary.committed_rewrite_stamp(), None);
+    }
+
+    #[test]
+    fn terminal_abort_keeps_deterministic_retransmission_mapping_until_ack() {
+        let sequence = 5_000;
+        let (mut canary, frame) = armed_with_carrier(sequence);
+        let prepared = prepare_full(
+            &mut canary,
+            sequence,
+            &frame,
+            context_at("mech-facility", true, 101, 1_100),
+        );
+        assert_eq!(
+            canary.commit_prepared_rewrite(
+                prepared.preparation_id,
+                SingleMarkerXyzExternalSendOutcome::Complete {
+                    bytes_sent: prepared.expected_packet_send_len,
+                },
+            ),
+            SingleMarkerXyzCommitDisposition::Committed
+        );
+        assert_eq!(
+            canary.abort_for_timeout(),
+            Err(SingleMarkerXyzCanaryError::TimedOut)
+        );
+
+        let retransmission = prepare_full(
+            &mut canary,
+            sequence,
+            &frame,
+            context_at("wrong-family", false, 999, 99_999),
+        );
+        assert_eq!(retransmission.rewritten_payload, prepared.rewritten_payload);
+        assert_eq!(
+            canary.commit_prepared_rewrite(
+                retransmission.preparation_id,
+                SingleMarkerXyzExternalSendOutcome::Complete {
+                    bytes_sent: retransmission.expected_packet_send_len,
+                },
+            ),
+            SingleMarkerXyzCommitDisposition::Committed
+        );
+        assert_eq!(
+            canary.state(),
+            SingleMarkerXyzCanaryState::Aborted(SingleMarkerXyzCanaryError::TimedOut)
+        );
+        assert_eq!(
+            canary.prepare_outbound_segment(
+                9,
+                sequence.wrapping_add(1_000),
+                b"ordinary",
+                48,
+                context("mech-facility", true),
+            ),
+            SingleMarkerXyzSegmentDisposition::SendOriginal(b"ordinary".to_vec())
+        );
+
+        let ack = canary.observe_cumulative_ack(
+            9,
+            sequence.wrapping_add(EXACT_FRAME_BYTES as u32),
+            context("mech-facility", true),
+        );
+        assert_eq!(ack.retired_operations, 1);
+        assert_eq!(ack.active_operations, 0);
+        assert_eq!(
+            canary.prepare_outbound_segment(
+                9,
+                sequence,
+                &frame,
+                40 + frame.len(),
+                context("mech-facility", true),
+            ),
+            SingleMarkerXyzSegmentDisposition::SendOriginal(frame)
+        );
+    }
+
+    #[test]
+    fn connection_termination_discards_the_retained_mapping() {
+        let sequence = 6_000;
+        let (mut canary, frame) = armed_with_carrier(sequence);
+        let prepared = prepare_full(
+            &mut canary,
+            sequence,
+            &frame,
+            context_at("mech-facility", true, 101, 1_100),
+        );
+        assert_eq!(
+            canary.commit_prepared_rewrite(
+                prepared.preparation_id,
+                SingleMarkerXyzExternalSendOutcome::Complete {
+                    bytes_sent: prepared.expected_packet_send_len,
+                },
+            ),
+            SingleMarkerXyzCommitDisposition::Committed
+        );
+        canary.observe_connection_terminated(9);
+        assert!(canary.ledger.is_none());
+        assert_eq!(
+            canary.state(),
+            SingleMarkerXyzCanaryState::Aborted(SingleMarkerXyzCanaryError::ConnectionTerminated)
+        );
+        assert_eq!(
+            canary.prepare_outbound_segment(
+                9,
+                sequence,
+                &frame,
+                40 + frame.len(),
+                context("mech-facility", true),
+            ),
+            SingleMarkerXyzSegmentDisposition::SendOriginal(frame)
         );
     }
 }

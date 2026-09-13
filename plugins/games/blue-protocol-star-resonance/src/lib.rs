@@ -5,6 +5,7 @@ mod actor_presentation;
 mod automarker_inline_transport;
 mod automarker_preset_sequence;
 mod automarker_request;
+mod automarker_rewrite_confirmation;
 mod automarker_single_carrier_canary;
 mod automarker_windivert_checksum;
 mod auxiliary_action_presentation;
@@ -116,11 +117,22 @@ pub use automarker_request::{
     decode_observed_use_slot_current_position_into, substitute_offline_automarker_frame,
     supports_observed_automarker_requests, verify_offline_automarker_substitution,
 };
+pub use automarker_rewrite_confirmation::{
+    AUTOMARKER_CONFIRMATION_METHOD_ID, AUTOMARKER_CONFIRMATION_TIMEOUT_MILLIS,
+    AutomarkerConfirmationBaseline, AutomarkerConfirmationConfig, AutomarkerConfirmationContext,
+    AutomarkerConfirmationError, AutomarkerConfirmationMarkerAdd,
+    AutomarkerConfirmationObservationStamp, AutomarkerConfirmationRewrite,
+    AutomarkerConfirmationRpcReturn, AutomarkerConfirmationState,
+    AutomarkerConfirmationTcpObservation, AutomarkerConfirmationTcpTuple,
+    SingleMarkerRewriteConfirmation,
+};
 pub use automarker_single_carrier_canary::{
     SINGLE_MARKER_XYZ_CANARY_ARM_TOKEN, SINGLE_MARKER_XYZ_MAX_CARRIER_AGE_MILLIS,
     SINGLE_MARKER_XYZ_MAX_CONTEXT_AGE_MILLIS, SingleMarkerXyzCanary, SingleMarkerXyzCanaryConfig,
     SingleMarkerXyzCanaryContext, SingleMarkerXyzCanaryError, SingleMarkerXyzCanaryState,
-    SingleMarkerXyzCarrierIdentity, SingleMarkerXyzInterceptedSegment,
+    SingleMarkerXyzCarrierIdentity, SingleMarkerXyzCommitDisposition,
+    SingleMarkerXyzCommittedRewriteStamp, SingleMarkerXyzExternalSendOutcome,
+    SingleMarkerXyzInterceptedSegment, SingleMarkerXyzPreparedRewrite,
     SingleMarkerXyzSegmentDisposition,
 };
 #[cfg(windows)]
