@@ -92,18 +92,88 @@ pub const AUTOMARKER_WINDIVERT_ACTIVE_NETWORK_POLICY: OfflineAutomarkerWinDivert
         no_install: true,
     };
 
-/// Formats the narrow immutable filter for a single proven IPv4/TCP epoch.
-/// PID is intentionally absent: WinDivert's NETWORK layer cannot expose it.
+/// Formats the narrow immutable filter for a single IPv4/TCP tuple.
+///
+/// This compatibility helper does not prove process ownership. Production
+/// adapter work must use [`reviewed_automarker_active_filter_plan`], whose input
+/// is an opaque, already-proven connection epoch binding.
 pub fn offline_automarker_windivert_active_filter(
     connection: AutomarkerOwnedTcpConnection,
 ) -> String {
     format!(
-        "outbound and ip and tcp and tcp.PayloadLength > 0 and ip.SrcAddr == {} and tcp.SrcPort == {} and ip.DstAddr == {} and tcp.DstPort == {}",
+        "((outbound and tcp.PayloadLength > 0 and ip.SrcAddr == {} and tcp.SrcPort == {} and ip.DstAddr == {} and tcp.DstPort == {}) or (inbound and (tcp.Ack or tcp.Fin or tcp.Rst) and ip.SrcAddr == {} and tcp.SrcPort == {} and ip.DstAddr == {} and tcp.DstPort == {})) and ip and tcp",
         connection.local.address,
         connection.local.port,
         connection.remote.address,
-        connection.remote.port
+        connection.remote.port,
+        connection.remote.address,
+        connection.remote.port,
+        connection.local.address,
+        connection.local.port,
     )
+}
+
+/// Reviewed capture plan for one process-owned TCP connection epoch.
+///
+/// Its reverse branch exists only to observe ACK/FIN/RST retirement evidence.
+/// [`AutomarkerActivePacketRole::InboundRetirementPassThrough`] is an explicit
+/// contract that those packets must be returned byte-for-byte unchanged.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AutomarkerActiveFilterPlan {
+    connection: AutomarkerOwnedTcpConnection,
+    connection_epoch: u64,
+    expression: String,
+}
+
+impl AutomarkerActiveFilterPlan {
+    pub fn expression(&self) -> &str {
+        &self.expression
+    }
+
+    pub fn connection_epoch(&self) -> u64 {
+        self.connection_epoch
+    }
+
+    pub fn inspect(
+        &self,
+        packet: &[u8],
+    ) -> Result<AutomarkerActivePacketInspection, OfflineAutomarkerIpv4TcpReason> {
+        let transport = inspect_automarker_ipv4_tcp_packet(packet)?;
+        let role = if transport.source == self.connection.local
+            && transport.destination == self.connection.remote
+            && transport.payload_length_bytes > 0
+        {
+            AutomarkerActivePacketRole::OutboundPayload
+        } else if transport.source == self.connection.remote
+            && transport.destination == self.connection.local
+            && (transport.ack || transport.fin || transport.rst)
+        {
+            AutomarkerActivePacketRole::InboundRetirementPassThrough
+        } else if (transport.source == self.connection.local
+            && transport.destination == self.connection.remote)
+            || (transport.source == self.connection.remote
+                && transport.destination == self.connection.local)
+        {
+            return Err(OfflineAutomarkerIpv4TcpReason::NoActiveTrafficInterest);
+        } else {
+            return Err(OfflineAutomarkerIpv4TcpReason::NotExactConfirmedConnection);
+        };
+        Ok(AutomarkerActivePacketInspection { transport, role })
+    }
+}
+
+/// Builds a filter only from an opaque binding that already proves a unique
+/// process-owned tuple and SYN-observed epoch. PID is absent from the resulting
+/// expression because WinDivert's NETWORK layer cannot expose it.
+pub fn reviewed_automarker_active_filter_plan(
+    binding: OfflineAutomarkerConnectionEpochBinding,
+) -> AutomarkerActiveFilterPlan {
+    let connection = binding.connection();
+    AutomarkerActiveFilterPlan {
+        connection,
+        connection_epoch: binding.connection_epoch(),
+        expression: offline_automarker_windivert_active_filter(connection),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -224,6 +294,41 @@ pub struct AutomarkerOwnedTcpConnection {
     pub remote: AutomarkerIpv4Endpoint,
 }
 
+/// Structurally validated IPv4/TCP metadata needed by the future active
+/// adapter. The packet bytes and any application payload remain caller-owned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AutomarkerIpv4TcpInspection {
+    pub source: AutomarkerIpv4Endpoint,
+    pub destination: AutomarkerIpv4Endpoint,
+    pub sequence: u32,
+    pub acknowledgement: u32,
+    pub ack: bool,
+    pub fin: bool,
+    pub rst: bool,
+    pub payload_offset_bytes: usize,
+    pub payload_length_bytes: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutomarkerActivePacketRole {
+    /// An exact-tuple outbound segment with payload, including retransmissions.
+    OutboundPayload,
+    /// Reverse-path retirement evidence. It is never eligible for mutation.
+    InboundRetirementPassThrough,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AutomarkerActivePacketInspection {
+    pub transport: AutomarkerIpv4TcpInspection,
+    pub role: AutomarkerActivePacketRole,
+}
+
+impl AutomarkerActivePacketInspection {
+    pub fn must_pass_through_unchanged(self) -> bool {
+        self.role == AutomarkerActivePacketRole::InboundRetirementPassThrough
+    }
+}
+
 /// Opaque proof that one connection epoch was observed from SYN and matched
 /// exactly one socket owned by the requested game process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -297,6 +402,8 @@ pub enum OfflineAutomarkerIpv4TcpReason {
     NotTcp,
     InvalidTcpHeader,
     NotExactOutboundConnection,
+    NotExactConfirmedConnection,
+    NoActiveTrafficInterest,
     InvalidIpv4Checksum,
     InvalidTcpChecksum,
     Ledger(OfflineAutomarkerTcpSegmentReason),
@@ -455,10 +562,34 @@ struct Ipv4TcpLayout {
     source: AutomarkerIpv4Endpoint,
     destination: AutomarkerIpv4Endpoint,
     sequence: u32,
+    acknowledgement: u32,
+    ack: bool,
+    fin: bool,
+    rst: bool,
     ip_header_len: usize,
     tcp_start: usize,
     tcp_header_len: usize,
     payload_start: usize,
+}
+
+/// Inspects one complete IPv4/TCP network-layer packet without reading or
+/// retaining application bytes. Truncation, trailing bytes, fragments, and
+/// malformed IPv4/TCP option lengths are rejected exactly.
+pub fn inspect_automarker_ipv4_tcp_packet(
+    packet: &[u8],
+) -> Result<AutomarkerIpv4TcpInspection, OfflineAutomarkerIpv4TcpReason> {
+    let layout = parse_ipv4_tcp(packet)?;
+    Ok(AutomarkerIpv4TcpInspection {
+        source: layout.source,
+        destination: layout.destination,
+        sequence: layout.sequence,
+        acknowledgement: layout.acknowledgement,
+        ack: layout.ack,
+        fin: layout.fin,
+        rst: layout.rst,
+        payload_offset_bytes: layout.payload_start,
+        payload_length_bytes: packet.len() - layout.payload_start,
+    })
 }
 
 fn parse_ipv4_tcp(packet: &[u8]) -> Result<Ipv4TcpLayout, OfflineAutomarkerIpv4TcpReason> {
@@ -489,6 +620,7 @@ fn parse_ipv4_tcp(packet: &[u8]) -> Result<Ipv4TcpLayout, OfflineAutomarkerIpv4T
     if tcp_header_len < TCP_MIN_HEADER_BYTES || packet.len() < tcp_start + tcp_header_len {
         return Err(OfflineAutomarkerIpv4TcpReason::InvalidTcpHeader);
     }
+    let flags = packet[tcp_start + 13];
     Ok(Ipv4TcpLayout {
         source: AutomarkerIpv4Endpoint {
             address: Ipv4Addr::new(packet[12], packet[13], packet[14], packet[15]),
@@ -503,6 +635,14 @@ fn parse_ipv4_tcp(packet: &[u8]) -> Result<Ipv4TcpLayout, OfflineAutomarkerIpv4T
                 .try_into()
                 .expect("validated TCP sequence"),
         ),
+        acknowledgement: u32::from_be_bytes(
+            packet[tcp_start + 8..tcp_start + 12]
+                .try_into()
+                .expect("validated TCP acknowledgement"),
+        ),
+        ack: flags & 0x10 != 0,
+        fin: flags & 0x01 != 0,
+        rst: flags & 0x04 != 0,
         ip_header_len,
         tcp_start,
         tcp_header_len,
@@ -590,6 +730,41 @@ mod tests {
         packet
     }
 
+    fn inspection_packet(
+        source: AutomarkerIpv4Endpoint,
+        destination: AutomarkerIpv4Endpoint,
+        sequence: u32,
+        acknowledgement: u32,
+        flags: u8,
+        ip_option_bytes: usize,
+        tcp_option_bytes: usize,
+        payload: &[u8],
+    ) -> Vec<u8> {
+        assert_eq!(ip_option_bytes % 4, 0);
+        assert_eq!(tcp_option_bytes % 4, 0);
+        let ip_header_len = IPV4_MIN_HEADER_BYTES + ip_option_bytes;
+        let tcp_header_len = TCP_MIN_HEADER_BYTES + tcp_option_bytes;
+        let mut packet = vec![0_u8; ip_header_len + tcp_header_len + payload.len()];
+        packet[0] = (4 << 4) | (ip_header_len / 4) as u8;
+        let packet_len = packet.len() as u16;
+        packet[2..4].copy_from_slice(&packet_len.to_be_bytes());
+        packet[6..8].copy_from_slice(&0x4000_u16.to_be_bytes());
+        packet[8] = 64;
+        packet[9] = TCP_PROTOCOL;
+        packet[12..16].copy_from_slice(&source.address.octets());
+        packet[16..20].copy_from_slice(&destination.address.octets());
+        packet[ip_header_len..ip_header_len + 2].copy_from_slice(&source.port.to_be_bytes());
+        packet[ip_header_len + 2..ip_header_len + 4]
+            .copy_from_slice(&destination.port.to_be_bytes());
+        packet[ip_header_len + 4..ip_header_len + 8].copy_from_slice(&sequence.to_be_bytes());
+        packet[ip_header_len + 8..ip_header_len + 12]
+            .copy_from_slice(&acknowledgement.to_be_bytes());
+        packet[ip_header_len + 12] = ((tcp_header_len / 4) as u8) << 4;
+        packet[ip_header_len + 13] = flags;
+        packet[ip_header_len + tcp_header_len..].copy_from_slice(payload);
+        packet
+    }
+
     fn pack() -> ProtocolPack {
         let source = ProtocolPack::from_json(include_bytes!(
             "../protocol-packs/global/steam-24687926/pack.json"
@@ -648,11 +823,21 @@ mod tests {
     }
 
     #[test]
-    fn windivert_active_filter_is_exact_outbound_payload_tuple() {
+    fn windivert_active_filter_is_exact_bidirectional_tuple() {
         assert_eq!(
             offline_automarker_windivert_active_filter(connection()),
-            "outbound and ip and tcp and tcp.PayloadLength > 0 and ip.SrcAddr == 10.0.0.2 and tcp.SrcPort == 50000 and ip.DstAddr == 203.0.113.7 and tcp.DstPort == 44321"
+            "((outbound and tcp.PayloadLength > 0 and ip.SrcAddr == 10.0.0.2 and tcp.SrcPort == 50000 and ip.DstAddr == 203.0.113.7 and tcp.DstPort == 44321) or (inbound and (tcp.Ack or tcp.Fin or tcp.Rst) and ip.SrcAddr == 203.0.113.7 and tcp.SrcPort == 44321 and ip.DstAddr == 10.0.0.2 and tcp.DstPort == 50000)) and ip and tcp"
         );
+        let plan = reviewed_automarker_active_filter_plan(binding());
+        assert_eq!(plan.connection_epoch(), 7);
+        assert_eq!(
+            plan.expression(),
+            offline_automarker_windivert_active_filter(connection())
+        );
+        assert!(!plan.expression().contains("process"));
+        for required in ["10.0.0.2", "50000", "203.0.113.7", "44321"] {
+            assert!(plan.expression().contains(required));
+        }
         assert_eq!(
             AUTOMARKER_WINDIVERT_ACTIVE_NETWORK_POLICY,
             OfflineAutomarkerWinDivertHandlePolicy {
@@ -669,6 +854,158 @@ mod tests {
             assert!(AUTOMARKER_WINDIVERT_DISCOVERY_NETWORK_POLICY.no_install);
         }
         assert_eq!(AUTOMARKER_WINDIVERT_DISCOVERY_NETWORK_POLICY.priority, 1);
+    }
+
+    #[test]
+    fn inspection_exposes_exact_tuple_flags_ack_and_option_aware_payload() {
+        let candidate = inspection_packet(
+            connection().local,
+            connection().remote,
+            0x1020_3040,
+            0x5060_7080,
+            0x19,
+            4,
+            8,
+            &[1, 2, 3],
+        );
+        let inspected = inspect_automarker_ipv4_tcp_packet(&candidate).unwrap();
+        assert_eq!(inspected.source, connection().local);
+        assert_eq!(inspected.destination, connection().remote);
+        assert_eq!(inspected.sequence, 0x1020_3040);
+        assert_eq!(inspected.acknowledgement, 0x5060_7080);
+        assert!(inspected.ack);
+        assert!(inspected.fin);
+        assert!(!inspected.rst);
+        assert_eq!(inspected.payload_offset_bytes, 52);
+        assert_eq!(inspected.payload_length_bytes, 3);
+    }
+
+    #[test]
+    fn active_plan_classifies_only_exact_outbound_payload_and_reverse_retirement() {
+        let plan = reviewed_automarker_active_filter_plan(binding());
+        let outbound = inspection_packet(
+            connection().local,
+            connection().remote,
+            77,
+            0,
+            0x18,
+            0,
+            0,
+            &[1, 2],
+        );
+        let retransmit = outbound.clone();
+        for candidate in [&outbound, &retransmit] {
+            let inspected = plan.inspect(candidate).unwrap();
+            assert_eq!(inspected.role, AutomarkerActivePacketRole::OutboundPayload);
+            assert!(!inspected.must_pass_through_unchanged());
+            assert_eq!(inspected.transport.sequence, 77);
+        }
+
+        for flags in [0x10, 0x01, 0x04, 0x15] {
+            let inbound = inspection_packet(
+                connection().remote,
+                connection().local,
+                90,
+                79,
+                flags,
+                0,
+                0,
+                &[],
+            );
+            let inspected = plan.inspect(&inbound).unwrap();
+            assert_eq!(
+                inspected.role,
+                AutomarkerActivePacketRole::InboundRetirementPassThrough
+            );
+            assert!(inspected.must_pass_through_unchanged());
+            assert_eq!(inspected.transport.acknowledgement, 79);
+        }
+    }
+
+    #[test]
+    fn active_plan_rejects_unrelated_and_noninteresting_exact_tuple_traffic() {
+        let plan = reviewed_automarker_active_filter_plan(binding());
+        let unrelated_endpoint = AutomarkerIpv4Endpoint {
+            address: Ipv4Addr::new(198, 51, 100, 9),
+            port: 44_321,
+        };
+        let unrelated = inspection_packet(
+            connection().local,
+            unrelated_endpoint,
+            1,
+            0,
+            0x18,
+            0,
+            0,
+            &[1],
+        );
+        assert_eq!(
+            plan.inspect(&unrelated),
+            Err(OfflineAutomarkerIpv4TcpReason::NotExactConfirmedConnection)
+        );
+
+        let outbound_ack_only = inspection_packet(
+            connection().local,
+            connection().remote,
+            1,
+            2,
+            0x10,
+            0,
+            0,
+            &[],
+        );
+        let inbound_payload_without_retirement_flags =
+            inspection_packet(connection().remote, connection().local, 1, 0, 0, 0, 0, &[1]);
+        for candidate in [outbound_ack_only, inbound_payload_without_retirement_flags] {
+            assert_eq!(
+                plan.inspect(&candidate),
+                Err(OfflineAutomarkerIpv4TcpReason::NoActiveTrafficInterest)
+            );
+        }
+    }
+
+    #[test]
+    fn inspection_rejects_truncation_trailing_bytes_fragments_and_bad_options() {
+        let valid = inspection_packet(
+            connection().local,
+            connection().remote,
+            1,
+            2,
+            0x10,
+            4,
+            4,
+            &[],
+        );
+        let mut trailing = valid.clone();
+        trailing.push(0);
+        let mut fragment = valid.clone();
+        fragment[6..8].copy_from_slice(&0x2000_u16.to_be_bytes());
+        let mut bad_ip_options = valid.clone();
+        bad_ip_options[0] = 0x4f;
+        let mut bad_tcp_options = valid.clone();
+        let tcp_start = 24;
+        bad_tcp_options[tcp_start + 12] = 0xf0;
+
+        assert_eq!(
+            inspect_automarker_ipv4_tcp_packet(&valid[..19]),
+            Err(OfflineAutomarkerIpv4TcpReason::PacketTooShort)
+        );
+        assert_eq!(
+            inspect_automarker_ipv4_tcp_packet(&trailing),
+            Err(OfflineAutomarkerIpv4TcpReason::LengthMismatch)
+        );
+        assert_eq!(
+            inspect_automarker_ipv4_tcp_packet(&fragment),
+            Err(OfflineAutomarkerIpv4TcpReason::FragmentedIpv4)
+        );
+        assert_eq!(
+            inspect_automarker_ipv4_tcp_packet(&bad_ip_options),
+            Err(OfflineAutomarkerIpv4TcpReason::InvalidIpv4Header)
+        );
+        assert_eq!(
+            inspect_automarker_ipv4_tcp_packet(&bad_tcp_options),
+            Err(OfflineAutomarkerIpv4TcpReason::InvalidTcpHeader)
+        );
     }
 
     #[test]
