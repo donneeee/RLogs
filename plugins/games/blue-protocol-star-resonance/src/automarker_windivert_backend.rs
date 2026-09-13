@@ -185,7 +185,7 @@ mod windows_backend {
         path::Path,
         ptr,
         sync::{
-            Arc, Mutex,
+            Arc, Condvar, Mutex,
             atomic::{AtomicBool, AtomicU8, Ordering},
         },
         thread,
@@ -317,6 +317,8 @@ mod windows_backend {
         reflect: Arc<WinDivertHandle>,
         stop: Arc<AtomicBool>,
         status: Arc<AtomicU8>,
+        barrier_generation: Arc<(Mutex<u64>, Condvar)>,
+        sentinel_flags: u64,
         worker: Option<thread::JoinHandle<()>>,
     }
 
@@ -330,13 +332,25 @@ mod windows_backend {
             let worker_reflect = Arc::clone(&reflect);
             let worker_stop = Arc::clone(&stop);
             let worker_status = Arc::clone(&status);
+            let barrier_generation = Arc::new((Mutex::new(0_u64), Condvar::new()));
+            let worker_barrier_generation = Arc::clone(&barrier_generation);
+            let owner_process_id = inventory.owner_process_id;
+            let sentinel_flags = inventory.inventory.sentinel_flags;
             let worker = thread::Builder::new()
                 .name("rlogs-automarker-reflect".into())
                 .spawn(move || {
                     loop {
                         match worker_reflect.receive(65_535) {
                             Ok(Some((_, address))) => {
-                                let observed = decode_reflect_event(&address)
+                                let decoded = decode_reflect_event(&address);
+                                let is_refresh_sentinel = decoded.is_ok_and(|event| {
+                                    event.kind == ReflectEventKind::Open
+                                        && event.identity.process_id == owner_process_id
+                                        && event.identity.layer == LAYER_NETWORK
+                                        && event.identity.priority == SENTINEL_PRIORITY
+                                        && event.identity.flags == sentinel_flags
+                                });
+                                let observed = decoded
                                     .map_err(|_| ())
                                     .and_then(|event| inventory.observe(event).map_err(|_| ()));
                                 if observed.is_err() {
@@ -347,6 +361,13 @@ mod windows_backend {
                                     break;
                                 }
                                 store_terminal_status(&worker_status, inventory.status);
+                                if is_refresh_sentinel {
+                                    let (generation, changed) = &*worker_barrier_generation;
+                                    if let Ok(mut generation) = generation.lock() {
+                                        *generation = (*generation).saturating_add(1);
+                                        changed.notify_all();
+                                    }
+                                }
                             }
                             Ok(None) if worker_stop.load(Ordering::Acquire) => break,
                             Ok(None) | Err(_) => {
@@ -364,12 +385,43 @@ mod windows_backend {
                 reflect,
                 stop,
                 status,
+                barrier_generation,
+                sentinel_flags,
                 worker: Some(worker),
             })
         }
 
         fn status(&self) -> ActiveLifetimeArbitrationStatus {
             decode_status(self.status.load(Ordering::Acquire))
+        }
+
+        fn synchronize_status(&self) -> Result<ActiveLifetimeArbitrationStatus, String> {
+            if self.status() != ActiveLifetimeArbitrationStatus::Healthy {
+                return Ok(self.status());
+            }
+            let (generation, changed) = &*self.barrier_generation;
+            let before = *generation
+                .lock()
+                .map_err(|_| "REFLECT lifetime barrier lock was poisoned")?;
+            let backend = PinnedWinDivertBackend(Arc::clone(&self.reflect.loaded));
+            let sentinel = backend
+                .open_network("false", SENTINEL_PRIORITY, self.sentinel_flags)
+                .map_err(|error| format!("REFLECT lifetime barrier open failed: {error}"))?;
+            let guard = generation
+                .lock()
+                .map_err(|_| "REFLECT lifetime barrier lock was poisoned")?;
+            let (guard, timeout) = changed
+                .wait_timeout_while(guard, BARRIER_TIMEOUT, |generation| *generation == before)
+                .map_err(|_| "REFLECT lifetime barrier wait lock was poisoned")?;
+            drop(sentinel);
+            if timeout.timed_out() && *guard == before {
+                store_terminal_status(
+                    &self.status,
+                    ActiveLifetimeArbitrationStatus::MonitorFailure,
+                );
+                return Err("REFLECT lifetime barrier timed out".into());
+            }
+            Ok(self.status())
         }
 
         fn stop_join(&mut self) {
@@ -423,6 +475,10 @@ mod windows_backend {
     pub(crate) enum ArbitratedNetworkOpen {
         Open(WinDivertHandle),
         Conflict,
+        /// The NETWORK handle opened, so it may already own queued packets,
+        /// but the post-open REFLECT barrier rejected activation. The caller
+        /// must freeze, drain/reinject, and close this handle.
+        RejectedAfterOpen(WinDivertHandle, String),
     }
 
     impl PinnedWinDivertBackend {
@@ -512,9 +568,20 @@ mod windows_backend {
             }
             let mut active = self.open_network(filter, priority, flags)?;
             let lifetime = ActiveLifetimeInventory::after_clear_barrier(inventory);
-            let lifetime = self.reflect_post_open_barrier(Arc::clone(&reflect), lifetime)?;
+            let lifetime = match self.reflect_post_open_barrier(Arc::clone(&reflect), lifetime) {
+                Ok(lifetime) => lifetime,
+                Err(error) => {
+                    return Ok(ArbitratedNetworkOpen::RejectedAfterOpen(
+                        active,
+                        format!("REFLECT post-open barrier failed: {error}"),
+                    ));
+                }
+            };
             if !lifetime.post_open_affirmative() {
-                return Ok(ArbitratedNetworkOpen::Conflict);
+                return Ok(ArbitratedNetworkOpen::RejectedAfterOpen(
+                    active,
+                    "a same-priority WinDivert NETWORK handle opened during arbitration".into(),
+                ));
             }
             active.lifetime_monitor = Some(ReflectLifetimeMonitor::spawn(reflect, lifetime)?);
             Ok(ArbitratedNetworkOpen::Open(active))
@@ -659,6 +726,15 @@ mod windows_backend {
                     monitor.status()
                 })
         }
+
+        pub(crate) fn synchronize_active_lifetime_arbitration(
+            &self,
+        ) -> Result<ActiveLifetimeArbitrationStatus, String> {
+            self.lifetime_monitor
+                .as_ref()
+                .ok_or_else(|| "active WinDivert lifetime monitor is unavailable".to_owned())?
+                .synchronize_status()
+        }
         /// Starts one overlapped receive while borrowing this handle.
         ///
         /// The returned value owns every pointer passed to WinDivertRecvEx. A
@@ -748,6 +824,25 @@ mod windows_backend {
             Ok(())
         }
 
+        /// Freeze receive admission, reinject every packet already queued on
+        /// this handle without changing bytes/metadata, then close it.
+        pub(crate) fn drain_reinject_and_close(self, maximum_bytes: usize) -> Result<(), String> {
+            self.shutdown_receive()?;
+            loop {
+                let Some((bytes, address)) = self.receive(maximum_bytes)? else {
+                    break;
+                };
+                let sent = self.send_unchanged(&bytes, &address)?;
+                if sent != bytes.len() {
+                    return Err(format!(
+                        "WinDivert drain reinjection was short: expected {}, sent {sent}",
+                        bytes.len()
+                    ));
+                }
+            }
+            self.try_close().map_err(|(_, error)| error)
+        }
+
         pub(crate) fn set_param(&self, parameter: i32, value: u64) -> Result<(), String> {
             if unsafe { (self.loaded.api.set_param)(self.raw, parameter, value) } == 0 {
                 return Err(format!(
@@ -810,6 +905,7 @@ mod windows_backend {
     #[allow(dead_code)]
     pub(crate) enum OverlappedReceiveWait {
         Completed,
+        EndOfStream,
         TimedOut,
         ControlWoken,
     }
@@ -928,6 +1024,10 @@ mod windows_backend {
                     )
                 } == 0
                 {
+                    if unsafe { GetLastError() } == ERROR_NO_DATA {
+                        self.state = OverlappedReceiveState::Taken;
+                        return Ok(OverlappedReceiveWait::EndOfStream);
+                    }
                     return Err(format!(
                         "WinDivertRecvEx completion failed with Windows error {}",
                         unsafe { GetLastError() }
@@ -1322,6 +1422,10 @@ mod tests {
             windows_backend::ArbitratedNetworkOpen::Open(handle) => handle,
             windows_backend::ArbitratedNetworkOpen::Conflict => {
                 panic!("test host already had a priority-0 NETWORK handle")
+            }
+            windows_backend::ArbitratedNetworkOpen::RejectedAfterOpen(handle, reason) => {
+                handle.drain_reinject_and_close(65_535).unwrap();
+                panic!("post-open arbitration rejected test handle: {reason}")
             }
         };
         assert_eq!(

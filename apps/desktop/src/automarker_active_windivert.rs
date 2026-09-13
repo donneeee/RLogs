@@ -89,6 +89,7 @@ pub(crate) struct WindowsActiveAutomarkerBackend {
     checksum: PinnedWinDivertChecksumHelper,
     filter_plan: AutomarkerActiveFilterPlan,
     receive_control: ActiveAutomarkerReceiveControl,
+    receive_shutdown: bool,
 }
 
 // The backend is constructed before the worker spawn and then exclusively
@@ -129,6 +130,12 @@ impl WindowsActiveAutomarkerBackend {
             ArbitratedNetworkOpen::Conflict => {
                 return Err("a same-priority WinDivert NETWORK handle is already open".into());
             }
+            ArbitratedNetworkOpen::RejectedAfterOpen(handle, reason) => {
+                drain_reinject_rejected_open(handle).map_err(|cleanup| {
+                    format!("{reason}; rejected active handle cleanup failed: {cleanup}")
+                })?;
+                return Err(reason);
+            }
         };
         let version = handle.get_param(PARAM_VERSION_MAJOR).and_then(|major| {
             handle
@@ -153,6 +160,7 @@ impl WindowsActiveAutomarkerBackend {
                 checksum,
                 filter_plan,
                 receive_control: receive_control.clone(),
+                receive_shutdown: false,
             },
             receive_control,
         ))
@@ -165,6 +173,15 @@ impl WindowsActiveAutomarkerBackend {
     }
 
     fn receive_checked(&mut self) -> Result<ActiveAutomarkerWake, String> {
+        if self.receive_shutdown && self.pending_receive.is_none() {
+            return self
+                .handle()?
+                .receive(MAXIMUM_PACKET_BYTES)
+                .map(|packet| match packet {
+                    Some((bytes, address)) => self.classify_received(bytes, address),
+                    None => ActiveAutomarkerWake::EndOfStream,
+                });
+        }
         let control = self.receive_control.borrowed_event()?;
         let mut receive = match self.pending_receive.take() {
             Some(receive) => receive,
@@ -192,26 +209,32 @@ impl WindowsActiveAutomarkerBackend {
                 self.pending_receive = Some(receive);
                 return Ok(ActiveAutomarkerWake::Timeout);
             }
+            OverlappedReceiveWait::EndOfStream => {
+                return Ok(ActiveAutomarkerWake::EndOfStream);
+            }
             OverlappedReceiveWait::Completed => {}
         }
         let (bytes, address) = receive
             .take_packet()?
             .ok_or_else(|| "completed WinDivert receive had no packet".to_owned())?;
+        Ok(self.classify_received(bytes, address))
+    }
+
+    fn classify_received(&self, bytes: Vec<u8>, address: WinDivertAddress) -> ActiveAutomarkerWake {
         let address = to_public_address(address);
         if packet_matches_reviewed_filter(&self.filter_plan, &bytes, address) {
-            return Ok(ActiveAutomarkerWake::Packet(ActiveAutomarkerPacket {
-                bytes,
-                address,
-            }));
+            return ActiveAutomarkerWake::Packet(ActiveAutomarkerPacket { bytes, address });
         }
 
         // A kernel-filter escape is not eligible for coordinator
         // classification or mutation. Transfer its exact owned bytes to
         // the worker's explicit pass-through branch.
-        Ok(ActiveAutomarkerWake::PassThroughOnly(
-            ActiveAutomarkerPacket { bytes, address },
-        ))
+        ActiveAutomarkerWake::PassThroughOnly(ActiveAutomarkerPacket { bytes, address })
     }
+}
+
+fn drain_reinject_rejected_open(handle: WinDivertHandle) -> Result<(), String> {
+    handle.drain_reinject_and_close(MAXIMUM_PACKET_BYTES)
 }
 
 impl ActiveAutomarkerBackend for WindowsActiveAutomarkerBackend {
@@ -219,6 +242,11 @@ impl ActiveAutomarkerBackend for WindowsActiveAutomarkerBackend {
         self.handle.as_ref().is_some_and(|handle| {
             handle.active_lifetime_arbitration_status() == ActiveLifetimeArbitrationStatus::Healthy
         })
+    }
+
+    fn synchronize_active_lifetime_arbitration(&mut self) -> Result<bool, String> {
+        Ok(self.handle()?.synchronize_active_lifetime_arbitration()?
+            == ActiveLifetimeArbitrationStatus::Healthy)
     }
 
     fn receive(&mut self) -> Result<ActiveAutomarkerWake, String> {
@@ -253,6 +281,14 @@ impl ActiveAutomarkerBackend for WindowsActiveAutomarkerBackend {
     fn send(&mut self, packet: &ActiveAutomarkerPacket) -> Result<usize, String> {
         self.handle()?
             .send_unchanged(&packet.bytes, &to_backend_address(packet.address))
+    }
+
+    fn shutdown_receive(&mut self) -> Result<(), String> {
+        if !self.receive_shutdown {
+            self.handle()?.shutdown_receive()?;
+            self.receive_shutdown = true;
+        }
+        Ok(())
     }
 
     fn close_interception(&mut self) -> Result<(), String> {

@@ -219,6 +219,10 @@ impl AutomarkerPassiveReadinessWorker {
             ArbitratedNetworkOpen::Conflict => {
                 return Err("a same-priority passive WinDivert handle is already open".into());
             }
+            ArbitratedNetworkOpen::RejectedAfterOpen(handle, reason) => {
+                handle.drain_reinject_and_close(65_535)?;
+                return Err(reason);
+            }
         };
         if handle.get_param(PARAM_VERSION_MAJOR)? != 2
             || handle.get_param(PARAM_VERSION_MINOR)? != 2
@@ -472,6 +476,10 @@ pub(crate) fn discover_native_readiness(
         ArbitratedNetworkOpen::Open(handle) => handle,
         ArbitratedNetworkOpen::Conflict => {
             return Err("a same-priority WinDivert NETWORK handle is already open".into());
+        }
+        ArbitratedNetworkOpen::RejectedAfterOpen(handle, reason) => {
+            handle.drain_reinject_and_close(65_535)?;
+            return Err(reason);
         }
     };
     if probe.get_param(PARAM_VERSION_MAJOR)? != 2 || probe.get_param(PARAM_VERSION_MINOR)? != 2 {

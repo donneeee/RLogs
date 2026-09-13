@@ -7,7 +7,10 @@
 
 #![allow(dead_code)]
 
-use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
+use std::{
+    sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError},
+    time::Instant,
+};
 
 use rlogs_game_bpsr::{
     AUTOMARKER_REQUEST_BUILD, AutomarkerActiveFilterPlan, AutomarkerActivePacketRole,
@@ -121,6 +124,7 @@ pub(crate) struct ProductionActiveAutomarkerCoordinator {
     baseline_runtime_revision: u64,
     runtime_revision: u64,
     observation_age_millis: u64,
+    context_age_started_at: Instant,
     baseline_same_number_passive_instance_identities: Vec<i64>,
     commands: Receiver<ActiveAutomarkerCommand>,
     adapter: Option<PrivateAutomarkerConfirmationAdapter>,
@@ -144,9 +148,11 @@ impl ProductionActiveAutomarkerCoordinator {
             || config.carrier_capture_sequence == 0
             || config.scene_family.trim().is_empty()
             || config.local_actor_id == 0
-            || !(1..=6).contains(&config.marker_number)
+            || config.marker_number != 1
             || config.baseline_runtime_revision == 0
             || config.runtime_revision < config.baseline_runtime_revision
+            || config.observation_age_millis
+                > rlogs_game_bpsr::SINGLE_MARKER_XYZ_MAX_CONTEXT_AGE_MILLIS
             || config
                 .baseline_same_number_passive_instance_identities
                 .contains(&0)
@@ -173,6 +179,7 @@ impl ProductionActiveAutomarkerCoordinator {
                 baseline_runtime_revision: config.baseline_runtime_revision,
                 runtime_revision: config.runtime_revision,
                 observation_age_millis: config.observation_age_millis,
+                context_age_started_at: Instant::now(),
                 baseline_same_number_passive_instance_identities: config
                     .baseline_same_number_passive_instance_identities,
                 commands,
@@ -248,12 +255,22 @@ impl ProductionActiveAutomarkerCoordinator {
         }
     }
 
+    fn current_context_age_millis(&self) -> u64 {
+        self.observation_age_millis.saturating_add(
+            self.context_age_started_at
+                .elapsed()
+                .as_millis()
+                .min(u128::from(u64::MAX)) as u64,
+        )
+    }
+
     fn classify_existing(
         &mut self,
         packet: &ActiveAutomarkerPacket,
         tcp_sequence_start: u32,
         tcp_payload_offset: usize,
     ) -> ActiveAutomarkerDisposition {
+        let context_age_millis = self.current_context_age_millis();
         let Some(adapter) = self.adapter.as_mut() else {
             return ActiveAutomarkerDisposition::PassThrough;
         };
@@ -272,7 +289,7 @@ impl ProductionActiveAutomarkerCoordinator {
             &packet.bytes,
             packet.address,
             self.runtime_revision,
-            self.observation_age_millis,
+            context_age_millis,
         ) {
             Ok(AutomarkerBridgePrepareDisposition::SendOriginal(original))
                 if original.packet == packet.bytes && original.address == packet.address =>
@@ -301,6 +318,11 @@ impl ProductionActiveAutomarkerCoordinator {
         tcp_payload_offset: usize,
         payload: &[u8],
     ) -> ActiveAutomarkerDisposition {
+        let context_age_millis = self.current_context_age_millis();
+        if context_age_millis > rlogs_game_bpsr::SINGLE_MARKER_XYZ_MAX_CONTEXT_AGE_MILLIS {
+            self.termination_requested = true;
+            return ActiveAutomarkerDisposition::PassThrough;
+        }
         let mut scratch = Vec::new();
         let request = match decode_observed_automarker_request_into(
             &self.pack,
@@ -370,7 +392,7 @@ impl ProductionActiveAutomarkerCoordinator {
                         .observed_micros
                         .saturating_add(999)
                         / 1_000,
-                    observation_age_millis: self.observation_age_millis,
+                    observation_age_millis: context_age_millis,
                 };
                 let mut coordinator = AutomarkerBridgeCoordinator::arm(
                     config,
@@ -389,13 +411,13 @@ impl ProductionActiveAutomarkerCoordinator {
                         .observed_micros
                         .saturating_add(999)
                         / 1_000,
-                    observation_age_millis: self.observation_age_millis,
+                    observation_age_millis: context_age_millis,
                 };
                 let identity = coordinator.observe_fresh_carrier(
                     &self.pack,
                     self.connection_binding.connection_epoch(),
                     frame_sequence_start,
-                    self.observation_age_millis,
+                    context_age_millis,
                     payload,
                     rewrite_context,
                 )?;
@@ -581,6 +603,11 @@ impl ActiveAutomarkerCoordinator for ProductionActiveAutomarkerCoordinator {
 
     fn observe_timeout(&mut self) -> ActiveAutomarkerTimeoutDisposition {
         self.drain_commands();
+        if self.current_context_age_millis()
+            > rlogs_game_bpsr::SINGLE_MARKER_XYZ_MAX_CONTEXT_AGE_MILLIS
+        {
+            self.termination_requested = true;
+        }
         if let Some(adapter) = self.adapter.as_mut() {
             let _ = adapter.observe_timeout();
         }
@@ -760,30 +787,33 @@ mod tests {
         ProductionActiveAutomarkerCoordinator,
         ActiveAutomarkerControl,
     ) {
+        ProductionActiveAutomarkerCoordinator::create(coordinator_config(1, 0), 4).unwrap()
+    }
+
+    fn coordinator_config(
+        marker_number: u8,
+        observation_age_millis: u64,
+    ) -> ActiveAutomarkerCoordinatorConfig {
         let binding = binding();
-        ProductionActiveAutomarkerCoordinator::create(
-            ActiveAutomarkerCoordinatorConfig {
-                pack: pack(),
-                filter_plan: reviewed_automarker_active_filter_plan(binding),
-                connection_binding: binding,
-                session_key: "private-session".into(),
-                carrier_capture_sequence: 10,
-                scene_family: "mech-facility".into(),
-                local_actor_id: 77,
-                marker_number: 1,
-                target_position: AutomarkerRequestXyz {
-                    x: 101.25,
-                    y: -22.5,
-                    z: 303.75,
-                },
-                baseline_runtime_revision: 100,
-                runtime_revision: 101,
-                observation_age_millis: 0,
-                baseline_same_number_passive_instance_identities: vec![88],
+        ActiveAutomarkerCoordinatorConfig {
+            pack: pack(),
+            filter_plan: reviewed_automarker_active_filter_plan(binding),
+            connection_binding: binding,
+            session_key: "private-session".into(),
+            carrier_capture_sequence: 10,
+            scene_family: "mech-facility".into(),
+            local_actor_id: 77,
+            marker_number,
+            target_position: AutomarkerRequestXyz {
+                x: 101.25,
+                y: -22.5,
+                z: 303.75,
             },
-            4,
-        )
-        .unwrap()
+            baseline_runtime_revision: 100,
+            runtime_revision: 101,
+            observation_age_millis,
+            baseline_same_number_passive_instance_identities: vec![88],
+        }
     }
 
     fn confirmation_snapshot() -> PrivateParserConfirmationSnapshot {
@@ -919,6 +949,16 @@ mod tests {
     struct WorkerBackend(WorkerHarness);
 
     impl ActiveAutomarkerBackend for WorkerBackend {
+        fn shutdown_receive(&mut self) -> Result<(), String> {
+            let (lock, ready) = &*self.0.0;
+            lock.lock()
+                .unwrap()
+                .wakes
+                .push_back(ActiveAutomarkerWake::EndOfStream);
+            ready.notify_all();
+            Ok(())
+        }
+
         fn receive(&mut self) -> Result<ActiveAutomarkerWake, String> {
             let (lock, ready) = &*self.0.0;
             let mut state = lock.lock().unwrap();
@@ -1010,6 +1050,47 @@ mod tests {
         assert_eq!(completion.exit, ActiveAutomarkerWorkerExit::Timeout);
         assert_eq!(completion.modified_sent, 1);
         assert!(completion.fatal_ownership.is_none());
+        harness.wait_until(|state| state.closed);
+    }
+
+    #[test]
+    fn marker_two_and_already_stale_context_are_rejected_at_construction() {
+        assert!(
+            ProductionActiveAutomarkerCoordinator::create(coordinator_config(2, 0), 4).is_err()
+        );
+        assert!(
+            ProductionActiveAutomarkerCoordinator::create(
+                coordinator_config(
+                    1,
+                    rlogs_game_bpsr::SINGLE_MARKER_XYZ_MAX_CONTEXT_AGE_MILLIS + 1,
+                ),
+                4,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn hours_late_carrier_passes_unchanged_and_worker_terminates_without_a_carrier() {
+        let harness = WorkerHarness::default();
+        let (mut coordinator, _control) = coordinator();
+        coordinator.context_age_started_at = Instant::now()
+            .checked_sub(Duration::from_secs(60 * 60))
+            .unwrap();
+        assert_eq!(
+            coordinator.classify(
+                &packet(FRAME_SEQUENCE, 0x18, &frame(), false),
+                ActiveAutomarkerClassificationMode::AuthorizeNewCarrier,
+            ),
+            ActiveAutomarkerDisposition::PassThrough
+        );
+        let completion =
+            ActiveAutomarkerWorkerBundle::spawn(WorkerBackend(harness.clone()), coordinator)
+                .unwrap()
+                .join()
+                .unwrap();
+        assert_eq!(completion.exit, ActiveAutomarkerWorkerExit::Timeout);
+        assert_eq!(completion.modified_sent, 0);
         harness.wait_until(|state| state.closed);
     }
 

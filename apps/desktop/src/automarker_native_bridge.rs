@@ -103,6 +103,55 @@ struct BridgeContinuity {
     activity_family_id: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct ActiveCanaryAuthority {
+    activation_authority_revision: u64,
+    capture_session_id: String,
+    deployment_id: String,
+    client_build: String,
+    protocol_pack_digest: String,
+    scene_id: i32,
+    map_id: u32,
+    activity_family_id: String,
+    carrier_capture_sequence: u64,
+    carrier_call_id: u32,
+    carrier_connection: AutomarkerBridgeCaptureTcpConnection,
+    mechanics_runtime_revision: u64,
+    local_actor_id: u64,
+    native_binding: OfflineAutomarkerConnectionEpochBinding,
+    loaded_pack_build: String,
+    loaded_pack_digest: String,
+}
+
+impl ActiveCanaryAuthority {
+    fn from_state(state: &NativeBridgeState) -> Option<Self> {
+        let session = state.session.as_ref()?;
+        let continuity = state.continuity.as_ref()?;
+        let evidence = state.parser_evidence.as_ref()?;
+        let carrier = evidence.outbound_carrier.as_ref()?;
+        let flow = state.native_flow.as_ref()?;
+        let pack = state.protocol_pack.as_ref()?;
+        Some(Self {
+            activation_authority_revision: state.activation_authority_revision,
+            capture_session_id: session.capture_session_id.clone(),
+            deployment_id: continuity.deployment_id.clone(),
+            client_build: continuity.client_build.clone(),
+            protocol_pack_digest: continuity.protocol_pack_digest.clone(),
+            scene_id: continuity.scene_id,
+            map_id: continuity.map_id,
+            activity_family_id: continuity.activity_family_id.clone(),
+            carrier_capture_sequence: carrier.provenance.capture_sequence,
+            carrier_call_id: carrier.provenance.call_id.filter(|call_id| *call_id != 0)?,
+            carrier_connection: carrier.tcp_connection,
+            mechanics_runtime_revision: carrier.mechanics_runtime_revision,
+            local_actor_id: carrier.local_actor_id,
+            native_binding: flow.binding,
+            loaded_pack_build: pack.definition().target.build_id.clone(),
+            loaded_pack_digest: pack.digest().to_owned(),
+        })
+    }
+}
+
 impl BridgeContinuity {
     fn from_session_scene(
         session: &AutomarkerBridgeSessionIdentity,
@@ -183,6 +232,8 @@ pub(crate) enum AutomarkerActiveOwnershipStatus {
 struct NativeBridgeState {
     phase: LifecyclePhase,
     generation: u64,
+    activation_authority_revision: u64,
+    last_attempted_authority_revision: Option<u64>,
     session: Option<AutomarkerBridgeSessionIdentity>,
     continuity: Option<BridgeContinuity>,
     parser_evidence: Option<AutomarkerBridgeEvidenceSnapshot>,
@@ -313,19 +364,19 @@ impl AutomarkerNativeBridgeLifecycle {
         point: AutomarkerPoint,
         dependency_directory: &std::path::Path,
     ) -> Result<bool, String> {
-        if self.active_lifetime_arbitration() != AutomarkerActiveLifetimeArbitration::Maintained {
+        if point.marker_number != 1
+            || self.active_lifetime_arbitration() != AutomarkerActiveLifetimeArbitration::Maintained
+        {
             return Ok(false);
         }
         let Some(mut state) = self.lock_or_poison_shutdown() else {
             return Ok(false);
         };
         Self::collect_finished_worker_locked(&mut state);
-        let Some(config) = Self::active_coordinator_config_locked(&state, &point) else {
+        let Some((authority, config)) = Self::claim_activation_authority_locked(&mut state, &point)
+        else {
             return Ok(false);
         };
-        if state.active_worker.is_some() || state.fatal_ownership.is_some() {
-            return Ok(false);
-        }
         let generation = state.generation;
         let session_key = config.session_key.clone();
         let binding = config.connection_binding;
@@ -347,14 +398,67 @@ impl AutomarkerNativeBridgeLifecycle {
             backend.close_interception()?;
             return Ok(false);
         }
-        let mut worker = ActiveAutomarkerWorkerBundle::spawn(backend, coordinator)?;
-
         let Some(mut state) = self.lock_or_poison_shutdown() else {
-            let _ = receive_control.wake();
-            let _ = worker.stop_drain_join();
+            backend.close_interception()?;
             return Ok(false);
         };
-        let still_exact = state.generation == generation
+        let still_exact = Self::activation_still_exact_locked(
+            &state,
+            generation,
+            &authority,
+            &session_key,
+            binding,
+        );
+        if !still_exact {
+            drop(state);
+            backend.close_interception()?;
+            return Ok(false);
+        }
+        // Spawn while retaining the lifecycle lock. Parser/context ingress
+        // cannot advance the authority between the exact post-open check and
+        // installing the control/worker owners.
+        let worker = ActiveAutomarkerWorkerBundle::spawn(backend, coordinator)?;
+        drop(state.coordinator.take());
+        state.active_control = Some(control);
+        state.active_receive_control = Some(receive_control);
+        state.active_worker = Some(worker);
+        state.gates.reflect_arbitrated = true;
+        state.gates.authoritative_inbound_decoder_ready = true;
+        Ok(true)
+    }
+
+    fn claim_activation_authority_locked(
+        state: &mut NativeBridgeState,
+        point: &AutomarkerPoint,
+    ) -> Option<(ActiveCanaryAuthority, ActiveAutomarkerCoordinatorConfig)> {
+        if point.marker_number != 1
+            || state.active_worker.is_some()
+            || state.fatal_ownership.is_some()
+        {
+            return None;
+        }
+        let authority = ActiveCanaryAuthority::from_state(state)?;
+        if state.last_attempted_authority_revision == Some(authority.activation_authority_revision)
+        {
+            return None;
+        }
+        let config = Self::active_coordinator_config_locked(state, point)?;
+        // Consume this exact authority before releasing the lock. Open
+        // failure, a racing parser update, and clean completion all require a
+        // freshly revalidated evidence revision before another explicit arm.
+        state.last_attempted_authority_revision = Some(authority.activation_authority_revision);
+        Some((authority, config))
+    }
+
+    fn activation_still_exact_locked(
+        state: &NativeBridgeState,
+        generation: u64,
+        authority: &ActiveCanaryAuthority,
+        session_key: &str,
+        binding: OfflineAutomarkerConnectionEpochBinding,
+    ) -> bool {
+        state.generation == generation
+            && ActiveCanaryAuthority::from_state(state).as_ref() == Some(authority)
             && state.phase == LifecyclePhase::Observing
             && state
                 .session
@@ -365,20 +469,7 @@ impl AutomarkerNativeBridgeLifecycle {
                 .as_ref()
                 .is_some_and(|flow| flow.binding == binding)
             && state.active_worker.is_none()
-            && state.fatal_ownership.is_none();
-        if !still_exact {
-            drop(state);
-            let _ = receive_control.wake();
-            let _ = worker.stop_drain_join();
-            return Ok(false);
-        }
-        drop(state.coordinator.take());
-        state.active_control = Some(control);
-        state.active_receive_control = Some(receive_control);
-        state.active_worker = Some(worker);
-        state.gates.reflect_arbitrated = true;
-        state.gates.authoritative_inbound_decoder_ready = true;
-        Ok(true)
+            && state.fatal_ownership.is_none()
     }
 
     fn active_coordinator_config_locked(
@@ -395,6 +486,7 @@ impl AutomarkerNativeBridgeLifecycle {
         let observation_age_millis =
             received_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
         if state.phase != LifecyclePhase::Observing
+            || point.marker_number != 1
             || !state.gates.exact_local_process
             || !state.gates.exact_syn_owned_tuple_epoch
             || !state.gates.pinned_backend
@@ -612,6 +704,8 @@ impl AutomarkerNativeBridgeLifecycle {
         let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Observing, true);
         state.session = Some(session);
         state.protocol_pack = pack;
+        state.activation_authority_revision = 0;
+        state.last_attempted_authority_revision = None;
         drop(state);
         detached.drop_in_shutdown_order();
     }
@@ -708,6 +802,10 @@ impl AutomarkerNativeBridgeLifecycle {
                 .map(|carrier| carrier.provenance.capture_sequence);
         let carrier_present = evidence.outbound_carrier.is_some();
         state.parser_evidence = Some(evidence);
+        state.activation_authority_revision = state
+            .parser_evidence
+            .as_ref()
+            .map_or(0, |evidence| evidence.feed_revision);
         if carrier_changed {
             state.parser_carrier_received_at = carrier_present.then(Instant::now);
         }
@@ -1447,6 +1545,8 @@ impl AutomarkerNativeBridgeLifecycle {
         state.parser_carrier_received_at = None;
         if clear_session {
             state.protocol_pack = None;
+            state.activation_authority_revision = 0;
+            state.last_attempted_authority_revision = None;
         }
         state.native_flow = None;
         state.gates = NativeGateState::default();
@@ -1647,6 +1747,15 @@ mod tests {
     struct ActiveLifecycleBackend(ActiveLifecycleHarness);
 
     impl ActiveAutomarkerBackend for ActiveLifecycleBackend {
+        fn shutdown_receive(&mut self) -> Result<(), String> {
+            self.0
+                .0
+                .lock()
+                .unwrap()
+                .push_back(Ok(ActiveAutomarkerWake::EndOfStream));
+            Ok(())
+        }
+
         fn receive(&mut self) -> Result<ActiveAutomarkerWake, String> {
             self.0
                 .0
@@ -2204,6 +2313,78 @@ mod tests {
             assert_eq!(config.carrier_capture_sequence, 30);
             assert_eq!(config.marker_number, 1);
             assert_eq!(config.target_position.x.to_bits(), point.x.to_bits());
+
+            let authority = ActiveCanaryAuthority::from_state(&snapshot).unwrap();
+            assert!(
+                AutomarkerNativeBridgeLifecycle::activation_still_exact_locked(
+                    &snapshot,
+                    snapshot.generation,
+                    &authority,
+                    "capture-a",
+                    binding(443),
+                )
+            );
+            snapshot
+                .parser_evidence
+                .as_mut()
+                .unwrap()
+                .outbound_carrier
+                .as_mut()
+                .unwrap()
+                .provenance
+                .call_id = Some(78);
+            assert!(
+                !AutomarkerNativeBridgeLifecycle::activation_still_exact_locked(
+                    &snapshot,
+                    snapshot.generation,
+                    &authority,
+                    "capture-a",
+                    binding(443),
+                )
+            );
+            snapshot
+                .parser_evidence
+                .as_mut()
+                .unwrap()
+                .outbound_carrier
+                .as_mut()
+                .unwrap()
+                .provenance
+                .call_id = Some(77);
+
+            let marker_two = AutomarkerPoint {
+                marker_number: 2,
+                ..point.clone()
+            };
+            assert!(
+                AutomarkerNativeBridgeLifecycle::claim_activation_authority_locked(
+                    &mut snapshot,
+                    &marker_two,
+                )
+                .is_none()
+            );
+            assert!(
+                AutomarkerNativeBridgeLifecycle::claim_activation_authority_locked(
+                    &mut snapshot,
+                    &point,
+                )
+                .is_some()
+            );
+            assert!(
+                AutomarkerNativeBridgeLifecycle::claim_activation_authority_locked(
+                    &mut snapshot,
+                    &point,
+                )
+                .is_none()
+            );
+            snapshot.activation_authority_revision += 1;
+            assert!(
+                AutomarkerNativeBridgeLifecycle::claim_activation_authority_locked(
+                    &mut snapshot,
+                    &point,
+                )
+                .is_some()
+            );
         }
         assert!(bridge.arm_one_marker_coordinator(point.clone()));
         assert!(state(&bridge).coordinator.is_some());

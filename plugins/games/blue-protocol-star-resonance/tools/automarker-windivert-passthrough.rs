@@ -342,6 +342,21 @@ mod windows {
                     ),
                 );
             }
+            ArbitratedNetworkOpen::RejectedAfterOpen(handle, _reason) => {
+                handle.drain_reinject_and_close(65_535)?;
+                return write_receipt(
+                    &args.output,
+                    CanaryReceipt::blocked_armed(
+                        if args.bootstrap {
+                            "explicitly-armed-bootstrap-and-passthrough"
+                        } else {
+                            "explicitly-armed"
+                        },
+                        "blocked_same_priority_network_handle",
+                        gates,
+                    ),
+                );
+            }
         };
         let owner = WindowsProcessSocketOwner::new(process_id)?;
         let connection = discover_exact_bpsr_syn_epoch(
@@ -395,6 +410,21 @@ mod windows {
                 handle
             }
             ArbitratedNetworkOpen::Conflict => {
+                return write_receipt(
+                    &args.output,
+                    CanaryReceipt::blocked_armed(
+                        if args.bootstrap {
+                            "explicitly-armed-bootstrap-and-passthrough"
+                        } else {
+                            "explicitly-armed"
+                        },
+                        "blocked_same_priority_network_handle",
+                        gates,
+                    ),
+                );
+            }
+            ArbitratedNetworkOpen::RejectedAfterOpen(handle, _reason) => {
+                handle.drain_reinject_and_close(65_535)?;
                 return write_receipt(
                     &args.output,
                     CanaryReceipt::blocked_armed(
