@@ -501,9 +501,31 @@ impl<'a> ContinuousBpsrRecorder<'a> {
     pub fn process_frame_with_inspection(
         &mut self,
         frame: CapturedFrame,
+        observe: impl FnMut(&rlogs_events::EventEnvelope),
+        observe_photo: impl FnMut(&LocalPhotoAssetReference),
+        observe_protocol: impl FnMut(&CaptureRecord, crate::ProtocolDecodeStatus),
+    ) -> Result<Vec<SealedDungeonRunLog>, ContinuousRecordingError> {
+        self.process_frame_with_ordered_inspection(
+            frame,
+            observe,
+            observe_photo,
+            observe_protocol,
+            |_, _| {},
+        )
+    }
+
+    /// Decodes one frame and exposes each reviewed capture record twice in
+    /// canonical source order: once before external event observers run and
+    /// once after all canonical events derived from that exact record have
+    /// been observed. Both callbacks borrow the record synchronously; callers
+    /// must retain only explicitly bounded, privacy-reviewed state.
+    pub fn process_frame_with_ordered_inspection(
+        &mut self,
+        frame: CapturedFrame,
         mut observe: impl FnMut(&rlogs_events::EventEnvelope),
         mut observe_photo: impl FnMut(&LocalPhotoAssetReference),
-        mut observe_protocol: impl FnMut(&CaptureRecord, crate::ProtocolDecodeStatus),
+        mut observe_protocol_before: impl FnMut(&CaptureRecord, crate::ProtocolDecodeStatus),
+        mut observe_protocol_after: impl FnMut(&CaptureRecord, crate::ProtocolDecodeStatus),
     ) -> Result<Vec<SealedDungeonRunLog>, ContinuousRecordingError> {
         self.metrics.frame_count = self.metrics.frame_count.saturating_add(1);
         let pipeline = self
@@ -516,7 +538,8 @@ impl<'a> ContinuousBpsrRecorder<'a> {
             drafts,
             &mut observe,
             &mut observe_photo,
-            &mut observe_protocol,
+            &mut observe_protocol_before,
+            &mut observe_protocol_after,
         )
     }
 
@@ -527,7 +550,13 @@ impl<'a> ContinuousBpsrRecorder<'a> {
         if let Some(pipeline) = &mut self.pipeline {
             let mut drafts = Vec::new();
             pipeline.finish(|draft| drafts.push(draft));
-            sealed.extend(self.process_drafts(drafts, &mut |_| {}, &mut |_| {}, &mut |_, _| {})?);
+            sealed.extend(self.process_drafts(
+                drafts,
+                &mut |_| {},
+                &mut |_| {},
+                &mut |_, _| {},
+                &mut |_, _| {},
+            )?);
         }
         if let Some(segments) = &mut self.segments {
             let final_segment = segments.finish()?;
@@ -545,7 +574,8 @@ impl<'a> ContinuousBpsrRecorder<'a> {
         drafts: Vec<CaptureRecordDraft>,
         observe: &mut impl FnMut(&rlogs_events::EventEnvelope),
         observe_photo: &mut impl FnMut(&LocalPhotoAssetReference),
-        observe_protocol: &mut impl FnMut(&CaptureRecord, crate::ProtocolDecodeStatus),
+        observe_protocol_before: &mut impl FnMut(&CaptureRecord, crate::ProtocolDecodeStatus),
+        observe_protocol_after: &mut impl FnMut(&CaptureRecord, crate::ProtocolDecodeStatus),
     ) -> Result<Vec<SealedDungeonRunLog>, ContinuousRecordingError> {
         let mut sealed = Vec::new();
         for draft in drafts {
@@ -607,7 +637,7 @@ impl<'a> ContinuousBpsrRecorder<'a> {
                     batch.events.push(receipt_event);
                 }
             }
-            observe_protocol(&record, batch.status);
+            observe_protocol_before(&record, batch.status);
             self.metrics.record_count = self.metrics.record_count.saturating_add(1);
             self.metrics.decoded_event_count = self
                 .metrics
@@ -631,6 +661,7 @@ impl<'a> ContinuousBpsrRecorder<'a> {
                     timeline_sequence,
                 });
             }
+            observe_protocol_after(&record, batch.status);
             for photo in &batch.local_photo_assets {
                 observe_photo(photo);
             }
@@ -1356,13 +1387,22 @@ mod tests {
         let return_wire = bpsr_frame(3, &return_payload);
         let mut events = Vec::new();
         let mut photos = Vec::new();
-        let mut protocol = Vec::new();
+        let protocol_order = std::cell::RefCell::new(Vec::new());
         recorder
-            .process_frame_with_inspection(
+            .process_frame_with_ordered_inspection(
                 captured_frame(2, 200, server, client, 200, &return_wire),
                 |event| events.push(event.clone()),
                 |photo| photos.push(photo.clone()),
-                |record, status| protocol.push((record.sequence, status)),
+                |record, status| {
+                    protocol_order
+                        .borrow_mut()
+                        .push(("before", record.sequence, status));
+                },
+                |record, status| {
+                    protocol_order
+                        .borrow_mut()
+                        .push(("after", record.sequence, status));
+                },
             )
             .unwrap();
 
@@ -1371,7 +1411,13 @@ mod tests {
         assert_eq!(photos[0].character_id, 3_296_036);
         assert_eq!(photos[0].photo_id, 42);
         assert_eq!(photos[0].version, Some(3));
-        assert_eq!(protocol, vec![(3, crate::ProtocolDecodeStatus::Decoded)]);
+        assert_eq!(
+            *protocol_order.borrow(),
+            vec![
+                ("before", 3, crate::ProtocolDecodeStatus::Decoded),
+                ("after", 3, crate::ProtocolDecodeStatus::Decoded),
+            ]
+        );
         std::fs::remove_dir_all(directory).unwrap();
     }
 
