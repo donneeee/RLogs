@@ -19,7 +19,7 @@ use rlogs_game_bpsr::{
 use crate::automarker_confirmation_router::{
     AutomarkerConfirmationRouter, ConfirmationRouterError, OwnedConfirmationContext,
     OwnedConfirmationEvent, OwnedConfirmationEventKind, OwnedConfirmationStamp,
-    PrivateParserConfirmationSnapshot,
+    PrivateParserConfirmationEvent, PrivateParserConfirmationSnapshot,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,6 +35,10 @@ pub(crate) struct PrivateAutomarkerConfirmationBinding {
     pub server_port: u16,
     pub marker_number: u8,
     pub target_position: AutomarkerRequestXyz,
+    pub carrier_capture_sequence: u64,
+    pub carrier_rpc_call_id: u32,
+    pub mapped_tcp_sequence_start: u32,
+    pub mapped_tcp_length: u32,
     pub baseline_runtime_revision: u64,
     pub rewrite_runtime_revision: u64,
 }
@@ -54,6 +58,9 @@ impl PrivateAutomarkerConfirmationBinding {
             && self.target_position.x.is_finite()
             && self.target_position.y.is_finite()
             && self.target_position.z.is_finite()
+            && self.carrier_capture_sequence != 0
+            && self.carrier_rpc_call_id != 0
+            && self.mapped_tcp_length != 0
             && self.baseline_runtime_revision != 0
             && self.rewrite_runtime_revision >= self.baseline_runtime_revision
     }
@@ -105,6 +112,7 @@ pub(crate) struct PrivateAutomarkerTcpObservation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PrivateAutomarkerConfirmationAdapterState {
     Active,
+    ConfirmationFailedAwaitingTransportRetirement,
     Complete,
     Failed,
 }
@@ -113,6 +121,7 @@ pub(crate) enum PrivateAutomarkerConfirmationAdapterState {
 pub(crate) enum PrivateAutomarkerConfirmationAdapterError {
     InvalidBinding,
     CoordinatorNotAwaitingConfirmation,
+    CoordinatorBindingMismatch,
     Router(ConfirmationRouterError),
     SessionOrContextChanged,
     FilteredOrReplayedBatch,
@@ -146,9 +155,12 @@ impl PrivateAutomarkerConfirmationAdapter {
         if !binding.valid() {
             return Err(PrivateAutomarkerConfirmationAdapterError::InvalidBinding);
         }
-        let mut router =
-            AutomarkerConfirmationRouter::begin(binding.session_key.clone(), binding.marker_number)
-                .ok_or(PrivateAutomarkerConfirmationAdapterError::InvalidBinding)?;
+        let mut router = AutomarkerConfirmationRouter::begin_after_carrier(
+            binding.session_key.clone(),
+            binding.marker_number,
+            binding.carrier_capture_sequence,
+        )
+        .ok_or(PrivateAutomarkerConfirmationAdapterError::InvalidBinding)?;
         let baseline_stamp = router
             .stamp_now()
             .map_err(PrivateAutomarkerConfirmationAdapterError::Router)?;
@@ -180,6 +192,23 @@ impl PrivateAutomarkerConfirmationAdapter {
                 PrivateAutomarkerConfirmationAdapterError::CoordinatorNotAwaitingConfirmation,
             );
         }
+        let Some(coordinator_binding) = coordinator.confirmation_binding() else {
+            return Err(PrivateAutomarkerConfirmationAdapterError::CoordinatorBindingMismatch);
+        };
+        if coordinator_binding.marker_number != binding.marker_number
+            || !same_position_bits(coordinator_binding.target_position, binding.target_position)
+            || coordinator_binding.baseline_context != inputs.baseline_context
+            || coordinator_binding.baseline_observation_ordinal
+                != inputs.baseline_stamp.observation_ordinal
+            || coordinator_binding.rewrite_context != inputs.rewrite_context
+            || coordinator_binding.rewrite_observation_ordinal
+                != inputs.rewrite_stamp.observation_ordinal
+            || coordinator_binding.original_rpc_call_id != binding.carrier_rpc_call_id
+            || coordinator_binding.mapped_tcp_sequence_start != binding.mapped_tcp_sequence_start
+            || coordinator_binding.mapped_tcp_length != binding.mapped_tcp_length
+        {
+            return Err(PrivateAutomarkerConfirmationAdapterError::CoordinatorBindingMismatch);
+        }
         Ok(Self {
             router,
             coordinator,
@@ -206,6 +235,15 @@ impl PrivateAutomarkerConfirmationAdapter {
         if !self.snapshot_context_matches(&snapshot) {
             return self.fail(PrivateAutomarkerConfirmationAdapterError::SessionOrContextChanged);
         }
+        if snapshot.events.iter().any(|event| match event {
+            PrivateParserConfirmationEvent::CorrelatedReturn(event) => {
+                event.carrier_capture_sequence != self.binding.carrier_capture_sequence
+                    || event.provenance.call_id != Some(self.binding.carrier_rpc_call_id)
+            }
+            PrivateParserConfirmationEvent::MarkerAdd(_) => false,
+        }) {
+            return self.fail(PrivateAutomarkerConfirmationAdapterError::SessionOrContextChanged);
+        }
         let expected_count = snapshot.events.len();
         let routed = match self.router.route_snapshot(snapshot) {
             Ok(routed) => routed,
@@ -229,13 +267,12 @@ impl PrivateAutomarkerConfirmationAdapter {
         &mut self,
         observation: PrivateAutomarkerTcpObservation,
     ) -> Result<AutomarkerBridgeState, PrivateAutomarkerConfirmationAdapterError> {
-        self.require_active()?;
+        self.require_lifecycle_open()?;
         if observation.connection_epoch != self.binding.connection_epoch
             || observation.source_address != self.binding.server_address
             || observation.source_port != self.binding.server_port
             || observation.destination_address != self.binding.client_address
             || observation.destination_port != self.binding.client_port
-            || observation.runtime_revision < self.binding.rewrite_runtime_revision
         {
             return self.fail(PrivateAutomarkerConfirmationAdapterError::SessionOrContextChanged);
         }
@@ -276,6 +313,54 @@ impl PrivateAutomarkerConfirmationAdapter {
         self.finish_observation(result)
     }
 
+    pub(crate) fn observe_timeout(
+        &mut self,
+    ) -> Result<AutomarkerBridgeState, PrivateAutomarkerConfirmationAdapterError> {
+        self.require_lifecycle_open()?;
+        let stamp = match self.router.stamp_now() {
+            Ok(stamp) => stamp,
+            Err(reason) => {
+                return self.fail(PrivateAutomarkerConfirmationAdapterError::Router(reason));
+            }
+        };
+        self.validate_stamp(stamp)?;
+        let elapsed_since_rewrite_millis = stamp
+            .observed_micros
+            .checked_sub(self.rewrite_stamp.observed_micros)
+            .ok_or(PrivateAutomarkerConfirmationAdapterError::ObservationOrderChanged)?
+            / 1_000;
+        let result = self
+            .coordinator
+            .observe(AutomarkerBridgeObservation::Timeout {
+                elapsed_since_rewrite_millis,
+                current_observed_micros: stamp.observed_micros,
+            });
+        self.finish_observation(result)
+    }
+
+    pub(crate) fn observe_connection_terminated(
+        &mut self,
+        connection_epoch: u64,
+    ) -> Result<AutomarkerBridgeState, PrivateAutomarkerConfirmationAdapterError> {
+        self.require_lifecycle_open()?;
+        if connection_epoch != self.binding.connection_epoch {
+            return self.fail(PrivateAutomarkerConfirmationAdapterError::SessionOrContextChanged);
+        }
+        let stamp = match self.router.stamp_now() {
+            Ok(stamp) => stamp,
+            Err(reason) => {
+                return self.fail(PrivateAutomarkerConfirmationAdapterError::Router(reason));
+            }
+        };
+        self.validate_stamp(stamp)?;
+        self.state = PrivateAutomarkerConfirmationAdapterState::
+            ConfirmationFailedAwaitingTransportRetirement;
+        let result = self
+            .coordinator
+            .observe(AutomarkerBridgeObservation::ConnectionTerminated { connection_epoch });
+        self.finish_observation(result)
+    }
+
     fn observe_owned_event(
         &mut self,
         event: OwnedConfirmationEvent,
@@ -312,6 +397,16 @@ impl PrivateAutomarkerConfirmationAdapter {
             OwnedConfirmationEventKind::MarkerAddCandidate(candidate) => {
                 if candidate.runtime_revision != event.context.runtime_revision
                     || candidate.observed_micros != event.context.observed_micros
+                    || candidate.marker_number != self.binding.marker_number
+                    || candidate.marker_owner_actor_id != self.binding.local_actor_id
+                    || !same_position_bits(
+                        AutomarkerRequestXyz {
+                            x: candidate.position.x,
+                            y: candidate.position.y,
+                            z: candidate.position.z,
+                        },
+                        self.binding.target_position,
+                    )
                 {
                     return self
                         .fail(PrivateAutomarkerConfirmationAdapterError::SessionOrContextChanged);
@@ -405,23 +500,47 @@ impl PrivateAutomarkerConfirmationAdapter {
         let state = match result {
             Ok(state) => state,
             Err(reason) => {
+                let obligation_active = self.coordinator.state().tcp_rewrite_obligation_active;
+                self.state = if obligation_active {
+                    PrivateAutomarkerConfirmationAdapterState::
+                        ConfirmationFailedAwaitingTransportRetirement
+                } else {
+                    PrivateAutomarkerConfirmationAdapterState::Failed
+                };
                 return self.fail(PrivateAutomarkerConfirmationAdapterError::Coordinator(
                     reason,
                 ));
             }
         };
-        if matches!(
-            state.confirmation,
-            Some(AutomarkerConfirmationState::Confirmed)
-        ) && !state.tcp_rewrite_obligation_active
+        let failure_is_sticky = self.state
+            == PrivateAutomarkerConfirmationAdapterState::
+                ConfirmationFailedAwaitingTransportRetirement;
+        if !failure_is_sticky
+            && matches!(
+                state.confirmation,
+                Some(AutomarkerConfirmationState::Confirmed)
+            )
+            && !state.tcp_rewrite_obligation_active
         {
             self.state = PrivateAutomarkerConfirmationAdapterState::Complete;
-        } else if matches!(
-            state.confirmation,
-            Some(AutomarkerConfirmationState::Aborted(_))
-        ) || state.coordinator_error.is_some()
+        } else if !state.tcp_rewrite_obligation_active
+            && (failure_is_sticky
+                || matches!(
+                    state.confirmation,
+                    Some(AutomarkerConfirmationState::Aborted(_))
+                )
+                || state.coordinator_error.is_some())
         {
             self.state = PrivateAutomarkerConfirmationAdapterState::Failed;
+        } else if failure_is_sticky
+            || matches!(
+                state.confirmation,
+                Some(AutomarkerConfirmationState::Aborted(_))
+            )
+            || state.coordinator_error.is_some()
+        {
+            self.state = PrivateAutomarkerConfirmationAdapterState::
+                ConfirmationFailedAwaitingTransportRetirement;
         }
         Ok(state)
     }
@@ -434,13 +553,36 @@ impl PrivateAutomarkerConfirmationAdapter {
         }
     }
 
+    fn require_lifecycle_open(&self) -> Result<(), PrivateAutomarkerConfirmationAdapterError> {
+        if matches!(
+            self.state,
+            PrivateAutomarkerConfirmationAdapterState::Active
+                | PrivateAutomarkerConfirmationAdapterState::
+                    ConfirmationFailedAwaitingTransportRetirement
+        ) {
+            Ok(())
+        } else {
+            Err(PrivateAutomarkerConfirmationAdapterError::EventAfterTerminal)
+        }
+    }
+
     fn fail<T>(
         &mut self,
         reason: PrivateAutomarkerConfirmationAdapterError,
     ) -> Result<T, PrivateAutomarkerConfirmationAdapterError> {
-        self.state = PrivateAutomarkerConfirmationAdapterState::Failed;
+        self.state = if self.coordinator.state().tcp_rewrite_obligation_active {
+            PrivateAutomarkerConfirmationAdapterState::ConfirmationFailedAwaitingTransportRetirement
+        } else {
+            PrivateAutomarkerConfirmationAdapterState::Failed
+        };
         Err(reason)
     }
+}
+
+fn same_position_bits(left: AutomarkerRequestXyz, right: AutomarkerRequestXyz) -> bool {
+    left.x.to_bits() == right.x.to_bits()
+        && left.y.to_bits() == right.y.to_bits()
+        && left.z.to_bits() == right.z.to_bits()
 }
 
 #[cfg(test)]
@@ -493,6 +635,10 @@ mod tests {
             server_port: 443,
             marker_number: 1,
             target_position: TARGET,
+            carrier_capture_sequence: CARRIER_CAPTURE_SEQUENCE,
+            carrier_rpc_call_id: CALL_ID,
+            mapped_tcp_sequence_start: FRAME_SEQUENCE,
+            mapped_tcp_length: FRAME_LENGTH,
             baseline_runtime_revision: 100,
             rewrite_runtime_revision: 101,
         }
@@ -548,9 +694,15 @@ mod tests {
     }
 
     fn adapter() -> PrivateAutomarkerConfirmationAdapter {
-        let binding = binding();
-        let builder_binding = binding.clone();
-        PrivateAutomarkerConfirmationAdapter::begin(binding, move |clock| {
+        adapter_claiming(binding()).unwrap()
+    }
+
+    fn adapter_claiming(
+        claimed_binding: PrivateAutomarkerConfirmationBinding,
+    ) -> Result<PrivateAutomarkerConfirmationAdapter, PrivateAutomarkerConfirmationAdapterError>
+    {
+        let builder_binding = binding();
+        PrivateAutomarkerConfirmationAdapter::begin(claimed_binding, move |clock| {
             let pack = pack();
             let connection = AutomarkerOwnedTcpConnection {
                 process_id: 42,
@@ -639,7 +791,6 @@ mod tests {
             );
             Ok(coordinator)
         })
-        .unwrap()
     }
 
     fn context(revision: u64) -> PrivateConfirmationContext {
@@ -796,6 +947,25 @@ mod tests {
     }
 
     #[test]
+    fn prepared_coordinator_must_match_claimed_marker_carrier_and_transport_binding() {
+        for case in 0..5 {
+            let mut claimed = binding();
+            match case {
+                0 => claimed.marker_number = 2,
+                1 => claimed.target_position.x = f32::from_bits(TARGET.x.to_bits() + 1),
+                2 => claimed.carrier_rpc_call_id += 1,
+                3 => claimed.mapped_tcp_sequence_start += 1,
+                4 => claimed.mapped_tcp_length += 1,
+                _ => unreachable!(),
+            }
+            assert!(matches!(
+                adapter_claiming(claimed),
+                Err(PrivateAutomarkerConfirmationAdapterError::CoordinatorBindingMismatch)
+            ));
+        }
+    }
+
+    #[test]
     fn every_malformed_return_field_aborts_fail_closed() {
         for case in 0..7 {
             let mut adapter = adapter();
@@ -818,6 +988,12 @@ mod tests {
                     .route_parser_snapshot(snapshot(102, vec![event]))
                     .is_err()
             );
+            assert_eq!(
+                adapter.state(),
+                PrivateAutomarkerConfirmationAdapterState::
+                    ConfirmationFailedAwaitingTransportRetirement
+            );
+            assert!(adapter.observe_connection_terminated(9).is_ok());
             assert_eq!(
                 adapter.state(),
                 PrivateAutomarkerConfirmationAdapterState::Failed
@@ -854,6 +1030,12 @@ mod tests {
                     .route_parser_snapshot(snapshot(103, vec![event]))
                     .is_err()
             );
+            assert_eq!(
+                adapter.state(),
+                PrivateAutomarkerConfirmationAdapterState::
+                    ConfirmationFailedAwaitingTransportRetirement
+            );
+            assert!(adapter.observe_connection_terminated(9).is_ok());
             assert_eq!(
                 adapter.state(),
                 PrivateAutomarkerConfirmationAdapterState::Failed
@@ -923,6 +1105,98 @@ mod tests {
             Err(PrivateAutomarkerConfirmationAdapterError::Router(
                 ConfirmationRouterError::ConflictingProvenance
             ))
+        );
+    }
+
+    #[test]
+    fn carrier_frontier_rejects_delayed_pre_rewrite_evidence_and_still_retires_transport() {
+        for mut event in [return_event(CARRIER_CAPTURE_SEQUENCE), marker_event(3)] {
+            let mut adapter = adapter();
+            match &mut event {
+                PrivateParserConfirmationEvent::CorrelatedReturn(event) => {
+                    event.provenance.capture_sequence = CARRIER_CAPTURE_SEQUENCE;
+                }
+                PrivateParserConfirmationEvent::MarkerAdd(event) => {
+                    event.provenance.capture_sequence = CARRIER_CAPTURE_SEQUENCE - 1;
+                }
+            }
+            assert_eq!(
+                adapter.route_parser_snapshot(snapshot(103, vec![event])),
+                Err(PrivateAutomarkerConfirmationAdapterError::Router(
+                    ConfirmationRouterError::EvidenceAtOrBeforeCarrier
+                ))
+            );
+            assert_eq!(
+                adapter.state(),
+                PrivateAutomarkerConfirmationAdapterState::
+                    ConfirmationFailedAwaitingTransportRetirement
+            );
+            assert!(adapter.observe_connection_terminated(9).is_ok());
+            assert_eq!(
+                adapter.state(),
+                PrivateAutomarkerConfirmationAdapterState::Failed
+            );
+        }
+    }
+
+    #[test]
+    fn exact_ack_with_stale_mechanics_context_is_forwarded_for_transport_retirement() {
+        let mut adapter = adapter();
+        let mut malformed = return_event(10);
+        let PrivateParserConfirmationEvent::CorrelatedReturn(event) = &mut malformed else {
+            unreachable!();
+        };
+        event.decoded_as_success = false;
+        assert!(
+            adapter
+                .route_parser_snapshot(snapshot(102, vec![malformed]))
+                .is_err()
+        );
+        let result = adapter.observe_tcp(ack(100));
+        assert!(result.is_err());
+        assert!(!adapter.coordinator_state().tcp_rewrite_obligation_active);
+        assert_eq!(
+            adapter.state(),
+            PrivateAutomarkerConfirmationAdapterState::Failed
+        );
+    }
+
+    #[test]
+    fn exact_rst_retires_transport_after_parser_confirmation_failure() {
+        let mut adapter = adapter();
+        let mut wrong_context = snapshot(102, vec![return_event(10)]);
+        wrong_context.context.scene_family = "other".into();
+        assert!(adapter.route_parser_snapshot(wrong_context).is_err());
+        let mut rst = ack(0);
+        rst.ack_flag = false;
+        rst.cumulative_ack = 0;
+        rst.rst = true;
+        assert!(adapter.observe_tcp(rst).is_err());
+        assert!(!adapter.coordinator_state().tcp_rewrite_obligation_active);
+        assert_eq!(
+            adapter.state(),
+            PrivateAutomarkerConfirmationAdapterState::Failed
+        );
+    }
+
+    #[test]
+    fn timeout_blocks_later_parser_confirmation_but_connection_close_retires_transport() {
+        let mut adapter = adapter();
+        std::thread::sleep(std::time::Duration::from_millis(2_010));
+        assert!(adapter.observe_timeout().is_err());
+        assert_eq!(
+            adapter.state(),
+            PrivateAutomarkerConfirmationAdapterState::
+                ConfirmationFailedAwaitingTransportRetirement
+        );
+        assert_eq!(
+            adapter.route_parser_snapshot(snapshot(102, vec![return_event(10)])),
+            Err(PrivateAutomarkerConfirmationAdapterError::EventAfterTerminal)
+        );
+        assert!(adapter.observe_connection_terminated(9).is_ok());
+        assert_eq!(
+            adapter.state(),
+            PrivateAutomarkerConfirmationAdapterState::Failed
         );
     }
 }

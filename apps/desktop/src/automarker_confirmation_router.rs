@@ -224,6 +224,7 @@ pub(crate) struct OwnedConfirmationEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConfirmationRouterError {
     SessionChanged,
+    EvidenceAtOrBeforeCarrier,
     ClockBeforeSession,
     ClockExhausted,
     LateUnseenEvidence,
@@ -255,6 +256,7 @@ pub(crate) struct AutomarkerConfirmationRouter {
     origin: Instant,
     last_ordinal: u64,
     last_micros: u64,
+    minimum_capture_sequence_exclusive: u64,
     capture_frontier: Option<CaptureOrderKey>,
     seen_events: BTreeMap<PrivateConfirmationProvenance, PrivateParserConfirmationEvent>,
 }
@@ -264,7 +266,32 @@ impl AutomarkerConfirmationRouter {
         Self::begin_at(session_key, target_marker_number, Instant::now())
     }
 
+    pub(crate) fn begin_after_carrier(
+        session_key: String,
+        target_marker_number: u8,
+        carrier_capture_sequence: u64,
+    ) -> Option<Self> {
+        if carrier_capture_sequence == 0 {
+            return None;
+        }
+        Self::begin_at_after_carrier(
+            session_key,
+            target_marker_number,
+            carrier_capture_sequence,
+            Instant::now(),
+        )
+    }
+
     fn begin_at(session_key: String, target_marker_number: u8, origin: Instant) -> Option<Self> {
+        Self::begin_at_after_carrier(session_key, target_marker_number, 0, origin)
+    }
+
+    fn begin_at_after_carrier(
+        session_key: String,
+        target_marker_number: u8,
+        minimum_capture_sequence_exclusive: u64,
+        origin: Instant,
+    ) -> Option<Self> {
         if session_key.trim().is_empty() || !(1..=6).contains(&target_marker_number) {
             return None;
         }
@@ -273,6 +300,7 @@ impl AutomarkerConfirmationRouter {
             origin,
             last_ordinal: 0,
             last_micros: 0,
+            minimum_capture_sequence_exclusive,
             capture_frontier: None,
             seen_events: BTreeMap::new(),
         })
@@ -315,6 +343,9 @@ impl AutomarkerConfirmationRouter {
         for event in snapshot.events {
             if !self.is_related_target_route(&event) {
                 continue;
+            }
+            if event.provenance().capture_sequence <= self.minimum_capture_sequence_exclusive {
+                return Err(ConfirmationRouterError::EvidenceAtOrBeforeCarrier);
             }
             let provenance = event.provenance().clone();
             let event_for_history = event.clone();

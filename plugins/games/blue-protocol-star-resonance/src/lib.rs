@@ -91,7 +91,8 @@ pub use actor_presentation::{
     resolve_actor_combat_presentation, resolve_actor_profile_identity,
 };
 pub use automarker_bridge_coordinator::{
-    AutomarkerBridgeChecksumInput, AutomarkerBridgeCommitDisposition, AutomarkerBridgeCoordinator,
+    AutomarkerBridgeChecksumInput, AutomarkerBridgeCommitDisposition,
+    AutomarkerBridgeConfirmationBinding, AutomarkerBridgeCoordinator,
     AutomarkerBridgeCoordinatorError, AutomarkerBridgeObservation, AutomarkerBridgeOriginalPacket,
     AutomarkerBridgePrepareDisposition, AutomarkerBridgeState,
 };

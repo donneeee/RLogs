@@ -785,6 +785,22 @@ pub enum AutomarkerBridgeCommitDisposition {
     AbortWithoutReinject(AutomarkerBridgeCoordinatorError),
 }
 
+/// Immutable, byte-free identity of the exact committed rewrite represented
+/// by a coordinator. Consumers may use this only to bind later confirmation
+/// evidence; it grants no send or mutation capability.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AutomarkerBridgeConfirmationBinding {
+    pub marker_number: u8,
+    pub target_position: crate::AutomarkerRequestXyz,
+    pub baseline_context: AutomarkerConfirmationContext,
+    pub baseline_observation_ordinal: u64,
+    pub rewrite_context: AutomarkerConfirmationContext,
+    pub rewrite_observation_ordinal: u64,
+    pub original_rpc_call_id: u32,
+    pub mapped_tcp_sequence_start: u32,
+    pub mapped_tcp_length: u32,
+}
+
 #[derive(Debug, Clone)]
 struct PendingPacket {
     preparation_id: u64,
@@ -835,6 +851,7 @@ pub struct AutomarkerBridgeCoordinator {
     frame_sequence_start: Option<u32>,
     pending_packet: Option<PendingPacket>,
     confirmation: Option<SingleMarkerRewriteConfirmation>,
+    confirmation_binding: Option<AutomarkerBridgeConfirmationBinding>,
     confirmation_terminal_error: Option<AutomarkerConfirmationError>,
     coordinator_terminal_error: Option<AutomarkerBridgeCoordinatorError>,
     tcp_rewrite_obligation_active: bool,
@@ -886,6 +903,7 @@ impl AutomarkerBridgeCoordinator {
             frame_sequence_start: None,
             pending_packet: None,
             confirmation: None,
+            confirmation_binding: None,
             confirmation_terminal_error: None,
             coordinator_terminal_error: None,
             tcp_rewrite_obligation_active: false,
@@ -906,6 +924,10 @@ impl AutomarkerBridgeCoordinator {
             coordinator_error: self.coordinator_terminal_error,
             tcp_rewrite_obligation_active: self.tcp_rewrite_obligation_active,
         }
+    }
+
+    pub fn confirmation_binding(&self) -> Option<&AutomarkerBridgeConfirmationBinding> {
+        self.confirmation_binding.as_ref()
     }
 
     pub fn observe_fresh_carrier(
@@ -1186,6 +1208,25 @@ impl AutomarkerBridgeCoordinator {
                         observed_micros: pending.rewrite_observed_micros,
                         observation_ordinal: pending.rewrite_observation_ordinal,
                     };
+                    let confirmation_binding = AutomarkerBridgeConfirmationBinding {
+                        marker_number: self.config.marker_number,
+                        target_position: self.config.target_position,
+                        baseline_context: self.baseline.context.clone(),
+                        baseline_observation_ordinal: self.baseline.observation_ordinal,
+                        rewrite_context: AutomarkerConfirmationContext {
+                            game_build: self.baseline.context.game_build.clone(),
+                            scene_family: self.baseline.context.scene_family.clone(),
+                            local_actor_id: self.baseline.context.local_actor_id,
+                            connection_epoch: self.baseline.context.connection_epoch,
+                            client_to_server_tuple: self.baseline.context.client_to_server_tuple,
+                            runtime_revision: rewrite.runtime_revision,
+                            observed_micros: rewrite.observed_micros,
+                        },
+                        rewrite_observation_ordinal: rewrite.observation_ordinal,
+                        original_rpc_call_id: rewrite.original_rpc_call_id,
+                        mapped_tcp_sequence_start: rewrite.mapped_tcp_sequence_start,
+                        mapped_tcp_length: rewrite.mapped_tcp_length,
+                    };
                     let confirmation_config = AutomarkerConfirmationConfig {
                         expected_game_build: self.baseline.context.game_build.clone(),
                         expected_scene_family: self.config.expected_scene_family.clone(),
@@ -1197,7 +1238,10 @@ impl AutomarkerBridgeCoordinator {
                         self.baseline.clone(),
                         rewrite,
                     ) {
-                        Ok(confirmation) => self.confirmation = Some(confirmation),
+                        Ok(confirmation) => {
+                            self.confirmation_binding = Some(confirmation_binding);
+                            self.confirmation = Some(confirmation);
+                        }
                         Err(reason) => {
                             self.confirmation_terminal_error = Some(reason);
                             return AutomarkerBridgeCommitDisposition::CommittedButConfirmationAborted(
