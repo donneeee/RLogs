@@ -255,8 +255,19 @@
     "bounded_results": {
       "success": "proven-read-only-main-thread-scheduler-state",
       "unstable": "unstable-read-only-main-thread-scheduler-state",
-      "invalid_or_unavailable": "unavailable-or-invalid-read-only-main-thread-scheduler-state"
+      "inconsistent_failure_stage": "inconsistent-read-only-main-thread-scheduler-failure-stage"
     },
+    "diagnostic_failure_reasons": [
+      "main-thread-scheduler-player-loop-helper-invalid",
+      "main-thread-scheduler-static-fields-unavailable",
+      "main-thread-scheduler-main-thread-id-invalid",
+      "main-thread-scheduler-context-invalid",
+      "main-thread-scheduler-yielders-invalid",
+      "main-thread-scheduler-update-queue-invalid",
+      "main-thread-scheduler-update-timing-mismatch",
+      "main-thread-scheduler-queue-storage-invalid",
+      "main-thread-scheduler-queue-bounds-invalid"
+    ],
     "can_prove_without_scheduling": [
       "exact process image and reviewed method bytes",
       "initialized PlayerLoopHelper TypeInfo and static fields",

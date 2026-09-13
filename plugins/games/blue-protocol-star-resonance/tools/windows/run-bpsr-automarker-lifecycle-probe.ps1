@@ -712,7 +712,14 @@ function Assert-NativeDispatchPreflight($Value) {
         'unavailable-or-invalid-read-only-marker-skill-root-chain',
         'unavailable-or-invalid-marker-skill-data-manager',
         'unavailable-or-invalid-marker-skill-continuous-dictionary',
-        'unavailable-or-invalid-marker-skill-control-dictionary',
+        'marker-skill-control-dictionary-pointer-invalid',
+        'marker-skill-control-dictionary-class-invalid',
+        'marker-skill-control-dictionary-header-unavailable',
+        'marker-skill-control-dictionary-shape-invalid',
+        'marker-skill-control-dictionary-entry-storage-unavailable',
+        'marker-skill-control-dictionary-entry-capacity-invalid',
+        'marker-skill-control-dictionary-entry-array-class-invalid',
+        'marker-skill-control-dictionary-entry-stride-invalid',
         'marker-1-control-data-missing-or-duplicate',
         'marker-1-control-data-class-invalid',
         'marker-1-control-data-skill-identity-invalid',
@@ -727,7 +734,16 @@ function Assert-NativeDispatchPreflight($Value) {
     $schedulerGate = $Value.main_thread_scheduler_gate
     $schedulerFalseReasons = @(
         'unstable-read-only-main-thread-scheduler-state',
-        'unavailable-or-invalid-read-only-main-thread-scheduler-state'
+        'main-thread-scheduler-player-loop-helper-invalid',
+        'main-thread-scheduler-static-fields-unavailable',
+        'main-thread-scheduler-main-thread-id-invalid',
+        'main-thread-scheduler-context-invalid',
+        'main-thread-scheduler-yielders-invalid',
+        'main-thread-scheduler-update-queue-invalid',
+        'main-thread-scheduler-update-timing-mismatch',
+        'main-thread-scheduler-queue-storage-invalid',
+        'main-thread-scheduler-queue-bounds-invalid',
+        'inconsistent-read-only-main-thread-scheduler-failure-stage'
     )
     if (-not (Test-ExactPropertySet $schedulerGate @('proven', 'reason')) -or
         $schedulerGate.proven -isnot [bool] -or
@@ -1259,7 +1275,7 @@ function Invoke-LauncherSelfTest {
         try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
         if (-not $rejected) { throw 'Self-test failed: an extra scheduler gate field was accepted.' }
         [void]$native.canary.native_dispatch_preflight.main_thread_scheduler_gate.Remove('unexpected')
-        $native.canary.native_dispatch_preflight.main_thread_scheduler_gate = [ordered]@{ proven = $false; reason = 'unavailable-or-invalid-read-only-main-thread-scheduler-state' }
+        $native.canary.native_dispatch_preflight.main_thread_scheduler_gate = [ordered]@{ proven = $false; reason = 'main-thread-scheduler-yielders-invalid' }
         $native.canary.native_dispatch_preflight.all_resolvable_gates_passed = $false
         [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
         [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1)))
@@ -1295,7 +1311,14 @@ function Invoke-LauncherSelfTest {
             'unavailable-or-invalid-read-only-marker-skill-root-chain',
             'unavailable-or-invalid-marker-skill-data-manager',
             'unavailable-or-invalid-marker-skill-continuous-dictionary',
-            'unavailable-or-invalid-marker-skill-control-dictionary',
+            'marker-skill-control-dictionary-pointer-invalid',
+            'marker-skill-control-dictionary-class-invalid',
+            'marker-skill-control-dictionary-header-unavailable',
+            'marker-skill-control-dictionary-shape-invalid',
+            'marker-skill-control-dictionary-entry-storage-unavailable',
+            'marker-skill-control-dictionary-entry-capacity-invalid',
+            'marker-skill-control-dictionary-entry-array-class-invalid',
+            'marker-skill-control-dictionary-entry-stride-invalid',
             'marker-1-control-data-missing-or-duplicate',
             'marker-1-control-data-class-invalid',
             'marker-1-control-data-skill-identity-invalid',

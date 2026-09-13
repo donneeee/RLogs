@@ -194,6 +194,14 @@ coordinates or capture identity, run:
 .\run-bpsr-automarker-lifecycle-probe.ps1 -ListPresets
 ```
 
+The native-dispatch preflight reports bounded failure stages for the reviewed
+marker-control dictionary and main-thread scheduler chains. These labels
+distinguish pointer, class, header, shape, array, timing, storage, and bounds
+failures without publishing pointers, collection contents, thread identifiers,
+or queue values. A diagnostic label is not placement authority: the preflight
+still performs no input, process write, game-method invocation, or packet work,
+and the separate main-thread bridge gate remains unresolved.
+
 The sanitized table contains only preset name, ID, active family, and sorted
 marker numbers. It contains no XYZ, session, deployment, or protocol digest.
 

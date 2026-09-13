@@ -438,6 +438,35 @@ mod windows {
     }
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum MainThreadSchedulerError {
+        PlayerLoopHelper,
+        StaticFields,
+        MainThreadIdentity,
+        SynchronizationContext,
+        Yielders,
+        UpdateQueue,
+        UpdateTiming,
+        QueueStorage,
+        QueueBounds,
+    }
+
+    impl MainThreadSchedulerError {
+        fn bounded_reason(self) -> &'static str {
+            match self {
+                Self::PlayerLoopHelper => "main-thread-scheduler-player-loop-helper-invalid",
+                Self::StaticFields => "main-thread-scheduler-static-fields-unavailable",
+                Self::MainThreadIdentity => "main-thread-scheduler-main-thread-id-invalid",
+                Self::SynchronizationContext => "main-thread-scheduler-context-invalid",
+                Self::Yielders => "main-thread-scheduler-yielders-invalid",
+                Self::UpdateQueue => "main-thread-scheduler-update-queue-invalid",
+                Self::UpdateTiming => "main-thread-scheduler-update-timing-mismatch",
+                Self::QueueStorage => "main-thread-scheduler-queue-storage-invalid",
+                Self::QueueBounds => "main-thread-scheduler-queue-bounds-invalid",
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     struct PartyLeaderSample {
         player_ent: usize,
         attr_collection: usize,
@@ -478,7 +507,14 @@ mod windows {
         RootChain,
         DataManager,
         ContinuousDictionary,
-        ControlDictionary,
+        ControlDictionaryPointer,
+        ControlDictionaryClass,
+        ControlDictionaryHeader,
+        ControlDictionaryShape,
+        ControlDictionaryEntryStorage,
+        ControlDictionaryEntryCapacity,
+        ControlDictionaryEntryArrayClass,
+        ControlDictionaryEntryStride,
         ControlDataLookup,
         ControlDataClass,
         ControlDataSkillIdentity,
@@ -492,7 +528,24 @@ mod windows {
                 Self::ContinuousDictionary => {
                     "unavailable-or-invalid-marker-skill-continuous-dictionary"
                 }
-                Self::ControlDictionary => "unavailable-or-invalid-marker-skill-control-dictionary",
+                Self::ControlDictionaryPointer => "marker-skill-control-dictionary-pointer-invalid",
+                Self::ControlDictionaryClass => "marker-skill-control-dictionary-class-invalid",
+                Self::ControlDictionaryHeader => {
+                    "marker-skill-control-dictionary-header-unavailable"
+                }
+                Self::ControlDictionaryShape => "marker-skill-control-dictionary-shape-invalid",
+                Self::ControlDictionaryEntryStorage => {
+                    "marker-skill-control-dictionary-entry-storage-unavailable"
+                }
+                Self::ControlDictionaryEntryCapacity => {
+                    "marker-skill-control-dictionary-entry-capacity-invalid"
+                }
+                Self::ControlDictionaryEntryArrayClass => {
+                    "marker-skill-control-dictionary-entry-array-class-invalid"
+                }
+                Self::ControlDictionaryEntryStride => {
+                    "marker-skill-control-dictionary-entry-stride-invalid"
+                }
                 Self::ControlDataLookup => "marker-1-control-data-missing-or-duplicate",
                 Self::ControlDataClass => "marker-1-control-data-class-invalid",
                 Self::ControlDataSkillIdentity => "marker-1-control-data-skill-identity-invalid",
@@ -509,6 +562,28 @@ mod windows {
         EntryCapacity,
         EntryArrayClass,
         EntryStride,
+    }
+
+    fn marker_control_dictionary_error(
+        error: ReviewedDictionaryError,
+    ) -> MarkerSkillResolutionError {
+        match error {
+            ReviewedDictionaryError::Class => MarkerSkillResolutionError::ControlDictionaryClass,
+            ReviewedDictionaryError::Header => MarkerSkillResolutionError::ControlDictionaryHeader,
+            ReviewedDictionaryError::Shape => MarkerSkillResolutionError::ControlDictionaryShape,
+            ReviewedDictionaryError::EntryStorage => {
+                MarkerSkillResolutionError::ControlDictionaryEntryStorage
+            }
+            ReviewedDictionaryError::EntryCapacity => {
+                MarkerSkillResolutionError::ControlDictionaryEntryCapacity
+            }
+            ReviewedDictionaryError::EntryArrayClass => {
+                MarkerSkillResolutionError::ControlDictionaryEntryArrayClass
+            }
+            ReviewedDictionaryError::EntryStride => {
+                MarkerSkillResolutionError::ControlDictionaryEntryStride
+            }
+        }
     }
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -3133,137 +3208,197 @@ mod windows {
     fn read_main_thread_scheduler_sample(
         memory: &impl Memory,
         module_base: usize,
-    ) -> Result<MainThreadSchedulerSample, AcquireError> {
-        let player_loop_helper_class = pointer_at(
-            memory,
-            checked_add(module_base, PLAYER_LOOP_HELPER_TYPE_INFO_RVA)?,
-            true,
-        )?;
+    ) -> Result<MainThreadSchedulerSample, MainThreadSchedulerError> {
+        let player_loop_helper_class = (|| {
+            pointer_at(
+                memory,
+                checked_add(module_base, PLAYER_LOOP_HELPER_TYPE_INFO_RVA)?,
+                true,
+            )
+        })()
+        .map_err(|_: AcquireError| MainThreadSchedulerError::PlayerLoopHelper)?;
         validate_class(
             memory,
             player_loop_helper_class,
             "PlayerLoopHelper",
             "Cysharp.Threading.Tasks",
-        )?;
-        let static_fields = pointer_at(
-            memory,
-            checked_add(player_loop_helper_class, IL2CPP_CLASS_STATIC_FIELDS)?,
-            true,
-        )?;
-        let main_thread_id = i32_at(
-            memory,
-            checked_add(static_fields, PLAYER_LOOP_HELPER_MAIN_THREAD_ID)?,
-        )?;
+        )
+        .map_err(|_| MainThreadSchedulerError::PlayerLoopHelper)?;
+        let static_fields = (|| {
+            pointer_at(
+                memory,
+                checked_add(player_loop_helper_class, IL2CPP_CLASS_STATIC_FIELDS)?,
+                true,
+            )
+        })()
+        .map_err(|_: AcquireError| MainThreadSchedulerError::StaticFields)?;
+        let main_thread_id = (|| {
+            i32_at(
+                memory,
+                checked_add(static_fields, PLAYER_LOOP_HELPER_MAIN_THREAD_ID)?,
+            )
+        })()
+        .map_err(|_: AcquireError| MainThreadSchedulerError::MainThreadIdentity)?;
         if main_thread_id <= 0 {
-            return Err(AcquireError::Identity);
+            return Err(MainThreadSchedulerError::MainThreadIdentity);
         }
-        let synchronization_context = pointer_at(
-            memory,
-            checked_add(static_fields, PLAYER_LOOP_HELPER_SYNCHRONIZATION_CONTEXT)?,
-            true,
-        )?;
+        let synchronization_context = (|| {
+            pointer_at(
+                memory,
+                checked_add(static_fields, PLAYER_LOOP_HELPER_SYNCHRONIZATION_CONTEXT)?,
+                true,
+            )
+        })()
+        .map_err(|_: AcquireError| MainThreadSchedulerError::SynchronizationContext)?;
         validate_exact_type_info_object(
             memory,
             module_base,
             synchronization_context,
             UNITY_SYNCHRONIZATION_CONTEXT_TYPE_INFO_RVA,
-        )?;
-        let yielders = pointer_at(
-            memory,
-            checked_add(static_fields, PLAYER_LOOP_HELPER_YIELDERS)?,
-            true,
-        )?;
+        )
+        .map_err(|_| MainThreadSchedulerError::SynchronizationContext)?;
+        let yielders = (|| {
+            pointer_at(
+                memory,
+                checked_add(static_fields, PLAYER_LOOP_HELPER_YIELDERS)?,
+                true,
+            )
+        })()
+        .map_err(|_: AcquireError| MainThreadSchedulerError::Yielders)?;
         validate_exact_type_info_object(
             memory,
             module_base,
             yielders,
             CONTINUATION_QUEUE_ARRAY_TYPE_INFO_RVA,
-        )?;
-        let yielders_class = address_at(memory, yielders)?;
-        if byte_at(memory, checked_add(yielders_class, IL2CPP_CLASS_RANK)?)? != 1
+        )
+        .map_err(|_| MainThreadSchedulerError::Yielders)?;
+        let yielders_class =
+            address_at(memory, yielders).map_err(|_| MainThreadSchedulerError::Yielders)?;
+        if byte_at(
+            memory,
+            checked_add(yielders_class, IL2CPP_CLASS_RANK)
+                .map_err(|_| MainThreadSchedulerError::Yielders)?,
+        )
+        .map_err(|_| MainThreadSchedulerError::Yielders)?
+            != 1
             || nonnegative_i32_at(
                 memory,
-                checked_add(yielders_class, IL2CPP_CLASS_ELEMENT_SIZE)?,
-            )? != size_of::<usize>()
+                checked_add(yielders_class, IL2CPP_CLASS_ELEMENT_SIZE)
+                    .map_err(|_| MainThreadSchedulerError::Yielders)?,
+            )
+            .map_err(|_| MainThreadSchedulerError::Yielders)?
+                != size_of::<usize>()
         {
-            return Err(AcquireError::Identity);
+            return Err(MainThreadSchedulerError::Yielders);
         }
-        let yielders_length = usize_at(memory, checked_add(yielders, MANAGED_ARRAY_LENGTH)?)?;
+        let yielders_length = usize_at(
+            memory,
+            checked_add(yielders, MANAGED_ARRAY_LENGTH)
+                .map_err(|_| MainThreadSchedulerError::Yielders)?,
+        )
+        .map_err(|_| MainThreadSchedulerError::Yielders)?;
         if yielders_length <= UPDATE_PLAYER_LOOP_TIMING
             || yielders_length > MAX_REVIEWED_PLAYER_LOOP_TIMINGS
         {
-            return Err(AcquireError::Identity);
+            return Err(MainThreadSchedulerError::Yielders);
         }
         let update_queue = pointer_at(
             memory,
             checked_add(
                 yielders,
                 MANAGED_ARRAY_VECTOR + UPDATE_PLAYER_LOOP_TIMING * size_of::<usize>(),
-            )?,
+            )
+            .map_err(|_| MainThreadSchedulerError::UpdateQueue)?,
             true,
-        )?;
+        )
+        .map_err(|_| MainThreadSchedulerError::UpdateQueue)?;
         validate_exact_type_info_object(
             memory,
             module_base,
             update_queue,
             CONTINUATION_QUEUE_TYPE_INFO_RVA,
-        )?;
+        )
+        .map_err(|_| MainThreadSchedulerError::UpdateQueue)?;
         validate_object(
             memory,
             update_queue,
             "ContinuationQueue",
             "Cysharp.Threading.Tasks.Internal",
-        )?;
+        )
+        .map_err(|_| MainThreadSchedulerError::UpdateQueue)?;
         let update_timing = i32_at(
             memory,
-            checked_add(update_queue, CONTINUATION_QUEUE_TIMING)?,
-        )?;
+            checked_add(update_queue, CONTINUATION_QUEUE_TIMING)
+                .map_err(|_| MainThreadSchedulerError::UpdateTiming)?,
+        )
+        .map_err(|_| MainThreadSchedulerError::UpdateTiming)?;
         if update_timing != UPDATE_PLAYER_LOOP_TIMING as i32 {
-            return Err(AcquireError::Identity);
+            return Err(MainThreadSchedulerError::UpdateTiming);
         }
         let dequeuing = bool_at(
             memory,
-            checked_add(update_queue, CONTINUATION_QUEUE_DEQUEUING)?,
-        )?;
+            checked_add(update_queue, CONTINUATION_QUEUE_DEQUEUING)
+                .map_err(|_| MainThreadSchedulerError::QueueStorage)?,
+        )
+        .map_err(|_| MainThreadSchedulerError::QueueStorage)?;
         let action_list_count = nonnegative_i32_at(
             memory,
-            checked_add(update_queue, CONTINUATION_QUEUE_ACTION_LIST_COUNT)?,
-        )?;
+            checked_add(update_queue, CONTINUATION_QUEUE_ACTION_LIST_COUNT)
+                .map_err(|_| MainThreadSchedulerError::QueueStorage)?,
+        )
+        .map_err(|_| MainThreadSchedulerError::QueueStorage)?;
         let action_list = pointer_at(
             memory,
-            checked_add(update_queue, CONTINUATION_QUEUE_ACTION_LIST)?,
+            checked_add(update_queue, CONTINUATION_QUEUE_ACTION_LIST)
+                .map_err(|_| MainThreadSchedulerError::QueueStorage)?,
             true,
-        )?;
+        )
+        .map_err(|_| MainThreadSchedulerError::QueueStorage)?;
         let waiting_list_count = nonnegative_i32_at(
             memory,
-            checked_add(update_queue, CONTINUATION_QUEUE_WAITING_LIST_COUNT)?,
-        )?;
+            checked_add(update_queue, CONTINUATION_QUEUE_WAITING_LIST_COUNT)
+                .map_err(|_| MainThreadSchedulerError::QueueStorage)?,
+        )
+        .map_err(|_| MainThreadSchedulerError::QueueStorage)?;
         let waiting_list = pointer_at(
             memory,
-            checked_add(update_queue, CONTINUATION_QUEUE_WAITING_LIST)?,
+            checked_add(update_queue, CONTINUATION_QUEUE_WAITING_LIST)
+                .map_err(|_| MainThreadSchedulerError::QueueStorage)?,
             true,
-        )?;
+        )
+        .map_err(|_| MainThreadSchedulerError::QueueStorage)?;
         validate_exact_type_info_object(
             memory,
             module_base,
             action_list,
             SYSTEM_ACTION_ARRAY_TYPE_INFO_RVA,
-        )?;
+        )
+        .map_err(|_| MainThreadSchedulerError::QueueStorage)?;
         validate_exact_type_info_object(
             memory,
             module_base,
             waiting_list,
             SYSTEM_ACTION_ARRAY_TYPE_INFO_RVA,
-        )?;
-        let action_list_length = usize_at(memory, checked_add(action_list, MANAGED_ARRAY_LENGTH)?)?;
-        let waiting_list_length =
-            usize_at(memory, checked_add(waiting_list, MANAGED_ARRAY_LENGTH)?)?;
+        )
+        .map_err(|_| MainThreadSchedulerError::QueueStorage)?;
+        let action_list_length = usize_at(
+            memory,
+            checked_add(action_list, MANAGED_ARRAY_LENGTH)
+                .map_err(|_| MainThreadSchedulerError::QueueStorage)?,
+        )
+        .map_err(|_| MainThreadSchedulerError::QueueStorage)?;
+        let waiting_list_length = usize_at(
+            memory,
+            checked_add(waiting_list, MANAGED_ARRAY_LENGTH)
+                .map_err(|_| MainThreadSchedulerError::QueueStorage)?,
+        )
+        .map_err(|_| MainThreadSchedulerError::QueueStorage)?;
         if action_list_length > MAX_REVIEWED_SCHEDULER_QUEUE_CAPACITY
             || waiting_list_length > MAX_REVIEWED_SCHEDULER_QUEUE_CAPACITY
             || action_list_count > action_list_length
             || waiting_list_count > waiting_list_length
         {
-            return Err(AcquireError::Identity);
+            return Err(MainThreadSchedulerError::QueueBounds);
         }
         Ok(MainThreadSchedulerSample {
             player_loop_helper_class,
@@ -3285,8 +3420,8 @@ mod windows {
     }
 
     fn main_thread_scheduler_gate(
-        first: &Result<MainThreadSchedulerSample, AcquireError>,
-        second: &Result<MainThreadSchedulerSample, AcquireError>,
+        first: &Result<MainThreadSchedulerSample, MainThreadSchedulerError>,
+        second: &Result<MainThreadSchedulerSample, MainThreadSchedulerError>,
     ) -> BoundedGate {
         match (first, second) {
             (Ok(first), Ok(second)) if first == second => BoundedGate {
@@ -3297,9 +3432,13 @@ mod windows {
                 proven: false,
                 reason: "unstable-read-only-main-thread-scheduler-state",
             },
+            (Err(first), Err(second)) if first == second => BoundedGate {
+                proven: false,
+                reason: first.bounded_reason(),
+            },
             _ => BoundedGate {
                 proven: false,
-                reason: "unavailable-or-invalid-read-only-main-thread-scheduler-state",
+                reason: "inconsistent-read-only-main-thread-scheduler-failure-stage",
             },
         }
     }
@@ -3376,14 +3515,14 @@ mod windows {
             pointer_at(
                 memory,
                 checked_add(data_mgr, SKILL_DATA_MGR_CONTROL_DATAS)
-                    .map_err(|_| MarkerSkillResolutionError::ControlDictionary)?,
+                    .map_err(|_| MarkerSkillResolutionError::ControlDictionaryPointer)?,
                 true,
             )
-            .map_err(|_| MarkerSkillResolutionError::ControlDictionary)?,
+            .map_err(|_| MarkerSkillResolutionError::ControlDictionaryPointer)?,
             ZDICTIONARY_INT_SKILL_CONTROL_DATA_TYPE_INFO_RVA,
             ZDICTIONARY_INT_OBJECT_ENTRY_STRIDE,
         )
-        .map_err(|_| MarkerSkillResolutionError::ControlDictionary)?;
+        .map_err(marker_control_dictionary_error)?;
         let resolved_control_data = object_dictionary_value_by_int_key(
             memory,
             &control_dictionary,
@@ -5981,6 +6120,64 @@ mod windows {
         }
 
         #[test]
+        fn scheduler_diagnostics_identify_bounded_failure_stages_without_values() {
+            let cases = [
+                (
+                    MainThreadSchedulerError::PlayerLoopHelper,
+                    "main-thread-scheduler-player-loop-helper-invalid",
+                ),
+                (
+                    MainThreadSchedulerError::StaticFields,
+                    "main-thread-scheduler-static-fields-unavailable",
+                ),
+                (
+                    MainThreadSchedulerError::MainThreadIdentity,
+                    "main-thread-scheduler-main-thread-id-invalid",
+                ),
+                (
+                    MainThreadSchedulerError::SynchronizationContext,
+                    "main-thread-scheduler-context-invalid",
+                ),
+                (
+                    MainThreadSchedulerError::Yielders,
+                    "main-thread-scheduler-yielders-invalid",
+                ),
+                (
+                    MainThreadSchedulerError::UpdateQueue,
+                    "main-thread-scheduler-update-queue-invalid",
+                ),
+                (
+                    MainThreadSchedulerError::UpdateTiming,
+                    "main-thread-scheduler-update-timing-mismatch",
+                ),
+                (
+                    MainThreadSchedulerError::QueueStorage,
+                    "main-thread-scheduler-queue-storage-invalid",
+                ),
+                (
+                    MainThreadSchedulerError::QueueBounds,
+                    "main-thread-scheduler-queue-bounds-invalid",
+                ),
+            ];
+            for (error, reason) in cases {
+                let gate = main_thread_scheduler_gate(&Err(error), &Err(error));
+                assert!(!gate.proven);
+                assert_eq!(gate.reason, reason);
+                assert!(gate.reason.bytes().all(|byte| byte.is_ascii_lowercase()
+                    || byte.is_ascii_digit()
+                    || byte == b'-'));
+            }
+            assert_eq!(
+                main_thread_scheduler_gate(
+                    &Err(MainThreadSchedulerError::Yielders),
+                    &Err(MainThreadSchedulerError::UpdateQueue),
+                )
+                .reason,
+                "inconsistent-read-only-main-thread-scheduler-failure-stage"
+            );
+        }
+
+        #[test]
         fn reviewed_code_hashes_bounded_regions_larger_than_one_memory_read() {
             let module_base = 0x10_0000;
             let rva = 0x1000;
@@ -6073,7 +6270,7 @@ mod windows {
             let roots = acquire_roots(&control, 0x10_0000).unwrap();
             assert_eq!(
                 read_marker_skill_resolution_sample(&control, 0x10_0000, &roots),
-                Err(MarkerSkillResolutionError::ControlDictionary)
+                Err(MarkerSkillResolutionError::ControlDictionaryHeader)
             );
         }
 
@@ -6143,7 +6340,7 @@ mod windows {
             let roots = acquire_roots(&wrong_generic, 0x10_0000).unwrap();
             assert_eq!(
                 read_marker_skill_resolution_sample(&wrong_generic, 0x10_0000, &roots),
-                Err(MarkerSkillResolutionError::ControlDictionary)
+                Err(MarkerSkillResolutionError::ControlDictionaryClass)
             );
 
             let mut wrong_bucket_type = valid_memory();
@@ -6151,7 +6348,7 @@ mod windows {
             let roots = acquire_roots(&wrong_bucket_type, 0x10_0000).unwrap();
             assert_eq!(
                 read_marker_skill_resolution_sample(&wrong_bucket_type, 0x10_0000, &roots),
-                Err(MarkerSkillResolutionError::ControlDictionary)
+                Err(MarkerSkillResolutionError::ControlDictionaryShape)
             );
 
             let mut wrong_bucket_length = valid_memory();
@@ -6159,7 +6356,7 @@ mod windows {
             let roots = acquire_roots(&wrong_bucket_length, 0x10_0000).unwrap();
             assert_eq!(
                 read_marker_skill_resolution_sample(&wrong_bucket_length, 0x10_0000, &roots),
-                Err(MarkerSkillResolutionError::ControlDictionary)
+                Err(MarkerSkillResolutionError::ControlDictionaryShape)
             );
         }
 
@@ -6283,7 +6480,7 @@ mod windows {
             let roots = acquire_roots(&memory, 0x10_0000).unwrap();
             assert_eq!(
                 read_marker_skill_resolution_sample(&memory, 0x10_0000, &roots),
-                Err(MarkerSkillResolutionError::ControlDictionary)
+                Err(MarkerSkillResolutionError::ControlDictionaryShape)
             );
         }
 
@@ -6294,7 +6491,7 @@ mod windows {
             let roots = acquire_roots(&memory, 0x10_0000).unwrap();
             assert_eq!(
                 read_marker_skill_resolution_sample(&memory, 0x10_0000, &roots),
-                Err(MarkerSkillResolutionError::ControlDictionary)
+                Err(MarkerSkillResolutionError::ControlDictionaryEntryStride)
             );
         }
 
@@ -6305,7 +6502,7 @@ mod windows {
             let roots = acquire_roots(&memory, 0x10_0000).unwrap();
             assert_eq!(
                 read_marker_skill_resolution_sample(&memory, 0x10_0000, &roots),
-                Err(MarkerSkillResolutionError::ControlDictionary)
+                Err(MarkerSkillResolutionError::ControlDictionaryEntryArrayClass)
             );
         }
 
@@ -6318,8 +6515,36 @@ mod windows {
                     "unavailable-or-invalid-marker-skill-data-manager",
                 ),
                 (
-                    MarkerSkillResolutionError::ControlDictionary,
-                    "unavailable-or-invalid-marker-skill-control-dictionary",
+                    MarkerSkillResolutionError::ControlDictionaryPointer,
+                    "marker-skill-control-dictionary-pointer-invalid",
+                ),
+                (
+                    MarkerSkillResolutionError::ControlDictionaryClass,
+                    "marker-skill-control-dictionary-class-invalid",
+                ),
+                (
+                    MarkerSkillResolutionError::ControlDictionaryHeader,
+                    "marker-skill-control-dictionary-header-unavailable",
+                ),
+                (
+                    MarkerSkillResolutionError::ControlDictionaryShape,
+                    "marker-skill-control-dictionary-shape-invalid",
+                ),
+                (
+                    MarkerSkillResolutionError::ControlDictionaryEntryStorage,
+                    "marker-skill-control-dictionary-entry-storage-unavailable",
+                ),
+                (
+                    MarkerSkillResolutionError::ControlDictionaryEntryCapacity,
+                    "marker-skill-control-dictionary-entry-capacity-invalid",
+                ),
+                (
+                    MarkerSkillResolutionError::ControlDictionaryEntryArrayClass,
+                    "marker-skill-control-dictionary-entry-array-class-invalid",
+                ),
+                (
+                    MarkerSkillResolutionError::ControlDictionaryEntryStride,
+                    "marker-skill-control-dictionary-entry-stride-invalid",
                 ),
                 (
                     MarkerSkillResolutionError::ControlDataLookup,
@@ -6355,7 +6580,7 @@ mod windows {
             );
             let gate = marker_skill_resolution_gate(
                 &Err(MarkerSkillResolutionError::DataManager),
-                &Err(MarkerSkillResolutionError::ControlDictionary),
+                &Err(MarkerSkillResolutionError::ControlDictionaryClass),
             );
             assert_eq!(
                 gate.reason,
@@ -6378,7 +6603,7 @@ mod windows {
             let roots = acquire_roots(&control_dictionary, 0x10_0000).unwrap();
             assert_eq!(
                 read_marker_skill_resolution_sample(&control_dictionary, 0x10_0000, &roots,),
-                Err(MarkerSkillResolutionError::ControlDictionary)
+                Err(MarkerSkillResolutionError::ControlDictionaryShape)
             );
 
             let mut control_data = valid_memory();

@@ -173,7 +173,14 @@ assert.deepEqual(markerSkillProof.sanitized_receipt.failure_reasons, [
   "unavailable-or-invalid-read-only-marker-skill-root-chain",
   "unavailable-or-invalid-marker-skill-data-manager",
   "unavailable-or-invalid-marker-skill-continuous-dictionary",
-  "unavailable-or-invalid-marker-skill-control-dictionary",
+  "marker-skill-control-dictionary-pointer-invalid",
+  "marker-skill-control-dictionary-class-invalid",
+  "marker-skill-control-dictionary-header-unavailable",
+  "marker-skill-control-dictionary-shape-invalid",
+  "marker-skill-control-dictionary-entry-storage-unavailable",
+  "marker-skill-control-dictionary-entry-capacity-invalid",
+  "marker-skill-control-dictionary-entry-array-class-invalid",
+  "marker-skill-control-dictionary-entry-stride-invalid",
   "marker-1-control-data-missing-or-duplicate",
   "marker-1-control-data-class-invalid",
   "marker-1-control-data-skill-identity-invalid",
@@ -323,8 +330,19 @@ assert.equal(schedulerProof.read_only_scheduler_preflight.maximum_action_array_l
 assert.deepEqual(schedulerProof.read_only_scheduler_preflight.bounded_results, {
   success: "proven-read-only-main-thread-scheduler-state",
   unstable: "unstable-read-only-main-thread-scheduler-state",
-  invalid_or_unavailable: "unavailable-or-invalid-read-only-main-thread-scheduler-state",
+  inconsistent_failure_stage: "inconsistent-read-only-main-thread-scheduler-failure-stage",
 });
+assert.deepEqual(schedulerProof.read_only_scheduler_preflight.diagnostic_failure_reasons, [
+  "main-thread-scheduler-player-loop-helper-invalid",
+  "main-thread-scheduler-static-fields-unavailable",
+  "main-thread-scheduler-main-thread-id-invalid",
+  "main-thread-scheduler-context-invalid",
+  "main-thread-scheduler-yielders-invalid",
+  "main-thread-scheduler-update-queue-invalid",
+  "main-thread-scheduler-update-timing-mismatch",
+  "main-thread-scheduler-queue-storage-invalid",
+  "main-thread-scheduler-queue-bounds-invalid",
+]);
 assert.equal(schedulerProof.read_only_scheduler_preflight.activation_permitted_by_preflight, false);
 assert.equal(schedulerProof.read_only_scheduler_preflight.main_thread_bridge_gate_remains_false, true);
 assert.ok(schedulerProof.unresolved_blockers.length >= 9, "scheduler proof must retain every exact unresolved blocker");
