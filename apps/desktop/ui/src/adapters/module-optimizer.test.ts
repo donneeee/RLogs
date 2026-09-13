@@ -181,6 +181,7 @@ describe("local module optimizer contracts", () => {
     for (const identity of [
       { deployment: "global", source_client_build: "24252055", source_protocol_pack_digest: "sha256:older" },
       { deployment: "global", source_client_build: "24687927", source_protocol_pack_digest: "sha256:newer" },
+      { deployment: "global", source_client_build: "25247556", source_protocol_pack_digest: "sha256:current" },
       { deployment: "cn", source_client_build: "24687926", source_protocol_pack_digest: "sha256:other" },
       { deployment: "", source_client_build: "", source_protocol_pack_digest: "" },
     ]) {

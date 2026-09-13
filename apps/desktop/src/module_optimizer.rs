@@ -299,6 +299,7 @@ mod tests {
             ("exact", "global", "24687926", DIGEST),
             ("older", "global", "24252055", DIGEST),
             ("newer", "global", "24699999", DIGEST),
+            ("current", "global", "25247556", "sha256:current-pack"),
             ("wrong digest", "global", "24687926", "sha256:wrong-pack"),
             ("cross deployment", "cn", "24699999", "sha256:another-pack"),
             ("missing identity", "", "", ""),
