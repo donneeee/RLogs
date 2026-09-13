@@ -85,10 +85,18 @@ pub struct WindowsCaptureAdapterRecommendation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum WindowsCaptureCandidateSource {
     ExplicitPrimary,
+    ExitLagCompatibility,
     GameSocketLocalAddress,
     GameSocketRoute,
     LoopbackProbation,
     SystemRoute,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum WindowsRouteAwareCaptureMode {
+    #[default]
+    Standard,
+    ExitLag,
 }
 
 /// One bounded, privacy-safe adapter candidate for a future multi-adapter
@@ -284,6 +292,27 @@ fn late_loopback_probation_process_ids(
 ) -> Option<Vec<u32>> {
     let process_ids = normalized_process_ids(process_ids);
     (!process_ids.is_empty() && reserve_late_loopback_slot(candidates)).then_some(process_ids)
+}
+
+fn force_exitlag_loopback_candidate(candidates: &mut Vec<WindowsCaptureCandidate>) {
+    if let Some(candidate) = candidates
+        .iter_mut()
+        .find(|candidate| same_adapter_name(&candidate.adapter_name, NPCAP_LOOPBACK_ADAPTER_NAME))
+    {
+        candidate
+            .sources
+            .push(WindowsCaptureCandidateSource::ExitLagCompatibility);
+        candidate.sources.sort_unstable();
+        candidate.sources.dedup();
+        return;
+    }
+
+    candidates.truncate(MAX_WINDOWS_CAPTURE_CANDIDATES.saturating_sub(1));
+    candidates.push(WindowsCaptureCandidate {
+        adapter_name: NPCAP_LOOPBACK_ADAPTER_NAME.to_owned(),
+        sources: vec![WindowsCaptureCandidateSource::ExitLagCompatibility],
+        matched_game_connections: 0,
+    });
 }
 
 fn plan_windows_capture_candidates<R: WindowsRouteResolver>(
@@ -1620,6 +1649,7 @@ impl WindowsSignatureLiveCapture {
     pub fn open_route_aware_prefix(
         primary_interface: &str,
         process_ids: &[u32],
+        mode: WindowsRouteAwareCaptureMode,
         duration_seconds: u32,
         dumpcap_fallback: Option<DumpcapLiveConfig>,
         signature: TcpPayloadPrefixSignature,
@@ -1632,8 +1662,15 @@ impl WindowsSignatureLiveCapture {
             &normalized_process_ids,
             Some(primary_interface),
         );
-        let late_process_ids =
-            late_loopback_probation_process_ids(&mut candidates, &normalized_process_ids);
+        let late_process_ids = match mode {
+            WindowsRouteAwareCaptureMode::Standard => {
+                late_loopback_probation_process_ids(&mut candidates, &normalized_process_ids)
+            }
+            WindowsRouteAwareCaptureMode::ExitLag => {
+                force_exitlag_loopback_candidate(&mut candidates);
+                None
+            }
+        };
         match WindowsSignatureFanInCapture::open_prefix_with_late_loopback(
             &candidates,
             duration_seconds,
@@ -2433,6 +2470,33 @@ mod tests {
                 ))
                 .count(),
             1
+        );
+    }
+
+    #[test]
+    fn exitlag_mode_forces_one_loopback_reader_inside_the_candidate_cap() {
+        let mut candidates = vec![
+            candidate("EXPLICIT"),
+            candidate("DIRECT-A"),
+            candidate("DIRECT-B"),
+            candidate("ROUTE-C"),
+        ];
+
+        force_exitlag_loopback_candidate(&mut candidates);
+        force_exitlag_loopback_candidate(&mut candidates);
+
+        assert_eq!(candidates.len(), MAX_WINDOWS_CAPTURE_CANDIDATES);
+        assert_eq!(candidates[0].adapter_name, "EXPLICIT");
+        let loopback = candidates
+            .iter()
+            .filter(|candidate| {
+                same_adapter_name(&candidate.adapter_name, NPCAP_LOOPBACK_ADAPTER_NAME)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(loopback.len(), 1);
+        assert_eq!(
+            loopback[0].sources,
+            [WindowsCaptureCandidateSource::ExitLagCompatibility]
         );
     }
 

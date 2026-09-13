@@ -84,7 +84,7 @@ use rlogs_capture::{BoundedCaptureIngress, OfflineCapture};
 use rlogs_capture::{
     DumpcapLiveConfig, NPCAP_LOOPBACK_ADAPTER_NAME, SignatureFlowCaptureConfig,
     WindowsCaptureAdapter, WindowsCaptureAdapterRecommendationSource, WindowsLiveCaptureStopHandle,
-    WindowsSignatureLiveCapture, npcap_device_name, npcap_diagnostic,
+    WindowsRouteAwareCaptureMode, WindowsSignatureLiveCapture, npcap_device_name, npcap_diagnostic,
     recommend_windows_capture_adapter, windows_capture_adapters,
 };
 use rlogs_core::{GameConnection, ResearchConnectionFile};
@@ -9078,24 +9078,20 @@ impl RuntimeController {
             .into_iter()
             .collect::<Vec<_>>();
         let exitlag_compatibility_enabled = self.core_settings().exitlag_compatibility_enabled;
-        let capture = if exitlag_compatibility_enabled {
-            WindowsSignatureLiveCapture::open_route_aware_prefix(
-                interface,
-                &capture_process_ids,
-                request.duration_seconds,
-                dumpcap_fallback,
-                classify_bpsr_tcp_prefix,
-                SignatureFlowCaptureConfig::default(),
-            )
+        let capture_mode = if exitlag_compatibility_enabled {
+            WindowsRouteAwareCaptureMode::ExitLag
         } else {
-            WindowsSignatureLiveCapture::open_prefix(
-                interface,
-                request.duration_seconds,
-                dumpcap_fallback,
-                classify_bpsr_tcp_prefix,
-                SignatureFlowCaptureConfig::default(),
-            )
-        }
+            WindowsRouteAwareCaptureMode::Standard
+        };
+        let capture = WindowsSignatureLiveCapture::open_route_aware_prefix(
+            interface,
+            &capture_process_ids,
+            capture_mode,
+            request.duration_seconds,
+            dumpcap_fallback,
+            classify_bpsr_tcp_prefix,
+            SignatureFlowCaptureConfig::default(),
+        )
         .map_err(|error| error.to_string())?;
         let stop_handle = capture.stop_handle();
         {

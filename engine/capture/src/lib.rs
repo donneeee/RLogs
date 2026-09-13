@@ -47,10 +47,11 @@ pub use windows::{
     WindowsCaptureAdapterRecommendation, WindowsCaptureAdapterRecommendationSource,
     WindowsCaptureCandidate, WindowsCaptureCandidateSource, WindowsLiveCaptureStopHandle,
     WindowsOwnedDumpcapCapture, WindowsOwnedLiveCapture, WindowsOwnedNpcapCapture,
-    WindowsProcessSocketOwner, WindowsSignatureDumpcapCapture, WindowsSignatureFanInCapture,
-    WindowsSignatureFanInDiagnostics, WindowsSignatureFanInStopHandle, WindowsSignatureLiveCapture,
-    WindowsSignatureNpcapCapture, recommend_windows_capture_adapter,
-    recommend_windows_capture_candidates, windows_capture_adapters,
+    WindowsProcessSocketOwner, WindowsRouteAwareCaptureMode, WindowsSignatureDumpcapCapture,
+    WindowsSignatureFanInCapture, WindowsSignatureFanInDiagnostics,
+    WindowsSignatureFanInStopHandle, WindowsSignatureLiveCapture, WindowsSignatureNpcapCapture,
+    recommend_windows_capture_adapter, recommend_windows_capture_candidates,
+    windows_capture_adapters,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

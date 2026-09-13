@@ -2066,7 +2066,10 @@ function mountNetworkSettingsSurface(container: HTMLElement): MountedSurface {
           }),
         }),
       );
-      if (alive) message.textContent = "Network settings saved.";
+      if (alive) {
+        message.textContent =
+          "Network settings saved. Use Restart monitoring to apply them to the active capture.";
+      }
     } catch (error) {
       if (!alive) return;
       message.textContent = errorMessage(error);
