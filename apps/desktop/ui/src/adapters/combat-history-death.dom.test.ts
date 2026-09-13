@@ -248,6 +248,17 @@ describe("Combat History death presentation", () => {
       expect(container.querySelector(".combat-history-skill-event")).not.toBeNull();
       expect(container.querySelector(".combat-history-death-marker")).not.toBeNull();
       expect(container.querySelector("[data-timeline-play]")).toBeNull();
+      const windowButtons = container.querySelectorAll<HTMLButtonElement>(
+        ".combat-history-graph-window-toggle button",
+      );
+      expect([...windowButtons].map((option) => option.textContent)).toEqual(["1s", "5s", "10s"]);
+      expect(windowButtons[1]?.getAttribute("aria-pressed")).toBe("true");
+      windowButtons[2]!.click();
+      expect(container.querySelector(".combat-history-graph-heading p")?.textContent)
+        .toBe("10-second moving damage rate");
+      expect(container.querySelector<HTMLButtonElement>("[data-window-seconds='10']")
+        ?.getAttribute("aria-pressed")).toBe("true");
+      expect(container.querySelector("[data-timeline-play]")).toBeNull();
 
       toggle.click();
       toggle = container.querySelector<HTMLButtonElement>(".combat-history-series-toggle")!;
@@ -367,6 +378,19 @@ describe("Combat History death presentation", () => {
       null, () => undefined, ui, view,
     );
     const chart = rendered.querySelector<SVGSVGElement>(".combat-history-chart")!;
+    const lanePlayhead = rendered.querySelector<SVGLineElement>(
+      ".combat-history-event-lanes-playhead",
+    )!;
+    vi.spyOn(chart, "getBoundingClientRect").mockReturnValue({
+      x: 0, y: 0, left: 0, top: 0, right: 1_120, bottom: 330,
+      width: 1_120, height: 330, toJSON: () => ({}),
+    });
+    chart.dispatchEvent(new PointerEvent("pointermove", { clientX: 1_096, bubbles: true }));
+    expect(lanePlayhead.hasAttribute("hidden")).toBe(false);
+    expect(lanePlayhead.dataset.inspectedBoundary).toBe("3");
+    expect(lanePlayhead.getAttribute("x1")).toBe("1096.00");
+    chart.dispatchEvent(new PointerEvent("pointerleave", { bubbles: true }));
+    expect(lanePlayhead.hasAttribute("hidden")).toBe(true);
     chart.focus();
     chart.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
     const readout = rendered.querySelector(".combat-history-graph-inspection-readout")!;
@@ -385,6 +409,10 @@ describe("Combat History death presentation", () => {
       ?.getAttribute("transform")?.match(/^translate\(([^ ]+)/u)?.[1];
     expect(graphEndpoint).toBe("1096.00");
     expect(laneEndpoint).toBe(graphEndpoint);
+    expect(lanePlayhead.getAttribute("x1")).toBe(graphEndpoint);
+    expect(lanePlayhead.dataset.inspectedBoundary).toBe("3");
+    chart.dispatchEvent(new FocusEvent("blur"));
+    expect(lanePlayhead.hasAttribute("hidden")).toBe(true);
   });
 
   it("does not substitute wall-time DPS pairs when the canonical rate clock is incomplete", async () => {

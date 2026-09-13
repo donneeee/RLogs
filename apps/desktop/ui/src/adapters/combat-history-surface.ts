@@ -96,31 +96,37 @@ interface GraphDefinition {
   description: string;
 }
 
-function graphDefinitions(localizer: UiLocalizer): readonly GraphDefinition[] {
+type GraphWindowSeconds = 1 | 5 | 10;
+
+function graphDefinitions(
+  localizer: UiLocalizer,
+  windowSeconds: GraphWindowSeconds = 5,
+): readonly GraphDefinition[] {
+  const window = localizer.formatNumber(windowSeconds);
   return [
     {
       metric: "damage",
       title: localizer.t("ui.combat_history.graph.damage_title"),
       rateLabel: localizer.t("ui.combat_history.graph.dps"),
-      description: localizer.t("ui.combat_history.graph.damage_description"),
+      description: localizer.t("ui.combat_history.graph.damage_description", { window }),
     },
     {
       metric: "rdps",
       title: localizer.t("ui.combat_history.graph.rdps_title"),
       rateLabel: localizer.t("ui.combat_history.graph.rdps"),
-      description: localizer.t("ui.combat_history.graph.rdps_description"),
+      description: localizer.t("ui.combat_history.graph.rdps_description", { window }),
     },
     {
       metric: "effective_healing",
       title: localizer.t("ui.combat_history.graph.healing_title"),
       rateLabel: localizer.t("ui.combat_history.graph.hps"),
-      description: localizer.t("ui.combat_history.graph.healing_description"),
+      description: localizer.t("ui.combat_history.graph.healing_description", { window }),
     },
     {
       metric: "damage_taken",
       title: localizer.t("ui.combat_history.graph.damage_taken_title"),
       rateLabel: localizer.t("ui.combat_history.graph.tps"),
-      description: localizer.t("ui.combat_history.graph.damage_taken_description"),
+      description: localizer.t("ui.combat_history.graph.damage_taken_description", { window }),
     },
   ];
 }
@@ -750,6 +756,7 @@ export function mountCombatHistorySurface(
   let hiddenGraphActors = new Set<string>();
   let showHostileGraphEvents = true;
   let graphMetric: GraphMetric = "damage";
+  let graphWindowSeconds: GraphWindowSeconds = 5;
   let settings = DEFAULT_COMBAT_METER_SETTINGS;
   let browserQuery = "";
   let browserDifficulty = "all";
@@ -2269,7 +2276,9 @@ export function mountCombatHistorySurface(
         "div",
         "card-heading",
         element("h2", "", ui.t("ui.combat_history.graph.gallery_title")),
-        element("span", "", ui.t("ui.combat_history.graph.gallery_description")),
+        element("span", "", ui.t("ui.combat_history.graph.gallery_description", {
+          window: ui.formatNumber(graphWindowSeconds),
+        })),
       ),
     );
     const legend = element("div", "combat-history-graph-legend");
@@ -2328,7 +2337,7 @@ export function mountCombatHistorySurface(
       legend.append(control);
     }
     gallery.append(legend);
-    const definitions = graphDefinitions(ui);
+    const definitions = graphDefinitions(ui, graphWindowSeconds);
     const definition = definitions.find(
       (candidate) => candidate.metric === graphMetric,
     ) ?? definitions[0]!;
@@ -2347,6 +2356,11 @@ export function mountCombatHistorySurface(
         ui,
         view,
         showHostileGraphEvents,
+        graphWindowSeconds,
+        (windowSeconds) => {
+          graphWindowSeconds = windowSeconds;
+          render();
+        },
       ),
     );
     return gallery;
@@ -3373,6 +3387,8 @@ export function renderMetricGraph(
   localizer: UiLocalizer,
   historyView?: CombatHistoryView,
   showHostileEvents = true,
+  windowSeconds: GraphWindowSeconds = 5,
+  selectWindow: (windowSeconds: GraphWindowSeconds) => void = () => undefined,
 ): HTMLElement {
   const card = element("section", "combat-history-metric-graph");
   const durationSeconds = definition.metric === "rdps"
@@ -3387,6 +3403,7 @@ export function renderMetricGraph(
         actorColors.get(actor.actor_id) ?? graphColor(actors.indexOf(actor)),
         targetActorId,
         historyView,
+        windowSeconds,
       ),
     )
     .filter((entry) =>
@@ -3408,12 +3425,14 @@ export function renderMetricGraph(
       color: actorColors.get(actor.actor_id) ?? graphColor(index),
     }]);
   const hasHostileCasts = showHostileEvents && (historyView?.hostile_casts?.length ?? 0) > 0;
+  const inspectionState = createGraphInspectionState();
   const eventLanes = recordedEventLanes(
     visibleEventParticipants,
     elapsedMicros,
     localizer,
     historyView,
     showHostileEvents,
+    inspectionState,
   );
   const scaleMaximum = graphScaleMaximum(
     visibleSeries.map((entry) => entry.values),
@@ -3423,7 +3442,12 @@ export function renderMetricGraph(
       "div",
       "combat-history-graph-heading",
       element("div", "", element("h3", "", definition.title), element("p", "", definition.description)),
-      renderGraphMetricToggle(definition.metric, selectMetric, localizer),
+      element(
+        "div",
+        "combat-history-graph-controls",
+        renderGraphMetricToggle(definition.metric, selectMetric, localizer),
+        renderGraphWindowToggle(windowSeconds, selectWindow, localizer),
+      ),
     ),
   );
   if (allSeries.length === 0 && !hasHostileCasts && eventLanes === null) {
@@ -3457,6 +3481,7 @@ export function renderMetricGraph(
         localizer,
         historyView,
         targetActorId,
+        inspectionState,
       ),
     );
   } else {
@@ -3501,6 +3526,7 @@ function recordedEventLanes(
   localizer: UiLocalizer,
   historyView?: CombatHistoryView,
   showHostileEvents = true,
+  inspectionState?: GraphInspectionState,
 ): HTMLElement | null {
   const playerLanes = series.filter(({ actor }) => graphActorKind(actor) === "player" && (
     (actor.skill_events?.length ?? 0) > 0 || (actor.death_events?.length ?? 0) > 0 ||
@@ -3725,6 +3751,26 @@ function recordedEventLanes(
     }
     svg.append(row);
   });
+  const playhead = svgNode("line", "combat-history-event-lanes-playhead", {
+    x1: left,
+    x2: left,
+    y1: 0,
+    y2: (hostileLanes.length + playerLanes.length) * laneHeight,
+  });
+  playhead.setAttribute("hidden", "");
+  inspectionState?.subscribe((boundary) => {
+    if (boundary === null) {
+      playhead.setAttribute("hidden", "");
+      delete playhead.dataset.inspectedBoundary;
+      return;
+    }
+    const x = xFor(historyGraphBoundaryElapsedMicros(durationMicros, boundary));
+    playhead.removeAttribute("hidden");
+    playhead.dataset.inspectedBoundary = String(boundary);
+    playhead.setAttribute("x1", x.toFixed(2));
+    playhead.setAttribute("x2", x.toFixed(2));
+  });
+  svg.append(playhead);
   const frame = element(
     "section",
     "combat-history-event-lanes-frame",
@@ -3949,6 +3995,28 @@ function renderGraphMetricToggle(
   return toggle;
 }
 
+function renderGraphWindowToggle(
+  selectedWindow: GraphWindowSeconds,
+  selectWindow: (windowSeconds: GraphWindowSeconds) => void,
+  localizer: UiLocalizer,
+): HTMLElement {
+  const toggle = element("div", "combat-history-graph-window-toggle");
+  toggle.setAttribute("role", "group");
+  toggle.setAttribute("aria-label", localizer.t("ui.combat_history.graph.window_aria"));
+  for (const windowSeconds of [1, 5, 10] as const) {
+    const option = button(localizer.t("ui.combat_history.graph.window_option", {
+      seconds: localizer.formatNumber(windowSeconds),
+    }), "");
+    const selected = windowSeconds === selectedWindow;
+    option.dataset.windowSeconds = String(windowSeconds);
+    option.dataset.selected = String(selected);
+    option.setAttribute("aria-pressed", String(selected));
+    option.addEventListener("click", () => selectWindow(windowSeconds));
+    toggle.append(option);
+  }
+  return toggle;
+}
+
 export function buildActorGraphSeries(
   actor: HistoryActorSummary,
   metric: GraphMetric,
@@ -3956,9 +4024,10 @@ export function buildActorGraphSeries(
   color: string,
   targetActorId: string | null,
   historyView?: CombatHistoryView,
+  windowSeconds: GraphWindowSeconds = 5,
 ): ActorGraphSeries {
   if (metric === "rdps") {
-    return buildActorRdpsGraphSeries(actor, historyView, color, targetActorId) ?? {
+    return buildActorRdpsGraphSeries(actor, historyView, color, targetActorId, windowSeconds) ?? {
       actor,
       color,
       values: Array.from({ length: durationSeconds + 1 }, () => 0),
@@ -3974,7 +4043,7 @@ export function buildActorGraphSeries(
     const second = Math.min(durationSeconds, Math.max(0, point.second));
     raw[second] = (raw[second] ?? 0) + point[metric];
   }
-  const values = movingAverage(raw, 5);
+  const values = movingAverage(raw, windowSeconds);
   const total = raw.reduce((sum, value) => sum + value, 0);
   return {
     actor,
@@ -4114,6 +4183,28 @@ function historyGraphClosestBoundary(durationMicros: number, elapsedMicros: numb
   return upperDistance <= lowerDistance ? upper : lower;
 }
 
+interface GraphInspectionState {
+  readonly boundary: number | null;
+  setBoundary(boundary: number | null): void;
+  subscribe(listener: (boundary: number | null) => void): void;
+}
+
+function createGraphInspectionState(): GraphInspectionState {
+  let boundary: number | null = null;
+  const listeners = new Set<(boundary: number | null) => void>();
+  return {
+    get boundary() { return boundary; },
+    setBoundary(nextBoundary) {
+      boundary = nextBoundary;
+      for (const listener of listeners) listener(boundary);
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      listener(boundary);
+    },
+  };
+}
+
 function completeHistoryRateClock(view: CombatHistoryView | undefined): CombatHistoryView["rate_clock"] | null {
   if (!view?.rate_clock_complete || !view.rate_clock?.length) return null;
   const maximumBoundary = historyGraphMaximumBoundary(view.elapsed_micros);
@@ -4227,6 +4318,7 @@ function partyLineChart(
   localizer: UiLocalizer,
   historyView?: CombatHistoryView,
   targetActorId: string | null = null,
+  inspectionState: GraphInspectionState = createGraphInspectionState(),
 ): HTMLElement {
   const width = 1_120;
   const height = 330;
@@ -4364,10 +4456,8 @@ function partyLineChart(
     localizer.t("ui.combat_history.graph.inspect_help"),
   );
   readout.setAttribute("aria-live", "polite");
-  let inspectedBoundary: number | null = null;
   const renderInspection = (requestedBoundary: number) => {
     const snapshot = graphInspectionAtSecond(series, requestedBoundary, durationSeconds);
-    inspectedBoundary = snapshot.second;
     const elapsedMicros = historyGraphBoundaryElapsedMicros(durationMicros, snapshot.second);
     const x = xForBoundary(snapshot.second);
     inspection.removeAttribute("hidden");
@@ -4432,20 +4522,23 @@ function partyLineChart(
     );
   };
   const clearInspection = () => {
-    inspectedBoundary = null;
     inspection.setAttribute("hidden", "");
     readout.textContent = localizer.t("ui.combat_history.graph.inspect_help");
   };
+  inspectionState.subscribe((boundary) => {
+    if (boundary === null) clearInspection();
+    else renderInspection(boundary);
+  });
   svg.addEventListener("pointermove", (event) => {
     const bounds = svg.getBoundingClientRect();
     if (bounds.width <= 0) return;
     const viewX = ((event.clientX - bounds.left) / bounds.width) * width;
     const elapsedMicros = ((viewX - left) / plotWidth) * durationMicros;
-    renderInspection(historyGraphClosestBoundary(durationMicros, elapsedMicros));
+    inspectionState.setBoundary(historyGraphClosestBoundary(durationMicros, elapsedMicros));
   });
-  svg.addEventListener("pointerleave", clearInspection);
-  svg.addEventListener("focus", () => renderInspection(inspectedBoundary ?? 0));
-  svg.addEventListener("blur", clearInspection);
+  svg.addEventListener("pointerleave", () => inspectionState.setBoundary(null));
+  svg.addEventListener("focus", () => inspectionState.setBoundary(inspectionState.boundary ?? 0));
+  svg.addEventListener("blur", () => inspectionState.setBoundary(null));
   svg.addEventListener("keydown", (event) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
@@ -4453,8 +4546,8 @@ function partyLineChart(
       ? 0
       : event.key === "End"
         ? durationSeconds
-        : (inspectedBoundary ?? 0) + (event.key === "ArrowLeft" ? -1 : 1);
-    renderInspection(next);
+        : (inspectionState.boundary ?? 0) + (event.key === "ArrowLeft" ? -1 : 1);
+    inspectionState.setBoundary(next);
   });
   const deathSummary = element("div", "combat-history-death-summary");
   deathSummary.id = `combat-history-death-summary-${historyDeathSummarySequence++}`;

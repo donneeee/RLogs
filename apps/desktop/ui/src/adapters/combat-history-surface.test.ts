@@ -75,6 +75,10 @@ describe("Combat History canonical rDPS graph", () => {
   it("uses canonical elapsed time across gaps and a fractional trailing bucket", () => {
     const series = buildActorRdpsGraphSeries(actor, view, "#abc", null);
     expect(series?.values).toEqual([0, 120, 120, 100]);
+    expect(buildActorRdpsGraphSeries(actor, view, "#abc", null, 1)?.values)
+      .toEqual([0, 120, 0, 60]);
+    expect(buildActorRdpsGraphSeries(actor, view, "#abc", null, 10)?.values)
+      .toEqual([0, 120, 120, 100]);
     expect(series?.average).toBe(100);
     expect(series?.peak).toBe(120);
     expect(graphInspectionAtSecond([series!], 3, 3).values[0]?.value).toBe(100);
@@ -968,6 +972,29 @@ describe("Combat History graph scaling", () => {
     expect(buildActorGraphSeries(actor, "effective_healing", 2, "#fff", "party-2").average)
       .toBe(125);
     expect(buildActorGraphSeries(actor, "damage", 2, "#fff", "missing").peak).toBe(0);
+  });
+
+  it("projects ordinary metric curves through the selected 1s, 5s, or 10s window", () => {
+    const actor = {
+      actor_id: "player-1",
+      death_seconds: [],
+      series: [
+        { second: 0, damage: 10, effective_healing: 0, damage_taken: 0 },
+        { second: 1, damage: 20, effective_healing: 0, damage_taken: 0 },
+        { second: 2, damage: 30, effective_healing: 0, damage_taken: 0 },
+        { second: 3, damage: 40, effective_healing: 0, damage_taken: 0 },
+        { second: 4, damage: 50, effective_healing: 0, damage_taken: 0 },
+        { second: 5, damage: 60, effective_healing: 0, damage_taken: 0 },
+      ],
+      targets: [],
+    } as unknown as HistoryActorSummary;
+
+    expect(buildActorGraphSeries(actor, "damage", 6, "#fff", null, undefined, 1).values)
+      .toEqual([10, 20, 30, 40, 50, 60, 0]);
+    expect(buildActorGraphSeries(actor, "damage", 6, "#fff", null, undefined, 5).values)
+      .toEqual([10, 15, 20, 25, 30, 40, 36]);
+    expect(buildActorGraphSeries(actor, "damage", 6, "#fff", null, undefined, 10).values)
+      .toEqual([10, 15, 20, 25, 30, 35, 30]);
   });
 
   it("anchors the range to every party series instead of only visible lines", () => {

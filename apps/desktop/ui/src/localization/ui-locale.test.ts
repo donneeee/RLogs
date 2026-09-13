@@ -118,6 +118,8 @@ describe("desktop UI locale packages", () => {
       "ui.combat_history.graph.hps",
       "ui.combat_history.graph.tps",
       "ui.combat_history.graph.metric_aria",
+      "ui.combat_history.graph.window_aria",
+      "ui.combat_history.graph.window_option",
       "ui.combat_history.graph.show_actor_aria",
       "ui.combat_history.graph.hide_actor_aria",
       "ui.combat_history.graph.npc",
@@ -152,6 +154,7 @@ describe("desktop UI locale packages", () => {
     expect(localizer.t("ui.combat_history.graph.status_effect_fallback", {
       id: "2203291",
     })).toBe("Unlocalized combat effect #2203291");
+    expect(localizer.t("ui.combat_history.graph.window_option", { seconds: 10 })).toBe("10s");
   });
 
   it("keeps every migrated combat-history key present in the shipped English package", async () => {
