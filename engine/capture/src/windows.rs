@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     ffi::{CStr, c_void},
     mem::{size_of, size_of_val},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -291,7 +291,12 @@ fn late_loopback_probation_process_ids(
     process_ids: &[u32],
 ) -> Option<Vec<u32>> {
     let process_ids = normalized_process_ids(process_ids);
-    (!process_ids.is_empty() && reserve_late_loopback_slot(candidates)).then_some(process_ids)
+    if process_ids.is_empty() {
+        return None;
+    }
+    reserve_late_loopback_slot(candidates);
+    candidates.truncate(MAX_WINDOWS_CAPTURE_CANDIDATES.saturating_sub(1));
+    Some(process_ids)
 }
 
 fn force_exitlag_loopback_candidate(candidates: &mut Vec<WindowsCaptureCandidate>) {
@@ -890,8 +895,7 @@ impl CaptureSource for WindowsSignatureDumpcapCapture {
 
 const WINDOWS_FAN_IN_QUEUE_FRAMES: usize = 512;
 const WINDOWS_FAN_IN_QUEUE_BYTES: usize = 16 * 1024 * 1024;
-const WINDOWS_LATE_LOOPBACK_PROBATION: Duration = Duration::from_secs(30);
-const WINDOWS_LATE_LOOPBACK_POLL_INTERVAL: Duration = Duration::from_secs(1);
+const WINDOWS_ADAPTER_DISCOVERY_POLL_INTERVAL: Duration = Duration::from_secs(1);
 const CAPTURE_READER_THREAD_PREFIX: &str = "rlogs-capture-reader-";
 const SANITIZED_CAPTURE_READER_PANIC: &str = "rLogs capture reader stopped unexpectedly";
 static CAPTURE_READER_PANIC_HOOK: Once = Once::new();
@@ -1007,6 +1011,14 @@ impl<S: FanInChildStop> DynamicChildStopRegistry<S> {
         Ok(())
     }
 
+    fn has_capacity(&self) -> bool {
+        let state = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        !state.stopped && state.children.len() < self.max_children
+    }
+
     fn request_stop(&self) {
         let children = {
             let mut state = self
@@ -1041,7 +1053,6 @@ struct LateLoopbackCoordinatorSignal {
 #[derive(Debug, Default)]
 struct LateLoopbackCoordinatorState {
     stopped: bool,
-    signature_confirmed: bool,
 }
 
 impl LateLoopbackCoordinatorSignal {
@@ -1053,20 +1064,11 @@ impl LateLoopbackCoordinatorSignal {
         self.changed.notify_all();
     }
 
-    fn confirm_signature(&self) {
+    fn finished(&self) -> bool {
         self.state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .signature_confirmed = true;
-        self.changed.notify_all();
-    }
-
-    fn finished(&self) -> bool {
-        let state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.stopped || state.signature_confirmed
+            .stopped
     }
 
     fn wait_for(&self, duration: Duration) {
@@ -1079,9 +1081,7 @@ impl LateLoopbackCoordinatorSignal {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = self
             .changed
-            .wait_timeout_while(guard, duration, |state| {
-                !state.stopped && !state.signature_confirmed
-            })
+            .wait_timeout_while(guard, duration, |state| !state.stopped)
             .unwrap_or_else(std::sync::PoisonError::into_inner);
     }
 }
@@ -1103,17 +1103,28 @@ impl FanInCandidateCounters {
     }
 }
 
-trait LateLoopbackProbe {
-    fn bpsr_pid_has_loopback(&mut self) -> bool;
+trait CaptureCandidateProbe {
+    fn candidates(&mut self) -> Vec<WindowsCaptureCandidate>;
 }
 
-struct WindowsPidLoopbackProbe {
+struct WindowsProcessCandidateProbe {
     process_ids: Vec<u32>,
+    explicit_primary: String,
+    mode: WindowsRouteAwareCaptureMode,
 }
 
-impl LateLoopbackProbe for WindowsPidLoopbackProbe {
-    fn bpsr_pid_has_loopback(&mut self) -> bool {
-        has_loopback_connection(&snapshot_windows_process_connections(&self.process_ids))
+impl CaptureCandidateProbe for WindowsProcessCandidateProbe {
+    fn candidates(&mut self) -> Vec<WindowsCaptureCandidate> {
+        let adapters = windows_capture_adapters().unwrap_or_default();
+        let mut candidates = recommend_windows_capture_candidates(
+            &adapters,
+            &self.process_ids,
+            Some(&self.explicit_primary),
+        );
+        if self.mode == WindowsRouteAwareCaptureMode::ExitLag {
+            force_exitlag_loopback_candidate(&mut candidates);
+        }
+        candidates
     }
 }
 
@@ -1240,7 +1251,7 @@ fn start_fan_in_sources<O: FanInCandidateOpener>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn run_late_loopback_coordinator<P, O>(
+fn run_adapter_discovery_coordinator<P, O>(
     registration: MultiSourceRegistrationLease,
     signal: Arc<LateLoopbackCoordinatorSignal>,
     children: Arc<DynamicChildStopRegistry<O::Stop>>,
@@ -1248,30 +1259,30 @@ fn run_late_loopback_coordinator<P, O>(
     counters: Arc<FanInCandidateCounters>,
     duration_seconds: u32,
     capture_started: Instant,
-    probation: Duration,
+    discovery_window: Option<Duration>,
     poll_interval: Duration,
+    initial_candidates: &[WindowsCaptureCandidate],
     mut probe: P,
     mut opener: O,
 ) where
-    P: LateLoopbackProbe,
+    P: CaptureCandidateProbe,
     O: FanInCandidateOpener,
 {
-    let deadline = capture_started + probation;
+    let deadline = discovery_window.map(|window| capture_started + window);
+    let mut attempted = initial_candidates
+        .iter()
+        .map(|candidate| normalized_adapter_name(&candidate.adapter_name))
+        .collect::<BTreeSet<_>>();
     while !signal.finished() {
-        // The coordinator starts only after all initial readers are registered,
-        // so zero here means they have all completed or failed. Closing the
-        // lease lets the aggregate return its terminal result without waiting
-        // out the rest of the probation window.
-        if registration.active_sources() == 0 {
-            break;
-        }
-        if probe.bpsr_pid_has_loopback() {
+        for candidate in probe.candidates() {
+            if !children.has_capacity() {
+                break;
+            }
+            let identity = normalized_adapter_name(&candidate.adapter_name);
+            if !attempted.insert(identity) {
+                continue;
+            }
             counters.planned.fetch_add(1, Ordering::Relaxed);
-            let candidate = WindowsCaptureCandidate {
-                adapter_name: NPCAP_LOOPBACK_ADAPTER_NAME.to_owned(),
-                sources: vec![WindowsCaptureCandidateSource::LoopbackProbation],
-                matched_game_connections: 0,
-            };
             let remaining_duration = remaining_capture_duration(duration_seconds, capture_started);
             if duration_seconds != 0 && remaining_duration == 0 {
                 break;
@@ -1297,11 +1308,9 @@ fn run_late_loopback_coordinator<P, O>(
             if children.register(stop.clone()).is_err() {
                 break;
             }
+            let worker_ordinal = counters.opened.load(Ordering::Relaxed);
             match thread::Builder::new()
-                .name(format!(
-                    "{CAPTURE_READER_THREAD_PREFIX}{}",
-                    MAX_WINDOWS_CAPTURE_CANDIDATES - 1
-                ))
+                .name(format!("{CAPTURE_READER_THREAD_PREFIX}{worker_ordinal}"))
                 .spawn(move || run_fan_in_source_guarded(source, ingress))
             {
                 Ok(worker) => {
@@ -1316,14 +1325,17 @@ fn run_late_loopback_coordinator<P, O>(
                     stop.request_child_stop();
                 }
             }
-            break;
         }
 
         let now = Instant::now();
-        if now >= deadline {
-            break;
+        if let Some(deadline) = deadline {
+            if now >= deadline {
+                break;
+            }
+            signal.wait_for(poll_interval.min(deadline.saturating_duration_since(now)));
+        } else {
+            signal.wait_for(poll_interval);
         }
-        signal.wait_for(poll_interval.min(deadline.saturating_duration_since(now)));
     }
     registration.close();
 }
@@ -1340,12 +1352,12 @@ fn remaining_capture_duration(duration_seconds: u32, capture_started: Instant) -
 }
 
 impl WindowsSignatureFanInCapture {
-    fn open_prefix_with_late_loopback(
+    fn open_prefix_with_adapter_discovery(
         candidates: &[WindowsCaptureCandidate],
         duration_seconds: u32,
         signature: TcpPayloadPrefixSignature,
         filter: SignatureFlowCaptureConfig,
-        late_process_ids: Option<Vec<u32>>,
+        discovery: Option<WindowsProcessCandidateProbe>,
     ) -> Result<Self, CaptureError> {
         let capture_started = Instant::now();
         let (fan_in, registration) = MultiSourceFanIn::new_with_registration_lease(
@@ -1388,20 +1400,18 @@ impl WindowsSignatureFanInCapture {
             started.open_failures,
         ));
         let coordinator = Arc::new(LateLoopbackCoordinatorSignal::default());
-        let coordinator_worker = if let Some(process_ids) = late_process_ids {
-            let probation = if duration_seconds == 0 {
-                WINDOWS_LATE_LOOPBACK_PROBATION
-            } else {
-                WINDOWS_LATE_LOOPBACK_PROBATION.min(Duration::from_secs(duration_seconds.into()))
-            };
+        let coordinator_worker = if let Some(probe) = discovery {
+            let discovery_window =
+                (duration_seconds != 0).then(|| Duration::from_secs(duration_seconds.into()));
             let coordinator_signal = Arc::clone(&coordinator);
             let coordinator_children = Arc::clone(&children);
             let coordinator_workers = Arc::clone(&workers);
             let coordinator_counters = Arc::clone(&candidate_counters);
+            let initial_candidates = candidates.to_vec();
             match thread::Builder::new()
-                .name("rlogs-late-loopback-coordinator".into())
+                .name("rlogs-adapter-discovery-coordinator".into())
                 .spawn(move || {
-                    run_late_loopback_coordinator(
+                    run_adapter_discovery_coordinator(
                         registration,
                         coordinator_signal,
                         coordinator_children,
@@ -1409,9 +1419,10 @@ impl WindowsSignatureFanInCapture {
                         coordinator_counters,
                         duration_seconds,
                         capture_started,
-                        probation,
-                        WINDOWS_LATE_LOOPBACK_POLL_INTERVAL,
-                        WindowsPidLoopbackProbe { process_ids },
+                        discovery_window,
+                        WINDOWS_ADAPTER_DISCOVERY_POLL_INTERVAL,
+                        &initial_candidates,
+                        probe,
                         NpcapCandidateOpener,
                     )
                 }) {
@@ -1428,7 +1439,7 @@ impl WindowsSignatureFanInCapture {
                     }
                     return Err(CaptureError::Adapter {
                         adapter: "windows-signature-fan-in".into(),
-                        message: format!("could not start late loopback coordinator: {error}"),
+                        message: format!("could not start adapter discovery coordinator: {error}"),
                     });
                 }
             }
@@ -1497,9 +1508,6 @@ impl CaptureSource for WindowsSignatureFanInCapture {
 
     fn next_frame(&mut self) -> Result<Option<CapturedFrame>, CaptureError> {
         let result = self.inner.next_frame();
-        if self.inner.metrics().signature_matches > 0 {
-            self.stop.coordinator.confirm_signature();
-        }
         if !matches!(result, Ok(Some(_))) {
             self.finish_workers();
         }
@@ -1643,9 +1651,9 @@ impl WindowsSignatureLiveCapture {
     }
 
     /// Opens the initial route-aware candidate set under one shared signature
-    /// filter. When the BPSR process has not exposed loopback yet, one bounded
-    /// reader slot remains available for a PID-owned loopback connection that
-    /// appears during the startup probation window.
+    /// filter. One bounded reader slot remains available so a newly routed or
+    /// loopback adapter discovered from the game's sockets can be added later
+    /// without stopping readers that still carry the previous scene stream.
     pub fn open_route_aware_prefix(
         primary_interface: &str,
         process_ids: &[u32],
@@ -1662,21 +1670,29 @@ impl WindowsSignatureLiveCapture {
             &normalized_process_ids,
             Some(primary_interface),
         );
-        let late_process_ids = match mode {
+        let discovery_process_ids = match mode {
             WindowsRouteAwareCaptureMode::Standard => {
                 late_loopback_probation_process_ids(&mut candidates, &normalized_process_ids)
             }
             WindowsRouteAwareCaptureMode::ExitLag => {
+                if !normalized_process_ids.is_empty() {
+                    candidates.truncate(MAX_WINDOWS_CAPTURE_CANDIDATES.saturating_sub(2));
+                }
                 force_exitlag_loopback_candidate(&mut candidates);
-                None
+                (!normalized_process_ids.is_empty()).then_some(normalized_process_ids.clone())
             }
         };
-        match WindowsSignatureFanInCapture::open_prefix_with_late_loopback(
+        let discovery = discovery_process_ids.map(|process_ids| WindowsProcessCandidateProbe {
+            process_ids,
+            explicit_primary: primary_interface.to_owned(),
+            mode,
+        });
+        match WindowsSignatureFanInCapture::open_prefix_with_adapter_discovery(
             &candidates,
             duration_seconds,
             signature,
             filter,
-            late_process_ids,
+            discovery,
         ) {
             Ok(capture) => Ok(Self::NpcapFanIn(capture)),
             Err(npcap_error) => match dumpcap_fallback {
@@ -2225,15 +2241,15 @@ mod tests {
         }
     }
 
-    struct SequenceLoopbackProbe {
-        observations: VecDeque<bool>,
+    struct SequenceCandidateProbe {
+        observations: VecDeque<Vec<WindowsCaptureCandidate>>,
         calls: Arc<AtomicUsize>,
     }
 
-    impl LateLoopbackProbe for SequenceLoopbackProbe {
-        fn bpsr_pid_has_loopback(&mut self) -> bool {
+    impl CaptureCandidateProbe for SequenceCandidateProbe {
+        fn candidates(&mut self) -> Vec<WindowsCaptureCandidate> {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            self.observations.pop_front().unwrap_or(false)
+            self.observations.pop_front().unwrap_or_default()
         }
     }
 
@@ -2501,7 +2517,7 @@ mod tests {
     }
 
     #[test]
-    fn coordinator_admits_one_late_pid_owned_loopback_reader() {
+    fn coordinator_admits_a_newly_discovered_adapter_without_replacing_the_initial_reader() {
         let (fan_in, registration) =
             MultiSourceFanIn::new_with_registration_lease(4, 8, 4_096, Vec::new()).unwrap();
         let mut initial_ingress = registration.register_source().unwrap();
@@ -2513,7 +2529,7 @@ mod tests {
         let durations = Arc::new(Mutex::new(Vec::new()));
         let calls = Arc::new(AtomicUsize::new(0));
 
-        run_late_loopback_coordinator(
+        run_adapter_discovery_coordinator(
             registration,
             Arc::clone(&signal),
             Arc::clone(&children),
@@ -2521,10 +2537,11 @@ mod tests {
             Arc::clone(&counters),
             0,
             Instant::now(),
-            Duration::from_secs(30),
+            Some(Duration::ZERO),
             Duration::ZERO,
-            SequenceLoopbackProbe {
-                observations: VecDeque::from([false, true, true]),
+            &[candidate("INITIAL")],
+            SequenceCandidateProbe {
+                observations: VecDeque::from([vec![candidate(NPCAP_LOOPBACK_ADAPTER_NAME)]]),
                 calls: Arc::clone(&calls),
             },
             RecordingFixtureOpener {
@@ -2534,7 +2551,7 @@ mod tests {
             },
         );
 
-        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert_eq!(
             *attempts
                 .lock()
@@ -2556,38 +2573,45 @@ mod tests {
     }
 
     #[test]
-    fn coordinator_closes_immediately_after_all_initial_readers_finish() {
+    fn coordinator_remains_available_after_initial_reader_finishes_until_stopped() {
         let (_fan_in, registration) =
             MultiSourceFanIn::new_with_registration_lease(4, 8, 4_096, Vec::new()).unwrap();
         let mut initial_ingress = registration.register_source().unwrap();
         initial_ingress.finish();
         let signal = Arc::new(LateLoopbackCoordinatorSignal::default());
         let calls = Arc::new(AtomicUsize::new(0));
-        let started = Instant::now();
-
-        run_late_loopback_coordinator(
-            registration,
-            signal,
-            Arc::new(DynamicChildStopRegistry::new(4)),
-            Arc::new(Mutex::new(Vec::new())),
-            Arc::new(FanInCandidateCounters::new(1, 1, 0)),
-            0,
-            started,
-            Duration::from_secs(30),
-            Duration::from_secs(30),
-            SequenceLoopbackProbe {
-                observations: VecDeque::from([false]),
-                calls: Arc::clone(&calls),
-            },
-            RecordingFixtureOpener {
-                attempts: Arc::new(Mutex::new(Vec::new())),
-                durations: Arc::new(Mutex::new(Vec::new())),
-                fail: false,
-            },
-        );
-
-        assert!(started.elapsed() < Duration::from_secs(1));
-        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        let worker_signal = Arc::clone(&signal);
+        let worker_calls = Arc::clone(&calls);
+        let worker = thread::spawn(move || {
+            run_adapter_discovery_coordinator(
+                registration,
+                worker_signal,
+                Arc::new(DynamicChildStopRegistry::new(4)),
+                Arc::new(Mutex::new(Vec::new())),
+                Arc::new(FanInCandidateCounters::new(1, 1, 0)),
+                0,
+                Instant::now(),
+                None,
+                Duration::from_secs(30),
+                &[candidate("INITIAL")],
+                SequenceCandidateProbe {
+                    observations: VecDeque::from([Vec::new()]),
+                    calls: worker_calls,
+                },
+                RecordingFixtureOpener {
+                    attempts: Arc::new(Mutex::new(Vec::new())),
+                    durations: Arc::new(Mutex::new(Vec::new())),
+                    fail: false,
+                },
+            );
+        });
+        let wait_deadline = Instant::now() + Duration::from_secs(1);
+        while calls.load(Ordering::SeqCst) == 0 && Instant::now() < wait_deadline {
+            thread::yield_now();
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        signal.request_stop();
+        worker.join().unwrap();
     }
 
     #[test]
@@ -2600,7 +2624,7 @@ mod tests {
         let worker_signal = Arc::clone(&signal);
         let worker_calls = Arc::clone(&calls);
         let worker = thread::spawn(move || {
-            run_late_loopback_coordinator(
+            run_adapter_discovery_coordinator(
                 registration,
                 worker_signal,
                 Arc::new(DynamicChildStopRegistry::new(4)),
@@ -2608,10 +2632,11 @@ mod tests {
                 Arc::new(FanInCandidateCounters::new(1, 1, 0)),
                 0,
                 Instant::now(),
+                None,
                 Duration::from_secs(30),
-                Duration::from_secs(30),
-                SequenceLoopbackProbe {
-                    observations: VecDeque::from([false]),
+                &[candidate("INITIAL")],
+                SequenceCandidateProbe {
+                    observations: VecDeque::from([Vec::new()]),
                     calls: worker_calls,
                 },
                 RecordingFixtureOpener {
@@ -2635,51 +2660,7 @@ mod tests {
     }
 
     #[test]
-    fn signature_confirmation_wakes_and_joins_the_coordinator() {
-        let (_fan_in, registration) =
-            MultiSourceFanIn::new_with_registration_lease(4, 8, 4_096, Vec::new()).unwrap();
-        let mut initial_ingress = registration.register_source().unwrap();
-        let signal = Arc::new(LateLoopbackCoordinatorSignal::default());
-        let calls = Arc::new(AtomicUsize::new(0));
-        let worker_signal = Arc::clone(&signal);
-        let worker_calls = Arc::clone(&calls);
-        let worker = thread::spawn(move || {
-            run_late_loopback_coordinator(
-                registration,
-                worker_signal,
-                Arc::new(DynamicChildStopRegistry::new(4)),
-                Arc::new(Mutex::new(Vec::new())),
-                Arc::new(FanInCandidateCounters::new(1, 1, 0)),
-                0,
-                Instant::now(),
-                Duration::from_secs(30),
-                Duration::from_secs(30),
-                SequenceLoopbackProbe {
-                    observations: VecDeque::from([false]),
-                    calls: worker_calls,
-                },
-                RecordingFixtureOpener {
-                    attempts: Arc::new(Mutex::new(Vec::new())),
-                    durations: Arc::new(Mutex::new(Vec::new())),
-                    fail: false,
-                },
-            );
-        });
-        let wait_deadline = Instant::now() + Duration::from_secs(1);
-        while calls.load(Ordering::SeqCst) == 0 && Instant::now() < wait_deadline {
-            thread::yield_now();
-        }
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-
-        let confirmed = Instant::now();
-        signal.confirm_signature();
-        worker.join().unwrap();
-        assert!(confirmed.elapsed() < Duration::from_secs(1));
-        initial_ingress.finish();
-    }
-
-    #[test]
-    fn late_loopback_open_failure_does_not_end_a_healthy_initial_source() {
+    fn newly_discovered_adapter_open_failure_does_not_end_a_healthy_initial_source() {
         let (fan_in, registration) =
             MultiSourceFanIn::new_with_registration_lease(4, 8, 4_096, Vec::new()).unwrap();
         let mut initial_ingress = registration.register_source().unwrap();
@@ -2691,7 +2672,7 @@ mod tests {
         .unwrap();
         let counters = Arc::new(FanInCandidateCounters::new(1, 1, 0));
 
-        run_late_loopback_coordinator(
+        run_adapter_discovery_coordinator(
             registration,
             Arc::new(LateLoopbackCoordinatorSignal::default()),
             Arc::new(DynamicChildStopRegistry::new(4)),
@@ -2699,10 +2680,11 @@ mod tests {
             Arc::clone(&counters),
             0,
             Instant::now(),
-            Duration::from_secs(30),
+            Some(Duration::ZERO),
             Duration::ZERO,
-            SequenceLoopbackProbe {
-                observations: VecDeque::from([true]),
+            &[candidate("INITIAL")],
+            SequenceCandidateProbe {
+                observations: VecDeque::from([vec![candidate(NPCAP_LOOPBACK_ADAPTER_NAME)]]),
                 calls: Arc::new(AtomicUsize::new(0)),
             },
             RecordingFixtureOpener {

@@ -557,6 +557,14 @@ impl<'a> ProtocolRuntime<'a> {
             self.attach_objective_catalog(draft);
         }
         drafts.retain(|draft| self.state_deduplicator.retain(draft));
+        // Keep the dungeon snapshot fallback coherent with every reviewed
+        // packet surface that can announce a world. Consumers still apply
+        // their own exact-scene authority to the canonical event.
+        for draft in &drafts {
+            if let CanonicalEventDraftKind::WorldChanged(world) = &draft.kind {
+                self.dungeon.current_scene_id = world.scene_id;
+            }
+        }
         let events = drafts
             .into_iter()
             .map(|draft| self.envelopes.emit(draft))
@@ -674,6 +682,7 @@ struct ServerClockAnchor {
 
 #[derive(Debug, Default)]
 struct DungeonTracker {
+    current_scene_id: Option<SceneId>,
     instance_id: Option<String>,
     difficulty_id: Option<i32>,
     state: Option<i32>,
@@ -2120,11 +2129,27 @@ fn decode_sync_dungeon(
         return Ok(Vec::new());
     };
     let mut drafts = Vec::new();
+    let scene_uuid = dungeon.scene_uuid;
     prepare_dungeon_identity(
         tracker,
-        dungeon.scene_uuid.map(|uuid| uuid.to_string()),
+        scene_uuid.map(|uuid| uuid.to_string()),
         dungeon.scene_info.and_then(|info| info.difficulty),
     );
+    if let Some(scene_id) = scene_uuid.and_then(infer_known_scene_id_from_scene_uuid)
+        && tracker.current_scene_id != Some(scene_id)
+    {
+        drafts.push(draft(
+            metadata,
+            EventSensitivity::PublicGameplay,
+            CanonicalEventDraftKind::WorldChanged(WorldContext {
+                scene_id: Some(scene_id),
+                map_id: u32::try_from(scene_id.0).ok(),
+                line_id: None,
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            }),
+        ));
+    }
     record_dungeon_flow(
         metadata,
         tracker,
@@ -2151,6 +2176,42 @@ fn decode_sync_dungeon(
     }
 
     Ok(drafts)
+}
+
+/// Some current clients place the catalog scene ID directly in `scene_uuid`,
+/// while others pack it in either 16-bit half. Accept only one distinct
+/// candidate that is present in the shipped scene catalog; unknown and
+/// ambiguous values deliberately fail closed.
+fn infer_known_scene_id_from_scene_uuid(scene_uuid: i64) -> Option<SceneId> {
+    if scene_uuid <= 0 {
+        return None;
+    }
+
+    let mut known = Vec::new();
+    for candidate in [
+        i32::try_from(scene_uuid).ok(),
+        i32::try_from(scene_uuid >> 16).ok(),
+        i32::try_from(scene_uuid & 0xffff).ok(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if candidate <= 0
+            || known.contains(&candidate)
+            || !matches!(
+                crate::scene_localization::localized_scene_name(i64::from(candidate), "en-US"),
+                Ok(Some(_))
+            )
+        {
+            continue;
+        }
+        known.push(candidate);
+    }
+
+    match known.as_slice() {
+        [scene_id] => Some(SceneId(*scene_id)),
+        _ => None,
+    }
 }
 
 fn decode_sync_dungeon_dirty(
@@ -7314,6 +7375,97 @@ mod tests {
 
         assert_eq!(batch.status, ProtocolDecodeStatus::Decoded);
         assert!(batch.events.is_empty());
+    }
+
+    #[test]
+    fn dungeon_scene_uuid_inference_is_unique_and_catalog_backed() {
+        assert_eq!(
+            infer_known_scene_id_from_scene_uuid(6_561),
+            Some(SceneId(6_561))
+        );
+        assert_eq!(
+            infer_known_scene_id_from_scene_uuid(6_565_i64 << 16),
+            Some(SceneId(6_565))
+        );
+        assert_eq!(
+            infer_known_scene_id_from_scene_uuid((99_999_i64 << 16) | 6_565),
+            Some(SceneId(6_565))
+        );
+        assert_eq!(
+            infer_known_scene_id_from_scene_uuid((6_561_i64 << 16) | 6_565),
+            None,
+            "two distinct known candidates must fail closed"
+        );
+        assert_eq!(infer_known_scene_id_from_scene_uuid(99_999), None);
+        assert_eq!(infer_known_scene_id_from_scene_uuid(0), None);
+    }
+
+    #[test]
+    fn dungeon_snapshot_repairs_a_stale_scene_once() {
+        let pack = pack();
+        let mut runtime = runtime(&pack);
+
+        let initial = runtime
+            .process(&record(
+                1,
+                3,
+                encode(schema::EnterScene {
+                    enter_scene_info: Some(schema::EnterSceneInfo {
+                        scene_attrs: Some(schema::AttrCollection {
+                            uuid: None,
+                            attributes: vec![int_attr(ATTR_SCENE_ID, 6_515)],
+                            map_attributes: Vec::new(),
+                        }),
+                        player_entity: None,
+                        scene_instance_id: Some("prior-scene".into()),
+                    }),
+                }),
+            ))
+            .unwrap();
+        assert!(initial.events.iter().any(|event| matches!(
+            &event.event,
+            rlogs_events::CanonicalEvent::WorldChanged(WorldContext {
+                scene_id: Some(SceneId(6_515)),
+                ..
+            })
+        )));
+
+        let snapshot = schema::SyncDungeonData {
+            dungeon: Some(schema::DungeonSyncData {
+                scene_uuid: Some(6_561),
+                ..schema::DungeonSyncData::default()
+            }),
+        };
+        let repaired = runtime
+            .process(&record(2, 23, encode(snapshot.clone())))
+            .unwrap();
+        assert_eq!(
+            repaired
+                .events
+                .iter()
+                .filter(|event| matches!(
+                    event.event,
+                    rlogs_events::CanonicalEvent::WorldChanged(_)
+                ))
+                .count(),
+            1
+        );
+        assert!(repaired.events.iter().any(|event| matches!(
+            &event.event,
+            rlogs_events::CanonicalEvent::WorldChanged(WorldContext {
+                scene_id: Some(SceneId(6_561)),
+                map_id: Some(6_561),
+                ..
+            })
+        )));
+
+        let duplicate = runtime.process(&record(3, 23, encode(snapshot))).unwrap();
+        assert!(
+            !duplicate
+                .events
+                .iter()
+                .any(|event| matches!(event.event, rlogs_events::CanonicalEvent::WorldChanged(_)))
+        );
     }
 
     #[test]

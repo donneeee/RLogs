@@ -1963,6 +1963,25 @@ struct LiveCombatFeedState {
     native_scene: Option<native_scene_observer::NativeSceneIdentity>,
 }
 
+#[cfg(windows)]
+fn localized_native_scene_presentation(
+    identity: native_scene_observer::NativeSceneIdentity,
+    deployment_id: &str,
+    client_build: &str,
+    protocol_pack_digest: &str,
+) -> Option<(native_scene_observer::NativeSceneIdentity, String)> {
+    let name = localized_scene_name_for_identity(
+        deployment_id,
+        client_build,
+        protocol_pack_digest,
+        i64::from(identity.scene_id),
+        "en-US",
+    )
+    .ok()
+    .flatten()?;
+    Some((identity, name.to_owned()))
+}
+
 impl LiveCombatFeed {
     #[cfg(windows)]
     fn set_native_scene_presentation(
@@ -9290,14 +9309,24 @@ impl RuntimeController {
                 (request.process_id != 0).then_some(request.process_id),
                 &target.build_id,
                 move |update| {
-                    let identity = match update {
+                    let presentation = match update {
                         native_scene_observer::NativeSceneUpdate::Stable(identity) => {
                             Some(identity)
                         }
                         native_scene_observer::NativeSceneUpdate::Unavailable => None,
                     }
-                    .filter(|identity| scene_families.contains_key(&identity.scene_id));
+                    .and_then(|identity| {
+                        localized_native_scene_presentation(
+                            identity,
+                            &deployment_id,
+                            &client_build,
+                            &protocol_pack_digest,
+                        )
+                    });
+                    let identity = presentation.as_ref().map(|(identity, _)| *identity);
                     combat_feed.set_native_scene_presentation(true, identity);
+                    // Automarker authority remains independently exact: its
+                    // feed accepts only scenes present in reviewed run rules.
                     automarker_feed.set_native_scene_presentation(
                         true,
                         identity,
@@ -9306,19 +9335,11 @@ impl RuntimeController {
                         &protocol_pack_digest,
                         &scene_families,
                     );
-                    let mechanics_scene = identity.map(|identity| {
-                        let name = localized_scene_name_for_identity(
-                            &deployment_id,
-                            &client_build,
-                            &protocol_pack_digest,
-                            i64::from(identity.scene_id),
-                            "en-US",
-                        )
-                        .ok()
-                        .flatten()
-                        .map(str::to_owned);
-                        (identity.scene_id, identity.map_id, name)
-                    });
+                    // Mechanics receives scene presentation only. The feed
+                    // clears layout/encounter state for this side channel and
+                    // retains its separate exact-build mechanic gates.
+                    let mechanics_scene = presentation
+                        .map(|(identity, name)| (identity.scene_id, identity.map_id, Some(name)));
                     mechanics_feed.set_native_scene_presentation(true, mechanics_scene);
                 },
             );
@@ -17848,6 +17869,64 @@ mod tests {
             &families,
         );
         assert_eq!(feed.current().unwrap().scene_id, 6_515);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn localized_reef_scene_is_live_presentation_without_automarker_authority() {
+        let identity = native_scene_observer::NativeSceneIdentity {
+            scene_id: 6_561,
+            map_id: 6_561,
+        };
+        let presentation = localized_native_scene_presentation(
+            identity,
+            "global",
+            "25247556",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+        )
+        .expect("6561 is present in the shipped localization catalog");
+        assert_eq!(presentation.0, identity);
+        assert!(!presentation.1.is_empty());
+
+        let families = bundled_scene_run_identities()
+            .unwrap()
+            .into_iter()
+            .filter_map(|(scene_id, identity)| {
+                automarker_scene_family_id(scene_id, &identity)
+                    .map(|family_id| (scene_id, family_id))
+            })
+            .collect::<BTreeMap<_, _>>();
+        assert!(families.contains_key(&6_565));
+        assert!(!families.contains_key(&6_561));
+
+        let automarker = AutomarkerSceneContextFeed::default();
+        automarker.set_native_scene_presentation(
+            true,
+            Some(identity),
+            "global",
+            "25247556",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+            &families,
+        );
+        assert_eq!(
+            automarker.current(),
+            None,
+            "localized presentation must not manufacture automarker authority"
+        );
+
+        assert_eq!(
+            localized_native_scene_presentation(
+                native_scene_observer::NativeSceneIdentity {
+                    scene_id: 99_999,
+                    map_id: 99_999,
+                },
+                "global",
+                "25247556",
+                BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+            ),
+            None,
+            "unknown native scenes must fail closed"
+        );
     }
 
     #[cfg(windows)]

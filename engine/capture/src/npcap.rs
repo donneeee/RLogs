@@ -32,6 +32,7 @@ use crate::{
 const PCAP_ERROR_BUFFER_SIZE: usize = 256;
 const PCAP_SNAPSHOT_BYTES: c_int = 262_144;
 const PCAP_READ_TIMEOUT_MILLIS: c_int = 250;
+const PCAP_PROMISCUOUS: c_int = 1;
 const MAXIMUM_CAPTURED_FRAME_BYTES: usize = 16 * 1024 * 1024;
 const REQUIRED_PACKET_EXPORTS: &[&[u8]] = &[
     b"PacketSetMinToCopy\0",
@@ -438,15 +439,16 @@ impl NpcapLiveCapture {
         let interface = CString::new(config.interface.as_bytes())
             .map_err(|_| adapter_error("capture interface contains a null byte"))?;
         let mut error_buffer = [0 as c_char; PCAP_ERROR_BUFFER_SIZE];
-        // Non-promiscuous mode is sufficient for traffic owned by this PC and
-        // avoids requesting broader adapter behavior than rLogs needs.
+        // Promiscuous mode is required when the selected interface receives a
+        // switch/SPAN mirror of the gaming PC. Broad frames remain in memory
+        // beneath the process-ownership or protocol-signature privacy gate.
         // SAFETY: all pointers are valid for this call and the returned handle
         // is exclusively owned by the new capture object.
         let handle = unsafe {
             (api.open_live)(
                 interface.as_ptr(),
                 PCAP_SNAPSHOT_BYTES,
-                0,
+                PCAP_PROMISCUOUS,
                 PCAP_READ_TIMEOUT_MILLIS,
                 error_buffer.as_mut_ptr(),
             )
@@ -680,6 +682,8 @@ fn adapter_error(message: impl Into<String>) -> CaptureError {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
 
     #[test]
@@ -848,5 +852,58 @@ mod tests {
         .expect("open routed adapter directly through Npcap");
         capture.stop_handle().request_stop();
         assert!(capture.next_frame().unwrap().is_none());
+    }
+
+    #[test]
+    #[ignore = "requires RLOGS_NPCAP_TEST_INTERFACE and live TCP traffic on that interface"]
+    fn configured_npcap_interface_observes_live_tcp_without_persistence() {
+        let interface = std::env::var("RLOGS_NPCAP_TEST_INTERFACE")
+            .expect("set RLOGS_NPCAP_TEST_INTERFACE to an Npcap device name or adapter GUID");
+        let duration_seconds = std::env::var("RLOGS_NPCAP_TEST_DURATION_SECONDS")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(5)
+            .clamp(1, 60);
+        let interface = npcap_device_name(&interface);
+        let mut capture = NpcapLiveCapture::open(
+            NpcapLiveConfig::new(interface.clone(), duration_seconds).unwrap(),
+        )
+        .expect("open configured Npcap interface");
+        let mut frames = 0_u64;
+        let mut payload_frames = 0_u64;
+        let mut bpsr_discovery_frames = 0_u64;
+        let mut flows = BTreeSet::new();
+        while let Some(frame) = capture
+            .next_frame()
+            .expect("read configured Npcap interface")
+        {
+            frames = frames.saturating_add(1);
+            if let Some(view) = crate::process_filter::extract_tcp_frame(&frame) {
+                flows.insert(view.flow.key());
+                payload_frames = payload_frames.saturating_add(u64::from(!view.payload.is_empty()));
+                bpsr_discovery_frames = bpsr_discovery_frames
+                    .saturating_add(u64::from(is_bpsr_scene_discovery_candidate(view.payload)));
+            }
+        }
+        println!(
+            "npcap_live_observation interface={interface} duration_seconds={duration_seconds} tcp_frames={frames} tcp_payload_frames={payload_frames} unique_flows={} bpsr_scene_discovery_frames={bpsr_discovery_frames}",
+            flows.len()
+        );
+        assert!(frames > 0, "configured interface observed no TCP frames");
+    }
+
+    fn is_bpsr_scene_discovery_candidate(payload: &[u8]) -> bool {
+        const ADDRESS_CHANGE_SIGNATURE: &[u8] = &[0x00, 0x63, 0x33, 0x53, 0x42, 0x00];
+        const LOGIN_SIGNATURE_1: &[u8] =
+            &[0x00, 0x00, 0x00, 0x62, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01];
+        const LOGIN_SIGNATURE_2: &[u8] = &[0x00, 0x00, 0x00, 0x00, 0x0a, 0x4e];
+        (payload.len() == 98
+            && payload.get(..10) == Some(LOGIN_SIGNATURE_1)
+            && payload.get(14..20) == Some(LOGIN_SIGNATURE_2))
+            || (payload.len() <= 16 * 1024
+                && payload.get(4) == Some(&0)
+                && payload
+                    .windows(ADDRESS_CHANGE_SIGNATURE.len())
+                    .any(|window| window == ADDRESS_CHANGE_SIGNATURE))
     }
 }

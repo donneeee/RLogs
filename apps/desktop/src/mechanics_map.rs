@@ -4330,6 +4330,10 @@ mod tests {
             scene_id: Some(6_515),
             map_id: Some(6_515),
             scene_name: Some("Chaotic - Mech Facility".into()),
+            map_layout: Some("reviewed-packet-layout"),
+            background_asset_url: Some("/reviewed-packet-map.png".into()),
+            encounter_pack: Some("packet-authorized-pack"),
+            encounter_pack_reviewed: true,
             ..MechanicsMapSnapshot::default()
         });
         feed.set_native_scene_presentation(
@@ -4340,6 +4344,10 @@ mod tests {
         assert_eq!(reef.snapshot.scene_id, Some(6_561));
         assert_eq!(reef.snapshot.map_id, Some(6_561));
         assert_eq!(reef.snapshot.scene_name.as_deref(), Some("Sea-Ringed Reef"));
+        assert_eq!(reef.snapshot.map_layout, None);
+        assert_eq!(reef.snapshot.background_asset_url, None);
+        assert_eq!(reef.snapshot.encounter_pack, None);
+        assert!(!reef.snapshot.encounter_pack_reviewed);
 
         feed.set_native_scene_presentation(true, None);
         let unavailable = feed.current();
