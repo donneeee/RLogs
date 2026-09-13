@@ -290,9 +290,7 @@ impl AutomarkerConfirmationRouter {
         // Decoder collection order is not proof order. Capture identity,
         // record-local event index, source kind, and stable route provenance
         // form a total tie-break independent of source clocks.
-        snapshot
-            .events
-            .sort_by_key(|event| capture_order_key(event));
+        snapshot.events.sort_by_key(capture_order_key);
         let mut routed = Vec::new();
         for event in snapshot.events {
             if !self.is_related_target_route(&event) {
