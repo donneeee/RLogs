@@ -49,6 +49,10 @@ pub(crate) struct PrivateConfirmationProvenance {
     pub stream_id: u64,
     pub direction: PrivatePacketDirection,
     pub fragment: PrivateFragmentKind,
+    /// False when the parser could not resolve the fragment's service/method
+    /// route. Numeric route fields then remain lossless zero sentinels rather
+    /// than being presented as authoritative route identities.
+    pub route_resolved: bool,
     pub service_id: u64,
     pub method_id: u32,
     pub stub_id: u32,
@@ -98,10 +102,16 @@ pub(crate) struct PrivateMarkerAdd {
     pub provenance: PrivateConfirmationProvenance,
     pub source_clocks: PrivateSourceClocks,
     pub asserted_authoritative_server_decode: bool,
-    pub marker_number: u8,
-    pub marker_owner_actor_id: i64,
-    pub position: PrivateMarkerPosition,
-    pub passive_instance_identity: i64,
+    pub raw_skill_id: Option<i32>,
+    pub derived_marker_number: Option<u8>,
+    pub marker_owner_actor_id: Option<i64>,
+    pub marker_owner_entity_uuid: Option<i64>,
+    pub passive_instance_identity: Option<i64>,
+    pub target_position_present: bool,
+    pub target_position_decode_valid: bool,
+    pub x: Option<f32>,
+    pub y: Option<f32>,
+    pub z: Option<f32>,
     pub runtime_revision: u64,
 }
 
@@ -168,6 +178,7 @@ pub(crate) struct OwnedConfirmationContext {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct OwnedRpcReturnCandidate {
     pub method_id: u32,
+    pub route_resolved: bool,
     pub original_call_id: u32,
     pub asserted_authoritative_server_decode: bool,
     pub decoded_as_success: bool,
@@ -219,6 +230,7 @@ struct CaptureOrderKey {
     source_kind_order: u8,
     direction: PrivatePacketDirection,
     fragment: PrivateFragmentKind,
+    route_resolved: bool,
     service_id: u64,
     method_id: u32,
     stub_id: u32,
@@ -323,23 +335,38 @@ impl AutomarkerConfirmationRouter {
                         continue;
                     }
                     OwnedConfirmationEventKind::RpcReturnCandidate(OwnedRpcReturnCandidate {
-                        method_id: event.provenance.method_id,
+                        method_id: event
+                            .provenance
+                            .route_resolved
+                            .then_some(event.provenance.method_id)
+                            .unwrap_or(0),
+                        route_resolved: event.provenance.route_resolved,
                         original_call_id: event.provenance.call_id.unwrap_or(0),
                         asserted_authoritative_server_decode: event
-                            .asserted_authoritative_server_decode,
+                            .asserted_authoritative_server_decode
+                            && event.provenance.route_resolved,
                         decoded_as_success: event.decoded_as_success,
                         decoded_body_length: event.decoded_body_length,
                     })
                 }
                 PrivateParserConfirmationEvent::MarkerAdd(event) => {
-                    // Do not pre-validate method, marker number, owner, XYZ,
-                    // instance freshness, revision, or authoritative assertion.
+                    // Preserve the lossless extractor shape through admission.
+                    // Only this owned coordinator boundary converts absent or
+                    // invalid fields into values the coordinator must reject.
                     OwnedConfirmationEventKind::MarkerAddCandidate(OwnedMarkerAddCandidate {
-                        method_id: event.provenance.method_id,
-                        marker_number: event.marker_number,
-                        marker_owner_actor_id: event.marker_owner_actor_id,
-                        position: event.position,
-                        passive_instance_identity: event.passive_instance_identity,
+                        method_id: event
+                            .provenance
+                            .route_resolved
+                            .then_some(event.provenance.method_id)
+                            .unwrap_or(0),
+                        marker_number: normalize_marker_number(&event),
+                        marker_owner_actor_id: event.marker_owner_actor_id.unwrap_or(0),
+                        position: PrivateMarkerPosition {
+                            x: normalize_marker_axis(&event, event.x),
+                            y: normalize_marker_axis(&event, event.y),
+                            z: normalize_marker_axis(&event, event.z),
+                        },
+                        passive_instance_identity: event.passive_instance_identity.unwrap_or(0),
                         asserted_authoritative_server_decode: event
                             .asserted_authoritative_server_decode,
                         runtime_revision: event.runtime_revision,
@@ -382,13 +409,11 @@ impl AutomarkerConfirmationRouter {
             PrivateParserConfirmationEvent::CorrelatedReturn(event) => {
                 provenance.direction == PrivatePacketDirection::ServerToClient
                     && provenance.fragment == PrivateFragmentKind::Return
-                    && provenance.service_id == WORLD_SERVICE_ID
                     && event.carrier_capture_sequence != 0
             }
             PrivateParserConfirmationEvent::MarkerAdd(_) => {
                 provenance.direction == PrivatePacketDirection::ServerToClient
                     && provenance.fragment == PrivateFragmentKind::Notify
-                    && provenance.service_id == WORLD_NOTIFICATION_SERVICE_ID
             }
         }
     }
@@ -443,12 +468,32 @@ fn capture_order_key(event: &PrivateParserConfirmationEvent) -> CaptureOrderKey 
         source_kind_order: event.source_kind_order(),
         direction: provenance.direction,
         fragment: provenance.fragment,
+        route_resolved: provenance.route_resolved,
         service_id: provenance.service_id,
         method_id: provenance.method_id,
         stub_id: provenance.stub_id,
         call_id: provenance.call_id,
         connection_id: provenance.connection_id,
         stream_id: provenance.stream_id,
+    }
+}
+
+fn normalize_marker_axis(event: &PrivateMarkerAdd, axis: Option<f32>) -> f32 {
+    if !event.target_position_present || !event.target_position_decode_valid {
+        return f32::NAN;
+    }
+    axis.filter(|value| value.is_finite()).unwrap_or(f32::NAN)
+}
+
+fn normalize_marker_number(event: &PrivateMarkerAdd) -> u8 {
+    match (event.raw_skill_id, event.derived_marker_number) {
+        (Some(raw_skill_id), Some(marker_number))
+            if (1..=6).contains(&marker_number)
+                && raw_skill_id == 1_100 + i32::from(marker_number) =>
+        {
+            marker_number
+        }
+        _ => 0,
     }
 }
 
@@ -478,14 +523,26 @@ fn same_event_payload(
             left.provenance == right.provenance
                 && left.asserted_authoritative_server_decode
                     == right.asserted_authoritative_server_decode
-                && left.marker_number == right.marker_number
+                && left.raw_skill_id == right.raw_skill_id
+                && left.derived_marker_number == right.derived_marker_number
                 && left.marker_owner_actor_id == right.marker_owner_actor_id
-                && left.position.x.to_bits() == right.position.x.to_bits()
-                && left.position.y.to_bits() == right.position.y.to_bits()
-                && left.position.z.to_bits() == right.position.z.to_bits()
+                && left.marker_owner_entity_uuid == right.marker_owner_entity_uuid
+                && left.target_position_present == right.target_position_present
+                && left.target_position_decode_valid == right.target_position_decode_valid
+                && same_optional_float_bits(left.x, right.x)
+                && same_optional_float_bits(left.y, right.y)
+                && same_optional_float_bits(left.z, right.z)
                 && left.passive_instance_identity == right.passive_instance_identity
                 && left.runtime_revision == right.runtime_revision
         }
+        _ => false,
+    }
+}
+
+fn same_optional_float_bits(left: Option<f32>, right: Option<f32>) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => left.to_bits() == right.to_bits(),
+        (None, None) => true,
         _ => false,
     }
 }
@@ -541,6 +598,7 @@ mod tests {
             stream_id: 3,
             direction: PrivatePacketDirection::ServerToClient,
             fragment,
+            route_resolved: true,
             service_id,
             method_id,
             stub_id: 99,
@@ -584,14 +642,16 @@ mod tests {
                 wall_clock_unix_micros: Some(1_800_000_000_000_000),
             },
             asserted_authoritative_server_decode: true,
-            marker_number: number,
-            marker_owner_actor_id: 44,
-            position: PrivateMarkerPosition {
-                x: 1.0,
-                y: 2.0,
-                z: 3.0,
-            },
-            passive_instance_identity: 123,
+            raw_skill_id: Some(1_100 + i32::from(number)),
+            derived_marker_number: Some(number),
+            marker_owner_actor_id: Some(44),
+            marker_owner_entity_uuid: Some(4_400),
+            passive_instance_identity: Some(123),
+            target_position_present: true,
+            target_position_decode_valid: true,
+            x: Some(1.0),
+            y: Some(2.0),
+            z: Some(3.0),
             runtime_revision: 12,
         })
     }
@@ -644,6 +704,7 @@ mod tests {
             event.kind,
             OwnedConfirmationEventKind::RpcReturnCandidate(OwnedRpcReturnCandidate {
                 method_id: WORLD_USE_SLOT_METHOD_ID,
+                route_resolved: true,
                 original_call_id: 91,
                 asserted_authoritative_server_decode: true,
                 decoded_as_success: true,
@@ -823,10 +884,11 @@ mod tests {
         };
         candidate.asserted_authoritative_server_decode = false;
         candidate.provenance.method_id = 45;
-        candidate.marker_number = 2;
-        candidate.marker_owner_actor_id = 999;
-        candidate.position.x = f32::NAN;
-        candidate.passive_instance_identity = 0;
+        candidate.raw_skill_id = Some(1_102);
+        candidate.derived_marker_number = Some(2);
+        candidate.marker_owner_actor_id = Some(999);
+        candidate.x = Some(f32::NAN);
+        candidate.passive_instance_identity = Some(0);
         let routed = router
             .route_snapshot_at(
                 snapshot(vec![PrivateParserConfirmationEvent::MarkerAdd(candidate)]),
@@ -856,20 +918,187 @@ mod tests {
             }
             _ => unreachable!(),
         }
-        let mut wrong_service = marker(11, 1, 2);
-        match &mut wrong_service {
+        let mut wrong_service_candidate = marker(11, 1, 2);
+        match &mut wrong_service_candidate {
             PrivateParserConfirmationEvent::MarkerAdd(event) => event.provenance.service_id = 7,
             _ => unreachable!(),
         }
+        let routed = router
+            .route_snapshot_at(
+                snapshot(vec![wrong_direction, wrong_service_candidate]),
+                origin + Duration::from_micros(5),
+            )
+            .unwrap();
+        assert_eq!(routed.len(), 1);
+        assert!(matches!(
+            routed[0].kind,
+            OwnedConfirmationEventKind::MarkerAddCandidate(_)
+        ));
+    }
+
+    #[test]
+    fn correlated_unresolved_and_wrong_return_routes_are_forwarded_losslessly() {
+        let origin = Instant::now();
+        let mut router =
+            AutomarkerConfirmationRouter::begin_at("private-session".into(), 1, origin).unwrap();
+        let mut unresolved = successful_return(10, 1);
+        let PrivateParserConfirmationEvent::CorrelatedReturn(unresolved_event) = &mut unresolved
+        else {
+            unreachable!();
+        };
+        unresolved_event.provenance.route_resolved = false;
+        unresolved_event.provenance.service_id = 0;
+        unresolved_event.provenance.method_id = 0;
+        unresolved_event.provenance.stub_id = 0;
+        unresolved_event.provenance.call_id = None;
+
+        let mut wrong = successful_return(11, 2);
+        let PrivateParserConfirmationEvent::CorrelatedReturn(wrong_event) = &mut wrong else {
+            unreachable!();
+        };
+        wrong_event.provenance.service_id = 7;
+        wrong_event.provenance.method_id = 777;
+
+        let routed = router
+            .route_snapshot_at(
+                snapshot(vec![wrong, unresolved]),
+                origin + Duration::from_micros(5),
+            )
+            .unwrap();
+        assert_eq!(routed.len(), 2);
+        let OwnedConfirmationEventKind::RpcReturnCandidate(unresolved) = &routed[0].kind else {
+            panic!("expected unresolved Return candidate");
+        };
+        assert!(!unresolved.route_resolved);
+        assert_eq!(unresolved.method_id, 0);
+        assert_eq!(unresolved.original_call_id, 0);
+        assert!(!unresolved.asserted_authoritative_server_decode);
+
+        let OwnedConfirmationEventKind::RpcReturnCandidate(wrong) = &routed[1].kind else {
+            panic!("expected wrong-route Return candidate");
+        };
+        assert!(wrong.route_resolved);
+        assert_eq!(wrong.method_id, 777);
+        assert!(wrong.asserted_authoritative_server_decode);
+    }
+
+    #[test]
+    fn lossless_marker_shapes_remain_distinct_then_normalize_fail_closed() {
+        let origin = Instant::now();
+        let mut router =
+            AutomarkerConfirmationRouter::begin_at("private-session".into(), 1, origin).unwrap();
+        let mut absent = marker(10, 1, 1);
+        let PrivateParserConfirmationEvent::MarkerAdd(absent_marker) = &mut absent else {
+            unreachable!();
+        };
+        absent_marker.raw_skill_id = None;
+        absent_marker.derived_marker_number = None;
+        absent_marker.marker_owner_actor_id = None;
+        absent_marker.marker_owner_entity_uuid = None;
+        absent_marker.passive_instance_identity = None;
+        absent_marker.target_position_present = false;
+        absent_marker.target_position_decode_valid = false;
+        absent_marker.x = None;
+        absent_marker.y = None;
+        absent_marker.z = None;
+
+        let mut malformed = absent.clone();
+        malformed.provenance_mut().capture_sequence = 11;
+        malformed.provenance_mut().route_resolved = false;
+        malformed.provenance_mut().service_id = 0;
+        malformed.provenance_mut().method_id = 0;
+        let PrivateParserConfirmationEvent::MarkerAdd(malformed_marker) = &mut malformed else {
+            unreachable!();
+        };
+        malformed_marker.target_position_present = true;
+
+        let mut partial = marker(12, 1, 1);
+        let PrivateParserConfirmationEvent::MarkerAdd(partial_marker) = &mut partial else {
+            unreachable!();
+        };
+        partial_marker.y = None;
+
+        let mut nonfinite = marker(13, 1, 1);
+        let PrivateParserConfirmationEvent::MarkerAdd(nonfinite_marker) = &mut nonfinite else {
+            unreachable!();
+        };
+        nonfinite_marker.raw_skill_id = Some(1_102);
+        nonfinite_marker.x = Some(f32::INFINITY);
+        nonfinite_marker.y = Some(f32::from_bits(0x7fc0_0011));
+
+        assert!(!same_event_payload(&absent, &malformed));
+        assert!(!same_event_payload(&malformed, &partial));
+        assert!(!same_event_payload(&partial, &nonfinite));
+
+        let routed = router
+            .route_snapshot_at(
+                snapshot(vec![nonfinite, partial, malformed, absent]),
+                origin + Duration::from_micros(5),
+            )
+            .unwrap();
+        let markers = routed
+            .iter()
+            .map(|event| match &event.kind {
+                OwnedConfirmationEventKind::MarkerAddCandidate(marker) => marker,
+                _ => panic!("expected marker candidate"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(markers[0].marker_number, 0);
+        assert_eq!(markers[0].marker_owner_actor_id, 0);
+        assert_eq!(markers[0].passive_instance_identity, 0);
+        assert!(markers[0].position.x.is_nan());
+        assert!(markers[0].position.y.is_nan());
+        assert!(markers[0].position.z.is_nan());
+        assert!(markers[1].position.x.is_nan());
+        assert!(markers[1].position.y.is_nan());
+        assert!(markers[1].position.z.is_nan());
+        assert_eq!(markers[1].method_id, 0);
+        assert!(markers[1].asserted_authoritative_server_decode);
+        assert_eq!(markers[2].position.x, 1.0);
+        assert!(markers[2].position.y.is_nan());
+        assert_eq!(markers[2].position.z, 3.0);
+        assert!(markers[3].position.x.is_nan());
+        assert!(markers[3].position.y.is_nan());
+        assert_eq!(markers[3].position.z, 3.0);
+        assert_eq!(markers[3].marker_number, 0);
         assert!(
-            router
-                .route_snapshot_at(
-                    snapshot(vec![wrong_direction, wrong_service]),
-                    origin + Duration::from_micros(5),
-                )
-                .unwrap()
-                .is_empty()
+            markers
+                .iter()
+                .all(|marker| marker.asserted_authoritative_server_decode)
         );
+    }
+
+    #[test]
+    fn malformed_marker_conflict_keeps_batch_dedup_transactional() {
+        let origin = Instant::now();
+        let mut router =
+            AutomarkerConfirmationRouter::begin_at("private-session".into(), 1, origin).unwrap();
+        let replay = marker(10, 1, 1);
+        router
+            .route_snapshot_at(
+                snapshot(vec![replay.clone()]),
+                origin + Duration::from_micros(1),
+            )
+            .unwrap();
+        let mut conflict = replay.clone();
+        let PrivateParserConfirmationEvent::MarkerAdd(conflicting_marker) = &mut conflict else {
+            unreachable!();
+        };
+        conflicting_marker.target_position_decode_valid = false;
+        let fresh = marker(11, 1, 1);
+        let before_seen = router.seen_events.clone();
+        let before_frontier = router.capture_frontier.clone();
+        let before_ordinal = router.last_ordinal;
+        assert_eq!(
+            router.route_snapshot_at(
+                snapshot(vec![replay, fresh, conflict]),
+                origin + Duration::from_micros(2),
+            ),
+            Err(ConfirmationRouterError::ConflictingProvenance)
+        );
+        assert_eq!(router.seen_events, before_seen);
+        assert_eq!(router.capture_frontier, before_frontier);
+        assert_eq!(router.last_ordinal, before_ordinal);
     }
 
     #[test]
@@ -970,7 +1199,7 @@ mod tests {
         let PrivateParserConfirmationEvent::MarkerAdd(conflicting_marker) = &mut conflicting else {
             unreachable!();
         };
-        conflicting_marker.marker_owner_actor_id = 999;
+        conflicting_marker.marker_owner_actor_id = Some(999);
         let before_seen = router.seen_events.clone();
         let before_frontier = router.capture_frontier.clone();
         assert_eq!(
