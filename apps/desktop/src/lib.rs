@@ -3,6 +3,8 @@ pub mod automarker_activation;
 mod automarker_bridge_evidence;
 pub mod automarker_coordinate_planner;
 mod automarker_native_bridge;
+#[cfg(windows)]
+mod automarker_native_readiness;
 mod automarker_presets;
 #[cfg(windows)]
 #[allow(dead_code)]

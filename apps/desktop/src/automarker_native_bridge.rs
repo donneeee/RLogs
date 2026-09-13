@@ -1,10 +1,11 @@
 //! Private desktop-owned lifecycle for the future one-marker native bridge.
 //!
-//! This module intentionally exposes no HTTP or plug-in surface and performs
-//! no driver load, handle open, packet mutation, or send. It binds the private
-//! parser evidence to the exact capture session and scene context that a future
-//! in-process `AutomarkerBridgeCoordinator` must use, and gives all future
-//! native resources one invalidation/shutdown domain.
+//! This module intentionally exposes no HTTP or plug-in surface. Its optional
+//! readiness probe may load pinned dependencies and briefly open a false-filter
+//! read-only handle, but it performs no active interception, packet mutation,
+//! or send. It binds private parser evidence to the exact capture session and
+//! scene context that a future in-process `AutomarkerBridgeCoordinator` must
+//! use, and gives all future native resources one invalidation/shutdown domain.
 
 use std::sync::Mutex;
 
@@ -13,6 +14,10 @@ use rlogs_game_bpsr::{
     OfflineAutomarkerConnectionEpochBinding,
 };
 
+#[cfg(windows)]
+use crate::automarker_native_readiness::{
+    AutomarkerNativeReadinessEvidence, AutomarkerNativeReadinessRequest, discover_native_readiness,
+};
 #[cfg(windows)]
 use crate::automarker_windivert_backend::WinDivertHandle;
 use crate::{
@@ -298,13 +303,62 @@ impl AutomarkerNativeBridgeLifecycle {
         let Some(mut state) = self.lock_or_poison_shutdown() else {
             return false;
         };
+        if !Self::retain_native_flow_locked(
+            &mut state,
+            binding,
+            syn_capture_sequence,
+            syn_observed_micros,
+        ) {
+            return Self::invalidate_and_release(state);
+        }
+        true
+    }
+
+    /// Retain a read-only game-PC readiness result. REFLECT is deliberately
+    /// left false: the active open must arbitrate again while opening the exact
+    /// tuple filter. No active handle or checksum helper is retained here.
+    #[cfg(windows)]
+    #[allow(dead_code)] // Called by the next private game-PC discovery worker.
+    pub(crate) fn accept_native_readiness(
+        &self,
+        readiness: AutomarkerNativeReadinessEvidence,
+        syn_capture_sequence: u64,
+        syn_observed_micros: u64,
+    ) -> bool {
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            return false;
+        };
+        if !readiness.reflect_preflight_clear
+            || !readiness.pinned_backend_ready
+            || !readiness.checksum_helper_ready
+            || !Self::retain_native_flow_locked(
+                &mut state,
+                readiness.binding,
+                syn_capture_sequence,
+                syn_observed_micros,
+            )
+        {
+            return Self::invalidate_and_release(state);
+        }
+        state.gates.pinned_backend = true;
+        state.gates.checksum_helper_ready = true;
+        state.gates.reflect_arbitrated = false;
+        true
+    }
+
+    fn retain_native_flow_locked(
+        state: &mut NativeBridgeState,
+        binding: OfflineAutomarkerConnectionEpochBinding,
+        syn_capture_sequence: u64,
+        syn_observed_micros: u64,
+    ) -> bool {
         let Some(capture) = state
             .parser_evidence
             .as_ref()
             .and_then(|evidence| evidence.outbound_carrier.as_ref())
             .map(|carrier| carrier.tcp_connection)
         else {
-            return Self::invalidate_and_release(state);
+            return false;
         };
         if state.phase != LifecyclePhase::Observing
             || state.continuity.is_none()
@@ -312,7 +366,7 @@ impl AutomarkerNativeBridgeLifecycle {
             || syn_capture_sequence == 0
             || !binding_matches_capture(binding, capture)
         {
-            return Self::invalidate_and_release(state);
+            return false;
         }
         state.native_flow = Some(NativeFlowEvidence {
             binding,
@@ -324,6 +378,22 @@ impl AutomarkerNativeBridgeLifecycle {
         state.gates.exact_local_process = true;
         state.gates.exact_syn_owned_tuple_epoch = true;
         true
+    }
+
+    /// Run the private read-only host probe, then bind its result to the same
+    /// parser carrier tuple. This never opens or retains an active filter.
+    #[cfg(windows)]
+    #[allow(dead_code)] // Invoked by the next lifecycle worker slice.
+    pub(crate) fn discover_and_accept_native_readiness(
+        &self,
+        request: AutomarkerNativeReadinessRequest<'_>,
+    ) -> Result<bool, String> {
+        let readiness = discover_native_readiness(&request)?;
+        Ok(self.accept_native_readiness(
+            readiness,
+            request.syn_capture_sequence,
+            request.syn_observed_micros,
+        ))
     }
 
     /// Retain the latest reverse cumulative ACK only on the exact bound epoch
@@ -717,6 +787,32 @@ mod tests {
         drop(snapshot);
         assert!(!bridge.observe_native_reverse_ack(regressed));
         assert_eq!(state(&bridge).phase, LifecyclePhase::Invalidated);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn read_only_readiness_never_claims_active_reflect_arbitration_or_send() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        assert!(bridge.accept_parser_evidence(Some(&scene("mech-facility")), parser_evidence(),));
+        assert!(bridge.accept_native_readiness(
+            AutomarkerNativeReadinessEvidence {
+                binding: binding(443),
+                reflect_preflight_clear: true,
+                pinned_backend_ready: true,
+                checksum_helper_ready: true,
+            },
+            10,
+            900,
+        ));
+        let snapshot = state(&bridge);
+        assert!(snapshot.gates.exact_local_process);
+        assert!(snapshot.gates.exact_syn_owned_tuple_epoch);
+        assert!(snapshot.gates.pinned_backend);
+        assert!(snapshot.gates.checksum_helper_ready);
+        assert!(!snapshot.gates.reflect_arbitrated);
+        drop(snapshot);
+        assert!(!bridge.placement_enabled());
     }
 
     #[test]
