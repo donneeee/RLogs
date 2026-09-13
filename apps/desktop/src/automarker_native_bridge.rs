@@ -567,6 +567,50 @@ impl AutomarkerNativeBridgeLifecycle {
         true
     }
 
+    /// A capture-owned connection-set transition invalidates every native
+    /// resource and any carrier correlation from the previous tuple epoch.
+    pub(crate) fn invalidate_connection_epoch(&self) {
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            return;
+        };
+        if !matches!(
+            state.phase,
+            LifecyclePhase::Observing | LifecyclePhase::Invalidated
+        ) {
+            return;
+        }
+        let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Invalidated, false);
+        drop(state);
+        detached.drop_in_shutdown_order();
+    }
+
+    /// Report whether a changed process-confirmed connection set requires a
+    /// new passive epoch. A pending SYN worker owns the transition and must
+    /// not be torn down merely because the ordinary capture noticed its new
+    /// connection after the SYN.
+    pub(crate) fn confirmed_connections_require_restart(
+        &self,
+        confirmed: &[rlogs_capture::TcpConnection],
+    ) -> bool {
+        let Some(state) = self.lock_or_poison_shutdown() else {
+            return false;
+        };
+        #[cfg(windows)]
+        if state.passive_readiness_worker.is_some() {
+            return false;
+        }
+        let Some(flow) = state.native_flow.as_ref() else {
+            return true;
+        };
+        let capture = flow.capture_connection;
+        !confirmed.iter().any(|connection| {
+            connection.client.address == std::net::IpAddr::V4(capture.client_address)
+                && connection.client.port == capture.client_port
+                && connection.server.address == std::net::IpAddr::V4(capture.server_address)
+                && connection.server.port == capture.server_port
+        })
+    }
+
     pub(crate) fn finish_session(&self, session_id: &str) {
         let Some(mut state) = self.lock_or_poison_shutdown() else {
             return;
@@ -1036,6 +1080,20 @@ mod tests {
         assert!(bridge.accept_native_flow_binding(binding(443), 10, 900));
         assert!(bridge.observe_native_connection_terminated(9));
         assert_eq!(state(&bridge).phase, LifecyclePhase::Invalidated);
+    }
+
+    #[test]
+    fn host_connection_epoch_change_invalidates_old_carrier_and_native_flow() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        assert!(bridge.accept_parser_evidence(Some(&scene("mech-facility")), parser_evidence()));
+        assert!(bridge.accept_native_flow_binding(binding(443), 10, 900));
+        bridge.invalidate_connection_epoch();
+        let snapshot = state(&bridge);
+        assert_eq!(snapshot.phase, LifecyclePhase::Invalidated);
+        assert!(snapshot.parser_evidence.is_none());
+        assert!(snapshot.native_flow.is_none());
+        assert_eq!(snapshot.gates, NativeGateState::default());
     }
 
     #[test]
