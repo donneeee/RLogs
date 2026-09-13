@@ -9077,14 +9077,25 @@ impl RuntimeController {
             .then_some(request.process_id)
             .into_iter()
             .collect::<Vec<_>>();
-        let capture = WindowsSignatureLiveCapture::open_route_aware_prefix(
-            interface,
-            &capture_process_ids,
-            request.duration_seconds,
-            dumpcap_fallback,
-            classify_bpsr_tcp_prefix,
-            SignatureFlowCaptureConfig::default(),
-        )
+        let exitlag_compatibility_enabled = self.core_settings().exitlag_compatibility_enabled;
+        let capture = if exitlag_compatibility_enabled {
+            WindowsSignatureLiveCapture::open_route_aware_prefix(
+                interface,
+                &capture_process_ids,
+                request.duration_seconds,
+                dumpcap_fallback,
+                classify_bpsr_tcp_prefix,
+                SignatureFlowCaptureConfig::default(),
+            )
+        } else {
+            WindowsSignatureLiveCapture::open_prefix(
+                interface,
+                request.duration_seconds,
+                dumpcap_fallback,
+                classify_bpsr_tcp_prefix,
+                SignatureFlowCaptureConfig::default(),
+            )
+        }
         .map_err(|error| error.to_string())?;
         let stop_handle = capture.stop_handle();
         {

@@ -851,6 +851,7 @@ interface CoreSettings {
   overlayTimerInactivitySeconds: number;
   captureInterface: string | null;
   dumpcapPath: string | null;
+  exitlagCompatibilityEnabled: boolean;
 }
 
 function mountCombatMeterOptionsSurface(
@@ -1930,6 +1931,10 @@ function mountNetworkSettingsSurface(container: HTMLElement): MountedSurface {
     "",
     "Native Npcap is used automatically",
   );
+  const exitlagCompatibility = checkboxOption(
+    "ExitLag compatibility",
+    "Capture redirected game traffic across the selected device and Windows loopback. Leave this off unless ExitLag is active.",
+  );
   const actions = document.createElement("div");
   actions.className = "runtime-card-actions";
   const save = button("Save network settings", "primary-button");
@@ -1942,7 +1947,12 @@ function mountNetworkSettingsSurface(container: HTMLElement): MountedSurface {
     "runtime-action-message",
   );
   actions.append(save, refresh, message);
-  form.append(interfaceLabel, dumpcap.label, actions);
+  form.append(
+    interfaceLabel,
+    dumpcap.label,
+    exitlagCompatibility.label,
+    actions,
+  );
   root.append(heading, form);
   container.replaceChildren(root);
 
@@ -1995,6 +2005,7 @@ function mountNetworkSettingsSurface(container: HTMLElement): MountedSurface {
       );
       dumpcap.input.value =
         core.dumpcapPath ?? environment.dumpcap_path ?? "";
+      exitlagCompatibility.input.checked = core.exitlagCompatibilityEnabled;
       save.disabled = false;
       const npcapRepair = environment.npcap_error?.trim()
           ? `rLogs opened safely, but Npcap needs repair: ${environment.npcap_error} Download and reinstall the current Npcap package from npcap.com, then refresh devices. dumpcap.exe is not required.`
@@ -2051,6 +2062,7 @@ function mountNetworkSettingsSurface(container: HTMLElement): MountedSurface {
             ...coreSettings,
             captureInterface: emptyToNull(captureInterface.value),
             dumpcapPath: emptyToNull(dumpcap.input.value),
+            exitlagCompatibilityEnabled: exitlagCompatibility.input.checked,
           }),
         }),
       );
@@ -4903,7 +4915,8 @@ function parseCoreSettings(value: unknown): CoreSettings {
     Number(value.overlayTimerInactivitySeconds) < 0 ||
     Number(value.overlayTimerInactivitySeconds) > 300 ||
     !isNullableString(value.captureInterface) ||
-    !isNullableString(value.dumpcapPath)
+    !isNullableString(value.dumpcapPath) ||
+    typeof value.exitlagCompatibilityEnabled !== "boolean"
   ) {
     throw new Error("The local host returned invalid Core settings.");
   }

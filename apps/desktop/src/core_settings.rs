@@ -30,6 +30,11 @@ pub struct CoreSettings {
     pub overlay_timer_inactivity_seconds: u16,
     pub capture_interface: Option<String>,
     pub dumpcap_path: Option<String>,
+    /// Opts into capture paths used by ExitLag and similar local traffic
+    /// redirection tools. Ordinary capture deliberately stays on the single
+    /// selected adapter unless the user enables this compatibility mode.
+    #[serde(default)]
+    pub exitlag_compatibility_enabled: bool,
 }
 
 impl Default for CoreSettings {
@@ -43,6 +48,7 @@ impl Default for CoreSettings {
             overlay_timer_inactivity_seconds: default_overlay_timer_inactivity_seconds(),
             capture_interface: None,
             dumpcap_path: None,
+            exitlag_compatibility_enabled: false,
         }
     }
 }
@@ -170,6 +176,7 @@ mod tests {
             close_to_tray: true,
             capture_interface: Some("3".into()),
             dumpcap_path: Some("C:\\Program Files\\Wireshark\\dumpcap.exe".into()),
+            exitlag_compatibility_enabled: true,
             ..CoreSettings::default()
         };
         store.update(updated.clone()).unwrap();
@@ -209,6 +216,7 @@ mod tests {
         assert!(settings.close_to_tray);
         assert!(!settings.developer_mode);
         assert!(!settings.hide_overlays_when_unfocused);
+        assert!(!settings.exitlag_compatibility_enabled);
         assert!(settings.pause_overlay_timers_outside_combat);
         assert_eq!(settings.overlay_timer_inactivity_seconds, 8);
         let _ = std::fs::remove_file(path);
