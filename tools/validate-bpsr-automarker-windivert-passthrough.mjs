@@ -63,8 +63,29 @@ assert.ok(firstReflectProof < discoveryOpen);
 assert.ok(secondReflectProof > discoveryOpen);
 assert.ok(secondReflectProof < activeOpen);
 assert.ok(backend.includes("static ARBITRATION_LOCK: Mutex<()>"));
-assert.ok(backend.indexOf(".lock()") < backend.indexOf("self.reflect_inventory_is_clear(priority)?"));
-assert.ok(backend.indexOf("self.reflect_inventory_is_clear(priority)?") < backend.indexOf("self.open_network(filter, priority, flags)?"));
+const arbitrationLock = backend.indexOf(".lock()", backend.indexOf("open_arbitrated_network"));
+const reflectOpen = backend.indexOf(
+  'self.open_at_layer("true", LAYER_REFLECT_ABI, 0, flags_reflect)',
+  arbitrationLock,
+);
+const preOpenBarrier = backend.indexOf("self.reflect_inventory_through_barrier(", reflectOpen);
+const networkOpen = backend.indexOf("self.open_network(filter, priority, flags)?", preOpenBarrier);
+const postOpenBarrier = backend.indexOf("self.reflect_post_open_barrier(", networkOpen);
+const retainedMonitor = backend.indexOf(
+  "active.lifetime_monitor = Some(ReflectLifetimeMonitor::spawn(reflect, lifetime)?)",
+  postOpenBarrier,
+);
+assert.ok(arbitrationLock > 0);
+assert.ok(arbitrationLock < reflectOpen);
+assert.ok(reflectOpen < preOpenBarrier);
+assert.ok(preOpenBarrier < networkOpen);
+assert.ok(networkOpen < postOpenBarrier);
+assert.ok(postOpenBarrier < retainedMonitor);
+assert.ok(backend.includes("struct ReflectLifetimeMonitor"));
+assert.ok(backend.includes('name("rlogs-automarker-reflect".into())'));
+assert.ok(backend.includes("ActiveLifetimeArbitrationStatus::PeerConflict"));
+assert.ok(backend.includes("ActiveLifetimeArbitrationStatus::MonitorFailure"));
+assert.ok(backend.includes("drop(self.lifetime_monitor.take())"));
 assert.ok(backend.includes("LAYER_REFLECT_ABI"));
 assert.ok(backend.includes("SENTINEL_PRIORITY"));
 assert.ok(backend.includes("decode_reflect_event(&address)"));
