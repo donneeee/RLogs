@@ -176,6 +176,17 @@ pub struct OfflineAutomarkerSubstitutionProof {
     pub allowed_mutable_bytes: usize,
     pub all_other_bytes_identical: bool,
     pub game_owned_values_identical: bool,
+    /// The only application-layer MAC currently evidenced for this request is
+    /// the HMAC-SHA256 inside `UseSlotRequest.attr_data`. Both the carrier and
+    /// substituted copies passed that check independently.
+    pub attribute_hmac_verified_before_substitution: bool,
+    pub attribute_hmac_verified_after_substitution: bool,
+    /// The HMAC input is exactly the field-local IV followed by ciphertext.
+    /// Marker slot, skill ID, and target XYZ are siblings of `attr_data`, not
+    /// bytes in that input.
+    pub attribute_hmac_input_bytes_identical: bool,
+    pub mutable_bytes_covered_by_attribute_hmac: bool,
+    pub application_authentication_recomputation_required: bool,
     pub authenticated_envelope_bytes_identical: bool,
     pub target_heading_bytes_identical: bool,
     pub current_position_bytes_identical: bool,
@@ -962,6 +973,15 @@ fn substitute_application(
         allowed_mutable_bytes: mutable.into_iter().filter(|allowed| *allowed).count(),
         all_other_bytes_identical: true,
         game_owned_values_identical,
+        // Both calls to `decode_observed_automarker_request_into` above reach
+        // `decode_attributes`, which verifies HMAC(IV || ciphertext) before
+        // decrypting. The mutable spans are disjoint from `attr_data` and its
+        // complete envelope was compared byte-for-byte immediately above.
+        attribute_hmac_verified_before_substitution: true,
+        attribute_hmac_verified_after_substitution: true,
+        attribute_hmac_input_bytes_identical: true,
+        mutable_bytes_covered_by_attribute_hmac: false,
+        application_authentication_recomputation_required: false,
         authenticated_envelope_bytes_identical: true,
         target_heading_bytes_identical,
         current_position_bytes_identical,
@@ -2443,6 +2463,12 @@ mod tests {
                 &original[..application_start]
             );
             assert_eq!(proof.allowed_mutable_bytes, 16);
+            assert!(proof.attribute_hmac_verified_before_substitution);
+            assert!(proof.attribute_hmac_verified_after_substitution);
+            assert!(proof.attribute_hmac_input_bytes_identical);
+            assert!(!proof.mutable_bytes_covered_by_attribute_hmac);
+            assert!(!proof.application_authentication_recomputation_required);
+            assert!(proof.authenticated_envelope_bytes_identical);
             assert!(!proof.packet_transmission_performed);
 
             let changed: Vec<usize> = original

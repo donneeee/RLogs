@@ -131,8 +131,16 @@
     ]
   },
   "checksum_and_sequence_assessment": {
+    "integrity_boundary_proof": "ground-marker-request-integrity-boundary.v1.json",
     "bpsr_checksum_present_in_parser_grammar": false,
+    "explicit_whole_request_mac_signature_or_checksum_in_exact_schema": false,
+    "known_attribute_hmac_input": "UseSlotRequest.attr_data IV plus ciphertext only",
+    "known_attribute_hmac_covers_mutable_slot_skill_or_target_xyz": false,
+    "known_attribute_hmac_recomputation_required": false,
     "absence_of_any_other_integrity_check_proven": false,
+    "absence_limit": "server-side semantic or out-of-band validation cannot be disproven from a client schema or an unmodified capture",
+    "tcp_checksum_covers_mutable_bytes": true,
+    "tcp_checksum_recomputation_requires_secret": false,
     "equal_tcp_payload_length_would_shift_later_tcp_sequence_numbers": false,
     "raw_rewrite_still_requires": [
       "suppression of the original packet",
@@ -215,6 +223,9 @@
     "complete_current_position_byte_identical": true,
     "uuid_skill_level_begin_time_session_sequence_byte_identical": true,
     "authenticated_attribute_envelope_byte_identical": true,
+    "attribute_hmac_verified_before_and_after_substitution": true,
+    "attribute_hmac_input_byte_identical": true,
+    "application_authentication_recomputation_required": false,
     "all_other_application_bytes_identical": true,
     "exact_build_decode_after_substitution": true,
     "verified_length_stack_bytes": [161, 187, 197],

@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "build_id": "25247556",
+  "audit_kind": "sanitized-read-only-ground-marker-request-integrity-boundary",
+  "scope": {
+    "retained_v3_capture_read_offline": true,
+    "exact_current_build_schema_read_offline": true,
+    "repository_frame_and_crypto_grammar_read_offline": true,
+    "packet_transmission_performed": false,
+    "packet_replay_performed": false,
+    "live_packet_interception_performed": false,
+    "process_memory_read": false,
+    "process_memory_write": false,
+    "input_automation_performed": false
+  },
+  "evidence": {
+    "retained_v3_private_capture": {
+      "sha256": "10103b36efe8b1de6242f6ef5a1942c1ec0b884fd77c27594229179b99e5cb38",
+      "bytes": 166842,
+      "marker_requests": 1,
+      "remote_capture_client_build_independently_verified": false,
+      "raw_bytes_published": false
+    },
+    "retained_v3_private_protocol_journal": {
+      "sha256": "5a26d4b75b77fed94e05b5859f783c2fe4daf3103c7fc0ae1d157a880454f127",
+      "bytes": 1518647,
+      "marker_requests": 1,
+      "raw_bytes_published": false
+    },
+    "sanitized_wire_layout": "ground-marker-wire-layout-observation.v1.json",
+    "exact_schema_and_transport": "use-slot-current-schema-transport-proof.v1.json",
+    "six_request_correlation": "outbound-ground-marker-request-correlation-proof.v1.json",
+    "exact_local_binary_identity": {
+      "artifact": "steam-distribution-snapshot.v1.json",
+      "game_assembly_bytes": 218074672,
+      "game_assembly_sha256": "4a079aec0a3e51a8023aa86bbd152e12068907b65b9aafb355d20bb6d6c41fe3",
+      "il2cpp_metadata_usable": false
+    },
+    "offline_substitution_implementation": "src/automarker_request.rs",
+    "bpsr_frame_grammar": "src/framing.rs"
+  },
+  "serialized_request_boundaries": {
+    "outer_application": "Zproto.World.Types.UseSlot field 1",
+    "request": "Zproto.UseSlotRequest",
+    "request_fields": {
+      "1": "slot_id",
+      "2": "use_type",
+      "3": "extra_data containing Zproto.UseSkillParam",
+      "4": "attr_data containing the authenticated encrypted attribute envelope",
+      "5": "sessionSequence"
+    },
+    "substituted_fields": [
+      {
+        "path": "1.1",
+        "name": "slot_id",
+        "bytes": 2
+      },
+      {
+        "path": "1.3.2",
+        "name": "skill_id",
+        "bytes": 2
+      },
+      {
+        "path": "1.3.6.1-3",
+        "name": "target_position_xyz",
+        "bytes": 12
+      }
+    ],
+    "total_mutable_bytes": 16,
+    "attr_data_path": "1.4",
+    "substituted_fields_are_outside_attr_data": true
+  },
+  "known_application_authentication": {
+    "mechanism": "HMAC-SHA256",
+    "location": "inside UseSlotRequest.attr_data",
+    "envelope_layout_bytes": {
+      "iv": 16,
+      "mac": 32,
+      "aes_cbc_ciphertext": 32,
+      "total": 80
+    },
+    "mac_input_in_order": [
+      "attr_data.iv",
+      "attr_data.ciphertext"
+    ],
+    "mac_input_includes_slot_id": false,
+    "mac_input_includes_skill_id": false,
+    "mac_input_includes_target_position_xyz": false,
+    "mac_input_includes_any_bytes_outside_attr_data": false,
+    "retained_v3_original_verifies": true,
+    "offline_substituted_copy_verifies": true,
+    "exact_current_build_crypto_generator_static_scope_proven": false,
+    "crypto_scope_authority": "The retained request verifies with the reviewed gameplay-envelope keys and algorithm. The exact local GameAssembly identity and exact request descriptor are known, but the installed IL2CPP metadata is empty; no static current-build generator proof is used to claim more than the observed field-local envelope.",
+    "why_substitution_does_not_invalidate_this_check": "The substitution allowlist is disjoint from attr_data. IV, MAC, and ciphertext remain byte-identical, so the verified HMAC input and expected MAC are unchanged.",
+    "post_substitution_hmac_recomputation_required": false,
+    "post_substitution_hmac_recomputation_implemented": false,
+    "recomputation_disposition": "not applicable; changing this envelope is outside the approved substitution boundary"
+  },
+  "other_application_integrity_fields": {
+    "explicit_whole_request_mac_field_in_exact_protobuf_schema": false,
+    "explicit_signature_field_in_exact_protobuf_schema": false,
+    "explicit_checksum_field_in_exact_protobuf_schema": false,
+    "explicit_checksum_or_mac_in_bpsr_frame_headers": false,
+    "scope_of_absence_proof": "No explicit serialized whole-request integrity field exists in the exact protobuf descriptor or reviewed BPSR FrameUp/Call grammar.",
+    "absence_of_server_side_semantic_or_out_of_band_validation_proven": false
+  },
+  "non_cryptographic_server_fields_and_checks": {
+    "fields_preserved_byte_identical": [
+      "skill_uuid",
+      "skill_level",
+      "begin_time",
+      "target_heading",
+      "complete current_position",
+      "sessionSequence",
+      "attr_data",
+      "RPC call ID",
+      "FrameUp sequence"
+    ],
+    "observed_plaintext_timestamp_equals_begin_time": true,
+    "possible_server_validation_not_proven_absent": [
+      "slot and skill eligibility",
+      "skill_uuid relationship to slot or skill",
+      "target range, navigation, or ground-raycast acceptance",
+      "target and current-position consistency",
+      "sessionSequence freshness and ordering",
+      "cooldown and marker replacement state",
+      "server-side binding not represented by an explicit serialized integrity field"
+    ]
+  },
+  "network_integrity": {
+    "ipv4_header_checksum_covers_application_payload": false,
+    "tcp_checksum_covers_application_payload": true,
+    "target_mutation_invalidates_existing_tcp_checksum": true,
+    "tcp_checksum_requires_secret": false,
+    "tcp_checksum_is_purely_recomputable_from_ipv4_pseudoheader_and_tcp_segment": true,
+    "ethernet_fcs_if_present_is_link_layer_generated": true,
+    "capture_checksum_or_fcs_values_are_not_server_acceptance_evidence_due_to_offload": true,
+    "offline_ipv4_tcp_recomputation_implementation": "src/automarker_inline_transport.rs",
+    "live_transport_activation_authorized": false
+  },
+  "adjudication": {
+    "known_application_mac_blocks_current_16_byte_substitution": false,
+    "known_application_mac_requires_recomputation": false,
+    "network_checksum_requires_recomputation_before_wire emission": true,
+    "network_checksum_recomputation_requires_secrets": false,
+    "all_possible_server_validation_proven_satisfied": false,
+    "server_acceptance_proven": false,
+    "safe_to_activate_live_rewrite": false,
+    "runtime_sender_enabled": false,
+    "blocking_unknown": "Exact client schema and captured bytes can prove the absence of an explicit whole-request integrity field, but cannot prove the absence or outcome of server-side semantic validation. A normal unmodified request/return pair does not test changed target acceptance."
+  },
+  "privacy": {
+    "contains_raw_payloads": false,
+    "contains_cryptographic_keys": false,
+    "contains_network_endpoints": false,
+    "contains_ports": false,
+    "contains_tcp_sequence_numbers": false,
+    "contains_session_or_action_identifiers": false,
+    "contains_timestamps": false,
+    "contains_local_absolute_paths": false,
+    "contains_personal_identity": false
+  }
+}
