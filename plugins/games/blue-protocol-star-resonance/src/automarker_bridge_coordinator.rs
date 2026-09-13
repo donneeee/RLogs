@@ -183,6 +183,13 @@ mod tests {
         }
     }
 
+    fn begin_modified_send(coordinator: &mut AutomarkerBridgeCoordinator, preparation_id: u64) {
+        assert_eq!(
+            coordinator.record_modified_send_may_begin(preparation_id),
+            AutomarkerBridgeCommitDisposition::Committed
+        );
+    }
+
     #[test]
     fn cancel_before_send_returns_the_stored_exact_original() {
         let (mut coordinator, _, frame) = coordinator();
@@ -200,9 +207,97 @@ mod tests {
     }
 
     #[test]
+    fn pre_send_begin_is_exact_once_and_forbids_original_reinjection() {
+        let (mut coordinator, _, frame) = coordinator();
+        let (input, packet) = prepare(&mut coordinator, &frame);
+        assert!(!coordinator.state().tcp_rewrite_obligation_active);
+
+        assert_eq!(
+            coordinator.record_modified_send_may_begin(input.preparation_id + 1),
+            AutomarkerBridgeCommitDisposition::AbortWithoutReinject(
+                AutomarkerBridgeCoordinatorError::PreparationMismatch
+            )
+        );
+        assert!(!coordinator.state().tcp_rewrite_obligation_active);
+
+        begin_modified_send(&mut coordinator, input.preparation_id);
+        assert!(coordinator.state().tcp_rewrite_obligation_active);
+        assert_eq!(
+            coordinator.record_modified_send_may_begin(input.preparation_id),
+            AutomarkerBridgeCommitDisposition::AbortWithoutReinject(
+                AutomarkerBridgeCoordinatorError::PreparationMismatch
+            )
+        );
+        assert_eq!(
+            coordinator.cancel(input.preparation_id),
+            AutomarkerBridgePrepareDisposition::AbortWithoutReinject(
+                AutomarkerBridgeCoordinatorError::PreparationMismatch
+            )
+        );
+
+        assert_eq!(
+            coordinator.commit(
+                input.preparation_id,
+                SingleMarkerXyzExternalSendOutcome::Complete {
+                    bytes_sent: packet.len(),
+                },
+            ),
+            AutomarkerBridgeCommitDisposition::Committed
+        );
+        assert_eq!(
+            coordinator.commit(
+                input.preparation_id,
+                SingleMarkerXyzExternalSendOutcome::Complete {
+                    bytes_sent: packet.len(),
+                },
+            ),
+            AutomarkerBridgeCommitDisposition::AbortWithoutReinject(
+                AutomarkerBridgeCoordinatorError::PreparationMismatch
+            )
+        );
+        assert!(coordinator.state().tcp_rewrite_obligation_active);
+    }
+
+    #[test]
+    fn finalization_without_pre_send_begin_fails_closed_against_reinjection() {
+        let (mut coordinator, _, frame) = coordinator();
+        let (input, packet) = prepare(&mut coordinator, &frame);
+        assert_eq!(
+            coordinator.commit(
+                input.preparation_id,
+                SingleMarkerXyzExternalSendOutcome::Complete {
+                    bytes_sent: packet.len(),
+                },
+            ),
+            AutomarkerBridgeCommitDisposition::AbortWithoutReinject(
+                AutomarkerBridgeCoordinatorError::PreparationMismatch
+            )
+        );
+        assert!(coordinator.state().tcp_rewrite_obligation_active);
+        assert!(matches!(
+            coordinator.cancel(input.preparation_id),
+            AutomarkerBridgePrepareDisposition::AbortWithoutReinject(_)
+        ));
+
+        // The exact pending record remains available for one explicit
+        // finalization; the ambiguous first call did not consume it.
+        assert_eq!(
+            coordinator.commit(
+                input.preparation_id,
+                SingleMarkerXyzExternalSendOutcome::Complete {
+                    bytes_sent: packet.len(),
+                },
+            ),
+            AutomarkerBridgeCommitDisposition::Committed
+        );
+        assert!(coordinator.state().confirmation.is_some());
+    }
+
+    #[test]
     fn indeterminate_send_retains_rewrite_obligation_and_never_starts_confirmation() {
         let (mut coordinator, _, frame) = coordinator();
         let (input, _) = prepare(&mut coordinator, &frame);
+        begin_modified_send(&mut coordinator, input.preparation_id);
         assert_eq!(
             coordinator.commit(
                 input.preparation_id,
@@ -238,6 +333,7 @@ mod tests {
     fn complete_send_begins_retrospective_confirmation_but_does_not_clear_transport() {
         let (mut coordinator, _, frame) = coordinator();
         let (input, packet) = prepare(&mut coordinator, &frame);
+        begin_modified_send(&mut coordinator, input.preparation_id);
         assert_eq!(
             coordinator.commit(
                 input.preparation_id,
@@ -263,6 +359,7 @@ mod tests {
         let (mut coordinator, _, frame) = coordinator();
         let carrier_call_id = coordinator.carrier.unwrap().rpc_call_id;
         let (input, packet) = prepare(&mut coordinator, &frame);
+        begin_modified_send(&mut coordinator, input.preparation_id);
         coordinator.commit(
             input.preparation_id,
             SingleMarkerXyzExternalSendOutcome::Complete {
@@ -274,6 +371,7 @@ mod tests {
             .observe(AutomarkerBridgeObservation::RpcReturn {
                 context: &context,
                 observation: AutomarkerConfirmationRpcReturn {
+                    method_id: AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID,
                     original_call_id: carrier_call_id,
                     asserted_decoded_from_authoritative_server_stream: true,
                     decoded_as_success: true,
@@ -329,6 +427,7 @@ mod tests {
     fn confirmation_failure_cannot_clear_rewrite_obligation() {
         let (mut coordinator, _, frame) = coordinator();
         let (input, packet) = prepare(&mut coordinator, &frame);
+        begin_modified_send(&mut coordinator, input.preparation_id);
         coordinator.commit(
             input.preparation_id,
             SingleMarkerXyzExternalSendOutcome::Complete {
@@ -340,6 +439,7 @@ mod tests {
             coordinator.observe(AutomarkerBridgeObservation::RpcReturn {
                 context: &context,
                 observation: AutomarkerConfirmationRpcReturn {
+                    method_id: AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID,
                     original_call_id: 999,
                     asserted_decoded_from_authoritative_server_stream: true,
                     decoded_as_success: true,
@@ -355,39 +455,93 @@ mod tests {
     }
 
     #[test]
-    fn mismatched_commit_or_connection_teardown_never_releases_original_bytes() {
+    fn mismatched_finalization_preserves_the_exact_pending_finalization() {
         let (mut coordinator, _, frame) = coordinator();
-        let (input, _) = prepare(&mut coordinator, &frame);
+        let (input, packet) = prepare(&mut coordinator, &frame);
+        begin_modified_send(&mut coordinator, input.preparation_id);
         assert_eq!(
             coordinator.commit(
                 input.preparation_id + 1,
                 SingleMarkerXyzExternalSendOutcome::Failed,
             ),
             AutomarkerBridgeCommitDisposition::AbortWithoutReinject(
-                AutomarkerBridgeCoordinatorError::Canary(
-                    SingleMarkerXyzCanaryError::PreparedRewriteMismatch
-                )
+                AutomarkerBridgeCoordinatorError::PreparationMismatch
             )
         );
         assert!(coordinator.state().tcp_rewrite_obligation_active);
         assert_eq!(
             coordinator.commit(
                 input.preparation_id,
-                SingleMarkerXyzExternalSendOutcome::Complete { bytes_sent: 237 },
+                SingleMarkerXyzExternalSendOutcome::Complete {
+                    bytes_sent: packet.len(),
+                },
             ),
-            AutomarkerBridgeCommitDisposition::AbortWithoutReinject(
-                AutomarkerBridgeCoordinatorError::Canary(
-                    SingleMarkerXyzCanaryError::PreparedRewriteMismatch
-                )
-            )
+            AutomarkerBridgeCommitDisposition::Committed
         );
-        assert_eq!(coordinator.state().confirmation, None);
+        assert!(coordinator.state().confirmation.is_some());
         coordinator
             .observe(AutomarkerBridgeObservation::ConnectionTerminated {
                 connection_epoch: EPOCH + 1,
             })
             .unwrap();
         assert!(coordinator.state().tcp_rewrite_obligation_active);
+    }
+
+    #[test]
+    fn indeterminate_ownership_retires_only_on_exact_ack_or_connection_termination() {
+        let finish_indeterminate = || {
+            let (mut coordinator, _, frame) = coordinator();
+            let (input, _) = prepare(&mut coordinator, &frame);
+            begin_modified_send(&mut coordinator, input.preparation_id);
+            assert!(matches!(
+                coordinator.commit(
+                    input.preparation_id,
+                    SingleMarkerXyzExternalSendOutcome::Failed,
+                ),
+                AutomarkerBridgeCommitDisposition::AbortWithoutReinject(_)
+            ));
+            assert!(coordinator.state().tcp_rewrite_obligation_active);
+            assert_eq!(
+                coordinator.commit(
+                    input.preparation_id,
+                    SingleMarkerXyzExternalSendOutcome::Failed,
+                ),
+                AutomarkerBridgeCommitDisposition::AbortWithoutReinject(
+                    AutomarkerBridgeCoordinatorError::PreparationMismatch
+                )
+            );
+            coordinator
+        };
+
+        let mut acknowledged = finish_indeterminate();
+        let context = confirmation_context(102, 1_111_000);
+        acknowledged
+            .observe(AutomarkerBridgeObservation::Tcp {
+                canary_context: canary_context(102),
+                confirmation_context: &context,
+                observation: AutomarkerConfirmationTcpObservation {
+                    connection_epoch: EPOCH,
+                    source_address: [10, 0, 0, 3],
+                    source_port: 443,
+                    destination_address: [10, 0, 0, 2],
+                    destination_port: 50_000,
+                    ack_flag: true,
+                    cumulative_ack: FRAME_SEQUENCE + EXACT_CARRIER_BYTES,
+                    fin: false,
+                    rst: false,
+                    stamp: stamp(3, 1_111_000),
+                },
+            })
+            .unwrap();
+        assert!(!acknowledged.state().tcp_rewrite_obligation_active);
+
+        let mut terminated = finish_indeterminate();
+        terminated
+            .observe(AutomarkerBridgeObservation::ConnectionTerminated {
+                connection_epoch: EPOCH,
+            })
+            .unwrap();
+        assert!(!terminated.state().tcp_rewrite_obligation_active);
     }
 
     #[test]
@@ -486,6 +640,13 @@ struct PendingPacket {
     first_modified_emission: bool,
     original_packet: Vec<u8>,
     address: AutomarkerWinDivertAddress,
+    send_phase: PendingPacketSendPhase,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PendingPacketSendPhase {
+    Prepared,
+    ModifiedSendMayHaveBegun,
 }
 
 pub enum AutomarkerBridgeObservation<'a> {
@@ -710,6 +871,7 @@ impl AutomarkerBridgeCoordinator {
                     first_modified_emission: prepared.first_modified_emission,
                     original_packet: original_packet.to_vec(),
                     address,
+                    send_phase: PendingPacketSendPhase::Prepared,
                 });
                 AutomarkerBridgePrepareDisposition::NeedsChecksumRepair(
                     AutomarkerBridgeChecksumInput {
@@ -732,12 +894,14 @@ impl AutomarkerBridgeCoordinator {
         if let Some(reason) = self.coordinator_terminal_error {
             return AutomarkerBridgePrepareDisposition::AbortWithoutReinject(reason);
         }
-        let Some(pending) = self.pending_packet.as_ref() else {
+        let Some(pending) = self.pending_packet.as_mut() else {
             return AutomarkerBridgePrepareDisposition::AbortWithoutReinject(
                 AutomarkerBridgeCoordinatorError::PreparationMismatch,
             );
         };
-        if pending.preparation_id != preparation_id {
+        if pending.preparation_id != preparation_id
+            || pending.send_phase != PendingPacketSendPhase::Prepared
+        {
             return AutomarkerBridgePrepareDisposition::AbortWithoutReinject(
                 AutomarkerBridgeCoordinatorError::PreparationMismatch,
             );
@@ -766,6 +930,40 @@ impl AutomarkerBridgeCoordinator {
         }
     }
 
+    /// Persist indeterminate transport ownership immediately before the
+    /// backend is permitted to attempt the modified send. This phase performs
+    /// no callback and consumes no pending state, so a panic in the later send
+    /// or finalization path cannot make the exact original reinjectable.
+    pub fn record_modified_send_may_begin(
+        &mut self,
+        preparation_id: u64,
+    ) -> AutomarkerBridgeCommitDisposition {
+        if let Some(reason) = self.coordinator_terminal_error {
+            return AutomarkerBridgeCommitDisposition::AbortWithoutReinject(reason);
+        }
+        let Some(pending) = self.pending_packet.as_mut() else {
+            return AutomarkerBridgeCommitDisposition::AbortWithoutReinject(
+                AutomarkerBridgeCoordinatorError::PreparationMismatch,
+            );
+        };
+        if pending.preparation_id != preparation_id
+            || pending.send_phase != PendingPacketSendPhase::Prepared
+        {
+            return AutomarkerBridgeCommitDisposition::AbortWithoutReinject(
+                AutomarkerBridgeCoordinatorError::PreparationMismatch,
+            );
+        }
+
+        // These plain state writes are deliberately the last operations in
+        // this phase. No coordinator/canary callback can unwind between
+        // ownership becoming indeterminate and the successful return.
+        pending.send_phase = PendingPacketSendPhase::ModifiedSendMayHaveBegun;
+        self.tcp_rewrite_obligation_active = true;
+        AutomarkerBridgeCommitDisposition::Committed
+    }
+
+    /// Finalize exactly one modified-send attempt previously recorded by
+    /// `record_modified_send_may_begin`.
     pub fn commit(
         &mut self,
         preparation_id: u64,
@@ -774,27 +972,26 @@ impl AutomarkerBridgeCoordinator {
         if let Some(reason) = self.coordinator_terminal_error {
             return AutomarkerBridgeCommitDisposition::AbortWithoutReinject(reason);
         }
-        let Some(pending) = self.pending_packet.as_ref() else {
+        let Some(pending) = self.pending_packet.as_mut() else {
             return AutomarkerBridgeCommitDisposition::AbortWithoutReinject(
                 AutomarkerBridgeCoordinatorError::PreparationMismatch,
             );
         };
         if pending.preparation_id != preparation_id {
-            // `commit` means a modified send was attempted. A mismatched
-            // receipt is indeterminate and cannot release original bytes.
+            return AutomarkerBridgeCommitDisposition::AbortWithoutReinject(
+                AutomarkerBridgeCoordinatorError::PreparationMismatch,
+            );
+        }
+        if pending.send_phase != PendingPacketSendPhase::ModifiedSendMayHaveBegun {
+            // A finalization claim without the mandatory pre-send transition
+            // is itself ambiguous. Preserve the preparation, but permanently
+            // forbid cancellation/reinjection until an exact finalization or
+            // transport retirement resolves ownership.
+            pending.send_phase = PendingPacketSendPhase::ModifiedSendMayHaveBegun;
             self.tcp_rewrite_obligation_active = true;
-            let disposition = self.canary.commit_prepared_rewrite(preparation_id, outcome);
-            self.pending_packet = None;
-            let reason = match disposition {
-                SingleMarkerXyzCommitDisposition::AbortWithoutReinject(reason) => {
-                    AutomarkerBridgeCoordinatorError::Canary(reason)
-                }
-                SingleMarkerXyzCommitDisposition::Committed => {
-                    AutomarkerBridgeCoordinatorError::PreparationMismatch
-                }
-            };
-            self.coordinator_terminal_error = Some(reason);
-            return AutomarkerBridgeCommitDisposition::AbortWithoutReinject(reason);
+            return AutomarkerBridgeCommitDisposition::AbortWithoutReinject(
+                AutomarkerBridgeCoordinatorError::PreparationMismatch,
+            );
         }
         let pending = self.pending_packet.take().expect("checked pending packet");
         match self.canary.commit_prepared_rewrite(preparation_id, outcome) {
@@ -878,9 +1075,15 @@ impl AutomarkerBridgeCoordinator {
                         self.tcp_rewrite_obligation_active = false;
                     }
                 }
-                self.observe_confirmation(|confirmation| {
-                    confirmation.observe_tcp(confirmation_context, observation)
-                })?;
+                // TCP retirement remains valid after an indeterminate send,
+                // even though retrospective application confirmation never
+                // started. Only route into that independent contract when it
+                // actually exists (or has already failed terminally).
+                if self.confirmation.is_some() || self.confirmation_terminal_error.is_some() {
+                    self.observe_confirmation(|confirmation| {
+                        confirmation.observe_tcp(confirmation_context, observation)
+                    })?;
+                }
             }
             AutomarkerBridgeObservation::RpcReturn {
                 context,

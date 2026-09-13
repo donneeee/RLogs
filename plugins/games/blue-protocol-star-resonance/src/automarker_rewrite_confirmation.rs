@@ -93,6 +93,7 @@ pub struct AutomarkerConfirmationTcpObservation {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AutomarkerConfirmationRpcReturn {
+    pub method_id: u32,
     pub original_call_id: u32,
     /// Caller assertion from the future bridge's trusted inbound decoder. It
     /// is confirmation provenance only, never permission to transmit.
@@ -148,6 +149,7 @@ pub enum AutomarkerConfirmationError {
     TimedOut,
     FinOrRstObserved,
     NotReverseExactTupleAck,
+    WrongRpcMethod,
     WrongRpcCallId,
     RpcReturnNotSuccessful,
     RpcReturnNotAuthoritative,
@@ -303,6 +305,9 @@ impl SingleMarkerRewriteConfirmation {
         observation: AutomarkerConfirmationRpcReturn,
     ) -> Result<(), AutomarkerConfirmationError> {
         self.prepare_observation(context, observation.stamp)?;
+        if observation.method_id != AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID {
+            return self.abort(AutomarkerConfirmationError::WrongRpcMethod);
+        }
         if observation.original_call_id != self.rewrite.original_rpc_call_id {
             return self.abort(AutomarkerConfirmationError::WrongRpcCallId);
         }
@@ -591,6 +596,7 @@ mod tests {
 
     fn rpc(ordinal: u64) -> AutomarkerConfirmationRpcReturn {
         AutomarkerConfirmationRpcReturn {
+            method_id: AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID,
             original_call_id: 55,
             asserted_decoded_from_authoritative_server_stream: true,
             decoded_as_success: true,
@@ -739,6 +745,15 @@ mod tests {
     fn rpc_return_requires_exact_call_success_and_empty_body() {
         let cases = [
             (
+                AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID - 1,
+                55,
+                true,
+                true,
+                0,
+                AutomarkerConfirmationError::WrongRpcMethod,
+            ),
+            (
+                AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID,
                 54,
                 true,
                 true,
@@ -746,6 +761,7 @@ mod tests {
                 AutomarkerConfirmationError::WrongRpcCallId,
             ),
             (
+                AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID,
                 55,
                 true,
                 false,
@@ -753,6 +769,7 @@ mod tests {
                 AutomarkerConfirmationError::RpcReturnNotSuccessful,
             ),
             (
+                AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID,
                 55,
                 false,
                 true,
@@ -760,6 +777,7 @@ mod tests {
                 AutomarkerConfirmationError::RpcReturnNotAuthoritative,
             ),
             (
+                AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID,
                 55,
                 true,
                 true,
@@ -767,9 +785,10 @@ mod tests {
                 AutomarkerConfirmationError::RpcReturnNotEmpty,
             ),
         ];
-        for (call, authoritative, success, length, expected) in cases {
+        for (method, call, authoritative, success, length, expected) in cases {
             let mut proof = contract();
             let mut observation = rpc(11);
+            observation.method_id = method;
             observation.original_call_id = call;
             observation.asserted_decoded_from_authoritative_server_stream = authoritative;
             observation.decoded_as_success = success;

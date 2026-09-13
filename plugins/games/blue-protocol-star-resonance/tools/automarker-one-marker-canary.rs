@@ -161,8 +161,18 @@ fn exact_original_after_cancel(
     }
 }
 
-/// Commit only an exact full-length external send. Failed and short modified
-/// sends are indeterminate and can never release original overlapping bytes.
+/// Persist indeterminate ownership immediately before the backend is allowed
+/// to attempt the modified send.
+pub fn record_one_marker_send_may_begin(
+    coordinator: &mut AutomarkerBridgeCoordinator,
+    preparation_id: u64,
+) -> AutomarkerBridgeCommitDisposition {
+    coordinator.record_modified_send_may_begin(preparation_id)
+}
+
+/// Finalize only an exact modified send whose pre-send phase was recorded.
+/// Failed and short sends are indeterminate and can never release original
+/// overlapping bytes.
 pub fn commit_one_marker_send(
     coordinator: &mut AutomarkerBridgeCoordinator,
     preparation_id: u64,
