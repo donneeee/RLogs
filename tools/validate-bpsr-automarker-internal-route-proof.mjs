@@ -117,6 +117,18 @@ assert.match(leaderProof.authoritative_game_predicate.semantic_block_sha256, /^[
 assert.equal(leaderProof.cache_lookup_semantics.native_try_get.rva_hex, "0x3F54D80");
 assert.equal(leaderProof.cache_lookup_semantics.local_attribute_key_hex, "0x80000097");
 assert.equal(leaderProof.runtime_acceptance_contract.length, 9);
+assert.equal(leaderProof.sanitized_runtime_observations.length, 1);
+const leaderObservation = leaderProof.sanitized_runtime_observations[0];
+assert.equal(leaderObservation.receipt_schema_version, 8);
+assert.equal(leaderObservation.receipt_sha256, "addbaf36139bc0a0c67fb9ee28d688578fcb1287fb108fbf0a60abf9b9613a90");
+assert.equal(leaderObservation.scene_id, 6525);
+assert.equal(leaderObservation.map_id, 6525);
+assert.equal(leaderObservation.activity_family_id, "mech-facility");
+assert.deepEqual(leaderObservation.leader_gate, {
+  proven: true,
+  reason: "proven-read-only-current-player-is-party-leader",
+});
+assert.equal(leaderObservation.activation_attempted, false);
 for (const denied of ["process_memory_write", "game_method_invocation", "runtime_activation_enabled"]) {
   assert.equal(leaderProof.scope[denied], false, `leader proof ${denied} must stay disabled`);
 }
@@ -145,6 +157,18 @@ assert.deepEqual(markerSkillProof.sanitized_receipt.success, {
   proven: true,
   reason: "proven-read-only-marker-1-slot-and-skill-resolution",
 });
+assert.equal(markerSkillProof.sanitized_runtime_observations.length, 1);
+const markerSkillObservation = markerSkillProof.sanitized_runtime_observations[0];
+assert.equal(markerSkillObservation.receipt_schema_version, 8);
+assert.equal(markerSkillObservation.receipt_sha256, leaderObservation.receipt_sha256);
+assert.equal(markerSkillObservation.scene_id, 6525);
+assert.equal(markerSkillObservation.map_id, 6525);
+assert.equal(markerSkillObservation.activity_family_id, "mech-facility");
+assert.deepEqual(markerSkillObservation.marker_skill_resolution_gate, {
+  proven: false,
+  reason: "unavailable-or-invalid-read-only-marker-skill-chain",
+});
+assert.equal(markerSkillObservation.activation_attempted, false);
 assert.equal(markerSkillProof.decision.slot_201_to_skill_1101_static_layout_proven, true);
 assert.equal(markerSkillProof.decision.non_invoking_live_resolution_probe_implemented, true);
 assert.equal(markerSkillProof.decision.game_method_invocation_enabled, false);

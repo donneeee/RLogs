@@ -170,6 +170,20 @@
     "bind the result to the same current PlayerEnt root and live preset/session context used by NativeDispatchPreflight",
     "fail closed on absent parties, leader transitions, torn cache state, invalid types, duplicate keys, excessive linked nodes, or any incomplete chain"
   ],
+  "sanitized_runtime_observations": [
+    {
+      "receipt_schema_version": 8,
+      "receipt_sha256": "addbaf36139bc0a0c67fb9ee28d688578fcb1287fb108fbf0a60abf9b9613a90",
+      "scene_id": 6525,
+      "map_id": 6525,
+      "activity_family_id": "mech-facility",
+      "leader_gate": {
+        "proven": true,
+        "reason": "proven-read-only-current-player-is-party-leader"
+      },
+      "activation_attempted": false
+    }
+  ],
   "privacy": {
     "contains_raw_dump_or_full_binary": false,
     "contains_only_bounded_instruction_hashes_and_layouts": true,

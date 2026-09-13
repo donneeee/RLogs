@@ -124,6 +124,21 @@
     "emits_dictionary_contents": false,
     "emits_character_or_account_identity": false
   },
+  "sanitized_runtime_observations": [
+    {
+      "receipt_schema_version": 8,
+      "receipt_sha256": "addbaf36139bc0a0c67fb9ee28d688578fcb1287fb108fbf0a60abf9b9613a90",
+      "scene_id": 6525,
+      "map_id": 6525,
+      "activity_family_id": "mech-facility",
+      "marker_skill_resolution_gate": {
+        "proven": false,
+        "reason": "unavailable-or-invalid-read-only-marker-skill-chain"
+      },
+      "activation_attempted": false,
+      "interpretation": "The static slot-to-skill route remains proven, but this live state did not satisfy the current combined chain; bounded stage diagnostics are required before revising the runtime contract."
+    }
+  ],
   "decision": {
     "slot_201_to_skill_1101_static_layout_proven": true,
     "non_invoking_live_resolution_probe_implemented": true,
