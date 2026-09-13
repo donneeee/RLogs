@@ -120,6 +120,14 @@ describe("desktop UI locale packages", () => {
       "ui.combat_history.graph.metric_aria",
       "ui.combat_history.graph.window_aria",
       "ui.combat_history.graph.window_option",
+      "ui.combat_history.graph.viewport_aria",
+      "ui.combat_history.graph.pan_earlier",
+      "ui.combat_history.graph.pan_later",
+      "ui.combat_history.graph.zoom_in",
+      "ui.combat_history.graph.zoom_out",
+      "ui.combat_history.graph.viewport_reset",
+      "ui.combat_history.graph.viewport_full",
+      "ui.combat_history.graph.viewport_range",
       "ui.combat_history.graph.show_actor_aria",
       "ui.combat_history.graph.hide_actor_aria",
       "ui.combat_history.graph.npc",
@@ -155,6 +163,11 @@ describe("desktop UI locale packages", () => {
       id: "2203291",
     })).toBe("Unlocalized combat effect #2203291");
     expect(localizer.t("ui.combat_history.graph.window_option", { seconds: 10 })).toBe("10s");
+    expect(localizer.t("ui.combat_history.graph.viewport_full", { duration: "1:23.456" }))
+      .toBe("Full timeline · 1:23.456");
+    expect(localizer.t("ui.combat_history.graph.viewport_range", {
+      start: "0:10.000", end: "0:20.000",
+    })).toBe("0:10.000–0:20.000");
   });
 
   it("keeps every migrated combat-history key present in the shipped English package", async () => {

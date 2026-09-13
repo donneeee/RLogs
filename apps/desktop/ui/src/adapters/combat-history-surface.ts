@@ -3432,26 +3432,26 @@ export function renderMetricGraph(
   const viewportBody = element("div", "combat-history-timeline-viewport-body");
   const viewportControls = element("div", "combat-history-timeline-viewport-controls");
   viewportControls.setAttribute("role", "group");
-  viewportControls.setAttribute("aria-label", "Timeline viewport");
+  viewportControls.setAttribute("aria-label", localizer.t("ui.combat_history.graph.viewport_aria"));
   const panEarlier = button("←", "");
   panEarlier.dataset.historyTimelinePanEarlier = "";
-  panEarlier.setAttribute("aria-label", "Pan timeline earlier");
-  panEarlier.title = "Pan earlier";
+  panEarlier.setAttribute("aria-label", localizer.t("ui.combat_history.graph.pan_earlier"));
+  panEarlier.title = localizer.t("ui.combat_history.graph.pan_earlier");
   const zoomOut = button("−", "");
   zoomOut.dataset.historyTimelineZoomOut = "";
-  zoomOut.setAttribute("aria-label", "Zoom timeline out");
-  zoomOut.title = "Zoom out";
+  zoomOut.setAttribute("aria-label", localizer.t("ui.combat_history.graph.zoom_out"));
+  zoomOut.title = localizer.t("ui.combat_history.graph.zoom_out");
   const zoomIn = button("+", "");
   zoomIn.dataset.historyTimelineZoomIn = "";
-  zoomIn.setAttribute("aria-label", "Zoom timeline in");
-  zoomIn.title = "Zoom in";
+  zoomIn.setAttribute("aria-label", localizer.t("ui.combat_history.graph.zoom_in"));
+  zoomIn.title = localizer.t("ui.combat_history.graph.zoom_in");
   const panLater = button("→", "");
   panLater.dataset.historyTimelinePanLater = "";
-  panLater.setAttribute("aria-label", "Pan timeline later");
-  panLater.title = "Pan later";
-  const resetViewport = button("Reset", "");
+  panLater.setAttribute("aria-label", localizer.t("ui.combat_history.graph.pan_later"));
+  panLater.title = localizer.t("ui.combat_history.graph.pan_later");
+  const resetViewport = button(localizer.t("ui.combat_history.graph.viewport_reset"), "");
   resetViewport.dataset.historyTimelineViewportReset = "";
-  resetViewport.setAttribute("aria-label", "Reset timeline viewport");
+  resetViewport.setAttribute("aria-label", localizer.t("ui.combat_history.graph.viewport_reset"));
   const viewportStatus = document.createElement("output");
   viewportStatus.className = "combat-history-timeline-viewport-status";
   viewportStatus.dataset.historyTimelineViewportStatus = "";
@@ -3504,8 +3504,13 @@ export function renderMetricGraph(
     zoomOut.disabled = full;
     resetViewport.disabled = full;
     viewportStatus.value = full
-      ? `Full timeline · ${formatExactGraphTime(elapsedMicros)}`
-      : `${formatExactGraphTime(historyGraphBoundaryElapsedMicros(elapsedMicros, viewport.startBoundary))}–${formatExactGraphTime(historyGraphBoundaryElapsedMicros(elapsedMicros, viewport.endBoundary))}`;
+      ? localizer.t("ui.combat_history.graph.viewport_full", {
+        duration: formatExactGraphTime(elapsedMicros),
+      })
+      : localizer.t("ui.combat_history.graph.viewport_range", {
+        start: formatExactGraphTime(historyGraphBoundaryElapsedMicros(elapsedMicros, viewport.startBoundary)),
+        end: formatExactGraphTime(historyGraphBoundaryElapsedMicros(elapsedMicros, viewport.endBoundary)),
+      });
   };
   const renderViewport = () => {
     const inspectionState = createGraphInspectionState();
