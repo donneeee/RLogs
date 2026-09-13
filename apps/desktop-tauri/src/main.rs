@@ -152,6 +152,43 @@ struct CombatOverlayWindowState {
     consecutive_runtime_failures: AtomicU64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct OverlayWindowPolicy {
+    label: &'static str,
+    surface: &'static str,
+    transparent: bool,
+    initially_visible: bool,
+    focusable: bool,
+    fullscreen: bool,
+    resizable: bool,
+}
+
+const COMBAT_OVERLAY_WINDOW_POLICY: OverlayWindowPolicy = OverlayWindowPolicy {
+    label: "combat-overlay",
+    surface: "combat-overlay",
+    transparent: true,
+    initially_visible: false,
+    focusable: COMBAT_OVERLAY_FOCUSABLE,
+    fullscreen: false,
+    resizable: true,
+};
+
+const OVERLAY_CANVAS_WINDOW_POLICY: OverlayWindowPolicy = OverlayWindowPolicy {
+    label: "overlay-canvas",
+    surface: "overlay-canvas",
+    transparent: true,
+    initially_visible: false,
+    focusable: false,
+    fullscreen: true,
+    resizable: false,
+};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OverlayCanvasOpenMode {
+    Passive,
+    Editable,
+}
+
 #[derive(Default)]
 struct OverlayCanvasWindowState {
     ready: AtomicBool,
@@ -198,6 +235,25 @@ fn queue_overlay_canvas_interactivity(state: &OverlayCanvasWindowState, interact
         },
         Ordering::Release,
     );
+}
+
+fn record_overlay_canvas_open_intent(
+    state: &OverlayCanvasWindowState,
+    mode: OverlayCanvasOpenMode,
+) {
+    let editable = mode == OverlayCanvasOpenMode::Editable;
+    state.requested.store(true, Ordering::Release);
+    state
+        .force_edit_until_acknowledged
+        .store(editable, Ordering::Release);
+    queue_overlay_canvas_interactivity(state, editable);
+}
+
+fn record_overlay_canvas_hidden(state: &OverlayCanvasWindowState) {
+    state.requested.store(false, Ordering::Release);
+    state
+        .force_edit_until_acknowledged
+        .store(false, Ordering::Release);
 }
 
 fn require_overlay_canvas_layout_revision(state: &OverlayCanvasWindowState, revision: u64) -> bool {
@@ -424,7 +480,13 @@ fn show_overlay_canvas(
     host: tauri::State<'_, EmbeddedLocalHost>,
 ) -> Result<(), String> {
     serialize_overlay_canvas_lifecycle(&state, || {
-        show_overlay_canvas_locked(&app, &state, &focus_state, &host, false)
+        show_overlay_canvas_locked(
+            &app,
+            &state,
+            &focus_state,
+            &host,
+            OverlayCanvasOpenMode::Passive,
+        )
     })
 }
 
@@ -436,7 +498,13 @@ fn show_overlay_canvas_editable(
     host: tauri::State<'_, EmbeddedLocalHost>,
 ) -> Result<(), String> {
     serialize_overlay_canvas_lifecycle(&state, || {
-        show_overlay_canvas_locked(&app, &state, &focus_state, &host, true)
+        show_overlay_canvas_locked(
+            &app,
+            &state,
+            &focus_state,
+            &host,
+            OverlayCanvasOpenMode::Editable,
+        )
     })
 }
 
@@ -445,13 +513,9 @@ fn show_overlay_canvas_locked(
     state: &OverlayCanvasWindowState,
     focus_state: &OverlayFocusWindowState,
     host: &EmbeddedLocalHost,
-    editable: bool,
+    mode: OverlayCanvasOpenMode,
 ) -> Result<(), String> {
-    prepare_overlay_canvas(app, state, host, !editable)?;
-    state
-        .force_edit_until_acknowledged
-        .store(editable, Ordering::Release);
-    queue_overlay_canvas_interactivity(state, editable);
+    prepare_overlay_canvas(app, state, host, mode)?;
     reveal_overlay_canvas_if_ready_locked(app, state, focus_state)
 }
 
@@ -459,14 +523,14 @@ fn prepare_overlay_canvas(
     app: &tauri::AppHandle,
     state: &OverlayCanvasWindowState,
     host: &EmbeddedLocalHost,
-    passive: bool,
+    mode: OverlayCanvasOpenMode,
 ) -> Result<(), String> {
-    let required_revision = if passive {
+    let required_revision = if mode == OverlayCanvasOpenMode::Passive {
         host.set_overlay_canvas_passive_enabled()?
     } else {
         host.set_overlay_canvas_enabled(true)?
     };
-    state.requested.store(true, Ordering::Release);
+    record_overlay_canvas_open_intent(state, mode);
     if app.get_webview_window("overlay-canvas").is_none() {
         build_overlay_canvas_window(app, host)
             .map_err(|error| format!("could not recreate Overlay Canvas: {error}"))?;
@@ -533,10 +597,7 @@ fn hide_overlay_canvas_locked(
         let _ = host.set_overlay_canvas_enabled(true);
         return Err(error);
     }
-    state.requested.store(false, Ordering::Release);
-    state
-        .force_edit_until_acknowledged
-        .store(false, Ordering::Release);
+    record_overlay_canvas_hidden(state);
     Ok(())
 }
 
@@ -767,7 +828,13 @@ fn toggle_overlay_canvas(app: &tauri::AppHandle) -> Result<(), String> {
         if state.requested.load(Ordering::Acquire) {
             hide_overlay_canvas_locked(app, &state, &host)
         } else {
-            show_overlay_canvas_locked(app, &state, &focus_state, &host, false)
+            show_overlay_canvas_locked(
+                app,
+                &state,
+                &focus_state,
+                &host,
+                OverlayCanvasOpenMode::Passive,
+            )
         }
     })
 }
@@ -925,31 +992,33 @@ fn build_combat_overlay_window(
     app: &mut tauri::App,
     host: &rlogs_desktop_host::EmbeddedLocalHost,
 ) -> tauri::Result<()> {
-    let url = format!("http://{}/?surface=combat-overlay", host.address())
+    let policy = COMBAT_OVERLAY_WINDOW_POLICY;
+    let url = overlay_runtime_url(host.address(), policy)
         .parse()
         .map_err(tauri::Error::InvalidUrl)?;
-    WebviewWindowBuilder::new(app, "combat-overlay", WebviewUrl::External(url))
+    WebviewWindowBuilder::new(app, policy.label, WebviewUrl::External(url))
         .title("rLogs Combat Overlay")
         .decorations(false)
         // A visible transparent Windows host otherwise retains a faint native
         // frame while CSS hides the overlay between combat windows.
         .shadow(false)
-        .transparent(true)
+        .transparent(policy.transparent)
         .background_color(Color(11, 21, 34, 0))
         // WebView2 creates its native surface before it can paint the page.
         // Keep that surface hidden until the runtime confirms that its first
         // frame exists, otherwise Windows exposes a large white rectangle.
-        .visible(false)
+        .visible(policy.initially_visible)
         // The live meter is a heads-up display. On Windows this adds
         // WS_EX_NOACTIVATE, so showing it or reloading WebView2 cannot take
         // keyboard/controller focus away from the game.
-        .focusable(COMBAT_OVERLAY_FOCUSABLE)
+        .focusable(policy.focusable)
         .focused(false)
         .always_on_top(true)
         .skip_taskbar(true)
+        .fullscreen(policy.fullscreen)
         .inner_size(460.0, 520.0)
         .min_inner_size(160.0, 80.0)
-        .resizable(true)
+        .resizable(policy.resizable)
         .build()
         .map(|_| ())?;
     Ok(())
@@ -959,29 +1028,34 @@ fn build_overlay_canvas_window(
     app: &impl tauri::Manager<tauri::Wry>,
     host: &rlogs_desktop_host::EmbeddedLocalHost,
 ) -> tauri::Result<()> {
+    let policy = OVERLAY_CANVAS_WINDOW_POLICY;
     let url = overlay_canvas_runtime_url(host.address())
         .parse()
         .map_err(tauri::Error::InvalidUrl)?;
-    WebviewWindowBuilder::new(app, "overlay-canvas", WebviewUrl::External(url))
+    WebviewWindowBuilder::new(app, policy.label, WebviewUrl::External(url))
         .title("rLogs Overlay Canvas")
         .decorations(false)
         .shadow(false)
-        .transparent(true)
+        .transparent(policy.transparent)
         .background_color(Color(11, 21, 34, 0))
-        .visible(false)
-        .focusable(false)
+        .visible(policy.initially_visible)
+        .focusable(policy.focusable)
         .focused(false)
         .always_on_top(true)
         .skip_taskbar(true)
-        .fullscreen(true)
-        .resizable(false)
+        .fullscreen(policy.fullscreen)
+        .resizable(policy.resizable)
         .build()
         .map(|_| ())?;
     Ok(())
 }
 
 fn overlay_canvas_runtime_url(address: impl std::fmt::Display) -> String {
-    format!("http://{address}/?surface=overlay-canvas&module=mechanics-map")
+    overlay_runtime_url(address, OVERLAY_CANVAS_WINDOW_POLICY)
+}
+
+fn overlay_runtime_url(address: impl std::fmt::Display, policy: OverlayWindowPolicy) -> String {
+    format!("http://{address}/?surface={}", policy.surface)
 }
 
 #[tauri::command]
@@ -1738,7 +1812,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 #[allow(clippy::items_after_test_module)]
 mod tests {
     use super::{
-        HotkeyInstallPolicy, OverlayCanvasWindowState, OverlayFocusPolicyDebounce,
+        COMBAT_OVERLAY_WINDOW_POLICY, HotkeyInstallPolicy, OVERLAY_CANVAS_WINDOW_POLICY,
+        OverlayCanvasOpenMode, OverlayCanvasWindowState, OverlayFocusPolicyDebounce,
         OverlayFocusWindowState, acknowledge_overlay_canvas_interactivity_state,
         acknowledge_overlay_canvas_layout_revision, apply_overlay_canvas_input_mode_with,
         apply_pending_overlay_canvas_interactivity_with, combat_overlay_damage_started,
@@ -1747,7 +1822,8 @@ mod tests {
         is_overlay_window_label, overlay_canvas_runtime_url, overlay_canvas_should_be_visible,
         overlay_canvas_state_should_be_visible, overlay_focus_hold_from_inputs,
         overlay_focus_policy_should_hide, queue_overlay_canvas_interactivity,
-        queue_reported_overlay_canvas_interactivity, register_parsed_hotkeys_with,
+        queue_reported_overlay_canvas_interactivity, record_overlay_canvas_hidden,
+        record_overlay_canvas_open_intent, register_parsed_hotkeys_with,
         require_overlay_canvas_layout_revision, serialize_overlay_canvas_lifecycle,
     };
     use rlogs_desktop_host::{COMBAT_OVERLAY_TOGGLE_ACTION_ID, OVERLAY_CANVAS_TOGGLE_ACTION_ID};
@@ -1821,10 +1897,75 @@ mod tests {
     }
 
     #[test]
-    fn overlay_canvas_route_selects_the_mechanics_map_runtime() {
+    fn overlay_canvas_route_selects_the_unified_runtime_without_a_module_owner() {
         assert_eq!(
             overlay_canvas_runtime_url("127.0.0.1:43117"),
-            "http://127.0.0.1:43117/?surface=overlay-canvas&module=mechanics-map"
+            "http://127.0.0.1:43117/?surface=overlay-canvas"
+        );
+        assert!(!overlay_canvas_runtime_url("127.0.0.1:43117").contains("module="));
+    }
+
+    #[test]
+    fn native_overlay_window_policies_keep_canvas_and_combat_separate() {
+        let canvas = std::hint::black_box(OVERLAY_CANVAS_WINDOW_POLICY);
+        let combat = std::hint::black_box(COMBAT_OVERLAY_WINDOW_POLICY);
+        assert_ne!(canvas.label, combat.label);
+        assert_ne!(canvas.surface, combat.surface);
+        assert!(canvas.transparent);
+        assert!(!canvas.initially_visible);
+        assert!(!canvas.focusable);
+        assert!(canvas.fullscreen);
+        assert!(!canvas.resizable);
+        assert!(combat.transparent);
+        assert!(!combat.initially_visible);
+        assert!(!combat.focusable);
+        assert!(!combat.fullscreen);
+        assert!(combat.resizable);
+    }
+
+    #[test]
+    fn overlay_canvas_open_edit_done_and_hide_preserve_the_unified_canvas_policy() {
+        let canvas = OverlayCanvasWindowState::from_saved_settings(false, true, 7);
+        let combat = super::CombatOverlayWindowState::from_saved_settings(true, false);
+        canvas.ready.store(true, Ordering::Release);
+        canvas.layout_initialized.store(true, Ordering::Release);
+        canvas.applied_layout_revision.store(7, Ordering::Release);
+
+        record_overlay_canvas_open_intent(&canvas, OverlayCanvasOpenMode::Passive);
+        assert!(canvas.requested.load(Ordering::Acquire));
+        assert_eq!(
+            canvas.pending_interactive.load(Ordering::Acquire),
+            super::INTERACTIVITY_DISABLED
+        );
+        assert!(overlay_canvas_should_be_visible(true, true, true, true));
+
+        record_overlay_canvas_open_intent(&canvas, OverlayCanvasOpenMode::Editable);
+        assert!(canvas.requested.load(Ordering::Acquire));
+        assert!(canvas.force_edit_until_acknowledged.load(Ordering::Acquire));
+        assert_eq!(
+            canvas.pending_interactive.load(Ordering::Acquire),
+            super::INTERACTIVITY_ENABLED
+        );
+
+        acknowledge_overlay_canvas_interactivity_state(&canvas, true);
+        assert!(queue_reported_overlay_canvas_interactivity(&canvas, false));
+        let mut applied = Vec::new();
+        apply_pending_overlay_canvas_interactivity_with(&canvas, |interactive| {
+            applied.push(interactive);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(applied, [false]);
+        assert!(
+            overlay_canvas_state_should_be_visible(&canvas, &OverlayFocusWindowState::default()),
+            "Done/Escape changes input routing without hiding passive widgets"
+        );
+
+        record_overlay_canvas_hidden(&canvas);
+        assert!(!canvas.requested.load(Ordering::Acquire));
+        assert!(
+            combat.requested.load(Ordering::Acquire),
+            "the separately managed Combat Overlay must retain its own request"
         );
     }
 
