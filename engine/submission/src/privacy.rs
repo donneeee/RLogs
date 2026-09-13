@@ -1,6 +1,9 @@
+use std::collections::BTreeMap;
 use std::io::{BufRead, Write};
 
-use rlogs_events::{CanonicalEvent, EventEnvelope, EventSensitivity};
+use rlogs_events::{
+    CanonicalEvent, EventEnvelope, EventSensitivity, EvidenceSource, TimelineEventKind,
+};
 use rlogs_log_format::{
     RLOG_SCHEMA_VERSION, RlogError, RlogLimits, RlogReader, RlogSeal, RlogWriter,
 };
@@ -85,6 +88,7 @@ pub fn write_privacy_filtered_submission_log<R: BufRead, W: Write>(
     let mut writer = RlogWriter::new(output, header.clone())?;
     let mut next_sequence = 1_u64;
     let mut next_timeline_sequence = 1_u64;
+    let mut retained_sequence_map = BTreeMap::new();
     let mut summary = SubmissionPrivacySummary {
         stripped_region_evidence_entries,
         ..SubmissionPrivacySummary::default()
@@ -98,7 +102,10 @@ pub fn write_privacy_filtered_submission_log<R: BufRead, W: Write>(
         envelope.region = header.region.clone();
         validate_submission_envelope(&envelope)?;
 
+        let source_sequence = envelope.sequence;
+        remap_local_skill_receipt_evidence(&mut envelope, &retained_sequence_map)?;
         envelope.sequence = next_sequence;
+        retained_sequence_map.insert(source_sequence, next_sequence);
         next_sequence = next_sequence
             .checked_add(1)
             .ok_or(SubmissionPrivacyError::SequenceExhausted)?;
@@ -114,6 +121,37 @@ pub fn write_privacy_filtered_submission_log<R: BufRead, W: Write>(
 
     let (output, seal) = writer.finish_with_seal()?;
     Ok((output, seal, summary))
+}
+
+// This preserves the honest client's observational-continuity proof across
+// privacy resequencing; it is sequence integrity, not cryptographic producer
+// attestation against a modified client.
+fn remap_local_skill_receipt_evidence(
+    envelope: &mut EventEnvelope,
+    retained_sequence_map: &BTreeMap<u64, u64>,
+) -> Result<(), SubmissionPrivacyError> {
+    let CanonicalEvent::Timeline(timeline) = &mut envelope.event else {
+        return Ok(());
+    };
+    if !matches!(
+        timeline.kind,
+        TimelineEventKind::LocalSkillObservationReceipt(_)
+    ) {
+        return Ok(());
+    }
+    let EvidenceSource::Derived {
+        evidence_sequences, ..
+    } = &mut envelope.provenance.source
+    else {
+        return Err(SubmissionPrivacyError::InvalidLocalSkillReceiptEvidence);
+    };
+    for sequence in evidence_sequences {
+        *sequence = *retained_sequence_map.get(sequence).ok_or(
+            SubmissionPrivacyError::UnretainedLocalSkillReceiptEvidence(*sequence),
+        )?;
+    }
+    timeline.provenance = envelope.provenance.clone();
+    Ok(())
 }
 
 /// Validates an event already present in a purported submission artifact.
@@ -191,6 +229,12 @@ pub enum SubmissionPrivacyError {
 
     #[error("submission timeline sequence space is exhausted")]
     TimelineSequenceExhausted,
+
+    #[error("local skill observation receipt provenance is not derived evidence")]
+    InvalidLocalSkillReceiptEvidence,
+
+    #[error("local skill observation receipt references unretained event sequence {0}")]
+    UnretainedLocalSkillReceiptEvidence(u64),
 }
 
 #[cfg(test)]
@@ -198,9 +242,11 @@ mod tests {
     use std::io::Cursor;
 
     use rlogs_events::{
-        CanonicalEvent, CharacterIdentity, ChatChannel, ChatEvent, EventEnvelope, EventProvenance,
-        EventSensitivity, EventTime, GameProfileEvent, RegionContext, RegionEvidence,
-        RegionEvidenceKind, RegionIdentity,
+        AbilityId, ActorId, BoundaryReason, CanonicalEvent, CastEvent, CastState,
+        CharacterIdentity, ChatChannel, ChatEvent, EntityRef, EntityUuid, EventEnvelope,
+        EventProvenance, EventSensitivity, EventTime, GameProfileEvent,
+        LocalSkillObservationReceipt, RegionContext, RegionEvidence, RegionEvidenceKind,
+        RegionIdentity, RunState, TimelineEvent, TimelineEventKind,
     };
     use rlogs_log_format::{RlogHeader, RlogReader, RlogWriter};
     use serde_json::json;
@@ -258,6 +304,30 @@ mod tests {
                 payload,
             }),
         }
+    }
+
+    fn timeline_envelope(
+        sequence: u64,
+        timeline_sequence: u64,
+        kind: TimelineEventKind,
+        provenance: EventProvenance,
+    ) -> EventEnvelope {
+        let time = EventTime {
+            observed_micros: sequence,
+            game_time_millis: None,
+        };
+        let mut envelope = envelope(
+            sequence,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: timeline_sequence,
+                time,
+                provenance: provenance.clone(),
+                kind,
+            }),
+            EventSensitivity::PublicGameplay,
+        );
+        envelope.provenance = provenance;
+        envelope
     }
 
     #[test]
@@ -333,6 +403,225 @@ mod tests {
         assert_eq!(reader.header().schema_version, RLOG_SCHEMA_VERSION);
         assert!(reader.next_event().unwrap().is_some());
         assert!(reader.next_event().unwrap().is_none());
+    }
+
+    #[test]
+    fn privacy_resequence_keeps_local_skill_receipt_bound_after_excluded_chat() {
+        let source = EntityRef {
+            actor_id: ActorId(8),
+            entity_uuid: EntityUuid(80),
+        };
+        let receipt_provenance =
+            EventProvenance::derived("bpsr.complete-local-skill-observation.v1", vec![3, 4, 5]);
+        let receipt = timeline_envelope(
+            6,
+            4,
+            TimelineEventKind::LocalSkillObservationReceipt(LocalSkillObservationReceipt {
+                source,
+                route: "world_use_slot_v1".into(),
+                deployment_id: "global".into(),
+                client_build: "steam-test".into(),
+                protocol_pack_digest: format!("sha256:{}", "a".repeat(64)),
+                run_started_micros: 3,
+                run_ended_micros: 4,
+                request_count: 1,
+                decoded_count: 1,
+                decode_failure_count: 0,
+                capture_queue_saturation_count: 0,
+                data_gap_count: 0,
+                authoritative_start: true,
+                authoritative_completion: true,
+            }),
+            receipt_provenance,
+        );
+        let mut local_sensitive = receipt.clone();
+        local_sensitive.sensitivity = EventSensitivity::LocalSensitive;
+        assert!(matches!(
+            validate_submission_envelope(&local_sensitive),
+            Err(SubmissionPrivacyError::LocalSensitiveEvent)
+        ));
+
+        let header = RlogHeader::new("privacy-test", region(), "fixture");
+        let mut writer = RlogWriter::new(Vec::new(), header).unwrap();
+        writer
+            .push(&envelope(
+                1,
+                CanonicalEvent::Chat(ChatEvent {
+                    channel: ChatChannel::Party,
+                    sender: None,
+                    sender_character: None,
+                    message_id: None,
+                    text: "excluded before receipt evidence".into(),
+                }),
+                EventSensitivity::PersonalGameplay,
+            ))
+            .unwrap();
+        writer
+            .push(&envelope(
+                2,
+                profile(json!({"display_name":"MarieRose","character_id":"3296036"})),
+                EventSensitivity::PersonalGameplay,
+            ))
+            .unwrap();
+        writer
+            .push(&timeline_envelope(
+                3,
+                1,
+                TimelineEventKind::Cast(CastEvent {
+                    source,
+                    ability: AbilityId(42),
+                    target: None,
+                    state: CastState::Started,
+                    action_timing: None,
+                }),
+                EventProvenance::wire(3, 1, 1),
+            ))
+            .unwrap();
+        writer
+            .push(&timeline_envelope(
+                4,
+                2,
+                TimelineEventKind::RunBoundary {
+                    state: RunState::Completed,
+                    scene_id: None,
+                    reason: BoundaryReason::AuthoritativePacket,
+                },
+                EventProvenance::wire(4, 1, 1),
+            ))
+            .unwrap();
+        writer
+            .push(&timeline_envelope(
+                5,
+                3,
+                TimelineEventKind::RunBoundary {
+                    state: RunState::Exited,
+                    scene_id: None,
+                    reason: BoundaryReason::AuthoritativePacket,
+                },
+                EventProvenance::wire(5, 1, 1),
+            ))
+            .unwrap();
+        writer.push(&receipt).unwrap();
+        let input = writer.finish().unwrap();
+        let (output, _, summary) = write_privacy_filtered_submission_log(
+            Cursor::new(input),
+            Vec::new(),
+            RlogLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(summary.excluded_chat_events, 1);
+        assert_eq!(summary.retained_events, 5);
+        let mut reader = RlogReader::new(Cursor::new(output), RlogLimits::default()).unwrap();
+        let mut retained = Vec::new();
+        while let Some(event) = reader.next_event().unwrap() {
+            retained.push(event);
+        }
+        assert_eq!(
+            retained
+                .iter()
+                .map(|event| event.sequence)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3, 4, 5]
+        );
+        assert!(matches!(
+            retained[1].event,
+            CanonicalEvent::Timeline(TimelineEvent {
+                kind: TimelineEventKind::Cast(_),
+                ..
+            })
+        ));
+        assert!(matches!(
+            retained[2].event,
+            CanonicalEvent::Timeline(TimelineEvent {
+                kind: TimelineEventKind::RunBoundary {
+                    state: RunState::Completed,
+                    ..
+                },
+                ..
+            })
+        ));
+        assert!(matches!(
+            retained[3].event,
+            CanonicalEvent::Timeline(TimelineEvent {
+                kind: TimelineEventKind::RunBoundary {
+                    state: RunState::Exited,
+                    ..
+                },
+                ..
+            })
+        ));
+        let EventProvenance {
+            source: EvidenceSource::Derived {
+                evidence_sequences, ..
+            },
+            ..
+        } = &retained[4].provenance
+        else {
+            panic!("retained receipt must keep derived provenance")
+        };
+        assert_eq!(evidence_sequences, &[2, 3, 4]);
+        let CanonicalEvent::Timeline(timeline) = &retained[4].event else {
+            panic!("retained receipt must remain a timeline event")
+        };
+        assert_eq!(timeline.provenance, retained[4].provenance);
+    }
+
+    #[test]
+    fn privacy_resequence_rejects_receipt_reference_to_excluded_event() {
+        let source = EntityRef {
+            actor_id: ActorId(8),
+            entity_uuid: EntityUuid(80),
+        };
+        let header = RlogHeader::new("privacy-test", region(), "fixture");
+        let mut writer = RlogWriter::new(Vec::new(), header).unwrap();
+        writer
+            .push(&envelope(
+                1,
+                CanonicalEvent::Chat(ChatEvent {
+                    channel: ChatChannel::Party,
+                    sender: None,
+                    sender_character: None,
+                    message_id: None,
+                    text: "excluded evidence must not alias".into(),
+                }),
+                EventSensitivity::PersonalGameplay,
+            ))
+            .unwrap();
+        writer
+            .push(&timeline_envelope(
+                2,
+                1,
+                TimelineEventKind::LocalSkillObservationReceipt(LocalSkillObservationReceipt {
+                    source,
+                    route: "world_use_slot_v1".into(),
+                    deployment_id: "global".into(),
+                    client_build: "steam-test".into(),
+                    protocol_pack_digest: format!("sha256:{}", "a".repeat(64)),
+                    run_started_micros: 1,
+                    run_ended_micros: 1,
+                    request_count: 0,
+                    decoded_count: 0,
+                    decode_failure_count: 0,
+                    capture_queue_saturation_count: 0,
+                    data_gap_count: 0,
+                    authoritative_start: true,
+                    authoritative_completion: true,
+                }),
+                EventProvenance::derived("bpsr.complete-local-skill-observation.v1", vec![1]),
+            ))
+            .unwrap();
+        let input = writer.finish().unwrap();
+
+        assert!(matches!(
+            write_privacy_filtered_submission_log(
+                Cursor::new(input),
+                Vec::new(),
+                RlogLimits::default(),
+            ),
+            Err(SubmissionPrivacyError::UnretainedLocalSkillReceiptEvidence(
+                1
+            ))
+        ));
     }
 
     #[test]

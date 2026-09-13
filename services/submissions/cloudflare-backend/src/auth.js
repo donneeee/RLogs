@@ -12,7 +12,7 @@ const CURRENT_PUBLIC_PARSE_SCHEMA_VERSION = 17;
 // Visibility remains mutable for older immutable projections. Keep the prior
 // accepted timeline projection eligible while the current producer rolls out,
 // so a visibility change cannot strand an otherwise valid reconciliation.
-const RECONCILABLE_PUBLIC_PARSE_PROJECTION_REVISIONS = new Set([12, 13]);
+const RECONCILABLE_PUBLIC_PARSE_PROJECTION_REVISIONS = new Set([12, 13, 14]);
 
 function json(value, status = 200) {
   return Response.json(value, {

@@ -4611,6 +4611,7 @@ fn timeline_event_view(
             "recorder_pause"
         }
         TimelineEventKind::DataGap(_) => "data_gap",
+        TimelineEventKind::LocalSkillObservationReceipt(_) => "local_skill_observation_receipt",
     }
 }
 
@@ -9791,6 +9792,9 @@ impl RuntimeController {
                         let mut frame_event_observability = CastObservabilityCounters::default();
                         let decoded_events_before = recorder.metrics().decoded_event_count;
                         let ordered_reduction_started = Instant::now();
+                        recorder.observe_capture_queue_saturations(
+                            capture.metrics().queue_saturations,
+                        );
                         let mut sealed = recorder
                             .process_frame_with_inspection(frame, |event| {
                                 frame_event_observability.observe_event(event);

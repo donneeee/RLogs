@@ -385,6 +385,55 @@ impl<'a> ProtocolRuntime<'a> {
         self.envelopes.region()
     }
 
+    /// Returns the exact local actor only when the reviewed encrypted
+    /// `WorldUseSlot` route is authorized for this runtime and the local
+    /// profile has already established its implicit wire source. Callers use
+    /// this at both run boundaries; a cast event by itself is not continuity
+    /// proof and must never make an empty skill lane authoritative.
+    pub fn authorized_local_skill_observation_source(&mut self) -> Option<EntityRef> {
+        if !self.compatibility_skill_action_authorized {
+            return None;
+        }
+        let source_uuid = local_profile_entity_uuid(&self.profile)?;
+        self.entities
+            .resolve(source_uuid, Some(ENTITY_PLAYER))
+            .ok()
+            .map(|state| state.identity)
+    }
+
+    pub fn is_authorized_local_skill_record(&self, record: &CaptureRecord) -> bool {
+        self.compatibility_skill_action_authorized
+            && matches!(
+                &record.kind,
+                CaptureRecordKind::Packet(packet)
+                    if packet.route.is_some_and(|route| {
+                        self.pack.decoder(&route.key) == Some(DecoderKind::WorldUseSlotV1)
+                    })
+            )
+    }
+
+    pub fn emit_local_skill_observation_receipt(
+        &mut self,
+        time: EventTime,
+        provenance: EventProvenance,
+        receipt: rlogs_events::LocalSkillObservationReceipt,
+    ) -> Result<EventEnvelope, ProtocolRuntimeError> {
+        self.envelopes
+            .emit(CanonicalEventDraft {
+                time,
+                provenance,
+                // EntityRef is already public gameplay identity on exact cast
+                // rows. The receipt contains no packet bytes, socket data, or
+                // account token, and must survive the submission privacy
+                // filter in order to authorize server-side completeness.
+                sensitivity: EventSensitivity::PublicGameplay,
+                kind: CanonicalEventDraftKind::Timeline(
+                    TimelineEventKind::LocalSkillObservationReceipt(receipt),
+                ),
+            })
+            .map_err(ProtocolRuntimeError::EventSequence)
+    }
+
     pub fn process(
         &mut self,
         record: &CaptureRecord,

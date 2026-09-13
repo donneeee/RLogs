@@ -1,10 +1,11 @@
 //! Atomic `.rlog` output for packet-delimited BPSR dungeon runs.
 
+use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
-use rlogs_events::{CanonicalEvent, EventEnvelope};
+use rlogs_events::{CanonicalEvent, EventEnvelope, EvidenceSource, TimelineEventKind};
 use rlogs_log_format::{RlogError, RlogHeader, RlogSeal, RlogWriter};
 use thiserror::Error;
 
@@ -52,6 +53,7 @@ struct ActiveWriter {
     writer: RlogWriter<BufWriter<File>>,
     next_sequence: u64,
     next_timeline_sequence: u64,
+    event_sequence_map: BTreeMap<u64, u64>,
 }
 
 impl SegmentedDungeonLogWriter {
@@ -131,12 +133,18 @@ impl SegmentedDungeonLogWriter {
                             .ok_or(SegmentedRecordingError::InvalidActionOrder(
                                 "segment writer was not opened",
                             ))?;
+                    remap_local_skill_receipt_evidence(&mut envelope, &active.event_sequence_map)?;
+                    let source_sequence = envelope.sequence;
+                    let run_sequence = active.next_sequence;
                     resequence(
                         &mut envelope,
                         &active.session_id,
                         &mut active.next_sequence,
                         &mut active.next_timeline_sequence,
                     )?;
+                    active
+                        .event_sequence_map
+                        .insert(source_sequence, run_sequence);
                     active.writer.push(&envelope)?;
                 }
                 DungeonSegmentAction::Seal { reason, boundary } => {
@@ -205,6 +213,7 @@ impl SegmentedDungeonLogWriter {
             writer,
             next_sequence: 1,
             next_timeline_sequence: 1,
+            event_sequence_map: BTreeMap::new(),
         });
         Ok(())
     }
@@ -241,6 +250,34 @@ impl SegmentedDungeonLogWriter {
         }
         result
     }
+}
+
+fn remap_local_skill_receipt_evidence(
+    envelope: &mut EventEnvelope,
+    event_sequence_map: &BTreeMap<u64, u64>,
+) -> Result<(), SegmentedRecordingError> {
+    let CanonicalEvent::Timeline(timeline) = &mut envelope.event else {
+        return Ok(());
+    };
+    if !matches!(
+        timeline.kind,
+        TimelineEventKind::LocalSkillObservationReceipt(_)
+    ) {
+        return Ok(());
+    }
+    let EvidenceSource::Derived {
+        evidence_sequences, ..
+    } = &mut envelope.provenance.source
+    else {
+        return Err(SegmentedRecordingError::InvalidLocalSkillReceiptEvidence);
+    };
+    for sequence in evidence_sequences {
+        *sequence = *event_sequence_map.get(sequence).ok_or(
+            SegmentedRecordingError::UnmappedLocalSkillEvidenceSequence(*sequence),
+        )?;
+    }
+    timeline.provenance = envelope.provenance.clone();
+    Ok(())
 }
 
 fn resequence(
@@ -286,6 +323,12 @@ pub enum SegmentedRecordingError {
     #[error("base session ID must use 1-96 ASCII letters, digits, '.', '_', or '-'")]
     InvalidSessionId,
 
+    #[error("local skill receipt provenance is not derived evidence")]
+    InvalidLocalSkillReceiptEvidence,
+
+    #[error("local skill receipt references unretained event sequence {0}")]
+    UnmappedLocalSkillEvidenceSequence(u64),
+
     #[error("recording producer must not be empty")]
     EmptyProducer,
 
@@ -313,9 +356,10 @@ mod tests {
     use std::io::BufReader;
 
     use rlogs_events::{
-        BoundaryReason, CanonicalEventDraft, CanonicalEventDraftKind, CharacterIdentity,
-        DungeonEvent, DungeonEventKind, EventEnvelopeFactory, EventProvenance, EventSensitivity,
-        EventTime, GameProfileEvent, RegionContext, RegionIdentity, RunState, TimelineEventKind,
+        ActorId, BoundaryReason, CanonicalEventDraft, CanonicalEventDraftKind, CharacterIdentity,
+        DungeonEvent, DungeonEventKind, EntityRef, EntityUuid, EventEnvelopeFactory,
+        EventProvenance, EventSensitivity, EventTime, GameProfileEvent,
+        LocalSkillObservationReceipt, RegionContext, RegionIdentity, RunState, TimelineEventKind,
     };
     use rlogs_log_format::{RlogLimits, RlogReader};
 
@@ -500,6 +544,149 @@ mod tests {
             })
         ));
         assert!(reader.next_event().unwrap().is_none());
+
+        std::fs::remove_file(&sealed[0].path).unwrap();
+        std::fs::remove_dir(&directory).unwrap();
+    }
+
+    #[test]
+    fn decoder_terminal_pair_keeps_receipt_terminal_evidence_recorded_and_remappable() {
+        let directory = std::env::temp_dir().join(format!(
+            "rlogs-segmented-terminal-pair-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).unwrap();
+
+        let region = region();
+        let mut envelopes = EventEnvelopeFactory::new("continuous", region.clone());
+        let entered = envelopes
+            .emit(dungeon_draft(1, DungeonEventKind::Entered))
+            .unwrap();
+        let completed = envelopes
+            .emit(dungeon_draft(2, DungeonEventKind::Completed))
+            .unwrap();
+        let completion = envelopes
+            .emit(CanonicalEventDraft {
+                time: EventTime {
+                    observed_micros: 2_000,
+                    game_time_millis: Some(2),
+                },
+                provenance: EventProvenance::wire(2, 1, 2),
+                sensitivity: EventSensitivity::PublicGameplay,
+                kind: CanonicalEventDraftKind::Timeline(TimelineEventKind::RunBoundary {
+                    state: RunState::Completed,
+                    scene_id: None,
+                    reason: BoundaryReason::AuthoritativePacket,
+                }),
+            })
+            .unwrap();
+        let dungeon_exited = envelopes
+            .emit(dungeon_draft(3, DungeonEventKind::Exited))
+            .unwrap();
+        let timeline_exited = envelopes
+            .emit(CanonicalEventDraft {
+                time: EventTime {
+                    observed_micros: 3_000,
+                    game_time_millis: Some(3),
+                },
+                provenance: EventProvenance::wire(3, 1, 2),
+                sensitivity: EventSensitivity::PublicGameplay,
+                kind: CanonicalEventDraftKind::Timeline(TimelineEventKind::RunBoundary {
+                    state: RunState::Exited,
+                    scene_id: None,
+                    reason: BoundaryReason::AuthoritativePacket,
+                }),
+            })
+            .unwrap();
+        let completion_sequence = completion.sequence;
+        let recorded_terminal_sequence = dungeon_exited.sequence;
+        let unrecorded_terminal_sequence = timeline_exited.sequence;
+        let receipt = envelopes
+            .emit(CanonicalEventDraft {
+                time: EventTime {
+                    observed_micros: 3_000,
+                    game_time_millis: Some(3),
+                },
+                provenance: EventProvenance::derived(
+                    "bpsr.complete-local-skill-observation.v1",
+                    vec![completion_sequence, recorded_terminal_sequence],
+                ),
+                sensitivity: EventSensitivity::PublicGameplay,
+                kind: CanonicalEventDraftKind::Timeline(
+                    TimelineEventKind::LocalSkillObservationReceipt(LocalSkillObservationReceipt {
+                        source: EntityRef {
+                            actor_id: ActorId(8),
+                            entity_uuid: EntityUuid(80),
+                        },
+                        route: "world_use_slot_v1".into(),
+                        deployment_id: region.identity.deployment_id.clone(),
+                        client_build: region.client_build.clone(),
+                        protocol_pack_digest: region.protocol_pack_digest.clone(),
+                        run_started_micros: 1_000,
+                        run_ended_micros: 2_000,
+                        request_count: 0,
+                        decoded_count: 0,
+                        decode_failure_count: 0,
+                        capture_queue_saturation_count: 0,
+                        data_gap_count: 0,
+                        authoritative_start: true,
+                        authoritative_completion: true,
+                    }),
+                ),
+            })
+            .unwrap();
+
+        let mut writer =
+            SegmentedDungeonLogWriter::new(&directory, "continuous", "unit-test").unwrap();
+        assert!(writer.consume_batch([entered]).unwrap().is_empty());
+        assert!(
+            writer
+                .consume_batch([completed, completion])
+                .unwrap()
+                .is_empty()
+        );
+        let sealed = writer
+            .consume_batch([dungeon_exited, timeline_exited, receipt])
+            .unwrap();
+        assert_eq!(sealed.len(), 1);
+
+        let file = File::open(&sealed[0].path).unwrap();
+        let mut reader = RlogReader::new(BufReader::new(file), RlogLimits::default()).unwrap();
+        let mut retained_sequences = BTreeMap::new();
+        let mut receipt_evidence = None;
+        while let Some(event) = reader.next_event().unwrap() {
+            if let EvidenceSource::Wire {
+                capture_sequence, ..
+            } = event.provenance.source
+            {
+                retained_sequences.insert(capture_sequence, event.sequence);
+            }
+            if matches!(
+                event.event,
+                CanonicalEvent::Timeline(rlogs_events::TimelineEvent {
+                    kind: TimelineEventKind::LocalSkillObservationReceipt(_),
+                    ..
+                })
+            ) {
+                let EvidenceSource::Derived {
+                    evidence_sequences, ..
+                } = event.provenance.source
+                else {
+                    panic!("receipt must retain derived provenance")
+                };
+                receipt_evidence = Some(evidence_sequences);
+            }
+        }
+        let expected = vec![
+            *retained_sequences.get(&2).unwrap(),
+            *retained_sequences.get(&3).unwrap(),
+        ];
+        assert_eq!(receipt_evidence, Some(expected));
+        assert!(
+            !retained_sequences.contains_key(&unrecorded_terminal_sequence),
+            "the second decoder terminal is settlement after the segment has sealed"
+        );
 
         std::fs::remove_file(&sealed[0].path).unwrap();
         std::fs::remove_dir(&directory).unwrap();

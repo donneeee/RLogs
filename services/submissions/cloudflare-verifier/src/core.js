@@ -21,12 +21,13 @@ export const STATUS_SPAN_REPORT_PROJECTION_REVISION = 12;
 export const STATUS_SPAN_TIMELINE_SCHEMA_VERSION = 8;
 export const SKILL_COVERAGE_REPORT_PROJECTION_REVISION = 13;
 export const SKILL_COVERAGE_TIMELINE_SCHEMA_VERSION = 9;
+export const LOCAL_SKILL_CONTINUITY_REPORT_PROJECTION_REVISION = 14;
 // Historical artifacts are replayed by the same pinned verifier image that
 // produces new hosted reports. Keep this tuple exact: accepting an intermediate
 // projection would make a backfilled report unusable as a hosted reconciliation
 // source and would leave timeline-v7 data absent from the public site.
 export const BACKFILL_TARGET_SCHEMA_VERSION = UPCOMING_REPORT_SCHEMA_VERSION;
-export const BACKFILL_TARGET_PROJECTION_REVISION = SKILL_COVERAGE_REPORT_PROJECTION_REVISION;
+export const BACKFILL_TARGET_PROJECTION_REVISION = LOCAL_SKILL_CONTINUITY_REPORT_PROJECTION_REVISION;
 export const BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION = SKILL_COVERAGE_TIMELINE_SCHEMA_VERSION;
 
 function validReportTuple(report) {
@@ -58,6 +59,10 @@ function validReportTuple(report) {
   ) || (
     report?.schema_version === UPCOMING_REPORT_SCHEMA_VERSION &&
     report?.projection_revision === SKILL_COVERAGE_REPORT_PROJECTION_REVISION &&
+    timelineSchemaVersion === SKILL_COVERAGE_TIMELINE_SCHEMA_VERSION
+  ) || (
+    report?.schema_version === UPCOMING_REPORT_SCHEMA_VERSION &&
+    report?.projection_revision === LOCAL_SKILL_CONTINUITY_REPORT_PROJECTION_REVISION &&
     timelineSchemaVersion === SKILL_COVERAGE_TIMELINE_SCHEMA_VERSION
   );
   return validTuple && report.runs.every((run) => {
@@ -101,7 +106,8 @@ function validExactSkillTimeline(timeline, allowedReportIds, source, canonicalRe
       !timeline.participant_tracks.every((track) => boundedIdentifierText(track?.actor_id) &&
         nonNegativeSafeInteger(track?.omitted_skill_uses) &&
         (timeline.schema_version < SKILL_COVERAGE_TIMELINE_SCHEMA_VERSION ||
-          validSkillObservation(track?.skill_observation, timeline.source))) ||
+          (validSkillObservation(track?.skill_observation, timeline.source) &&
+            (track.skill_observation.coverage !== "complete" || track.omitted_skill_uses === 0)))) ||
       new Set(timeline.participant_tracks.map((track) => track.actor_id)).size !== timeline.participant_tracks.length ||
       !Array.isArray(timeline.skill_uses) || timeline.skill_uses.length > MAXIMUM_TIMELINE_SKILL_USES ||
       !nonNegativeSafeInteger(timeline.omitted?.skill_uses)) return false;

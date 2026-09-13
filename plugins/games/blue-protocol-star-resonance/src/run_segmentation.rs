@@ -221,7 +221,18 @@ impl DungeonRunSegmenter {
                     self.remember_entry_context(&world);
                 }
             } else {
-                self.remember_entry_context(&event);
+                if matches!(
+                    &event.event,
+                    CanonicalEvent::Timeline(timeline)
+                        if matches!(timeline.kind, TimelineEventKind::LocalSkillObservationReceipt(_))
+                ) && matches!(actions.last(), Some(DungeonSegmentAction::Seal { .. }))
+                {
+                    let seal = actions.pop().expect("checked terminal seal");
+                    actions.push(DungeonSegmentAction::Record(event));
+                    actions.push(seal);
+                } else {
+                    self.remember_entry_context(&event);
+                }
             }
         }
 
@@ -414,10 +425,10 @@ fn distinct_instances(current: Option<&str>, next: Option<&str>) -> bool {
 #[cfg(test)]
 mod tests {
     use rlogs_events::{
-        BoundaryReason, CanonicalEventDraft, CanonicalEventDraftKind, CharacterIdentity,
-        DungeonEvent, DungeonEventKind, EventEnvelopeFactory, EventProvenance, EventSensitivity,
-        GameProfileEvent, RegionContext, RegionIdentity, RunState, SceneId, TimelineEventKind,
-        WorldContext,
+        ActorId, BoundaryReason, CanonicalEventDraft, CanonicalEventDraftKind, CharacterIdentity,
+        DungeonEvent, DungeonEventKind, EntityRef, EntityUuid, EventEnvelopeFactory,
+        EventProvenance, EventSensitivity, GameProfileEvent, LocalSkillObservationReceipt,
+        RegionContext, RegionIdentity, RunState, SceneId, TimelineEventKind, WorldContext,
     };
 
     use super::*;
@@ -487,6 +498,43 @@ mod tests {
                     scene_id: None,
                     reason: BoundaryReason::AuthoritativePacket,
                 }),
+            })
+            .unwrap()
+    }
+
+    fn local_skill_receipt(factory: &mut EventEnvelopeFactory, sequence: u64) -> EventEnvelope {
+        factory
+            .emit(CanonicalEventDraft {
+                time: EventTime {
+                    observed_micros: sequence * 1_000,
+                    game_time_millis: Some(sequence as i64),
+                },
+                provenance: EventProvenance::derived(
+                    "bpsr.complete-local-skill-observation.v1",
+                    vec![2, 3],
+                ),
+                sensitivity: EventSensitivity::PublicGameplay,
+                kind: CanonicalEventDraftKind::Timeline(
+                    TimelineEventKind::LocalSkillObservationReceipt(LocalSkillObservationReceipt {
+                        source: EntityRef {
+                            actor_id: ActorId(8),
+                            entity_uuid: EntityUuid(80),
+                        },
+                        route: "world_use_slot_v1".into(),
+                        deployment_id: "global".into(),
+                        client_build: "fixture".into(),
+                        protocol_pack_digest: "sha256:fixture".into(),
+                        run_started_micros: 1_000,
+                        run_ended_micros: 2_000,
+                        request_count: 0,
+                        decoded_count: 0,
+                        decode_failure_count: 0,
+                        capture_queue_saturation_count: 0,
+                        data_gap_count: 0,
+                        authoritative_start: true,
+                        authoritative_completion: true,
+                    }),
+                ),
             })
             .unwrap()
     }
@@ -694,6 +742,44 @@ mod tests {
             })
         ));
         assert!(!segmenter.is_recording());
+    }
+
+    #[test]
+    fn terminal_receipt_is_recorded_before_the_segment_is_sealed() {
+        let mut factory = factory();
+        let mut segmenter = DungeonRunSegmenter::default();
+        segmenter.observe_batch([dungeon(&mut factory, 1, DungeonEventKind::Entered, "run-1")]);
+        segmenter.observe_batch([dungeon(
+            &mut factory,
+            2,
+            DungeonEventKind::Completed,
+            "run-1",
+        )]);
+
+        let exited = dungeon(&mut factory, 3, DungeonEventKind::Exited, "run-1");
+        let receipt = local_skill_receipt(&mut factory, 3);
+        let actions = segmenter.observe_batch([exited, receipt]);
+
+        assert!(matches!(
+            actions.as_slice(),
+            [
+                DungeonSegmentAction::Record(EventEnvelope {
+                    event: CanonicalEvent::Dungeon(DungeonEvent {
+                        kind: DungeonEventKind::Exited,
+                        ..
+                    }),
+                    ..
+                }),
+                DungeonSegmentAction::Record(EventEnvelope {
+                    event: CanonicalEvent::Timeline(TimelineEvent {
+                        kind: TimelineEventKind::LocalSkillObservationReceipt(_),
+                        ..
+                    }),
+                    ..
+                }),
+                DungeonSegmentAction::Seal { .. }
+            ]
+        ));
     }
 
     #[test]

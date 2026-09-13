@@ -1288,6 +1288,7 @@ fn timeline_event_name(event: &TimelineEventKind) -> &'static str {
         TimelineEventKind::Position(_) => "position",
         TimelineEventKind::RecorderPause(_) => "recorder_pause",
         TimelineEventKind::DataGap(_) => "data_gap",
+        TimelineEventKind::LocalSkillObservationReceipt(_) => "local_skill_observation_receipt",
     }
 }
 

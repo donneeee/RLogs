@@ -9,6 +9,7 @@ import {
   CURRENT_TIMELINE_SCHEMA_VERSION,
   EXACT_SKILL_REPORT_PROJECTION_REVISION, EXACT_SKILL_TIMELINE_SCHEMA_VERSION,
   HOSTILE_CAST_REPORT_PROJECTION_REVISION, HOSTILE_CAST_TIMELINE_SCHEMA_VERSION,
+  LOCAL_SKILL_CONTINUITY_REPORT_PROJECTION_REVISION,
   LEGACY_RECONCILIATION_SCHEMA_VERSION, LEGACY_REPORT_PROJECTION_REVISION,
   LEGACY_REPORT_SCHEMA_VERSION, LEGACY_TIMELINE_SCHEMA_VERSION,
   RECONCILIATION_SCHEMA_VERSION,
@@ -252,6 +253,10 @@ test("report v17 revision 13 requires truthful per-track skill observation cover
     runs: [{ timeline: skillCoverageTimeline() }],
   }, membership: { report_id: wakeup.expected_report_id, artifact_sha256: digest, runs: [] } };
   assert.equal(validateOutput(output, wakeup), true);
+  assert.equal(validateOutput({
+    ...output,
+    report: { ...output.report, projection_revision: LOCAL_SKILL_CONTINUITY_REPORT_PROJECTION_REVISION },
+  }, wakeup), true);
   for (const mutate of [
     (timeline) => { delete timeline.participant_tracks[0].skill_observation; },
     (timeline) => { timeline.participant_tracks[0].skill_observation.coverage = "complete_party"; },
@@ -259,6 +264,7 @@ test("report v17 revision 13 requires truthful per-track skill observation cover
     (timeline) => { timeline.participant_tracks[1].skill_observation.evidence = ["exact_local_outbound"]; },
     (timeline) => { timeline.participant_tracks[0].skill_observation.evidence.push("exact_party_broadcast"); },
     (timeline) => { timeline.participant_tracks[0].skill_observation.evidence = ["reconciled_local_vantage"]; },
+    (timeline) => { timeline.participant_tracks[0].omitted_skill_uses = 1; },
   ]) {
     const invalid = structuredClone(output);
     mutate(invalid.report.runs[0].timeline);
@@ -367,7 +373,7 @@ test("backfill eligibility accepts only exact batch-scoped historical source tup
 
 test("historical backfill is pinned to the exact current public timeline tuple", () => {
   assert.equal(BACKFILL_TARGET_SCHEMA_VERSION, 17);
-  assert.equal(BACKFILL_TARGET_PROJECTION_REVISION, 13);
+  assert.equal(BACKFILL_TARGET_PROJECTION_REVISION, 14);
   assert.equal(BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION, 9);
 });
 

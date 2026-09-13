@@ -514,6 +514,7 @@ impl RunSessionReducer {
             | TimelineEventKind::Status(_)
             | TimelineEventKind::UnresolvedStatus(_)
             | TimelineEventKind::UnresolvedAction(_)
+            | TimelineEventKind::LocalSkillObservationReceipt(_)
             | TimelineEventKind::Position(_) => {
                 // Combatants and boss adds never define segment boundaries.
             }

@@ -295,7 +295,7 @@ test("operator workflow removes enqueue controls while manual deploy and the pau
   assert.doesNotMatch(workflow, /projection_backfill|BACKFILL_MODE|projection_backfill_batches/u);
   assert.ok(workflow.indexOf("npm run db:migrate:remote") < workflow.indexOf("VERIFIER_RELEASE:${{ github.sha }}"));
   assert.equal(PROJECTION_BACKFILL_PAUSE_CODE, "migration_paused_v9");
-  assert.match(PROJECTION_BACKFILL_PAUSE_DETAIL, /schema 17 \/ projection 13 \/ timeline 9/u);
+  assert.match(PROJECTION_BACKFILL_PAUSE_DETAIL, /schema 17 \/ projection 14 \/ timeline 9/u);
   assert.match(worker, /BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION/u);
   assert.doesNotMatch(worker, /projection 11|timeline 7/u);
   assert.match(worker, /state='rejected',[\s\S]+failure_code=\?2,[\s\S]+return \{[\s\S]+permanent: true/u);

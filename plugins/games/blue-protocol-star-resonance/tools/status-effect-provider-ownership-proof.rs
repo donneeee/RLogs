@@ -838,6 +838,7 @@ fn process_timeline_event(
         | TimelineEventKind::CombatBoundary { .. }
         | TimelineEventKind::RecorderPause(_)
         | TimelineEventKind::UnresolvedStatus(_)
+        | TimelineEventKind::LocalSkillObservationReceipt(_)
         | TimelineEventKind::DataGap(_) => {}
     }
     Ok(())

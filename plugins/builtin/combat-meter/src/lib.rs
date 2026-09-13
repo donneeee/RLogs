@@ -2473,6 +2473,7 @@ impl CombatTimelinePlugin {
             TimelineEventKind::TemporaryAttributes(_)
             | TimelineEventKind::Cooldown(_)
             | TimelineEventKind::Resource(_)
+            | TimelineEventKind::LocalSkillObservationReceipt(_)
             | TimelineEventKind::RecorderPause(_) => {}
             TimelineEventKind::Status(status) => {
                 self.actor_ancestry.observe_entity(status.target);

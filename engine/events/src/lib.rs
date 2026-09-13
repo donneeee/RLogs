@@ -19,11 +19,12 @@ pub use event::{
     CombatState, CooldownEvent, DamageEvent, DamageFlags, DamageHitPart, DamagePacketDetail,
     DamagePosition, DataGapEvent, DataGapKind, EncounterState, EntityAttribute,
     EntityAttributeEvent, EntityAttributeUpdateKind, EntityAttributeValue, EventProvenance,
-    EventTime, EvidenceConfidence, EvidenceSource, HealingEvent, LifeState, PositionEvent,
-    RecorderPauseEvent, ResourceCooldown, ResourceEvent, RunState, ShieldEvent, StatusEvent,
-    StatusOrigin, StatusState, TemporaryAttribute, TemporaryAttributeEvent, TimelineEvent,
-    TimelineEventDraft, TimelineEventKind, UnresolvedActionEvent, UnresolvedActionReason,
-    UnresolvedStatusEvent, UnresolvedStatusReason,
+    EventTime, EvidenceConfidence, EvidenceSource, HealingEvent, LifeState,
+    LocalSkillObservationReceipt, PositionEvent, RecorderPauseEvent, ResourceCooldown,
+    ResourceEvent, RunState, ShieldEvent, StatusEvent, StatusOrigin, StatusState,
+    TemporaryAttribute, TemporaryAttributeEvent, TimelineEvent, TimelineEventDraft,
+    TimelineEventKind, UnresolvedActionEvent, UnresolvedActionReason, UnresolvedStatusEvent,
+    UnresolvedStatusReason,
 };
 pub use identity::{
     CharacterIdentity, RegionContext, RegionEvidence, RegionEvidenceKind, RegionIdentity,

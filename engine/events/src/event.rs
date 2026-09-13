@@ -64,6 +64,16 @@ impl EventProvenance {
             },
         }
     }
+
+    pub fn derived(rule_id: impl Into<String>, evidence_sequences: Vec<u64>) -> Self {
+        Self {
+            confidence: EvidenceConfidence::Exact,
+            source: EvidenceSource::Derived {
+                rule_id: rule_id.into(),
+                evidence_sequences,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -126,6 +136,11 @@ pub enum TimelineEventKind {
     /// resumes so the sealed log contains both exact endpoints.
     RecorderPause(RecorderPauseEvent),
     DataGap(DataGapEvent),
+    /// Sealed, run-scoped proof that the authorized local outbound skill route
+    /// remained observable for the entire authoritative run. This receipt is
+    /// emitted only by the capture recorder after all fail-closed gates pass;
+    /// ordinary cast rows never imply complete observation on their own.
+    LocalSkillObservationReceipt(LocalSkillObservationReceipt),
 }
 
 impl TimelineEventKind {
@@ -148,7 +163,9 @@ impl TimelineEventKind {
             | Self::Status(_)
             | Self::UnresolvedStatus(_)
             | Self::UnresolvedAction(_) => EventTopic::Combat,
-            Self::RecorderPause(_) | Self::DataGap(_) => EventTopic::DataQuality,
+            Self::RecorderPause(_) | Self::DataGap(_) | Self::LocalSkillObservationReceipt(_) => {
+                EventTopic::DataQuality
+            }
         }
     }
 }
@@ -800,6 +817,24 @@ pub struct DataGapEvent {
     pub connection_id: Option<u64>,
     pub stream_id: Option<u64>,
     pub detail: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalSkillObservationReceipt {
+    pub source: EntityRef,
+    pub route: String,
+    pub deployment_id: String,
+    pub client_build: String,
+    pub protocol_pack_digest: String,
+    pub run_started_micros: u64,
+    pub run_ended_micros: u64,
+    pub request_count: u64,
+    pub decoded_count: u64,
+    pub decode_failure_count: u64,
+    pub capture_queue_saturation_count: u64,
+    pub data_gap_count: u64,
+    pub authoritative_start: bool,
+    pub authoritative_completion: bool,
 }
 
 #[cfg(test)]

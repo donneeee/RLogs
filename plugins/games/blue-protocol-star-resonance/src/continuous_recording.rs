@@ -13,8 +13,8 @@ use rlogs_capture::CapturedFrame;
 use rlogs_core::{ConnectionFilterError, GameConnection, GameConnectionFilter};
 use rlogs_events::{
     BoundaryReason, CanonicalEvent, DungeonEventKind, EventEnvelope, EventProvenance,
-    EventSensitivity, EventTime, RegionContext, RegionEvidence, RegionIdentity, RunState,
-    TimelineEvent, TimelineEventKind,
+    EventSensitivity, EventTime, LocalSkillObservationReceipt, RegionContext, RegionEvidence,
+    RegionIdentity, RunState, TimelineEvent, TimelineEventKind,
 };
 use thiserror::Error;
 
@@ -60,6 +60,203 @@ pub struct ContinuousRecordingMetrics {
     pub research_record_count: u64,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct LocalSkillRouteCounters {
+    requests: u64,
+    decoded: u64,
+    failures: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ActiveLocalSkillObservation {
+    source: rlogs_events::EntityRef,
+    started_micros: u64,
+    authoritative_start: bool,
+    completion_observed: bool,
+    completion_micros: Option<u64>,
+    completion_sequence: Option<u64>,
+    completion_source_matches: bool,
+    counters_at_completion: Option<LocalSkillRouteCounters>,
+    queue_saturations_at_completion: Option<u64>,
+    data_gaps_at_completion: Option<u64>,
+    counters_at_start: LocalSkillRouteCounters,
+    queue_saturations_at_start: u64,
+    data_gaps: u64,
+    skill_event_sequences: Vec<u64>,
+}
+
+#[derive(Debug, Default)]
+struct LocalSkillObservationTracker {
+    counters: LocalSkillRouteCounters,
+    queue_saturations: u64,
+    active: Option<ActiveLocalSkillObservation>,
+}
+
+impl LocalSkillObservationTracker {
+    fn observe_protocol(&mut self, local_skill_route: bool, status: crate::ProtocolDecodeStatus) {
+        if !local_skill_route {
+            return;
+        }
+        self.counters.requests = self.counters.requests.saturating_add(1);
+        match status {
+            crate::ProtocolDecodeStatus::Decoded => {
+                self.counters.decoded = self.counters.decoded.saturating_add(1);
+            }
+            crate::ProtocolDecodeStatus::DecodeFailed
+            | crate::ProtocolDecodeStatus::MissingApplicationPayload => {
+                self.counters.failures = self.counters.failures.saturating_add(1);
+            }
+            _ => {}
+        }
+    }
+
+    fn observe_event(
+        &mut self,
+        event: &EventEnvelope,
+        source_before_record: Option<rlogs_events::EntityRef>,
+        local_skill_route: bool,
+    ) {
+        if let CanonicalEvent::Dungeon(dungeon) = &event.event
+            && matches!(
+                dungeon.kind,
+                DungeonEventKind::Entered | DungeonEventKind::Started
+            )
+            && self.active.is_none()
+        {
+            if let Some(source) = source_before_record {
+                self.active = Some(ActiveLocalSkillObservation {
+                    source,
+                    started_micros: event.time.observed_micros,
+                    authoritative_start: dungeon.kind == DungeonEventKind::Started,
+                    completion_observed: false,
+                    completion_micros: None,
+                    completion_sequence: None,
+                    completion_source_matches: false,
+                    counters_at_completion: None,
+                    queue_saturations_at_completion: None,
+                    data_gaps_at_completion: None,
+                    counters_at_start: self.counters,
+                    queue_saturations_at_start: self.queue_saturations,
+                    data_gaps: 0,
+                    skill_event_sequences: Vec::new(),
+                });
+            }
+        }
+        let Some(active) = self.active.as_mut() else {
+            return;
+        };
+        if !active.completion_observed
+            && local_skill_route
+            && matches!(
+                &event.event,
+                CanonicalEvent::Timeline(timeline)
+                    if matches!(&timeline.kind, TimelineEventKind::Cast(cast)
+                        if cast.state == rlogs_events::CastState::Started
+                            && cast.source == active.source)
+            )
+        {
+            active.skill_event_sequences.push(event.sequence);
+        }
+        if matches!(
+            &event.event,
+            CanonicalEvent::Dungeon(dungeon) if dungeon.kind == DungeonEventKind::Started
+        ) || matches!(
+            &event.event,
+            CanonicalEvent::Timeline(timeline)
+                if matches!(timeline.kind, TimelineEventKind::RunBoundary {
+                    state: RunState::Started,
+                    reason: BoundaryReason::AuthoritativePacket,
+                    ..
+                })
+        ) {
+            active.started_micros = event.time.observed_micros;
+            active.authoritative_start = true;
+            active.counters_at_start = self.counters;
+            active.queue_saturations_at_start = self.queue_saturations;
+            active.data_gaps = 0;
+            active.skill_event_sequences.clear();
+        }
+        if matches!(
+            &event.event,
+            CanonicalEvent::Timeline(timeline)
+                if matches!(timeline.kind, TimelineEventKind::DataGap(_))
+        ) {
+            active.data_gaps = active.data_gaps.saturating_add(1);
+        }
+        if !active.completion_observed
+            && (matches!(
+                &event.event,
+                CanonicalEvent::Dungeon(dungeon) if dungeon.kind == DungeonEventKind::Completed
+            ) || matches!(
+                &event.event,
+                CanonicalEvent::Timeline(timeline)
+                    if matches!(timeline.kind, TimelineEventKind::RunBoundary { state: RunState::Completed, .. })
+            ))
+        {
+            active.completion_observed = true;
+            active.completion_micros = Some(event.time.observed_micros);
+            active.completion_sequence = Some(event.sequence);
+            active.completion_source_matches = source_before_record == Some(active.source);
+            active.counters_at_completion = Some(self.counters);
+            active.queue_saturations_at_completion = Some(self.queue_saturations);
+            active.data_gaps_at_completion = Some(active.data_gaps);
+        }
+    }
+
+    fn finish(
+        &mut self,
+        ended_micros: u64,
+        region: &RegionContext,
+    ) -> Option<(LocalSkillObservationReceipt, u64, Vec<u64>)> {
+        let active = self.active.take()?;
+        let completion_counters = active.counters_at_completion?;
+        let requests = completion_counters
+            .requests
+            .saturating_sub(active.counters_at_start.requests);
+        let decoded = completion_counters
+            .decoded
+            .saturating_sub(active.counters_at_start.decoded);
+        let failures = completion_counters
+            .failures
+            .saturating_sub(active.counters_at_start.failures);
+        let saturations = active
+            .queue_saturations_at_completion?
+            .saturating_sub(active.queue_saturations_at_start);
+        let data_gaps = active.data_gaps_at_completion?;
+        if !active.authoritative_start
+            || !active.completion_observed
+            || !active.completion_source_matches
+            || failures != 0
+            || requests != decoded
+            || usize::try_from(decoded).ok() != Some(active.skill_event_sequences.len())
+            || saturations != 0
+            || data_gaps != 0
+        {
+            return None;
+        }
+        Some((
+            LocalSkillObservationReceipt {
+                source: active.source,
+                route: "world_use_slot_v1".into(),
+                deployment_id: region.identity.deployment_id.clone(),
+                client_build: region.client_build.clone(),
+                protocol_pack_digest: region.protocol_pack_digest.clone(),
+                run_started_micros: active.started_micros,
+                run_ended_micros: active.completion_micros.unwrap_or(ended_micros),
+                request_count: requests,
+                decoded_count: decoded,
+                decode_failure_count: failures,
+                capture_queue_saturation_count: saturations,
+                data_gap_count: data_gaps,
+                authoritative_start: true,
+                authoritative_completion: true,
+            },
+            active.completion_sequence?,
+            active.skill_event_sequences,
+        ))
+    }
+}
+
 #[derive(Debug, Clone)]
 struct ManualEventContext {
     schema_version: u16,
@@ -95,6 +292,7 @@ pub struct ContinuousBpsrRecorder<'a> {
     previous_record_micros: Option<u64>,
     last_event_context: Option<ManualEventContext>,
     metrics: ContinuousRecordingMetrics,
+    local_skill_observation: LocalSkillObservationTracker,
 }
 
 impl<'a> ContinuousBpsrRecorder<'a> {
@@ -158,6 +356,7 @@ impl<'a> ContinuousBpsrRecorder<'a> {
             previous_record_micros: None,
             last_event_context: None,
             metrics: ContinuousRecordingMetrics::default(),
+            local_skill_observation: LocalSkillObservationTracker::default(),
         })
     }
 
@@ -176,6 +375,14 @@ impl<'a> ContinuousBpsrRecorder<'a> {
         self.segments
             .as_ref()
             .is_some_and(AsyncSegmentedDungeonLogWriter::is_recording)
+    }
+
+    /// Supplies the monotonic capture-ingress saturation counter. The recorder
+    /// snapshots it at run entry and refuses a completeness receipt if it
+    /// advances before the terminal boundary.
+    pub fn observe_capture_queue_saturations(&mut self, count: u64) {
+        self.local_skill_observation.queue_saturations =
+            self.local_skill_observation.queue_saturations.max(count);
     }
 
     /// Seals the active persisted run with an explicit manual boundary. The
@@ -368,7 +575,38 @@ impl<'a> ContinuousBpsrRecorder<'a> {
                 self.metrics.research_record_count =
                     self.metrics.research_record_count.saturating_add(1);
             }
-            let batch = self.runtime.process(&record)?;
+            let source_before_record = self.runtime.authorized_local_skill_observation_source();
+            let local_skill_route = self.runtime.is_authorized_local_skill_record(&record);
+            let mut batch = self.runtime.process(&record)?;
+            self.local_skill_observation
+                .observe_protocol(local_skill_route, batch.status);
+            for event in &batch.events {
+                self.local_skill_observation.observe_event(
+                    event,
+                    source_before_record,
+                    local_skill_route,
+                );
+            }
+            let terminal = batch.events.iter().find(|event| terminal_run_event(event));
+            if let Some(terminal) = terminal {
+                let terminal_time = terminal.time;
+                let terminal_sequence = terminal.sequence;
+                if let Some((receipt, completion_sequence, mut skill_event_sequences)) = self
+                    .local_skill_observation
+                    .finish(terminal_time.observed_micros, self.runtime.region_context())
+                {
+                    skill_event_sequences.extend([completion_sequence, terminal_sequence]);
+                    let receipt_event = self.runtime.emit_local_skill_observation_receipt(
+                        terminal_time,
+                        EventProvenance::derived(
+                            "bpsr.complete-local-skill-observation.v1",
+                            skill_event_sequences,
+                        ),
+                        receipt,
+                    )?;
+                    batch.events.push(receipt_event);
+                }
+            }
             observe_protocol(&record, batch.status);
             self.metrics.record_count = self.metrics.record_count.saturating_add(1);
             self.metrics.decoded_event_count = self
@@ -422,6 +660,21 @@ impl<'a> ContinuousBpsrRecorder<'a> {
             }
         }
     }
+}
+
+fn terminal_run_event(event: &EventEnvelope) -> bool {
+    matches!(
+        &event.event,
+        CanonicalEvent::Dungeon(dungeon)
+            if matches!(dungeon.kind, DungeonEventKind::Failed | DungeonEventKind::Exited)
+    ) || matches!(
+        &event.event,
+        CanonicalEvent::Timeline(timeline)
+            if matches!(timeline.kind, TimelineEventKind::RunBoundary {
+                state: RunState::Failed | RunState::Exited,
+                ..
+            })
+    )
 }
 
 struct ResearchJournal {
@@ -710,8 +963,9 @@ mod tests {
     use prost::Message;
     use rlogs_capture::{CaptureLinkType, TimestampNormalization};
     use rlogs_events::{
-        CanonicalEventDraft, CanonicalEventDraftKind, DungeonEvent, EventEnvelopeFactory,
-        EventProvenance, EventSensitivity, EventTime, RegionContext, TimelineEventKind,
+        AbilityId, ActorId, CanonicalEventDraft, CanonicalEventDraftKind, CastEvent, CastState,
+        DungeonEvent, EntityRef, EntityUuid, EventEnvelopeFactory, EventProvenance,
+        EventSensitivity, EventTime, RegionContext, TimelineEventKind,
     };
     use rlogs_network::IpEndpoint;
 
@@ -842,6 +1096,107 @@ mod tests {
             features: vec![crate::ProtocolFeature::Skill],
             disposition,
         }
+    }
+
+    #[test]
+    fn local_skill_receipt_uses_authoritative_run_bounds_not_entry_or_exit_settlement() {
+        let source = EntityRef {
+            actor_id: ActorId(8),
+            entity_uuid: EntityUuid(80),
+        };
+        let region = RegionContext {
+            identity: RegionIdentity {
+                deployment_id: "global".into(),
+                region_id: "global".into(),
+                realm_id: None,
+                world_id: None,
+            },
+            client_build: "25247556".into(),
+            protocol_pack_digest: "sha256:fixture".into(),
+            evidence: Vec::new(),
+        };
+        let mut factory = EventEnvelopeFactory::new("receipt", region.clone());
+        let (entered, started, completed) = {
+            let mut dungeon = |kind, observed_micros| {
+                factory
+                    .emit(CanonicalEventDraft {
+                        time: EventTime {
+                            observed_micros,
+                            game_time_millis: None,
+                        },
+                        provenance: EventProvenance::wire(observed_micros, 1, 1),
+                        sensitivity: EventSensitivity::PublicGameplay,
+                        kind: CanonicalEventDraftKind::Dungeon(DungeonEvent {
+                            kind,
+                            dungeon_id: None,
+                            instance_id: Some("run-1".into()),
+                            difficulty_id: None,
+                            objective_map_key: None,
+                            objective_id: None,
+                            objective_value: None,
+                            objective_complete: None,
+                            objective_catalog: None,
+                            flow: None,
+                        }),
+                    })
+                    .unwrap()
+            };
+            (
+                dungeon(DungeonEventKind::Entered, 100),
+                dungeon(DungeonEventKind::Started, 200),
+                dungeon(DungeonEventKind::Completed, 400),
+            )
+        };
+        let cast = factory
+            .emit(CanonicalEventDraft {
+                time: EventTime {
+                    observed_micros: 300,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance::wire(3, 1, 1),
+                sensitivity: EventSensitivity::PublicGameplay,
+                kind: CanonicalEventDraftKind::Timeline(TimelineEventKind::Cast(CastEvent {
+                    source,
+                    ability: AbilityId(42),
+                    target: None,
+                    state: CastState::Started,
+                    action_timing: None,
+                })),
+            })
+            .unwrap();
+
+        let mut tracker = LocalSkillObservationTracker::default();
+        tracker.observe_event(&entered, Some(source), false);
+        tracker.observe_protocol(true, crate::ProtocolDecodeStatus::Decoded);
+        tracker.active.as_mut().unwrap().data_gaps = 1;
+        tracker
+            .active
+            .as_mut()
+            .unwrap()
+            .skill_event_sequences
+            .push(99);
+        tracker.observe_event(&started, Some(source), false);
+        tracker.observe_protocol(true, crate::ProtocolDecodeStatus::Decoded);
+        tracker.observe_event(&cast, Some(source), true);
+        tracker.observe_event(&completed, Some(source), false);
+
+        // Settlement after authoritative completion must not enlarge or
+        // invalidate the proof window, and teardown need not retain identity.
+        tracker.observe_protocol(true, crate::ProtocolDecodeStatus::DecodeFailed);
+        tracker.queue_saturations = 1;
+        tracker.observe_event(&cast, None, true);
+        let (receipt, completion_sequence, skill_sequences) =
+            tracker.finish(500, &region).expect("complete receipt");
+
+        assert_eq!(receipt.run_started_micros, 200);
+        assert_eq!(receipt.run_ended_micros, 400);
+        assert_eq!(receipt.request_count, 1);
+        assert_eq!(receipt.decoded_count, 1);
+        assert_eq!(receipt.decode_failure_count, 0);
+        assert_eq!(receipt.capture_queue_saturation_count, 0);
+        assert_eq!(receipt.data_gap_count, 0);
+        assert_eq!(completion_sequence, completed.sequence);
+        assert_eq!(skill_sequences, vec![cast.sequence]);
     }
 
     #[test]

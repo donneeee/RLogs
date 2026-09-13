@@ -7,7 +7,7 @@ use crate::{
     MapEvent, RegionContext, TimelineEvent, TimelineEventDraft, TimelineEventKind, WorldContext,
 };
 
-pub const EVENT_SCHEMA_VERSION: u16 = 9;
+pub const EVENT_SCHEMA_VERSION: u16 = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

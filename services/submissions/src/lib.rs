@@ -27,7 +27,8 @@ use rlogs_combat::{
 use rlogs_events::{
     ActorKind, CanonicalEvent, CastState, EntityAttributeUpdateKind, EntityRef, EventEnvelope,
     EventProvenance, EventSensitivity, EvidenceConfidence, EvidenceSource, GameProfileEvent,
-    RegionContext, RegionIdentity, RunState, StatusState, TimelineEventKind,
+    LocalSkillObservationReceipt, RegionContext, RegionIdentity, RunState, StatusState,
+    TimelineEventKind,
 };
 use rlogs_game_bpsr::{
     BPSR_COMPATIBILITY_USE_SKILL_ATTR_BUILD, BPSR_GAME_PLUGIN_ID, BUNDLED_RUN_RULE_CLIENT_BUILD,
@@ -78,7 +79,7 @@ use profiles::{
 use rlogs_profiles::LocalProfilePackage;
 
 pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 17;
-pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 13;
+pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 14;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 7;
 pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 22;
 pub const PUBLIC_COMBAT_TIMELINE_SCHEMA_VERSION: u16 = 9;
@@ -312,11 +313,29 @@ struct ObservedTimelineClockAnchor {
     event_sequence: u64,
 }
 
+#[derive(Debug, Clone)]
+struct ObservedLocalSkillObservationReceipt {
+    receipt: LocalSkillObservationReceipt,
+    event_sequence: u64,
+    observed_micros: u64,
+    evidence_sequences: Vec<u64>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ObservedRunBoundaryEvidence {
+    event_sequence: u64,
+    observed_micros: u64,
+    completion: bool,
+    terminal: bool,
+}
+
 #[derive(Debug, Clone, Default)]
 struct ObservedTimelineProjection {
     skill_uses: Vec<ObservedTimelineSkillUse>,
     status_transitions: Vec<ObservedTimelineStatusTransition>,
     clock_anchors: Vec<ObservedTimelineClockAnchor>,
+    local_skill_observation_receipts: Vec<ObservedLocalSkillObservationReceipt>,
+    run_boundary_evidence: Vec<ObservedRunBoundaryEvidence>,
 }
 
 #[derive(Debug, Clone)]
@@ -4814,6 +4833,45 @@ where
                         event_sequence: event.sequence,
                     });
             }
+            if event.sensitivity == EventSensitivity::PublicGameplay
+                && event.provenance.confidence == EvidenceConfidence::Exact
+                && let EvidenceSource::Derived {
+                    rule_id,
+                    evidence_sequences,
+                } = &event.provenance.source
+                && rule_id == "bpsr.complete-local-skill-observation.v1"
+                && let TimelineEventKind::LocalSkillObservationReceipt(receipt) = &timeline.kind
+            {
+                observed_timeline.local_skill_observation_receipts.push(
+                    ObservedLocalSkillObservationReceipt {
+                        receipt: receipt.clone(),
+                        event_sequence: event.sequence,
+                        observed_micros: event.time.observed_micros,
+                        evidence_sequences: evidence_sequences.clone(),
+                    },
+                );
+            }
+            if event.provenance.confidence == EvidenceConfidence::Exact
+                && matches!(event.provenance.source, EvidenceSource::Wire { .. })
+            {
+                let (completion, terminal) = match &timeline.kind {
+                    TimelineEventKind::RunBoundary { state, .. } => (
+                        *state == RunState::Completed,
+                        matches!(state, RunState::Failed | RunState::Exited),
+                    ),
+                    _ => (false, false),
+                };
+                if completion || terminal {
+                    observed_timeline
+                        .run_boundary_evidence
+                        .push(ObservedRunBoundaryEvidence {
+                            event_sequence: event.sequence,
+                            observed_micros: event.time.observed_micros,
+                            completion,
+                            terminal,
+                        });
+                }
+            }
             if event.provenance.confidence == EvidenceConfidence::Exact
                 && matches!(event.provenance.source, EvidenceSource::Wire { .. })
                 && let TimelineEventKind::Cast(cast) = &timeline.kind
@@ -4993,6 +5051,26 @@ where
                     });
                 }
                 _ => {}
+            }
+        }
+        if event.provenance.confidence == EvidenceConfidence::Exact
+            && matches!(event.provenance.source, EvidenceSource::Wire { .. })
+            && let CanonicalEvent::Dungeon(dungeon) = &event.event
+        {
+            let completion = dungeon.kind == rlogs_events::DungeonEventKind::Completed;
+            let terminal = matches!(
+                dungeon.kind,
+                rlogs_events::DungeonEventKind::Failed | rlogs_events::DungeonEventKind::Exited
+            );
+            if completion || terminal {
+                observed_timeline
+                    .run_boundary_evidence
+                    .push(ObservedRunBoundaryEvidence {
+                        event_sequence: event.sequence,
+                        observed_micros: event.time.observed_micros,
+                        completion,
+                        terminal,
+                    });
             }
         }
         meter.observe_live(event);
@@ -8015,6 +8093,7 @@ fn public_combat_timeline(
         &mut timeline,
         run,
         bpsr_has_local_outbound_skill_authority(history),
+        complete_local_skill_observation_actor(run, view, analysis, history, observed_timeline),
     );
     populate_timeline_hostile_casts(
         &mut timeline,
@@ -8045,6 +8124,7 @@ fn populate_timeline_skill_observation(
     timeline: &mut PublicCombatTimeline,
     run: &PublicRun,
     local_outbound_authorized: bool,
+    complete_actor_id: Option<String>,
 ) {
     let local_character_ids = run
         .local_profile_character_ids
@@ -8056,7 +8136,12 @@ fn populate_timeline_skill_observation(
             .character_id
             .as_deref()
             .is_some_and(|character_id| local_character_ids.contains(character_id));
-        track.skill_observation = Some(if local_outbound_authorized && is_proven_local {
+        track.skill_observation = Some(if complete_actor_id.as_deref() == Some(&track.actor_id) {
+            PublicTimelineSkillObservation {
+                coverage: PublicTimelineSkillObservationCoverage::Complete,
+                evidence: vec![PublicTimelineSkillObservationEvidence::ExactLocalOutbound],
+            }
+        } else if local_outbound_authorized && is_proven_local {
             PublicTimelineSkillObservation {
                 // Each emitted row is exact, but the current history contract
                 // does not retain proof that the outbound route and local
@@ -8072,6 +8157,106 @@ fn populate_timeline_skill_observation(
             }
         });
     }
+}
+
+fn complete_local_skill_observation_actor(
+    run: &PublicRun,
+    view: Option<&CombatHistoryView>,
+    analysis: &RunAnalysis,
+    history: &CombatHistorySnapshot,
+    observed: &ObservedTimelineProjection,
+) -> Option<String> {
+    if !analysis.authoritative_start
+        || !analysis.authoritative_completion
+        || analysis.data_gap_count != 0
+        || !bpsr_has_local_outbound_skill_authority(history)
+    {
+        return None;
+    }
+    let bounds = canonical_run_observed_bounds(analysis)?;
+    let candidates = observed
+        .local_skill_observation_receipts
+        .iter()
+        .filter(|observed| {
+            observed.receipt.run_started_micros == bounds.started_micros
+                && observed.receipt.run_ended_micros == bounds.ended_micros
+        })
+        .collect::<Vec<_>>();
+    let [receipt_observation] = candidates.as_slice() else {
+        return None;
+    };
+    let receipt = &receipt_observation.receipt;
+    if receipt.route != "world_use_slot_v1"
+        || receipt.deployment_id != history.deployment_id
+        || receipt.client_build != history.client_build
+        || receipt.protocol_pack_digest != history.protocol_pack_digest
+        || !receipt.authoritative_start
+        || !receipt.authoritative_completion
+        || receipt.decode_failure_count != 0
+        || receipt.capture_queue_saturation_count != 0
+        || receipt.data_gap_count != 0
+        || receipt.request_count != receipt.decoded_count
+        || receipt_observation.evidence_sequences.len() < 2
+    {
+        return None;
+    }
+    let boundary_index = receipt_observation.evidence_sequences.len() - 2;
+    let completion_sequence = receipt_observation.evidence_sequences[boundary_index];
+    let terminal_sequence = receipt_observation.evidence_sequences[boundary_index + 1];
+    if completion_sequence >= terminal_sequence
+        || terminal_sequence >= receipt_observation.event_sequence
+    {
+        return None;
+    }
+    let completion = observed.run_boundary_evidence.iter().any(|boundary| {
+        boundary.completion
+            && boundary.event_sequence == completion_sequence
+            && boundary.observed_micros == bounds.ended_micros
+    });
+    let terminal = observed.run_boundary_evidence.iter().any(|boundary| {
+        boundary.terminal
+            && boundary.event_sequence == terminal_sequence
+            && boundary.observed_micros == receipt_observation.observed_micros
+    });
+    if !completion || !terminal {
+        return None;
+    }
+    let actor_id = receipt.source.actor_id.0.to_string();
+    let retained_local_skill_uses = observed
+        .skill_uses
+        .iter()
+        .filter(|skill| {
+            skill.actor_id == actor_id
+                && skill.observed_micros >= bounds.started_micros
+                && skill.observed_micros <= bounds.ended_micros
+        })
+        .map(|skill| skill.event_sequence)
+        .collect::<Vec<_>>();
+    if usize::try_from(receipt.decoded_count).ok() != Some(retained_local_skill_uses.len())
+        || receipt_observation.evidence_sequences[..boundary_index] != retained_local_skill_uses
+    {
+        return None;
+    }
+    view?.actors.iter().find(|actor| {
+        actor.actor_id == actor_id && actor.entity_uuid == receipt.source.entity_uuid.0.to_string()
+    })?;
+    let source_witness = run.local_state_witnesses.iter().find(|witness| {
+        witness.actor_id == receipt.source.actor_id.0
+            && witness.entity_uuid == receipt.source.entity_uuid.0
+            && run
+                .local_profile_character_ids
+                .iter()
+                .any(|id| id == &witness.character_id)
+    })?;
+    if !run
+        .participants
+        .iter()
+        .any(|participant| participant.actor_id == actor_id)
+        || source_witness.character_id.is_empty()
+    {
+        return None;
+    }
+    Some(actor_id)
 }
 
 fn populate_timeline_rate_clock(
@@ -16559,7 +16744,7 @@ mod tests {
         let mut report =
             fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
         let report_run = report.runs[0].clone();
-        populate_timeline_skill_observation(&mut report.runs[0].timeline, &report_run, true);
+        populate_timeline_skill_observation(&mut report.runs[0].timeline, &report_run, true, None);
         let tracks = &report.runs[0].timeline.participant_tracks;
         assert_eq!(
             tracks[0].skill_observation,
@@ -16583,6 +16768,7 @@ mod tests {
             &mut unauthorized.runs[0].timeline,
             &unauthorized_run,
             false,
+            None,
         );
         assert_eq!(
             unauthorized.runs[0].timeline.participant_tracks[0]
@@ -16595,6 +16781,315 @@ mod tests {
     }
 
     #[test]
+    fn complete_local_skill_observation_requires_bound_retained_cast_evidence() {
+        let mut report =
+            fixture_public_report("rpt_cccccccccccccccccccccccccccccccc", "character-a", 0);
+        let run = &mut report.runs[0];
+        run.participants[0].actor_id = "8".into();
+        let analysis = fixture_analysis("fixture-session", Some("instance-1"));
+        let mut history = death_test_history();
+        history.deployment_id = BUNDLED_RUN_RULE_DEPLOYMENT_ID.into();
+        history.client_build = BUNDLED_RUN_RULE_CLIENT_BUILD.into();
+        history.protocol_pack_digest = BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into();
+        let mut actor = redacted_history_player(8, 216_009_015_936);
+        actor.character_id = Some("character-a".into());
+        let view = CombatHistoryView {
+            id: "all".into(),
+            label: "Entire run".into(),
+            kind: "all".into(),
+            segment_indices: vec![0],
+            elapsed_micros: 1,
+            active_combat_micros: 1,
+            rate_clock: Vec::new(),
+            rate_clock_complete: false,
+            actors: vec![actor],
+            targets: Vec::new(),
+            hostile_casts: Vec::new(),
+            damage_influences: Vec::new(),
+            rdps_effect_presentations: Vec::new(),
+            status_effect_presentations: Vec::new(),
+        };
+        let receipt = LocalSkillObservationReceipt {
+            source: EntityRef {
+                actor_id: rlogs_events::ActorId(8),
+                entity_uuid: rlogs_events::EntityUuid(216_009_015_936),
+            },
+            route: "world_use_slot_v1".into(),
+            deployment_id: history.deployment_id.clone(),
+            client_build: history.client_build.clone(),
+            protocol_pack_digest: history.protocol_pack_digest.clone(),
+            run_started_micros: 1,
+            run_ended_micros: 2,
+            request_count: 1,
+            decoded_count: 1,
+            decode_failure_count: 0,
+            capture_queue_saturation_count: 0,
+            data_gap_count: 0,
+            authoritative_start: true,
+            authoritative_completion: true,
+        };
+        let mut observed = ObservedTimelineProjection {
+            skill_uses: vec![ObservedTimelineSkillUse {
+                actor_id: "8".into(),
+                target_actor_id: None,
+                action_id: "42".into(),
+                observed_micros: 1,
+                game_time_millis: None,
+                event_sequence: 10,
+                action_instance_id: None,
+            }],
+            local_skill_observation_receipts: vec![ObservedLocalSkillObservationReceipt {
+                receipt,
+                event_sequence: 13,
+                observed_micros: 3,
+                evidence_sequences: vec![10, 11, 12],
+            }],
+            run_boundary_evidence: vec![
+                ObservedRunBoundaryEvidence {
+                    event_sequence: 11,
+                    observed_micros: 2,
+                    completion: true,
+                    terminal: false,
+                },
+                ObservedRunBoundaryEvidence {
+                    event_sequence: 12,
+                    observed_micros: 3,
+                    completion: false,
+                    terminal: true,
+                },
+            ],
+            ..ObservedTimelineProjection::default()
+        };
+
+        assert_eq!(
+            complete_local_skill_observation_actor(
+                run,
+                Some(&view),
+                &analysis,
+                &history,
+                &observed
+            ),
+            Some("8".into())
+        );
+
+        observed.local_skill_observation_receipts[0].evidence_sequences[0] = 9;
+        assert_eq!(
+            complete_local_skill_observation_actor(
+                run,
+                Some(&view),
+                &analysis,
+                &history,
+                &observed
+            ),
+            None,
+            "a receipt cannot claim Complete unless every retained exact cast is explicitly bound"
+        );
+    }
+
+    #[test]
+    fn sealed_privacy_filtered_receipt_projects_complete_local_skill_coverage() {
+        let root = tempfile::tempdir().unwrap();
+        let mut region = cross_vantage_test_region();
+        region.identity.deployment_id = BUNDLED_RUN_RULE_DEPLOYMENT_ID.into();
+        region.client_build = BUNDLED_RUN_RULE_CLIENT_BUILD.into();
+        region.protocol_pack_digest = BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into();
+        let source = EntityRef {
+            actor_id: rlogs_events::ActorId(22),
+            entity_uuid: rlogs_events::EntityUuid(222),
+        };
+        let mut writer = rlogs_game_bpsr::SegmentedDungeonLogWriter::new(
+            root.path(),
+            "skill-continuity",
+            "integration-test",
+        )
+        .unwrap();
+        let mut profile = cross_vantage_life_wave_profile_envelope(1, 5, "character-a");
+        profile.region = region.clone();
+        assert!(writer.consume_batch([profile]).unwrap().is_empty());
+        let mut local_state = cross_vantage_attribute_envelope(2, 21, Some(21), 1_000);
+        local_state.region = region.clone();
+
+        let mut events = vec![
+            cross_vantage_dungeon_envelope(3, 20, rlogs_events::DungeonEventKind::Started),
+            cross_vantage_timeline_envelope(
+                4,
+                20,
+                Some(20),
+                TimelineEventKind::RunBoundary {
+                    state: RunState::Started,
+                    scene_id: Some(rlogs_events::SceneId(7152)),
+                    reason: rlogs_events::BoundaryReason::AuthoritativePacket,
+                },
+            ),
+            local_state,
+            cross_vantage_actor_envelope(5, 25, 22, 222, "character-a"),
+            cross_vantage_monster_envelope(6, 30),
+            cross_vantage_timeline_envelope(
+                7,
+                35,
+                Some(35),
+                TimelineEventKind::CombatBoundary {
+                    state: rlogs_events::CombatState::Started,
+                    reason: rlogs_events::BoundaryReason::AuthoritativePacket,
+                },
+            ),
+            cross_vantage_timeline_envelope(
+                8,
+                40,
+                None,
+                TimelineEventKind::Cast(rlogs_events::CastEvent {
+                    source,
+                    ability: rlogs_events::AbilityId(42),
+                    target: Some(EntityRef {
+                        actor_id: rlogs_events::ActorId(99),
+                        entity_uuid: rlogs_events::EntityUuid(999),
+                    }),
+                    state: rlogs_events::CastState::Started,
+                    action_timing: None,
+                }),
+            ),
+            cross_vantage_timeline_envelope(
+                9,
+                70,
+                Some(70),
+                TimelineEventKind::CombatBoundary {
+                    state: rlogs_events::CombatState::Ended,
+                    reason: rlogs_events::BoundaryReason::AuthoritativePacket,
+                },
+            ),
+            cross_vantage_timeline_envelope(
+                10,
+                80,
+                Some(80),
+                TimelineEventKind::RunBoundary {
+                    state: RunState::Completed,
+                    scene_id: Some(rlogs_events::SceneId(7152)),
+                    reason: rlogs_events::BoundaryReason::AuthoritativePacket,
+                },
+            ),
+            cross_vantage_dungeon_envelope(11, 80, rlogs_events::DungeonEventKind::Completed),
+        ];
+        for event in &mut events {
+            event.region = region.clone();
+        }
+        assert!(writer.consume_batch(events).unwrap().is_empty());
+
+        let mut exited =
+            cross_vantage_dungeon_envelope(12, 100, rlogs_events::DungeonEventKind::Exited);
+        exited.region = region.clone();
+        let mut receipt = cross_vantage_timeline_envelope(
+            13,
+            100,
+            Some(100),
+            TimelineEventKind::LocalSkillObservationReceipt(LocalSkillObservationReceipt {
+                source,
+                route: "world_use_slot_v1".into(),
+                deployment_id: region.identity.deployment_id.clone(),
+                client_build: region.client_build.clone(),
+                protocol_pack_digest: region.protocol_pack_digest.clone(),
+                run_started_micros: 20,
+                run_ended_micros: 80,
+                request_count: 1,
+                decoded_count: 1,
+                decode_failure_count: 0,
+                capture_queue_saturation_count: 0,
+                data_gap_count: 0,
+                authoritative_start: true,
+                authoritative_completion: true,
+            }),
+        );
+        receipt.region = region.clone();
+        receipt.provenance =
+            EventProvenance::derived("bpsr.complete-local-skill-observation.v1", vec![8, 10, 12]);
+        let CanonicalEvent::Timeline(receipt_timeline) = &mut receipt.event else {
+            unreachable!()
+        };
+        receipt_timeline.provenance = receipt.provenance.clone();
+        let sealed = writer.consume_batch([exited, receipt]).unwrap();
+        assert_eq!(sealed.len(), 1);
+
+        let source_bytes = std::fs::read(&sealed[0].path).unwrap();
+        let (submission_bytes, _, _) = rlogs_submission::write_privacy_filtered_submission_log(
+            std::io::Cursor::new(source_bytes),
+            Vec::new(),
+            RlogLimits::default(),
+        )
+        .unwrap();
+        let artifact = build_privacy_verified_submission_artifact(
+            std::io::Cursor::new(submission_bytes.clone()),
+            ArtifactBuildLimits::default(),
+            RlogLimits::default(),
+        )
+        .unwrap();
+        let protocol_digest = Sha256Digest::parse(
+            region
+                .protocol_pack_digest
+                .strip_prefix("sha256:")
+                .unwrap()
+                .to_owned(),
+        )
+        .unwrap();
+        let manifest = UploadManifest {
+            metadata: SubmissionMetadata::new(
+                BPSR_GAME_PLUGIN_ID,
+                "skill-continuity-log",
+                1,
+                sealed[0].session_id.clone(),
+                region.identity.region_id.clone(),
+                region.client_build.clone(),
+                protocol_digest,
+                Sha256Digest::parse("c".repeat(64)).unwrap(),
+                ReportVisibility::Public,
+            ),
+            chunks: artifact.chunks.clone(),
+            sealed_log_digest: Some(artifact.file_sha256.clone()),
+        };
+        let report_id = report_id(&artifact.file_sha256);
+        let report = build_public_report_from_readers(
+            std::io::Cursor::new(submission_bytes.clone()),
+            std::io::Cursor::new(submission_bytes),
+            &manifest,
+            &artifact,
+            &report_id,
+            1,
+            PublicSubmissionProvenance {
+                submitter_id: Some("submitter-a".into()),
+                authentication: "device_token".into(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(report.deployment_id, BUNDLED_RUN_RULE_DEPLOYMENT_ID);
+        assert_eq!(report.client_build, BUNDLED_RUN_RULE_CLIENT_BUILD);
+        assert_eq!(
+            report.protocol_pack_digest,
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST
+        );
+        assert_eq!(
+            report.runs[0].local_profile_character_ids,
+            vec!["character-a"]
+        );
+        let track = report.runs[0]
+            .timeline
+            .participant_tracks
+            .iter()
+            .find(|track| track.actor_id == "22")
+            .expect("local participant track");
+        assert_eq!(
+            track.character_id, None,
+            "stable character IDs stay private"
+        );
+        assert_eq!(
+            track.skill_observation,
+            Some(PublicTimelineSkillObservation {
+                coverage: PublicTimelineSkillObservationCoverage::Complete,
+                evidence: vec![PublicTimelineSkillObservationEvidence::ExactLocalOutbound],
+            })
+        );
+        assert_eq!(report.runs[0].timeline.skill_uses.len(), 1);
+    }
+
+    #[test]
     fn reconciled_skill_observation_combines_only_proven_compatible_local_vantages() {
         let mut report_a =
             fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 0);
@@ -16602,7 +17097,7 @@ mod tests {
             fixture_public_report("rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "character-b", 0);
         for report in [&mut report_a, &mut report_b] {
             let run = report.runs[0].clone();
-            populate_timeline_skill_observation(&mut report.runs[0].timeline, &run, true);
+            populate_timeline_skill_observation(&mut report.runs[0].timeline, &run, true, None);
         }
         let sources = vec![
             ReconciliationRunSource::from_report(&report_a, &report_a.runs[0], None),

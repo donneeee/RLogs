@@ -344,6 +344,7 @@ fn timeline_entities(envelope: &EventEnvelope) -> Option<BTreeSet<i64>> {
         | TimelineEventKind::CombatBoundary { .. }
         | TimelineEventKind::RecorderPause(_)
         | TimelineEventKind::UnresolvedStatus(_)
+        | TimelineEventKind::LocalSkillObservationReceipt(_)
         | TimelineEventKind::DataGap(_) => return None,
     }
     Some(entities)
