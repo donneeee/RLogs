@@ -8,12 +8,14 @@
 
 #![allow(dead_code)]
 
-use std::net::Ipv4Addr;
+use std::{collections::BTreeMap, net::Ipv4Addr};
 
 use rlogs_game_bpsr::{
     AUTOMARKER_REQUEST_BUILD, AUTOMARKER_REQUEST_PACK_DIGEST,
     BPSR_COMPATIBILITY_EPOCH_DEPLOYMENT_ID, CaptureRecord, CaptureRecordKind,
-    DecodedLocalMarkerStart, DecoderKind, FragmentKind, PacketDirection, ProtocolPack,
+    DecodedLocalMarkerStart, DecoderKind, FragmentKind, LocalMarkerStartDecodeError,
+    PacketDirection, ProtocolDecodeStatus, ProtocolPack, bundled_scene_run_identities,
+    decode_local_marker_start_candidates,
 };
 
 use crate::{
@@ -29,6 +31,14 @@ const WORLD_NOTIFICATION_SERVICE_ID: u64 = 1_664_308_034;
 const WORLD_SYNC_TO_ME_DELTA_METHOD_ID: u32 = 46;
 const MAX_MARKER_CANDIDATES: usize = 4_096;
 const MAX_RECORD_TIME_ENTITIES: usize = 4_096;
+type MarkerReplacementIdentity = (
+    Option<i64>,
+    Option<u8>,
+    Option<i64>,
+    Option<u32>,
+    Option<u32>,
+    Option<u32>,
+);
 
 /// Exact non-serializable session identity needed to construct a router
 /// snapshot. Deployment/build/digest are checked against the same pack that
@@ -69,7 +79,7 @@ pub(crate) enum PrivateMarkerConfirmationIngressError {
 pub(crate) fn project_marker_confirmation_snapshot(
     pack: &ProtocolPack,
     record: &CaptureRecord,
-    candidates: &[DecodedLocalMarkerStart],
+    decode_status: ProtocolDecodeStatus,
     record_mechanics: &MechanicsMapSnapshot,
     post_replacement_mechanics: &MechanicsMapSnapshot,
     binding: &PrivateMarkerConfirmationBinding,
@@ -110,40 +120,74 @@ pub(crate) fn project_marker_confirmation_snapshot(
     {
         return Err(PrivateMarkerConfirmationIngressError::RecordRouteMismatch);
     }
-    if candidates.len() > MAX_MARKER_CANDIDATES {
-        return Err(
-            PrivateMarkerConfirmationIngressError::CandidateLimitExceeded {
-                count: candidates.len(),
-                limit: MAX_MARKER_CANDIDATES,
-            },
-        );
-    }
     if record_mechanics.entities.len() > MAX_RECORD_TIME_ENTITIES {
         return Err(PrivateMarkerConfirmationIngressError::EntityLimitExceeded {
             count: record_mechanics.entities.len(),
             limit: MAX_RECORD_TIME_ENTITIES,
         });
     }
+    if post_replacement_mechanics.entities.len() > MAX_RECORD_TIME_ENTITIES {
+        return Err(PrivateMarkerConfirmationIngressError::EntityLimitExceeded {
+            count: post_replacement_mechanics.entities.len(),
+            limit: MAX_RECORD_TIME_ENTITIES,
+        });
+    }
     validate_mechanics_binding(record_mechanics, binding)?;
     validate_mechanics_binding(post_replacement_mechanics, binding)?;
+
+    // Candidates are decoded here, after the exact record/binding checks, so
+    // no caller can pair otherwise valid starts with a different capture
+    // record or assert a stronger decode status than that record received.
+    let candidates =
+        decode_local_marker_start_candidates(pack, record, decode_status).map_err(|error| {
+            match error {
+                LocalMarkerStartDecodeError::UnsupportedProtocol => {
+                    PrivateMarkerConfirmationIngressError::UnsupportedProtocolBinding
+                }
+                LocalMarkerStartDecodeError::EventLimitExceeded { count, limit } => {
+                    PrivateMarkerConfirmationIngressError::CandidateLimitExceeded { count, limit }
+                }
+            }
+        })?;
 
     let projections = candidates
         .iter()
         .map(|candidate| {
-            let owner_actor_id = candidate
-                .owner_entity_uuid
-                .and_then(|owner| unique_record_time_actor_id(record_mechanics, owner));
-            let exact = owner_actor_id.is_some_and(|owner_actor_id| {
-                exact_marker_candidate(candidate, Some(owner_actor_id))
-                    && marker_replacement_proven(
-                        candidate,
-                        owner_actor_id,
-                        record.observed_micros,
-                        record_mechanics,
-                        post_replacement_mechanics,
-                    )
+            let owner_actor_id = candidate.owner_entity_uuid.and_then(|owner| {
+                unique_actor_id(record_mechanics, owner, Some(record.observed_micros))
             });
+            let post_owner_matches = candidate.owner_entity_uuid.is_some_and(|owner| {
+                unique_actor_id(post_replacement_mechanics, owner, None) == owner_actor_id
+            });
+            let exact = post_owner_matches
+                && owner_actor_id.is_some_and(|owner_actor_id| {
+                    exact_marker_candidate(candidate, Some(owner_actor_id))
+                        && marker_replacement_proven(
+                            candidate,
+                            owner_actor_id,
+                            record.observed_micros,
+                            record_mechanics,
+                            post_replacement_mechanics,
+                        )
+                });
             (candidate, owner_actor_id, exact)
+        })
+        .collect::<Vec<_>>();
+    let replacement_identity_counts = projections.iter().filter(|(_, _, exact)| *exact).fold(
+        BTreeMap::new(),
+        |mut counts, (candidate, _, _)| {
+            *counts
+                .entry(replacement_identity(candidate))
+                .or_insert(0_usize) += 1;
+            counts
+        },
+    );
+    let projections = projections
+        .iter()
+        .map(|(candidate, owner_actor_id, exact)| {
+            let uniquely_attributed = *exact
+                && replacement_identity_counts.get(&replacement_identity(candidate)) == Some(&1);
+            (*candidate, *owner_actor_id, uniquely_attributed)
         })
         .collect::<Vec<_>>();
     let has_exact_candidate = projections.iter().any(|(_, _, exact)| *exact);
@@ -226,6 +270,10 @@ fn validate_protocol_binding(
     binding: &PrivateMarkerConfirmationBinding,
 ) -> Result<(), PrivateMarkerConfirmationIngressError> {
     let target = &pack.definition().target;
+    let exact_scene_family = bundled_scene_run_identities()
+        .ok()
+        .and_then(|identities| identities.get(&binding.scene_id).cloned())
+        .and_then(|identity| identity.activity_family_id);
     if binding.session_key.is_empty()
         || binding.scene_family.is_empty()
         || binding.local_actor_id <= 0
@@ -240,6 +288,7 @@ fn validate_protocol_binding(
         || target.deployment_id != binding.deployment_id
         || target.build_id != binding.game_build
         || pack.digest() != binding.protocol_pack_digest
+        || exact_scene_family.as_deref() != Some(binding.scene_family.as_str())
     {
         return Err(PrivateMarkerConfirmationIngressError::UnsupportedProtocolBinding);
     }
@@ -264,11 +313,16 @@ fn validate_mechanics_binding(
     Ok(())
 }
 
-fn unique_record_time_actor_id(mechanics: &MechanicsMapSnapshot, owner: i64) -> Option<i64> {
-    let mut matching = mechanics
-        .entities
-        .iter()
-        .filter(|entity| entity.entity_uuid == owner);
+fn unique_actor_id(
+    mechanics: &MechanicsMapSnapshot,
+    owner: i64,
+    no_later_than_micros: Option<u64>,
+) -> Option<i64> {
+    let mut matching = mechanics.entities.iter().filter(|entity| {
+        entity.entity_uuid == owner
+            && !entity.stale
+            && no_later_than_micros.is_none_or(|maximum| entity.last_observed_micros <= maximum)
+    });
     let entity = matching.next()?;
     if matching.next().is_some() {
         return None;
@@ -340,7 +394,8 @@ fn marker_matches_candidate(
     let Ok(owner_actor_id) = u64::try_from(owner_actor_id) else {
         return false;
     };
-    marker.marker_number == Some(marker_number)
+    marker.marker_id == candidate.passive_instance_identity
+        && marker.marker_number == Some(marker_number)
         && marker.related_actor_id == Some(owner_actor_id)
         && marker
             .x
@@ -357,6 +412,17 @@ fn marker_matches_candidate(
         && acknowledgment.observed_micros == record_observed_micros
 }
 
+fn replacement_identity(candidate: &DecodedLocalMarkerStart) -> MarkerReplacementIdentity {
+    (
+        candidate.passive_instance_identity,
+        candidate.derived_marker_number,
+        candidate.owner_entity_uuid,
+        candidate.x.map(f32::to_bits),
+        candidate.y.map(f32::to_bits),
+        candidate.z.map(f32::to_bits),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -365,6 +431,77 @@ mod tests {
         CompressionState, LiveProtocolPackKind, LiveProtocolPackSelection, NetworkEndpoint,
         PacketEnvelope, PacketPayload, RouteKey, RoutedMessage,
     };
+
+    fn push_varint(output: &mut Vec<u8>, mut value: u64) {
+        while value >= 0x80 {
+            output.push((value as u8) | 0x80);
+            value >>= 7;
+        }
+        output.push(value as u8);
+    }
+
+    fn push_varint_field(output: &mut Vec<u8>, tag: u8, value: u64) {
+        push_varint(output, u64::from(tag) << 3);
+        push_varint(output, value);
+    }
+
+    fn push_bytes_field(output: &mut Vec<u8>, tag: u8, bytes: &[u8]) {
+        push_varint(output, (u64::from(tag) << 3) | 2);
+        push_varint(output, bytes.len() as u64);
+        output.extend_from_slice(bytes);
+    }
+
+    fn encoded_position(candidate: &DecodedLocalMarkerStart) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for (tag, axis) in [(1, candidate.x), (2, candidate.y), (3, candidate.z)] {
+            if let Some(axis) = axis {
+                push_varint(&mut bytes, (tag << 3) | 5);
+                bytes.extend_from_slice(&axis.to_bits().to_le_bytes());
+            }
+        }
+        bytes
+    }
+
+    fn encoded_marker_payload(candidates: &[DecodedLocalMarkerStart]) -> Vec<u8> {
+        let owner_entity_uuid = candidates
+            .first()
+            .and_then(|candidate| candidate.owner_entity_uuid);
+        assert!(
+            candidates
+                .iter()
+                .all(|candidate| candidate.owner_entity_uuid == owner_entity_uuid),
+            "one method-46 repeated field has one enclosing owner"
+        );
+        let mut starts = Vec::new();
+        if let Some(owner) = owner_entity_uuid {
+            push_varint_field(&mut starts, 1, owner as u64);
+        }
+        for candidate in candidates {
+            let mut start = Vec::new();
+            if let Some(identity) = candidate.passive_instance_identity {
+                push_varint_field(&mut start, 1, identity as u64);
+            }
+            if let Some(skill) = candidate.raw_skill_id {
+                push_varint_field(&mut start, 6, skill as u64);
+            }
+            if candidate.target_position_present {
+                let position = if candidate.target_position_decode_valid {
+                    encoded_position(candidate)
+                } else {
+                    vec![0xff]
+                };
+                push_bytes_field(&mut start, 9, &position);
+            }
+            push_bytes_field(&mut starts, 2, &start);
+        }
+        let mut base = Vec::new();
+        push_bytes_field(&mut base, 8, &starts);
+        let mut to_me = Vec::new();
+        push_bytes_field(&mut to_me, 1, &base);
+        let mut message = Vec::new();
+        push_bytes_field(&mut message, 1, &to_me);
+        message
+    }
 
     use super::*;
     use crate::{
@@ -407,7 +544,8 @@ mod tests {
         }
     }
 
-    fn record() -> CaptureRecord {
+    fn record(candidates: &[DecodedLocalMarkerStart]) -> CaptureRecord {
+        let application_bytes = encoded_marker_payload(candidates);
         CaptureRecord {
             sequence: 100,
             observed_micros: 200,
@@ -438,7 +576,7 @@ mod tests {
                 compression: CompressionState::NotCompressed,
                 payload: PacketPayload {
                     wire_bytes: Vec::new(),
-                    application_bytes: Some(Vec::new()),
+                    application_bytes: Some(application_bytes),
                 },
             }),
         }
@@ -474,7 +612,7 @@ mod tests {
     fn replacement_mechanics(revision: u64) -> MechanicsMapSnapshot {
         let mut mechanics = mechanics(revision);
         mechanics.markers = vec![MechanicsMapMarker {
-            marker_id: None,
+            marker_id: Some(11),
             marker_number: Some(1),
             related_actor_id: Some(7),
             x: Some(1.0),
@@ -514,12 +652,13 @@ mod tests {
     }
 
     #[test]
-    fn valid_duplicates_are_preserved_and_use_strictly_post_replacement_revision() {
+    fn duplicate_wire_candidates_are_preserved_but_cannot_share_one_replacement_proof() {
         let pack = pack();
+        let candidates = [candidate(0), candidate(1)];
         let snapshot = project_marker_confirmation_snapshot(
             &pack,
-            &record(),
-            &[candidate(0), candidate(1)],
+            &record(&candidates),
+            ProtocolDecodeStatus::Decoded,
             &mechanics(20),
             &replacement_mechanics(21),
             &binding(&pack),
@@ -529,9 +668,11 @@ mod tests {
         assert_eq!(marker(&snapshot.events[0]).provenance.record_event_index, 0);
         assert_eq!(marker(&snapshot.events[1]).provenance.record_event_index, 1);
         assert_eq!(marker(&snapshot.events[0]).marker_owner_actor_id, Some(7));
-        assert_eq!(marker(&snapshot.events[0]).runtime_revision, 21);
-        assert!(marker(&snapshot.events[0]).asserted_authoritative_server_decode);
-        assert_eq!(snapshot.context.runtime_revision, 21);
+        for event in &snapshot.events {
+            assert_eq!(marker(event).runtime_revision, 20);
+            assert!(!marker(event).asserted_authoritative_server_decode);
+        }
+        assert_eq!(snapshot.context.runtime_revision, 20);
     }
 
     #[test]
@@ -539,10 +680,11 @@ mod tests {
         let pack = pack();
         let mut invalid = candidate(1);
         invalid.z = Some(f32::NAN);
+        let candidates = [candidate(0), invalid];
         let snapshot = project_marker_confirmation_snapshot(
             &pack,
-            &record(),
-            &[candidate(0), invalid],
+            &record(&candidates),
+            ProtocolDecodeStatus::Decoded,
             &mechanics(20),
             &replacement_mechanics(21),
             &binding(&pack),
@@ -559,11 +701,12 @@ mod tests {
     fn unrelated_revision_unchanged_marker_and_post_marker_mismatches_stay_stale() {
         let pack = pack();
         let exact = candidate(0);
+        let record = record(std::slice::from_ref(&exact));
         let project = |current: &MechanicsMapSnapshot, replacement: &MechanicsMapSnapshot| {
             project_marker_confirmation_snapshot(
                 &pack,
-                &record(),
-                std::slice::from_ref(&exact),
+                &record,
+                ProtocolDecodeStatus::Decoded,
                 current,
                 replacement,
                 &binding(&pack),
@@ -584,6 +727,8 @@ mod tests {
         wrong_number.markers[0].marker_number = Some(2);
         let mut wrong_owner = replacement_mechanics(21);
         wrong_owner.markers[0].related_actor_id = Some(8);
+        let mut wrong_instance = replacement_mechanics(21);
+        wrong_instance.markers[0].marker_id = Some(12);
         let mut wrong_xyz = replacement_mechanics(21);
         wrong_xyz.markers[0].x = Some(f32::from_bits(1.0_f32.to_bits() + 1));
         let mut wrong_ack_number = replacement_mechanics(21);
@@ -607,6 +752,7 @@ mod tests {
         for replacement in [
             wrong_number,
             wrong_owner,
+            wrong_instance,
             wrong_xyz,
             wrong_ack_number,
             wrong_ack_skill,
@@ -641,26 +787,20 @@ mod tests {
         let mut missing_number = candidate(4);
         missing_number.raw_skill_id = None;
         missing_number.derived_marker_number = None;
-        let mut missing_owner = candidate(5);
-        missing_owner.owner_entity_uuid = None;
-        let mut missing_instance = candidate(6);
+        let mut missing_instance = candidate(5);
         missing_instance.passive_instance_identity = None;
-        let mut unresolved = candidate(7);
-        unresolved.owner_entity_uuid = Some(999);
         let candidates = [
             absent,
             malformed,
             partial,
             nonfinite,
             missing_number,
-            missing_owner,
             missing_instance,
-            unresolved,
         ];
         let snapshot = project_marker_confirmation_snapshot(
             &pack,
-            &record(),
-            &candidates,
+            &record(&candidates),
+            ProtocolDecodeStatus::Decoded,
             &mechanics(20),
             &mechanics(21),
             &binding(&pack),
@@ -678,15 +818,25 @@ mod tests {
         assert_eq!(marker(&snapshot.events[3]).y, Some(f32::INFINITY));
         assert_eq!(marker(&snapshot.events[4]).raw_skill_id, None);
         assert_eq!(marker(&snapshot.events[4]).derived_marker_number, None);
-        assert_eq!(marker(&snapshot.events[5]).marker_owner_entity_uuid, None);
-        assert_eq!(marker(&snapshot.events[5]).marker_owner_actor_id, None);
-        assert_eq!(marker(&snapshot.events[6]).passive_instance_identity, None);
-        assert_eq!(
-            marker(&snapshot.events[7]).marker_owner_entity_uuid,
-            Some(999)
-        );
-        assert_eq!(marker(&snapshot.events[7]).marker_owner_actor_id, None);
+        assert_eq!(marker(&snapshot.events[5]).passive_instance_identity, None);
         assert_eq!(snapshot.context.runtime_revision, 20);
+
+        for owner in [None, Some(999)] {
+            let mut unresolved = candidate(0);
+            unresolved.owner_entity_uuid = owner;
+            let snapshot = project_marker_confirmation_snapshot(
+                &pack,
+                &record(std::slice::from_ref(&unresolved)),
+                ProtocolDecodeStatus::Decoded,
+                &mechanics(20),
+                &mechanics(21),
+                &binding(&pack),
+            )
+            .unwrap();
+            assert_eq!(marker(&snapshot.events[0]).marker_owner_entity_uuid, owner);
+            assert_eq!(marker(&snapshot.events[0]).marker_owner_actor_id, None);
+            assert!(!marker(&snapshot.events[0]).asserted_authoritative_server_decode);
+        }
     }
 
     #[test]
@@ -696,8 +846,8 @@ mod tests {
             assert_eq!(
                 project_marker_confirmation_snapshot(
                     &pack,
-                    &record(),
-                    &[candidate(0)],
+                    &record(&[candidate(0)]),
+                    ProtocolDecodeStatus::Decoded,
                     &mechanics(20),
                     &replacement_mechanics(replacement),
                     &binding(&pack),
@@ -715,8 +865,8 @@ mod tests {
         invalid.passive_instance_identity = None;
         let snapshot = project_marker_confirmation_snapshot(
             &pack,
-            &record(),
-            &[invalid],
+            &record(&[invalid]),
+            ProtocolDecodeStatus::Decoded,
             &mechanics(20),
             &mechanics(20),
             &binding(&pack),
@@ -735,16 +885,29 @@ mod tests {
         assert_eq!(
             project_marker_confirmation_snapshot(
                 &pack,
-                &record(),
-                &[],
+                &record(&[]),
+                ProtocolDecodeStatus::Decoded,
                 &current,
                 &replacement,
                 &wrong,
             ),
             Err(PrivateMarkerConfirmationIngressError::UnsupportedProtocolBinding)
         );
+        let mut wrong_scene_family = binding(&pack);
+        wrong_scene_family.scene_family = "sea-ringed-reef".to_owned();
+        assert_eq!(
+            project_marker_confirmation_snapshot(
+                &pack,
+                &record(&[]),
+                ProtocolDecodeStatus::Decoded,
+                &current,
+                &replacement,
+                &wrong_scene_family,
+            ),
+            Err(PrivateMarkerConfirmationIngressError::UnsupportedProtocolBinding)
+        );
 
-        let mut wrong_route = record();
+        let mut wrong_route = record(&[]);
         let CaptureRecordKind::Packet(packet) = &mut wrong_route.kind else {
             unreachable!();
         };
@@ -753,7 +916,7 @@ mod tests {
             project_marker_confirmation_snapshot(
                 &pack,
                 &wrong_route,
-                &[],
+                ProtocolDecodeStatus::Decoded,
                 &current,
                 &replacement,
                 &binding(&pack),
@@ -766,7 +929,7 @@ mod tests {
                 project_marker_confirmation_snapshot(
                     &pack,
                     record,
-                    &[],
+                    ProtocolDecodeStatus::Decoded,
                     &current,
                     &replacement,
                     &binding(&pack),
@@ -774,28 +937,28 @@ mod tests {
                 Err(PrivateMarkerConfirmationIngressError::RecordRouteMismatch)
             );
         };
-        let mut wrong_connection = record();
+        let mut wrong_connection = record(&[]);
         let CaptureRecordKind::Packet(packet) = &mut wrong_connection.kind else {
             unreachable!();
         };
         packet.connection_id += 1;
         assert_record_context_rejected(&wrong_connection);
 
-        let mut wrong_stream = record();
+        let mut wrong_stream = record(&[]);
         let CaptureRecordKind::Packet(packet) = &mut wrong_stream.kind else {
             unreachable!();
         };
         packet.stream_id += 1;
         assert_record_context_rejected(&wrong_stream);
 
-        let mut wrong_source = record();
+        let mut wrong_source = record(&[]);
         let CaptureRecordKind::Packet(packet) = &mut wrong_source.kind else {
             unreachable!();
         };
         packet.source.as_mut().unwrap().port += 1;
         assert_record_context_rejected(&wrong_source);
 
-        let mut wrong_destination = record();
+        let mut wrong_destination = record(&[]);
         let CaptureRecordKind::Packet(packet) = &mut wrong_destination.kind else {
             unreachable!();
         };
@@ -805,8 +968,8 @@ mod tests {
         assert_eq!(
             project_marker_confirmation_snapshot(
                 &pack,
-                &record(),
-                &vec![candidate(0); MAX_MARKER_CANDIDATES + 1],
+                &record(&vec![candidate(0); MAX_MARKER_CANDIDATES + 1]),
+                ProtocolDecodeStatus::Decoded,
                 &current,
                 &replacement,
                 &binding(&pack),
@@ -825,8 +988,8 @@ mod tests {
         assert_eq!(
             project_marker_confirmation_snapshot(
                 &pack,
-                &record(),
-                &[],
+                &record(&[]),
+                ProtocolDecodeStatus::Decoded,
                 &oversized_entities,
                 &replacement,
                 &binding(&pack),
@@ -850,14 +1013,62 @@ mod tests {
         replacement.entities = current.entities.clone();
         let snapshot = project_marker_confirmation_snapshot(
             &pack,
-            &record(),
-            &[candidate(0)],
+            &record(&[candidate(0)]),
+            ProtocolDecodeStatus::Decoded,
             &current,
             &replacement,
             &binding(&pack),
         )
         .unwrap();
         assert_eq!(marker(&snapshot.events[0]).marker_owner_actor_id, None);
+        assert_eq!(marker(&snapshot.events[0]).runtime_revision, 20);
+    }
+
+    #[test]
+    fn decode_status_and_record_to_post_owner_continuity_cannot_be_bypassed() {
+        let pack = pack();
+        let exact = candidate(0);
+        let record = record(std::slice::from_ref(&exact));
+        let snapshot = project_marker_confirmation_snapshot(
+            &pack,
+            &record,
+            ProtocolDecodeStatus::CaptureGap,
+            &mechanics(20),
+            &replacement_mechanics(21),
+            &binding(&pack),
+        )
+        .unwrap();
+        assert!(!marker(&snapshot.events[0]).asserted_authoritative_server_decode);
+        assert_eq!(marker(&snapshot.events[0]).runtime_revision, 20);
+
+        let mut future_record_owner = mechanics(20);
+        future_record_owner.entities[0].last_observed_micros = record.observed_micros + 1;
+        let snapshot = project_marker_confirmation_snapshot(
+            &pack,
+            &record,
+            ProtocolDecodeStatus::Decoded,
+            &future_record_owner,
+            &replacement_mechanics(21),
+            &binding(&pack),
+        )
+        .unwrap();
+        assert_eq!(marker(&snapshot.events[0]).marker_owner_actor_id, None);
+        assert!(!marker(&snapshot.events[0]).asserted_authoritative_server_decode);
+
+        let mut rebound = replacement_mechanics(21);
+        rebound.entities[0].actor_id = 8;
+        rebound.markers[0].related_actor_id = Some(7);
+        let snapshot = project_marker_confirmation_snapshot(
+            &pack,
+            &record,
+            ProtocolDecodeStatus::Decoded,
+            &mechanics(20),
+            &rebound,
+            &binding(&pack),
+        )
+        .unwrap();
+        assert_eq!(marker(&snapshot.events[0]).marker_owner_actor_id, Some(7));
+        assert!(!marker(&snapshot.events[0]).asserted_authoritative_server_decode);
         assert_eq!(marker(&snapshot.events[0]).runtime_revision, 20);
     }
 }
