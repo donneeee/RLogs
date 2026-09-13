@@ -459,7 +459,9 @@ impl MechanicsMapFeed {
 
 fn effective_snapshot(state: &MechanicsMapFeedState) -> MechanicsMapSnapshot {
     let mut snapshot = state.snapshot.clone();
-    if state.reconciled_scene_observed && let Some(scene) = state.reconciled_scene.as_ref() {
+    if state.reconciled_scene_observed
+        && let Some(scene) = state.reconciled_scene.as_ref()
+    {
         let identity_changed =
             snapshot.scene_id != Some(scene.0) || snapshot.map_id != Some(scene.1);
         snapshot.scene_id = Some(scene.0);

@@ -11,9 +11,9 @@
 use std::net::Ipv4Addr;
 
 use rlogs_game_bpsr::{
-    CaptureRecord, CaptureRecordKind, DecodedLocalMarkerStart, DecoderKind, FragmentKind,
-    PacketDirection, ProtocolPack, AUTOMARKER_REQUEST_BUILD, AUTOMARKER_REQUEST_PACK_DIGEST,
-    BPSR_COMPATIBILITY_EPOCH_DEPLOYMENT_ID,
+    AUTOMARKER_REQUEST_BUILD, AUTOMARKER_REQUEST_PACK_DIGEST,
+    BPSR_COMPATIBILITY_EPOCH_DEPLOYMENT_ID, CaptureRecord, CaptureRecordKind,
+    DecodedLocalMarkerStart, DecoderKind, FragmentKind, PacketDirection, ProtocolPack,
 };
 
 use crate::{
