@@ -327,6 +327,7 @@ struct MechanicsMapFeedState {
     native_scene: Option<(i32, u32, Option<String>)>,
     reconciled_scene: Option<(i32, u32, Option<String>)>,
     reconciled_scene_observed: bool,
+    reconciled_scene_packet: bool,
 }
 
 impl MechanicsMapFeed {
@@ -365,10 +366,18 @@ impl MechanicsMapFeed {
         if state.native_scene_active == active && state.native_scene == scene {
             return;
         }
+        let prior_native_owned = state.native_scene_active
+            && match &state.native_scene {
+                Some(previous) => state.reconciled_scene.as_ref() == Some(previous),
+                None => state.reconciled_scene_observed && state.reconciled_scene.is_none(),
+            };
         let previous_native = state.native_scene.clone();
         state.native_scene_active = active;
         state.native_scene = scene;
-        if active {
+        if active
+            && !state.reconciled_scene_packet
+            && (!state.reconciled_scene_observed || prior_native_owned)
+        {
             if let Some(native) = state.native_scene.clone() {
                 state.reconciled_scene = Some(native);
                 state.reconciled_scene_observed = true;
@@ -376,7 +385,7 @@ impl MechanicsMapFeed {
                 state.reconciled_scene = None;
                 state.reconciled_scene_observed = true;
             }
-        } else if state.reconciled_scene == previous_native {
+        } else if !active && prior_native_owned && state.reconciled_scene == previous_native {
             state.reconciled_scene = state
                 .snapshot
                 .scene_id
@@ -393,7 +402,9 @@ impl MechanicsMapFeed {
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if state.reconciled_scene_observed && state.reconciled_scene == scene {
+        let unchanged = state.reconciled_scene_observed && state.reconciled_scene == scene;
+        state.reconciled_scene_packet = true;
+        if unchanged {
             return;
         }
         state.reconciled_scene = scene;
@@ -414,6 +425,7 @@ impl MechanicsMapFeed {
         };
         state.reconciled_scene = None;
         state.reconciled_scene_observed = false;
+        state.reconciled_scene_packet = false;
         state.native_scene_active = false;
         state.native_scene = None;
         self.changed.notify_all();
@@ -647,25 +659,7 @@ impl MechanicsMapProjector {
         self.entities.clear();
         self.attack_targets.clear();
         self.target_statuses.clear();
-        self.resource_values.clear();
-        self.signals.clear();
-        self.markers.clear();
-        self.local_markers.clear();
-        self.dungeon = None;
-        self.data_gap = None;
-        self.revision = self.revision.saturating_add(1);
-        true
-    }
-
-    pub fn clear_scene(&mut self) -> bool {
-        if self.scene_id.is_none() && self.map_id.is_none() {
-            return false;
-        }
-        self.scene_id = None;
-        self.map_id = None;
-        self.entities.clear();
-        self.attack_targets.clear();
-        self.target_statuses.clear();
+        self.cooldowns.clear();
         self.resource_values.clear();
         self.signals.clear();
         self.markers.clear();
@@ -4515,7 +4509,7 @@ mod tests {
             true,
             Some((6_565, 6_565, Some("Sea-Ringed Reef - Master".into()))),
         );
-        assert_eq!(feed.current().snapshot.scene_id, Some(6_565));
+        assert_eq!(feed.current().snapshot.scene_id, Some(6_561));
     }
 
     #[test]

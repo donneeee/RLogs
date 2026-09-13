@@ -619,6 +619,13 @@ impl<'a> ProtocolRuntime<'a> {
         for draft in &mut drafts {
             self.attach_objective_catalog(draft);
         }
+        let mut current_world = self.profile.current_world.clone();
+        for draft in &mut drafts {
+            if let CanonicalEventDraftKind::WorldChanged(world) = &mut draft.kind {
+                *world = merge_world_context(current_world.as_ref(), world);
+                current_world = Some(world.clone());
+            }
+        }
         drafts.retain(|draft| self.state_deduplicator.retain(draft));
         // Keep the dungeon snapshot fallback coherent with every reviewed
         // packet surface that can announce a world. Consumers still apply
@@ -717,6 +724,66 @@ impl<'a> ProtocolRuntime<'a> {
                 },
             },
         });
+    }
+}
+
+fn merge_world_context(previous: Option<&WorldContext>, patch: &WorldContext) -> WorldContext {
+    let incoming_identity = match (patch.scene_id, patch.map_id) {
+        (Some(scene_id), Some(map_id)) if u32::try_from(scene_id.0).ok() == Some(map_id) => {
+            Some((scene_id, map_id))
+        }
+        (Some(_), Some(_)) => {
+            return previous.cloned().unwrap_or_else(|| WorldContext {
+                scene_id: None,
+                map_id: None,
+                line_id: patch.line_id,
+                scene_instance_id: patch.scene_instance_id.clone(),
+                dungeon_instance_id: patch.dungeon_instance_id.clone(),
+            });
+        }
+        (Some(scene_id), None) => u32::try_from(scene_id.0)
+            .ok()
+            .map(|map_id| (scene_id, map_id)),
+        (None, Some(map_id)) => i32::try_from(map_id)
+            .ok()
+            .map(|scene_id| (SceneId(scene_id), map_id)),
+        (None, None) => None,
+    };
+    let previous_identity = previous.and_then(|world| match (world.scene_id, world.map_id) {
+        (Some(scene_id), Some(map_id)) => Some((scene_id, map_id)),
+        _ => None,
+    });
+    let identity_changed = incoming_identity.is_some() && incoming_identity != previous_identity;
+    let (scene_id, map_id) = incoming_identity
+        .or(previous_identity)
+        .map(|(scene_id, map_id)| (Some(scene_id), Some(map_id)))
+        .unwrap_or((None, None));
+    WorldContext {
+        scene_id,
+        map_id,
+        line_id: if identity_changed {
+            patch.line_id
+        } else {
+            patch
+                .line_id
+                .or_else(|| previous.and_then(|world| world.line_id))
+        },
+        scene_instance_id: if identity_changed {
+            patch.scene_instance_id.clone()
+        } else {
+            patch
+                .scene_instance_id
+                .clone()
+                .or_else(|| previous.and_then(|world| world.scene_instance_id.clone()))
+        },
+        dungeon_instance_id: if identity_changed {
+            patch.dungeon_instance_id.clone()
+        } else {
+            patch
+                .dungeon_instance_id
+                .clone()
+                .or_else(|| previous.and_then(|world| world.dungeon_instance_id.clone()))
+        },
     }
 }
 
@@ -6558,6 +6625,60 @@ mod tests {
     const SOCIAL_SERVICE: u64 = 625_772_963;
     const UNION_SERVICE: u64 = 504_281_929;
     const TEAM_SERVICE: u64 = 966_773_353;
+
+    #[test]
+    fn partial_world_patch_preserves_scene_and_updates_line_context() {
+        let previous = WorldContext {
+            scene_id: Some(SceneId(6_565)),
+            map_id: Some(6_565),
+            line_id: Some(1),
+            scene_instance_id: Some("reef-instance".into()),
+            dungeon_instance_id: Some("reef-dungeon".into()),
+        };
+        let merged = merge_world_context(
+            Some(&previous),
+            &WorldContext {
+                scene_id: None,
+                map_id: None,
+                line_id: Some(2),
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            },
+        );
+        assert_eq!(merged.scene_id, Some(SceneId(6_565)));
+        assert_eq!(merged.map_id, Some(6_565));
+        assert_eq!(merged.line_id, Some(2));
+        assert_eq!(merged.scene_instance_id.as_deref(), Some("reef-instance"));
+        assert_eq!(merged.dungeon_instance_id.as_deref(), Some("reef-dungeon"));
+
+        let scene_only = merge_world_context(
+            Some(&previous),
+            &WorldContext {
+                scene_id: Some(SceneId(6_525)),
+                map_id: None,
+                line_id: None,
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            },
+        );
+        assert_eq!(scene_only.scene_id, Some(SceneId(6_525)));
+        assert_eq!(scene_only.map_id, Some(6_525));
+        assert_eq!(scene_only.line_id, None);
+        assert_eq!(scene_only.scene_instance_id, None);
+        assert_eq!(scene_only.dungeon_instance_id, None);
+
+        let contradiction = merge_world_context(
+            Some(&previous),
+            &WorldContext {
+                scene_id: Some(SceneId(6_525)),
+                map_id: Some(6_565),
+                line_id: Some(9),
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            },
+        );
+        assert_eq!(contradiction, previous);
+    }
 
     #[test]
     fn falcon_wire_family_uses_exact_damage_attr_rows_for_breakdown_only() {
