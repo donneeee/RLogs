@@ -18,8 +18,9 @@ use rlogs_game_bpsr::{
 
 #[cfg(windows)]
 use crate::automarker_native_readiness::{
-    AutomarkerNativeReadinessEvidence, AutomarkerNativeReadinessRequest,
-    AutomarkerPassiveReadinessWorker, discover_native_readiness,
+    AutomarkerNativeFailureCategory, AutomarkerNativeReadinessEvidence,
+    AutomarkerNativeReadinessRequest, AutomarkerPassiveReadinessStatus,
+    AutomarkerPassiveReadinessWorker, discover_native_readiness, sanitized_failure_category,
 };
 #[cfg(windows)]
 use crate::automarker_windivert_backend::WinDivertHandle;
@@ -54,6 +55,16 @@ struct NativeFlowEvidence {
     syn_capture_sequence: u64,
     syn_observed_micros: u64,
     reverse_ack: Option<AutomarkerBridgeReverseAckObservation>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct AutomarkerNativeOperatorStatus {
+    pub waiting_for_new_syn: bool,
+    pub native_readiness_proven: bool,
+    pub waiting_for_marker_carrier: bool,
+    pub return_confirmed: bool,
+    pub active_placement_enabled: bool,
+    pub failure_category: Option<&'static str>,
 }
 
 const LIVE_PACKET_MUTATION_WIRED: bool = false;
@@ -145,6 +156,8 @@ struct NativeBridgeState {
     protocol_pack: Option<ProtocolPack>,
     native_flow: Option<NativeFlowEvidence>,
     gates: NativeGateState,
+    #[cfg(windows)]
+    native_failure: Option<AutomarkerNativeFailureCategory>,
     #[cfg(windows)]
     passive_readiness_worker: Option<AutomarkerPassiveReadinessWorker>,
     #[cfg(windows)]
@@ -450,11 +463,19 @@ impl AutomarkerNativeBridgeLifecycle {
         dependency_directory: &std::path::Path,
         connection_epoch: u64,
     ) -> Result<bool, String> {
-        let worker = AutomarkerPassiveReadinessWorker::spawn(
+        let worker = match AutomarkerPassiveReadinessWorker::spawn(
             process_id,
             dependency_directory,
             connection_epoch,
-        )?;
+        ) {
+            Ok(worker) => worker,
+            Err(error) => {
+                if let Some(mut state) = self.lock_or_poison_shutdown() {
+                    state.native_failure = Some(sanitized_failure_category(&error));
+                }
+                return Err(error);
+            }
+        };
         let Some(mut state) = self.lock_or_poison_shutdown() else {
             drop(worker);
             return Ok(false);
@@ -465,6 +486,7 @@ impl AutomarkerNativeBridgeLifecycle {
             return Ok(false);
         }
         let previous = state.passive_readiness_worker.replace(worker);
+        state.native_failure = None;
         drop(state);
         if let Some(previous) = previous {
             previous.stop_drain_join();
@@ -508,18 +530,90 @@ impl AutomarkerNativeBridgeLifecycle {
                 // A passive preflight is not authorization for a future
                 // active exact-tuple open; that operation must re-arbitrate.
                 state.gates.reflect_arbitrated = false;
+                state.native_failure = None;
                 drop(state);
                 worker.stop_drain_join();
                 true
             }
-            Ok(_) | Err(_) => {
+            Ok(_) => {
+                state.native_failure = Some(AutomarkerNativeFailureCategory::Internal);
                 let mut detached =
                     Self::detach_owned_state(&mut state, LifecyclePhase::Invalidated, false);
+                state.native_failure = Some(AutomarkerNativeFailureCategory::Internal);
                 detached.passive_readiness_worker = Some(worker);
                 drop(state);
                 detached.drop_in_shutdown_order();
                 false
             }
+            Err(error) => {
+                let category = sanitized_failure_category(&error);
+                let mut detached =
+                    Self::detach_owned_state(&mut state, LifecyclePhase::Invalidated, false);
+                state.native_failure = Some(category);
+                detached.passive_readiness_worker = Some(worker);
+                drop(state);
+                detached.drop_in_shutdown_order();
+                false
+            }
+        }
+    }
+
+    pub(crate) fn sanitized_operator_status(&self) -> AutomarkerNativeOperatorStatus {
+        let Some(state) = self.lock_or_poison_shutdown() else {
+            return AutomarkerNativeOperatorStatus {
+                failure_category: Some("internal"),
+                ..AutomarkerNativeOperatorStatus::default()
+            };
+        };
+        #[cfg(windows)]
+        let worker_status = state
+            .passive_readiness_worker
+            .as_ref()
+            .map(AutomarkerPassiveReadinessWorker::sanitized_status);
+        #[cfg(not(windows))]
+        let worker_status: Option<()> = None;
+        #[cfg(windows)]
+        let worker_readiness_proven = matches!(
+            worker_status,
+            Some(AutomarkerPassiveReadinessStatus::NativeReadinessProven)
+        );
+        #[cfg(not(windows))]
+        let worker_readiness_proven = false;
+        let retained_readiness_proven = state.gates.exact_local_process
+            && state.gates.exact_syn_owned_tuple_epoch
+            && state.gates.pinned_backend
+            && state.gates.checksum_helper_ready;
+        let native_readiness_proven = worker_readiness_proven || retained_readiness_proven;
+        let marker_carrier_present = state
+            .parser_evidence
+            .as_ref()
+            .is_some_and(|evidence| evidence.outbound_carrier.is_some());
+        #[cfg(windows)]
+        let failure = state.native_failure.or(match worker_status {
+            Some(AutomarkerPassiveReadinessStatus::Failed(category)) => Some(category),
+            _ => None,
+        });
+        #[cfg(not(windows))]
+        let failure_present = false;
+        #[cfg(windows)]
+        let failure_present = failure.is_some();
+        #[cfg(not(windows))]
+        let failure_category = None;
+        #[cfg(windows)]
+        let failure_category = failure.map(AutomarkerNativeFailureCategory::as_str);
+        AutomarkerNativeOperatorStatus {
+            waiting_for_new_syn: state.phase == LifecyclePhase::Observing
+                && state.continuity.is_some()
+                && !native_readiness_proven
+                && !failure_present,
+            native_readiness_proven,
+            waiting_for_marker_carrier: native_readiness_proven && !marker_carrier_present,
+            return_confirmed: state
+                .parser_evidence
+                .as_ref()
+                .is_some_and(|evidence| evidence.correlated_return.is_some()),
+            active_placement_enabled: Self::placement_enabled_locked(&state),
+            failure_category,
         }
     }
 
@@ -777,6 +871,10 @@ impl AutomarkerNativeBridgeLifecycle {
         let Some(state) = self.lock_or_poison_shutdown() else {
             return false;
         };
+        Self::placement_enabled_locked(&state)
+    }
+
+    fn placement_enabled_locked(state: &NativeBridgeState) -> bool {
         state.phase == LifecyclePhase::Observing
             && state.continuity.is_some()
             && state.coordinator.is_some()
@@ -813,6 +911,10 @@ impl AutomarkerNativeBridgeLifecycle {
         }
         state.native_flow = None;
         state.gates = NativeGateState::default();
+        #[cfg(windows)]
+        {
+            state.native_failure = None;
+        }
         DetachedNativeResources {
             #[cfg(windows)]
             passive_readiness_worker: state.passive_readiness_worker.take(),
@@ -1255,6 +1357,27 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    fn operator_status_reports_readiness_before_consuming_the_worker_result() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        assert!(bridge.accept_parser_evidence(
+            Some(&scene("mech-facility")),
+            AutomarkerBridgeEvidenceSnapshot::default(),
+        ));
+        let joined = install_completed_worker(&bridge, Ok(passive_observation()));
+        let status = bridge.sanitized_operator_status();
+        assert!(status.native_readiness_proven);
+        assert!(status.waiting_for_marker_carrier);
+        assert!(!status.waiting_for_new_syn);
+        assert!(!status.return_confirmed);
+        assert!(!status.active_placement_enabled);
+        assert_eq!(status.failure_category, None);
+        bridge.finish_session("capture-a");
+        assert!(joined.load(Ordering::SeqCst));
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn passive_worker_error_invalidates_and_joins_fail_closed() {
         let bridge = AutomarkerNativeBridgeLifecycle::default();
         bridge.begin_session(session());
@@ -1268,6 +1391,9 @@ mod tests {
         assert_eq!(snapshot.gates, NativeGateState::default());
         drop(snapshot);
         assert!(!bridge.placement_enabled());
+        let status = bridge.sanitized_operator_status();
+        assert_eq!(status.failure_category, Some("internal"));
+        assert!(!status.active_placement_enabled);
     }
 
     #[test]

@@ -42,7 +42,21 @@ export interface AutomarkerPresetView {
   protocolPackDigest: string | null;
   nativeLoadSupported: boolean;
   nativeLoadReason: "native_waymark_transport_unavailable";
+  nativeStatus: AutomarkerNativeStatus;
   previewSessionId: string;
+}
+
+export type AutomarkerNativeFailureCategory = "not_elevated" | "dependency_hash_mismatch" |
+  "driver_signature_invalid" | "driver_open_failed" | "handle_conflict" |
+  "process_or_socket" | "internal";
+
+export interface AutomarkerNativeStatus {
+  waitingForNewSyn: boolean;
+  nativeReadinessProven: boolean;
+  waitingForMarkerCarrier: boolean;
+  returnConfirmed: boolean;
+  activePlacementEnabled: false;
+  failureCategory: AutomarkerNativeFailureCategory | null;
 }
 
 export interface SaveAutomarkerPresetRequest {
@@ -334,6 +348,7 @@ export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView 
       !optionalDigest(value.protocolPackDigest) ||
       typeof value.nativeLoadSupported !== "boolean" ||
       value.nativeLoadReason !== "native_waymark_transport_unavailable" ||
+      !validNativeStatus(value.nativeStatus) ||
       typeof value.previewSessionId !== "string" || value.previewSessionId.length < 8 || value.previewSessionId.length > 128) {
     throw new Error("The local host returned an invalid automarker preset catalog.");
   }
@@ -353,6 +368,23 @@ export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView 
     throw new Error("The local host returned an automarker preset from another dungeon family.");
   }
   return view;
+}
+
+function validNativeStatus(value: unknown): value is AutomarkerNativeStatus {
+  if (!record(value) || typeof value.waitingForNewSyn !== "boolean" ||
+      typeof value.nativeReadinessProven !== "boolean" ||
+      typeof value.waitingForMarkerCarrier !== "boolean" ||
+      typeof value.returnConfirmed !== "boolean" || value.activePlacementEnabled !== false ||
+      !(value.failureCategory === null || nativeFailureCategory(value.failureCategory))) return false;
+  return !(value.waitingForNewSyn && value.nativeReadinessProven) &&
+    (!value.waitingForMarkerCarrier || value.nativeReadinessProven) &&
+    (value.failureCategory === null || (!value.waitingForNewSyn && !value.nativeReadinessProven));
+}
+
+function nativeFailureCategory(value: unknown): value is AutomarkerNativeFailureCategory {
+  return value === "not_elevated" || value === "dependency_hash_mismatch" ||
+    value === "driver_signature_invalid" || value === "driver_open_failed" ||
+    value === "handle_conflict" || value === "process_or_socket" || value === "internal";
 }
 
 export function parseObservedMarkerSnapshot(value: unknown): ObservedMarkerSnapshot {

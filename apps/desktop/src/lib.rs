@@ -50,8 +50,9 @@ use automarker_bridge_evidence::{
 use automarker_native_bridge::AutomarkerNativeBridgeLifecycle;
 use automarker_presets::{
     ActivateAutomarkerPresetRequest, AutomarkerActivationLiveContext, AutomarkerLocalLoadResult,
-    AutomarkerNativeActivationResult, AutomarkerPresetStore, AutomarkerPresetView,
-    AutomarkerSceneContext, LoadAutomarkerPresetRequest, SaveAutomarkerPresetRequest,
+    AutomarkerNativeActivationResult, AutomarkerNativeStatusView, AutomarkerPresetStore,
+    AutomarkerPresetView, AutomarkerSceneContext, LoadAutomarkerPresetRequest,
+    SaveAutomarkerPresetRequest,
 };
 use character_identities::{
     CaptureTimeCharacterIdentityStore, CharacterIdentityResolver, CharacterIdentityStore,
@@ -7372,6 +7373,17 @@ impl RuntimeController {
 
     fn enrich_automarker_view(&self, view: &mut AutomarkerPresetView) {
         view.preview_session_id = self.automarker_preview_session_id.clone();
+        let native = self
+            .live_automarker_native_bridge
+            .sanitized_operator_status();
+        view.native_status = AutomarkerNativeStatusView {
+            waiting_for_new_syn: native.waiting_for_new_syn,
+            native_readiness_proven: native.native_readiness_proven,
+            waiting_for_marker_carrier: native.waiting_for_marker_carrier,
+            return_confirmed: native.return_confirmed,
+            active_placement_enabled: native.active_placement_enabled,
+            failure_category: native.failure_category,
+        };
         let observed = self.live_observed_marker_feed.current();
         let same_capture = observed.capture_active
             && view.context.as_ref().is_some_and(|context| {

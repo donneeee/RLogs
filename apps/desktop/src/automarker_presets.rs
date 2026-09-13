@@ -107,7 +107,19 @@ pub struct AutomarkerPresetView {
     pub protocol_pack_digest: Option<String>,
     pub native_load_supported: bool,
     pub native_load_reason: &'static str,
+    pub native_status: AutomarkerNativeStatusView,
     pub preview_session_id: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomarkerNativeStatusView {
+    pub waiting_for_new_syn: bool,
+    pub native_readiness_proven: bool,
+    pub waiting_for_marker_carrier: bool,
+    pub return_confirmed: bool,
+    pub active_placement_enabled: bool,
+    pub failure_category: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -358,6 +370,7 @@ fn view(
         // remains disabled until rLogs has a transport that can ask the game
         // to allocate its own live counters and authenticated request fields.
         native_load_reason: "native_waymark_transport_unavailable",
+        native_status: AutomarkerNativeStatusView::default(),
         preview_session_id: String::new(),
     }
 }

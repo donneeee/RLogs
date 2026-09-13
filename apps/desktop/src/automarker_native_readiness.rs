@@ -12,7 +12,11 @@ use std::{
     path::Path,
     process::Command,
     ptr,
-    sync::{Arc, mpsc},
+    sync::{
+        Arc,
+        atomic::{AtomicU8, Ordering},
+        mpsc,
+    },
     thread::{self, JoinHandle},
     time::Instant,
 };
@@ -45,6 +49,92 @@ use crate::{
 const GAME_PROCESS_NAME: &str = "BPSR_STEAM.exe";
 const PASSIVE_READINESS_FLAGS: u64 = FLAG_SNIFF | FLAG_RECV_ONLY;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AutomarkerNativeFailureCategory {
+    NotElevated,
+    DependencyHashMismatch,
+    DriverSignatureInvalid,
+    DriverOpenFailed,
+    HandleConflict,
+    ProcessOrSocket,
+    Internal,
+}
+
+impl AutomarkerNativeFailureCategory {
+    const fn code(self) -> u8 {
+        match self {
+            Self::NotElevated => 1,
+            Self::DependencyHashMismatch => 2,
+            Self::DriverSignatureInvalid => 3,
+            Self::DriverOpenFailed => 4,
+            Self::HandleConflict => 5,
+            Self::ProcessOrSocket => 6,
+            Self::Internal => 7,
+        }
+    }
+
+    fn from_code(code: u8) -> Option<Self> {
+        Some(match code {
+            1 => Self::NotElevated,
+            2 => Self::DependencyHashMismatch,
+            3 => Self::DriverSignatureInvalid,
+            4 => Self::DriverOpenFailed,
+            5 => Self::HandleConflict,
+            6 => Self::ProcessOrSocket,
+            7 => Self::Internal,
+            _ => return None,
+        })
+    }
+
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::NotElevated => "not_elevated",
+            Self::DependencyHashMismatch => "dependency_hash_mismatch",
+            Self::DriverSignatureInvalid => "driver_signature_invalid",
+            Self::DriverOpenFailed => "driver_open_failed",
+            Self::HandleConflict => "handle_conflict",
+            Self::ProcessOrSocket => "process_or_socket",
+            Self::Internal => "internal",
+        }
+    }
+}
+
+pub(crate) fn sanitized_failure_category(error: &str) -> AutomarkerNativeFailureCategory {
+    let normalized = error.to_ascii_lowercase();
+    if normalized.contains("elevated") {
+        AutomarkerNativeFailureCategory::NotElevated
+    } else if normalized.contains("hash") || normalized.contains("release identity") {
+        AutomarkerNativeFailureCategory::DependencyHashMismatch
+    } else if normalized.contains("signature") || normalized.contains("authenticode") {
+        AutomarkerNativeFailureCategory::DriverSignatureInvalid
+    } else if normalized.contains("same-priority") || normalized.contains("conflict") {
+        AutomarkerNativeFailureCategory::HandleConflict
+    } else if normalized.contains("process")
+        || normalized.contains("pid")
+        || normalized.contains("socket")
+        || normalized.contains("owned tuple")
+        || normalized.contains("syn")
+    {
+        AutomarkerNativeFailureCategory::ProcessOrSocket
+    } else if normalized.contains("windivert")
+        || normalized.contains("driver")
+        || normalized.contains("filtering engine")
+        || normalized.contains("open")
+        || normalized.contains("dll")
+    {
+        AutomarkerNativeFailureCategory::DriverOpenFailed
+    } else {
+        AutomarkerNativeFailureCategory::Internal
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AutomarkerPassiveReadinessStatus {
+    WaitingForNewSyn,
+    NativeReadinessProven,
+    Failed(AutomarkerNativeFailureCategory),
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct AutomarkerNativeReadinessEvidence {
     pub binding: OfflineAutomarkerConnectionEpochBinding,
@@ -76,6 +166,8 @@ pub(crate) struct AutomarkerPassiveReadinessWorker {
     handle: Option<Arc<crate::automarker_windivert_backend::WinDivertHandle>>,
     result: mpsc::Receiver<Result<AutomarkerPassiveReadinessObservation, String>>,
     join: Option<JoinHandle<()>>,
+    milestone: Arc<AtomicU8>,
+    failure_category: Arc<AtomicU8>,
 }
 
 impl AutomarkerPassiveReadinessWorker {
@@ -135,15 +227,30 @@ impl AutomarkerPassiveReadinessWorker {
         }
 
         let (sender, result) = mpsc::sync_channel(1);
+        let milestone = Arc::new(AtomicU8::new(0));
+        let failure_category = Arc::new(AtomicU8::new(0));
+        let worker_milestone = Arc::clone(&milestone);
+        let worker_failure_category = Arc::clone(&failure_category);
         let worker_handle = Arc::clone(&handle);
         let dependency_directory = dependency_directory.to_path_buf();
         let join = thread::Builder::new()
             .name("rlogs-automarker-passive-readiness".into())
             .spawn(move || {
+                let publish = |outcome: Result<AutomarkerPassiveReadinessObservation, String>| {
+                    match &outcome {
+                        Ok(_) => worker_milestone.store(1, Ordering::Release),
+                        Err(error) => {
+                            worker_failure_category
+                                .store(sanitized_failure_category(error).code(), Ordering::Release);
+                            worker_milestone.store(2, Ordering::Release);
+                        }
+                    }
+                    let _ = sender.send(outcome);
+                };
                 let owner = match WindowsProcessSocketOwner::new(process_id) {
                     Ok(owner) => owner,
                     Err(error) => {
-                        let _ = sender.send(Err(error.to_string()));
+                        publish(Err(error.to_string()));
                         return;
                     }
                 };
@@ -152,14 +259,17 @@ impl AutomarkerPassiveReadinessWorker {
                 loop {
                     let received = match worker_handle.receive(65_535) {
                         Ok(Some(received)) => received,
-                        Ok(None) => return,
+                        Ok(None) => {
+                            publish(Err("passive readiness worker stopped before SYN".into()));
+                            return;
+                        }
                         Err(error) => {
-                            let _ = sender.send(Err(error));
+                            publish(Err(error));
                             return;
                         }
                     };
                     let Some(next_ordinal) = ordinal.checked_add(1) else {
-                        let _ = sender.send(Err("passive SYN ordinal exhausted".into()));
+                        publish(Err("passive SYN ordinal exhausted".into()));
                         return;
                     };
                     ordinal = next_ordinal;
@@ -169,7 +279,7 @@ impl AutomarkerPassiveReadinessWorker {
                     let owned = match process_owns_capture(&owner, capture) {
                         Ok(owned) => owned,
                         Err(error) => {
-                            let _ = sender.send(Err(error));
+                            publish(Err(error));
                             return;
                         }
                     };
@@ -197,7 +307,7 @@ impl AutomarkerPassiveReadinessWorker {
                             syn_observed_micros: micros,
                         }
                     });
-                    let _ = sender.send(outcome);
+                    publish(outcome);
                     return;
                 }
             })
@@ -206,7 +316,22 @@ impl AutomarkerPassiveReadinessWorker {
             handle: Some(handle),
             result,
             join: Some(join),
+            milestone,
+            failure_category,
         })
+    }
+
+    pub(crate) fn sanitized_status(&self) -> AutomarkerPassiveReadinessStatus {
+        match self.milestone.load(Ordering::Acquire) {
+            1 => AutomarkerPassiveReadinessStatus::NativeReadinessProven,
+            2 => AutomarkerPassiveReadinessStatus::Failed(
+                AutomarkerNativeFailureCategory::from_code(
+                    self.failure_category.load(Ordering::Acquire),
+                )
+                .unwrap_or(AutomarkerNativeFailureCategory::Internal),
+            ),
+            _ => AutomarkerPassiveReadinessStatus::WaitingForNewSyn,
+        }
     }
 
     pub(crate) fn try_take_result(
@@ -237,6 +362,14 @@ impl AutomarkerPassiveReadinessWorker {
         joined: Arc<std::sync::atomic::AtomicBool>,
     ) -> Self {
         let (sender, receiver) = mpsc::sync_channel(1);
+        let milestone = Arc::new(AtomicU8::new(if result.is_ok() { 1 } else { 2 }));
+        let failure_category = Arc::new(AtomicU8::new(
+            result
+                .as_ref()
+                .err()
+                .map(|error| sanitized_failure_category(error).code())
+                .unwrap_or(0),
+        ));
         sender.send(result).expect("test result receiver exists");
         drop(sender);
         let join = thread::spawn(move || {
@@ -246,6 +379,8 @@ impl AutomarkerPassiveReadinessWorker {
             handle: None,
             result: receiver,
             join: Some(join),
+            milestone,
+            failure_category,
         }
     }
 }
@@ -492,6 +627,55 @@ mod tests {
         assert_ne!(PASSIVE_READINESS_FLAGS & FLAG_SNIFF, 0);
         assert_ne!(PASSIVE_READINESS_FLAGS & FLAG_RECV_ONLY, 0);
         assert_eq!(PASSIVE_READINESS_FLAGS & FLAG_NO_INSTALL, 0);
+    }
+
+    #[test]
+    fn private_errors_collapse_to_bounded_operator_categories() {
+        assert_eq!(
+            sanitized_failure_category("the desktop host is not elevated"),
+            AutomarkerNativeFailureCategory::NotElevated
+        );
+        assert_eq!(
+            sanitized_failure_category("dependency hash mismatch at a private path"),
+            AutomarkerNativeFailureCategory::DependencyHashMismatch
+        );
+        assert_eq!(
+            sanitized_failure_category("Authenticode signature invalid"),
+            AutomarkerNativeFailureCategory::DriverSignatureInvalid
+        );
+        assert_eq!(
+            sanitized_failure_category("WinDivert driver open failed"),
+            AutomarkerNativeFailureCategory::DriverOpenFailed
+        );
+        assert_eq!(
+            sanitized_failure_category("same-priority handle conflict"),
+            AutomarkerNativeFailureCategory::HandleConflict
+        );
+        assert_eq!(
+            sanitized_failure_category("owned socket tuple unavailable"),
+            AutomarkerNativeFailureCategory::ProcessOrSocket
+        );
+        assert_eq!(
+            sanitized_failure_category("private implementation detail"),
+            AutomarkerNativeFailureCategory::Internal
+        );
+    }
+
+    #[test]
+    fn completed_worker_exposes_only_a_non_consuming_sanitized_milestone() {
+        let joined = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let worker = AutomarkerPassiveReadinessWorker::completed_for_test(
+            Err("dependency hash mismatch: C:\\private\\driver.dll".into()),
+            joined,
+        );
+        assert_eq!(
+            worker.sanitized_status(),
+            AutomarkerPassiveReadinessStatus::Failed(
+                AutomarkerNativeFailureCategory::DependencyHashMismatch
+            )
+        );
+        assert!(worker.try_take_result().is_some());
+        worker.stop_drain_join();
     }
 
     #[test]

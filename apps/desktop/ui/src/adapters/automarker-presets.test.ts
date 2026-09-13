@@ -38,11 +38,30 @@ function view() {
     protocolPackDigest: null,
     nativeLoadSupported: false,
     nativeLoadReason: "native_waymark_transport_unavailable",
+    nativeStatus: { waitingForNewSyn: false, nativeReadinessProven: false, waitingForMarkerCarrier: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null },
     previewSessionId: "preview-test-session",
   };
 }
 
 describe("automarker preset catalog", () => {
+  it("accepts only coherent sanitized native readiness milestones", () => {
+    const ready = view();
+    ready.nativeStatus = { waitingForNewSyn: false, nativeReadinessProven: true, waitingForMarkerCarrier: true, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null };
+    expect(parseAutomarkerPresetView(ready).nativeStatus).toEqual(ready.nativeStatus);
+
+    const active = view();
+    active.nativeStatus.activePlacementEnabled = true;
+    expect(() => parseAutomarkerPresetView(active)).toThrow(/invalid automarker preset catalog/i);
+
+    const unknown = view() as unknown as { nativeStatus: { failureCategory: string } };
+    unknown.nativeStatus.failureCategory = "raw_private_error";
+    expect(() => parseAutomarkerPresetView(unknown)).toThrow(/invalid automarker preset catalog/i);
+
+    const inconsistent = view();
+    inconsistent.nativeStatus.waitingForMarkerCarrier = true;
+    expect(() => parseAutomarkerPresetView(inconsistent)).toThrow(/invalid automarker preset catalog/i);
+  });
+
   it("builds the exact bounded native activation request and rejects response expansion", () => {
     const catalog = parseAutomarkerPresetView(view());
     if (catalog.context === null) throw new Error("fixture context missing");

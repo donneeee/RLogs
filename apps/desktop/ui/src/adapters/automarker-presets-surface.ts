@@ -170,6 +170,7 @@ export function mountAutomarkerPresetsSurface(
       ]);
       if (!alive || !automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration) ||
           (automarkerPresetContextKey(next) === automarkerPresetContextKey(view) &&
+            automarkerNativeStatusKey(next) === automarkerNativeStatusKey(view) &&
             observedMarkerSnapshotKey(nextObserved) === observedMarkerSnapshotKey(observedMarkers))) return;
       applyCatalog(next, nextObserved);
       render();
@@ -471,6 +472,29 @@ export function mountAutomarkerPresetsSurface(
     if (view !== null && !view.nativeLoadSupported) {
       detail.append(text("p", localizer.t("ui.automarkers.native_disabled", { reason: view.nativeLoadReason }), "card-copy automarker-safety-note"));
     }
+    if (view !== null) {
+      const milestones = el("ul", "automarker-native-status");
+      if (view.nativeStatus.waitingForNewSyn) {
+        milestones.append(text("li", localizer.t("ui.automarkers.native_status.waiting_for_new_syn")));
+      }
+      if (view.nativeStatus.nativeReadinessProven) {
+        milestones.append(text("li", localizer.t("ui.automarkers.native_status.readiness_proven")));
+      }
+      if (view.nativeStatus.waitingForMarkerCarrier) {
+        milestones.append(text("li", localizer.t("ui.automarkers.native_status.waiting_for_marker_carrier")));
+      }
+      if (view.nativeStatus.returnConfirmed) {
+        milestones.append(text("li", localizer.t("ui.automarkers.native_status.return_confirmed")));
+      }
+      if (view.nativeStatus.failureCategory !== null) {
+        milestones.append(text("li", nativeFailureLabel(view.nativeStatus.failureCategory, localizer)));
+      }
+      milestones.append(text("li", localizer.t("ui.automarkers.native_status.placement_disabled")));
+      detail.append(
+        text("p", localizer.t("ui.automarkers.native_status.title"), "card-copy automarker-live-heading"),
+        milestones,
+      );
+    }
     if (observedMarkers?.captureActive && observedMarkers.requestObserverSupported) {
       const last = observedMarkers.lastVerifiedRequestMarkerNumber === null ||
         observedMarkers.lastVerifiedRequestObservedMicros === null
@@ -610,6 +634,34 @@ export function automarkerPresetContextKey(
   if (view === null || view.context === null) return "none";
   const context = view.context;
   return `${view.previewSessionId}:${view.captureSessionId ?? ""}:${view.deploymentId ?? ""}:${view.protocolPackDigest ?? ""}:${context.activityFamilyId}:${context.clientBuild}:${context.sceneId}:${context.mapId}`;
+}
+
+function automarkerNativeStatusKey(view: AutomarkerPresetView | null): string {
+  if (view === null) return "none";
+  const status = view.nativeStatus;
+  return [
+    status.waitingForNewSyn,
+    status.nativeReadinessProven,
+    status.waitingForMarkerCarrier,
+    status.returnConfirmed,
+    status.activePlacementEnabled,
+    status.failureCategory ?? "",
+  ].join(":");
+}
+
+function nativeFailureLabel(
+  category: NonNullable<AutomarkerPresetView["nativeStatus"]["failureCategory"]>,
+  localizer: UiLocalizer,
+): string {
+  switch (category) {
+    case "not_elevated": return localizer.t("ui.automarkers.native_status.failure.not_elevated");
+    case "dependency_hash_mismatch": return localizer.t("ui.automarkers.native_status.failure.dependency_hash_mismatch");
+    case "driver_signature_invalid": return localizer.t("ui.automarkers.native_status.failure.driver_signature_invalid");
+    case "driver_open_failed": return localizer.t("ui.automarkers.native_status.failure.driver_open_failed");
+    case "handle_conflict": return localizer.t("ui.automarkers.native_status.failure.handle_conflict");
+    case "process_or_socket": return localizer.t("ui.automarkers.native_status.failure.process_or_socket");
+    case "internal": return localizer.t("ui.automarkers.native_status.failure.internal");
+  }
 }
 
 export function observedMarkerCaptureAvailability(

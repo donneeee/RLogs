@@ -18,6 +18,7 @@ describe("Mechanics Map overlay canvas preferences", () => {
       presets: [], captureSupported: false, captureReason: "native_waymark_state_unverified",
       captureSessionId: null, deploymentId: null, protocolPackDigest: null,
       nativeLoadSupported: false, nativeLoadReason: "native_waymark_transport_unavailable",
+      nativeStatus: { waitingForNewSyn: false, nativeReadinessProven: false, waitingForMarkerCarrier: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null },
       previewSessionId: "preview-test-session",
     })).toBe(normal);
   });

@@ -269,6 +269,7 @@ function developmentAutomarkerPresetView(): AutomarkerPresetView {
     protocolPackDigest: null,
     nativeLoadSupported: false,
     nativeLoadReason: "native_waymark_transport_unavailable",
+    nativeStatus: { waitingForNewSyn: false, nativeReadinessProven: false, waitingForMarkerCarrier: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null },
     previewSessionId: "development-preview",
   };
 }
