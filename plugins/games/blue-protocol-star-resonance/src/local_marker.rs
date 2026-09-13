@@ -8,8 +8,8 @@ use prost::Message;
 
 use crate::{
     AllowedDataDomain, BpsrFrameUpLayout, CaptureRecord, CaptureRecordKind, DecoderKind,
-    FragmentKind, PacketDirection, ProtocolPack, ProtocolPackRouteDisposition, RouteKey,
-    bpsr_runtime_authority, game_schema_v1 as schema,
+    FragmentKind, PacketDirection, ProtocolDecodeStatus, ProtocolPack,
+    ProtocolPackRouteDisposition, RouteKey, bpsr_runtime_authority, game_schema_v1 as schema,
 };
 
 const WORLD_NTF: u64 = 1_664_308_034;
@@ -41,6 +41,94 @@ pub struct LocalMapMarker {
     pub z: Option<f32>,
     /// Capture-clock observation time for the authoritative inbound start.
     pub observed_micros: u64,
+}
+
+/// One lossless, local-only passive start decoded from the placing client's
+/// exact method-46 notification. This is deliberately neither serializable nor
+/// a canonical event. Validation and BTreeMap projection happen downstream.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DecodedLocalMarkerStart {
+    /// Stable repeated-field position within this capture record.
+    pub record_event_index: u32,
+    pub raw_skill_id: Option<i32>,
+    /// `skill_id - 1100` when that exact value fits the wire-facing marker
+    /// number representation. Values outside 1..=6 remain present here.
+    pub derived_marker_number: Option<u8>,
+    pub owner_entity_uuid: Option<i64>,
+    pub passive_instance_identity: Option<i64>,
+    pub x: Option<f32>,
+    pub y: Option<f32>,
+    pub z: Option<f32>,
+    pub asserted_authoritative_decode: bool,
+}
+
+/// Decode every passive start in an exact trusted placing-client method-46
+/// record before marker-number, ownership, instance, coordinate, or map-slot
+/// filtering can discard or collapse it.
+pub fn decode_local_marker_start_candidates(
+    pack: &ProtocolPack,
+    record: &CaptureRecord,
+    status: ProtocolDecodeStatus,
+) -> Vec<DecodedLocalMarkerStart> {
+    if !LocalMapMarkerProjection::protocol_supported(pack) {
+        return Vec::new();
+    }
+    let CaptureRecordKind::Packet(packet) = &record.kind else {
+        return Vec::new();
+    };
+    let Some(routed) = packet.route else {
+        return Vec::new();
+    };
+    let key = routed.key;
+    if key.direction != PacketDirection::ServerToClient
+        || key.fragment != FragmentKind::Notify
+        || key.service_id != WORLD_NTF
+        || key.method_id != 46
+        || pack.decoder(&key) != Some(DecoderKind::SyncToMeDeltaV1)
+    {
+        return Vec::new();
+    }
+    let Some(payload) = packet.payload.decode_input() else {
+        return Vec::new();
+    };
+    let Ok(message) = schema::SyncToMeDeltaInfo::decode(payload) else {
+        return Vec::new();
+    };
+    let Some(base_delta) = message.delta.and_then(|delta| delta.base_delta) else {
+        return Vec::new();
+    };
+    let fallback_owner = base_delta.uuid;
+    let Some(starts) = base_delta.passive_skill_infos else {
+        return Vec::new();
+    };
+    let owner_entity_uuid = starts.actor_uuid.or(fallback_owner);
+    let authoritative = status == ProtocolDecodeStatus::Decoded;
+    starts
+        .passive_infos
+        .into_iter()
+        .enumerate()
+        .map(|(index, start)| {
+            let position = start
+                .target_position
+                .as_deref()
+                .and_then(|bytes| schema::Position::decode(bytes).ok());
+            DecodedLocalMarkerStart {
+                record_event_index: u32::try_from(index)
+                    .expect("protocol event limits fit a u32 record-local index"),
+                raw_skill_id: start.skill_id,
+                derived_marker_number: start
+                    .skill_id
+                    .and_then(|skill| skill.checked_sub(1100))
+                    .and_then(|number| u8::try_from(number).ok()),
+                owner_entity_uuid,
+                passive_instance_identity: start.uuid.map(i64::from),
+                x: position.as_ref().and_then(|position| position.x),
+                y: position.as_ref().and_then(|position| position.y),
+                z: position.as_ref().and_then(|position| position.z),
+                asserted_authoritative_decode: authoritative,
+            }
+        })
+        .collect()
 }
 
 /// Why the current observed marker projection cannot yet be imported as a
@@ -341,6 +429,162 @@ mod tests {
                 },
             }),
         }
+    }
+
+    #[test]
+    fn method_46_candidates_retain_duplicates_invalid_and_missing_fields_in_wire_order() {
+        let pack = source_observer_pack();
+        let position = |x: Option<f32>, y: Option<f32>, z: Option<f32>| {
+            schema::Position {
+                x,
+                y,
+                z,
+                facing_radians: None,
+            }
+            .encode_to_vec()
+        };
+        let payload = schema::SyncToMeDeltaInfo {
+            delta: Some(schema::AoiSyncToMeDelta {
+                base_delta: Some(schema::AoiSyncDelta {
+                    uuid: None,
+                    passive_skill_infos: Some(schema::SeqPassiveSkillInfo {
+                        actor_uuid: None,
+                        passive_infos: vec![
+                            schema::PassiveSkillInfo {
+                                uuid: Some(11),
+                                skill_id: Some(1101),
+                                target_position: Some(position(Some(1.0), Some(2.0), Some(3.0))),
+                                ..Default::default()
+                            },
+                            schema::PassiveSkillInfo {
+                                uuid: Some(12),
+                                skill_id: Some(1101),
+                                target_position: Some(position(Some(4.0), Some(5.0), Some(6.0))),
+                                ..Default::default()
+                            },
+                            schema::PassiveSkillInfo {
+                                uuid: None,
+                                skill_id: Some(1107),
+                                target_position: Some(position(Some(7.0), None, None)),
+                                ..Default::default()
+                            },
+                            schema::PassiveSkillInfo {
+                                uuid: Some(14),
+                                skill_id: None,
+                                target_position: Some(vec![0xff]),
+                                ..Default::default()
+                            },
+                        ],
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+        }
+        .encode_to_vec();
+
+        let candidates = decode_local_marker_start_candidates(
+            &pack,
+            &record(46, payload),
+            ProtocolDecodeStatus::Decoded,
+        );
+        assert_eq!(candidates.len(), 4);
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|candidate| candidate.record_event_index)
+                .collect::<Vec<_>>(),
+            vec![0, 1, 2, 3]
+        );
+        assert_eq!(candidates[0].derived_marker_number, Some(1));
+        assert_eq!(candidates[1].derived_marker_number, Some(1));
+        assert_eq!(candidates[2].derived_marker_number, Some(7));
+        assert_eq!(candidates[3].derived_marker_number, None);
+        assert_eq!(candidates[2].raw_skill_id, Some(1107));
+        assert_eq!(candidates[3].raw_skill_id, None);
+        assert_eq!(candidates[2].passive_instance_identity, None);
+        assert_eq!(candidates[2].x, Some(7.0));
+        assert_eq!(candidates[2].y, None);
+        assert_eq!(candidates[2].z, None);
+        assert_eq!(candidates[3].x, None);
+        assert!(
+            candidates
+                .iter()
+                .all(|candidate| candidate.owner_entity_uuid.is_none())
+        );
+        assert!(
+            candidates
+                .iter()
+                .all(|candidate| candidate.asserted_authoritative_decode)
+        );
+    }
+
+    #[test]
+    fn method_46_candidates_use_actor_then_base_owner_and_preserve_decode_status() {
+        let pack = source_observer_pack();
+        let payload = |actor_uuid| {
+            schema::SyncToMeDeltaInfo {
+                delta: Some(schema::AoiSyncToMeDelta {
+                    base_delta: Some(schema::AoiSyncDelta {
+                        uuid: Some(700),
+                        passive_skill_infos: Some(schema::SeqPassiveSkillInfo {
+                            actor_uuid,
+                            passive_infos: vec![schema::PassiveSkillInfo {
+                                uuid: Some(21),
+                                skill_id: Some(1102),
+                                ..Default::default()
+                            }],
+                        }),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
+            }
+            .encode_to_vec()
+        };
+        let explicit = decode_local_marker_start_candidates(
+            &pack,
+            &record(46, payload(Some(800))),
+            ProtocolDecodeStatus::DecodeFailed,
+        );
+        assert_eq!(explicit[0].owner_entity_uuid, Some(800));
+        assert!(!explicit[0].asserted_authoritative_decode);
+        let fallback = decode_local_marker_start_candidates(
+            &pack,
+            &record(46, payload(None)),
+            ProtocolDecodeStatus::Decoded,
+        );
+        assert_eq!(fallback[0].owner_entity_uuid, Some(700));
+        assert!(fallback[0].asserted_authoritative_decode);
+    }
+
+    #[test]
+    fn candidate_decoder_rejects_non_exact_method_and_direction() {
+        let pack = source_observer_pack();
+        let payload = schema::SyncToMeDeltaInfo::default().encode_to_vec();
+        assert!(
+            decode_local_marker_start_candidates(
+                &pack,
+                &record(45, payload.clone()),
+                ProtocolDecodeStatus::Decoded,
+            )
+            .is_empty()
+        );
+        let bootstrap = bootstrap_observer_pack("unknown");
+        let mut wrong_direction = record(46, payload);
+        let CaptureRecordKind::Packet(packet) = &mut wrong_direction.kind else {
+            unreachable!();
+        };
+        packet.direction = PacketDirection::ClientToServer;
+        packet.route.as_mut().unwrap().key.direction = PacketDirection::ClientToServer;
+        assert!(
+            decode_local_marker_start_candidates(
+                &bootstrap,
+                &wrong_direction,
+                ProtocolDecodeStatus::Decoded,
+            )
+            .is_empty()
+        );
     }
 
     #[test]
