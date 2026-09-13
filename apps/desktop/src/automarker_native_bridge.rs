@@ -1140,6 +1140,9 @@ impl AutomarkerNativeBridgeLifecycle {
     /// snapshot cannot enable sending until the in-process packet loop itself
     /// is reviewed and this compile-time boundary is deliberately changed.
     pub(crate) fn placement_enabled(&self) -> bool {
+        if self.active_lifetime_arbitration() == AutomarkerActiveLifetimeArbitration::Unresolved {
+            return false;
+        }
         let Some(state) = self.lock_or_poison_shutdown() else {
             return false;
         };
