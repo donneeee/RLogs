@@ -72,18 +72,53 @@ pub(crate) enum PrivateMarkerConfirmationIngressError {
     PostReplacementRevisionNotStrictlyNew { current: u64, replacement: u64 },
 }
 
-/// Preserve every decoded start as one private marker event. Structurally
-/// exact candidates receive the strictly newer post-replacement mechanics
-/// revision. Every invalid candidate keeps the unchanged record-time revision
-/// so it cannot impersonate fresh authoritative replacement evidence.
-pub(crate) fn project_marker_confirmation_snapshot(
+/// Opaque, process-private evidence carried across the mechanics-map
+/// replacement boundary. The packet record is consumed by `prepare`; this
+/// value retains only decoded marker fields, sanitized provenance/clocks, the
+/// exact binding, and the minimum record-time mechanics evidence needed to
+/// prove a replacement.
+#[derive(Debug)]
+pub(crate) struct PrivatePreparedMarkerConfirmation {
+    binding: PrivateMarkerConfirmationBinding,
+    provenance: PrivatePreparedMarkerProvenance,
+    source_clocks: PrivateSourceClocks,
+    record_mechanics: PrivateRecordMechanicsEvidence,
+    candidates: Vec<DecodedLocalMarkerStart>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PrivatePreparedMarkerProvenance {
+    capture_sequence: u64,
+    connection_id: u64,
+    stream_id: u64,
+    stub_id: u32,
+}
+
+#[derive(Debug)]
+struct PrivateRecordMechanicsEvidence {
+    revision: u64,
+    entities: Vec<PrivateRecordEntityEvidence>,
+    markers: Vec<MechanicsMapMarker>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PrivateRecordEntityEvidence {
+    actor_id: u64,
+    entity_uuid: i64,
+    stale: bool,
+    last_observed_micros: u64,
+}
+
+/// Decode and bind one exact inbound method-46 record before the mechanics
+/// map applies that record. No packet bytes or `CaptureRecord` survive this
+/// boundary.
+pub(crate) fn prepare_marker_confirmation(
     pack: &ProtocolPack,
     record: &CaptureRecord,
     decode_status: ProtocolDecodeStatus,
     record_mechanics: &MechanicsMapSnapshot,
-    post_replacement_mechanics: &MechanicsMapSnapshot,
     binding: &PrivateMarkerConfirmationBinding,
-) -> Result<PrivateParserConfirmationSnapshot, PrivateMarkerConfirmationIngressError> {
+) -> Result<PrivatePreparedMarkerConfirmation, PrivateMarkerConfirmationIngressError> {
     validate_protocol_binding(pack, binding)?;
     let (packet, routed) = match &record.kind {
         CaptureRecordKind::Packet(packet) => {
@@ -126,18 +161,8 @@ pub(crate) fn project_marker_confirmation_snapshot(
             limit: MAX_RECORD_TIME_ENTITIES,
         });
     }
-    if post_replacement_mechanics.entities.len() > MAX_RECORD_TIME_ENTITIES {
-        return Err(PrivateMarkerConfirmationIngressError::EntityLimitExceeded {
-            count: post_replacement_mechanics.entities.len(),
-            limit: MAX_RECORD_TIME_ENTITIES,
-        });
-    }
     validate_mechanics_binding(record_mechanics, binding)?;
-    validate_mechanics_binding(post_replacement_mechanics, binding)?;
 
-    // Candidates are decoded here, after the exact record/binding checks, so
-    // no caller can pair otherwise valid starts with a different capture
-    // record or assert a stronger decode status than that record received.
     let candidates =
         decode_local_marker_start_candidates(pack, record, decode_status).map_err(|error| {
             match error {
@@ -150,14 +175,106 @@ pub(crate) fn project_marker_confirmation_snapshot(
             }
         })?;
 
+    Ok(PrivatePreparedMarkerConfirmation {
+        binding: binding.clone(),
+        provenance: PrivatePreparedMarkerProvenance {
+            capture_sequence: record.sequence,
+            connection_id: packet.connection_id,
+            stream_id: packet.stream_id,
+            stub_id: routed.stub_id,
+        },
+        source_clocks: PrivateSourceClocks {
+            observed_micros: record.observed_micros,
+            wall_clock_unix_micros: record.wall_clock_unix_micros,
+        },
+        record_mechanics: PrivateRecordMechanicsEvidence {
+            revision: record_mechanics.revision,
+            entities: record_mechanics
+                .entities
+                .iter()
+                .map(|entity| PrivateRecordEntityEvidence {
+                    actor_id: entity.actor_id,
+                    entity_uuid: entity.entity_uuid,
+                    stale: entity.stale,
+                    last_observed_micros: entity.last_observed_micros,
+                })
+                .collect(),
+            markers: record_mechanics.markers.clone(),
+        },
+        candidates,
+    })
+}
+
+/// Consume prepared packet evidence after the mechanics map has applied the
+/// same record. Only an exact, strictly newer marker replacement can upgrade a
+/// decoded candidate to authoritative confirmation evidence.
+pub(crate) fn complete_marker_confirmation(
+    prepared: PrivatePreparedMarkerConfirmation,
+    post_replacement_mechanics: &MechanicsMapSnapshot,
+) -> Result<PrivateParserConfirmationSnapshot, PrivateMarkerConfirmationIngressError> {
+    let PrivatePreparedMarkerConfirmation {
+        binding,
+        provenance: prepared_provenance,
+        source_clocks,
+        record_mechanics,
+        candidates,
+    } = prepared;
+
+    if post_replacement_mechanics.entities.len() > MAX_RECORD_TIME_ENTITIES {
+        return Err(PrivateMarkerConfirmationIngressError::EntityLimitExceeded {
+            count: post_replacement_mechanics.entities.len(),
+            limit: MAX_RECORD_TIME_ENTITIES,
+        });
+    }
+    validate_mechanics_binding(post_replacement_mechanics, &binding)?;
+
+    project_prepared_marker_confirmation(
+        binding,
+        prepared_provenance,
+        source_clocks,
+        record_mechanics,
+        candidates,
+        post_replacement_mechanics,
+    )
+}
+
+/// Preserve every decoded start as one private marker event. Structurally
+/// exact candidates receive the strictly newer post-replacement mechanics
+/// revision. Every invalid candidate keeps the unchanged record-time revision
+/// so it cannot impersonate fresh authoritative replacement evidence.
+pub(crate) fn project_marker_confirmation_snapshot(
+    pack: &ProtocolPack,
+    record: &CaptureRecord,
+    decode_status: ProtocolDecodeStatus,
+    record_mechanics: &MechanicsMapSnapshot,
+    post_replacement_mechanics: &MechanicsMapSnapshot,
+    binding: &PrivateMarkerConfirmationBinding,
+) -> Result<PrivateParserConfirmationSnapshot, PrivateMarkerConfirmationIngressError> {
+    let prepared =
+        prepare_marker_confirmation(pack, record, decode_status, record_mechanics, binding)?;
+    complete_marker_confirmation(prepared, post_replacement_mechanics)
+}
+
+fn project_prepared_marker_confirmation(
+    binding: PrivateMarkerConfirmationBinding,
+    prepared_provenance: PrivatePreparedMarkerProvenance,
+    source_clocks: PrivateSourceClocks,
+    record_mechanics: PrivateRecordMechanicsEvidence,
+    candidates: Vec<DecodedLocalMarkerStart>,
+    post_replacement_mechanics: &MechanicsMapSnapshot,
+) -> Result<PrivateParserConfirmationSnapshot, PrivateMarkerConfirmationIngressError> {
     let projections = candidates
         .iter()
         .map(|candidate| {
             let owner_actor_id = candidate.owner_entity_uuid.and_then(|owner| {
-                unique_actor_id(record_mechanics, owner, Some(record.observed_micros))
+                unique_record_actor_id(
+                    &record_mechanics.entities,
+                    owner,
+                    Some(source_clocks.observed_micros),
+                )
             });
             let post_owner_matches = candidate.owner_entity_uuid.is_some_and(|owner| {
-                unique_actor_id(post_replacement_mechanics, owner, None) == owner_actor_id
+                unique_snapshot_actor_id(post_replacement_mechanics, owner, None) == owner_actor_id
             });
             let exact = post_owner_matches
                 && owner_actor_id.is_some_and(|owner_actor_id| {
@@ -165,8 +282,8 @@ pub(crate) fn project_marker_confirmation_snapshot(
                         && marker_replacement_proven(
                             candidate,
                             owner_actor_id,
-                            record.observed_micros,
-                            record_mechanics,
+                            source_clocks.observed_micros,
+                            &record_mechanics.markers,
                             post_replacement_mechanics,
                         )
                 });
@@ -201,21 +318,17 @@ pub(crate) fn project_marker_confirmation_snapshot(
     }
 
     let provenance = |record_event_index| PrivateConfirmationProvenance {
-        capture_sequence: record.sequence,
+        capture_sequence: prepared_provenance.capture_sequence,
         record_event_index,
-        connection_id: packet.connection_id,
-        stream_id: packet.stream_id,
+        connection_id: prepared_provenance.connection_id,
+        stream_id: prepared_provenance.stream_id,
         direction: PrivatePacketDirection::ServerToClient,
         fragment: PrivateFragmentKind::Notify,
         route_resolved: true,
-        service_id: route.service_id,
-        method_id: route.method_id,
-        stub_id: routed.stub_id,
-        call_id: routed.call_id,
-    };
-    let source_clocks = PrivateSourceClocks {
-        observed_micros: record.observed_micros,
-        wall_clock_unix_micros: record.wall_clock_unix_micros,
+        service_id: WORLD_NOTIFICATION_SERVICE_ID,
+        method_id: WORLD_SYNC_TO_ME_DELTA_METHOD_ID,
+        stub_id: prepared_provenance.stub_id,
+        call_id: None,
     };
     let events = projections
         .into_iter()
@@ -313,21 +426,59 @@ fn validate_mechanics_binding(
     Ok(())
 }
 
-fn unique_actor_id(
+fn unique_record_actor_id(
+    entities: &[PrivateRecordEntityEvidence],
+    owner: i64,
+    no_later_than_micros: Option<u64>,
+) -> Option<i64> {
+    unique_actor_id(
+        entities.iter().map(|entity| {
+            (
+                entity.actor_id,
+                entity.entity_uuid,
+                entity.stale,
+                entity.last_observed_micros,
+            )
+        }),
+        owner,
+        no_later_than_micros,
+    )
+}
+
+fn unique_snapshot_actor_id(
     mechanics: &MechanicsMapSnapshot,
     owner: i64,
     no_later_than_micros: Option<u64>,
 ) -> Option<i64> {
-    let mut matching = mechanics.entities.iter().filter(|entity| {
-        entity.entity_uuid == owner
-            && !entity.stale
-            && no_later_than_micros.is_none_or(|maximum| entity.last_observed_micros <= maximum)
+    unique_actor_id(
+        mechanics.entities.iter().map(|entity| {
+            (
+                entity.actor_id,
+                entity.entity_uuid,
+                entity.stale,
+                entity.last_observed_micros,
+            )
+        }),
+        owner,
+        no_later_than_micros,
+    )
+}
+
+fn unique_actor_id(
+    entities: impl Iterator<Item = (u64, i64, bool, u64)>,
+    owner: i64,
+    no_later_than_micros: Option<u64>,
+) -> Option<i64> {
+    let mut matching = entities.filter(|(_, entity_uuid, stale, last_observed_micros)| {
+        *entity_uuid == owner
+            && !*stale
+            && no_later_than_micros.is_none_or(|maximum| *last_observed_micros <= maximum)
     });
-    let entity = matching.next()?;
+    let (actor_id, _, _, _) = matching.next()?;
     if matching.next().is_some() {
         return None;
     }
-    i64::try_from(entity.actor_id)
+    i64::try_from(actor_id)
         .ok()
         .filter(|actor_id| *actor_id > 0)
 }
@@ -359,7 +510,7 @@ fn marker_replacement_proven(
     candidate: &DecodedLocalMarkerStart,
     owner_actor_id: i64,
     record_observed_micros: u64,
-    record_mechanics: &MechanicsMapSnapshot,
+    record_markers: &[MechanicsMapMarker],
     post_replacement_mechanics: &MechanicsMapSnapshot,
 ) -> bool {
     let mut post_matches = post_replacement_mechanics.markers.iter().filter(|marker| {
@@ -371,7 +522,7 @@ fn marker_replacement_proven(
     if post_matches.next().is_some() {
         return false;
     }
-    !record_mechanics.markers.iter().any(|marker| {
+    !record_markers.iter().any(|marker| {
         marker_matches_candidate(marker, candidate, owner_actor_id, record_observed_micros)
     })
 }
@@ -649,6 +800,122 @@ mod tests {
             panic!("expected marker event");
         };
         marker
+    }
+
+    #[test]
+    fn two_stage_confirmation_matches_the_compatibility_wrapper_without_retaining_packet_bytes() {
+        let pack = pack();
+        let binding = binding(&pack);
+        let current = mechanics(20);
+        let replacement = replacement_mechanics(21);
+        let mut captured_record = record(&[candidate(0)]);
+        let expected = project_marker_confirmation_snapshot(
+            &pack,
+            &captured_record,
+            ProtocolDecodeStatus::Decoded,
+            &current,
+            &replacement,
+            &binding,
+        )
+        .unwrap();
+
+        let prepared = prepare_marker_confirmation(
+            &pack,
+            &captured_record,
+            ProtocolDecodeStatus::Decoded,
+            &current,
+            &binding,
+        )
+        .unwrap();
+        let prepared_debug = format!("{prepared:?}");
+        assert!(!prepared_debug.contains("CaptureRecord"));
+        assert!(!prepared_debug.contains("wire_bytes"));
+        assert!(!prepared_debug.contains("application_bytes"));
+
+        // The opaque token owns only sanitized fields. Destroying the source
+        // record before POST cannot change the confirmation result.
+        let CaptureRecordKind::Packet(packet) = &mut captured_record.kind else {
+            unreachable!();
+        };
+        packet.payload.application_bytes = Some(vec![0xa5; 32_768]);
+        packet.payload.wire_bytes = vec![0x5a; 32_768];
+        drop(captured_record);
+
+        let actual = complete_marker_confirmation(prepared, &replacement).unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn two_stage_post_rejects_wrong_revision_and_snapshot_context() {
+        let pack = pack();
+        let binding = binding(&pack);
+
+        for wrong_revision in [19, 20] {
+            let prepared = prepare_marker_confirmation(
+                &pack,
+                &record(&[candidate(0)]),
+                ProtocolDecodeStatus::Decoded,
+                &mechanics(20),
+                &binding,
+            )
+            .unwrap();
+            assert_eq!(
+                complete_marker_confirmation(prepared, &replacement_mechanics(wrong_revision)),
+                Err(
+                    PrivateMarkerConfirmationIngressError::PostReplacementRevisionNotStrictlyNew {
+                        current: 20,
+                        replacement: wrong_revision,
+                    }
+                )
+            );
+        }
+
+        let mutations: [fn(&mut MechanicsMapSnapshot); 3] = [
+            |snapshot: &mut MechanicsMapSnapshot| snapshot.scene_id = Some(6_565),
+            |snapshot: &mut MechanicsMapSnapshot| snapshot.map_id = Some(6_565),
+            |snapshot: &mut MechanicsMapSnapshot| {
+                snapshot.session_id = Some("different-session".to_owned())
+            },
+        ];
+        for mutate in mutations {
+            let prepared = prepare_marker_confirmation(
+                &pack,
+                &record(&[candidate(0)]),
+                ProtocolDecodeStatus::Decoded,
+                &mechanics(20),
+                &binding,
+            )
+            .unwrap();
+            let mut wrong_context = replacement_mechanics(21);
+            mutate(&mut wrong_context);
+            assert_eq!(
+                complete_marker_confirmation(prepared, &wrong_context),
+                Err(PrivateMarkerConfirmationIngressError::MechanicsSnapshotMismatch)
+            );
+        }
+    }
+
+    #[test]
+    fn two_stage_duplicate_candidates_remain_lossless_and_non_authoritative() {
+        let pack = pack();
+        let binding = binding(&pack);
+        let prepared = prepare_marker_confirmation(
+            &pack,
+            &record(&[candidate(0), candidate(1)]),
+            ProtocolDecodeStatus::Decoded,
+            &mechanics(20),
+            &binding,
+        )
+        .unwrap();
+        let snapshot = complete_marker_confirmation(prepared, &replacement_mechanics(21)).unwrap();
+
+        assert_eq!(snapshot.events.len(), 2);
+        assert_eq!(marker(&snapshot.events[0]).provenance.record_event_index, 0);
+        assert_eq!(marker(&snapshot.events[1]).provenance.record_event_index, 1);
+        assert!(snapshot.events.iter().all(|event| {
+            let marker = marker(event);
+            marker.runtime_revision == 20 && !marker.asserted_authoritative_server_decode
+        }));
     }
 
     #[test]
