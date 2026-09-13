@@ -1207,13 +1207,8 @@ mod tests {
         let sequence = 4_000;
         let (mut canary, frame) = armed_with_carrier(sequence);
         assert_eq!(
-            canary.prepare_outbound_segment(
-                9,
-                sequence,
-                &frame[..1],
-                41,
-                context("mech-facility"),
-            ),
+            canary
+                .prepare_outbound_segment(9, sequence, &frame[..1], 41, context("mech-facility"),),
             SingleMarkerXyzSegmentDisposition::SendOriginal(frame[..1].to_vec())
         );
         assert_eq!(canary.state(), SingleMarkerXyzCanaryState::AwaitingRewrite);

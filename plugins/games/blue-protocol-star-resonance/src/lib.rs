@@ -125,11 +125,10 @@ pub use automarker_request::{
 };
 pub use automarker_rewrite_confirmation::{
     AUTOMARKER_AUTHORITATIVE_MARKER_ADD_METHOD_ID, AUTOMARKER_CONFIRMATION_TIMEOUT_MILLIS,
-    AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID,
-    AutomarkerConfirmationBaseline, AutomarkerConfirmationConfig, AutomarkerConfirmationContext,
-    AutomarkerConfirmationError, AutomarkerConfirmationMarkerAdd,
-    AutomarkerConfirmationObservationStamp, AutomarkerConfirmationRewrite,
-    AutomarkerConfirmationRpcReturn, AutomarkerConfirmationState,
+    AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID, AutomarkerConfirmationBaseline,
+    AutomarkerConfirmationConfig, AutomarkerConfirmationContext, AutomarkerConfirmationError,
+    AutomarkerConfirmationMarkerAdd, AutomarkerConfirmationObservationStamp,
+    AutomarkerConfirmationRewrite, AutomarkerConfirmationRpcReturn, AutomarkerConfirmationState,
     AutomarkerConfirmationTcpObservation, AutomarkerConfirmationTcpTuple,
     SingleMarkerRewriteConfirmation,
 };
