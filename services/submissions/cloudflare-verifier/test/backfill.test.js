@@ -291,9 +291,15 @@ test("operator workflow removes enqueue controls while manual deploy and the pau
   assert.doesNotMatch(indexWorker, /\/v1\/projection-backfill-rollbacks/u);
   assert.match(workflow, /github\.event_name == 'workflow_dispatch'/u);
   assert.match(workflow, /VERIFIER_RELEASE:\$\{\{ github\.sha \}\}/u);
-  assert.match(workflow, /npx wrangler deploy --var "VERIFIER_RELEASE:/u);
+  assert.match(workflow, /npx wrangler deploy \\\s+--tag "deploy-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}" \\\s+--var "VERIFIER_RELEASE:/u);
+  assert.match(workflow, /--var "BACKEND_RELEASE:\$\{\{ github\.sha \}\}"/u);
+  assert.equal(workflow.match(/npx wrangler versions deploy/gu)?.length, 2);
+  assert.equal(workflow.match(/--version-tag "deploy-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}@100%"/gu)?.length, 2);
+  assert.equal(workflow.match(/--yes/gu)?.length, 2);
   assert.doesNotMatch(workflow, /projection_backfill|BACKFILL_MODE|projection_backfill_batches/u);
   assert.ok(workflow.indexOf("npm run db:migrate:remote") < workflow.indexOf("VERIFIER_RELEASE:${{ github.sha }}"));
+  assert.ok(workflow.lastIndexOf("wrangler versions deploy") < workflow.indexOf("wrangler pages deploy"));
+  assert.ok(workflow.lastIndexOf("wrangler versions deploy") < workflow.lastIndexOf("smoke-test-cloudflare-production"));
   assert.equal(PROJECTION_BACKFILL_PAUSE_CODE, "migration_paused_v9");
   assert.match(PROJECTION_BACKFILL_PAUSE_DETAIL, /schema 17 \/ projection 14 \/ timeline 9/u);
   assert.match(worker, /BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION/u);

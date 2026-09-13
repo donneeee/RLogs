@@ -67,12 +67,24 @@ jobs:
         working-directory: services/submissions/cloudflare-verifier
         run: |
           npm test
-          npx wrangler deploy --var "VERIFIER_RELEASE:${{ github.sha }}"
+          npx wrangler deploy \
+            --tag "deploy-${{ github.run_id }}-${{ github.run_attempt }}" \
+            --var "VERIFIER_RELEASE:${{ github.sha }}"
+          npx wrangler versions deploy \
+            --version-tag "deploy-${{ github.run_id }}-${{ github.run_attempt }}@100%" \
+            --message "Deploy rLogs verifier ${{ github.sha }}" \
+            --yes
 
       - name: Deploy the stateful backend
         working-directory: services/submissions/cloudflare-backend
         run: |
-          npx wrangler deploy --var "BACKEND_RELEASE:${{ github.sha }}"
+          npx wrangler deploy \
+            --tag "deploy-${{ github.run_id }}-${{ github.run_attempt }}" \
+            --var "BACKEND_RELEASE:${{ github.sha }}"
+          npx wrangler versions deploy \
+            --version-tag "deploy-${{ github.run_id }}-${{ github.run_attempt }}@100%" \
+            --message "Deploy rLogs backend ${{ github.sha }}" \
+            --yes
 
       - name: Test and deploy the public Pages gateway
         working-directory: services/submissions/cloudflare-gateway
