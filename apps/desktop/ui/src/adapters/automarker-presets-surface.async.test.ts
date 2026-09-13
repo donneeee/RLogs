@@ -339,6 +339,46 @@ describe("mounted automarker preset editor request ordering", () => {
     mounted.dispose();
   });
 
+  it("rejects an import whose file read finishes after the active scene changes", async () => {
+    const initial = view(6_525, "mech-facility", "Mech setup", 1);
+    const reef = view(6_541, "sea-ringed-reef", "Reef setup", 9);
+    const catalogs = [initial, reef];
+    const fileText = deferred<string>();
+    const portable = JSON.stringify({
+      kind: "rlogs-automarker-preset", version: 1, name: "Late setup",
+      activityFamilyId: "mech-facility",
+      points: [{ markerNumber: 2, x: 70, y: 80, z: 90 }],
+    });
+    const container = document.createElement("div");
+    document.body.append(container);
+    const mounted = mountAutomarkerPresetsSurface(container, {
+      loadPresets: async () => catalogs.shift()!,
+      loadObservedMarkers: async () => unavailableObserved(),
+      saveCurrent: async () => { throw new Error("not used"); },
+      loadPreset: async () => { throw new Error("not used"); },
+      openOverlay: async () => undefined,
+    });
+    await flushPromises();
+
+    const input = container.querySelector<HTMLInputElement>(".automarker-import-file")!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [{ size: portable.length, text: () => fileText.promise }],
+    });
+    input.dispatchEvent(new Event("change"));
+    [...container.querySelectorAll("button")]
+      .find((button) => button.textContent === "Refresh scene")!
+      .click();
+    await flushPromises();
+    fileText.resolve(portable);
+    await flushPromises();
+
+    expect(container.querySelector(".automarker-status")?.textContent).toContain("active scene changed");
+    expect((container.querySelector('input[placeholder="M1 opener"]') as HTMLInputElement).value).toBe("Reef setup");
+    expect((container.querySelector('input[data-coordinate="x"]') as HTMLInputElement).value).toBe("9");
+    mounted.dispose();
+  });
+
   it("keeps Capture current markers disabled with the exact unverified-build reason", async () => {
     const catalog = view(6_525, "mech-facility", "Opener", 1);
     catalog.context!.clientBuild = "25247556";
@@ -642,6 +682,81 @@ describe("mounted automarker preset editor request ordering", () => {
 
     expect(container.querySelector(".automarker-status")?.textContent).toContain("1 compatible setup");
     expect(container.querySelector(".automarker-status")?.textContent).not.toContain("stale request failure");
+    mounted.dispose();
+  });
+
+  it("clears an unsaved draft when an explicit refresh enters another dungeon family", async () => {
+    const initial = view(6_525, "mech-facility", "Mech setup", 1);
+    const reef = view(6_541, "sea-ringed-reef", "Reef setup", 9);
+    const catalogs = [initial, reef];
+    const container = document.createElement("div");
+    document.body.append(container);
+    const mounted = mountAutomarkerPresetsSurface(container, {
+      loadPresets: async () => catalogs.shift()!,
+      loadObservedMarkers: async () => unavailableObserved(),
+      saveCurrent: async () => { throw new Error("not used"); },
+      loadPreset: async () => { throw new Error("not used"); },
+      openOverlay: async () => undefined,
+    });
+    await flushPromises();
+
+    const x = container.querySelector<HTMLInputElement>('input[data-coordinate="x"]')!;
+    x.value = "77";
+    x.dispatchEvent(new Event("input"));
+    [...container.querySelectorAll("button")]
+      .find((button) => button.textContent === "Refresh scene")!
+      .click();
+    await flushPromises();
+
+    expect(container.querySelector(".overlay-menu-preview-badge")?.textContent).toBe("Scene 6541");
+    expect((container.querySelector('input[placeholder="M1 opener"]') as HTMLInputElement).value).toBe("Reef setup");
+    expect((container.querySelector('input[data-coordinate="x"]') as HTMLInputElement).value).toBe("9");
+    expect(container.querySelector("select")?.textContent).not.toContain("Mech setup");
+    mounted.dispose();
+  });
+
+  it("preserves an unsaved draft across a scene change inside the same dungeon family", async () => {
+    const initial = view(6_521, "mech-facility", "Family setup", 1);
+    const next = {
+      ...initial,
+      context: { ...initial.context!, sceneId: 6_525, mapId: 6_525, sceneName: "Scene 6525" },
+    };
+    const catalogs = [initial, next];
+    const saveCurrent = vi.fn(async () => next);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const mounted = mountAutomarkerPresetsSurface(container, {
+      loadPresets: async () => catalogs.shift()!,
+      loadObservedMarkers: async () => unavailableObserved(),
+      saveCurrent,
+      loadPreset: async () => { throw new Error("not used"); },
+      openOverlay: async () => undefined,
+    });
+    await flushPromises();
+
+    const name = container.querySelector<HTMLInputElement>('input[placeholder="M1 opener"]')!;
+    const x = container.querySelector<HTMLInputElement>('input[data-coordinate="x"]')!;
+    name.value = "Unsaved family draft";
+    name.dispatchEvent(new Event("input"));
+    x.value = "77";
+    x.dispatchEvent(new Event("input"));
+    [...container.querySelectorAll("button")]
+      .find((button) => button.textContent === "Refresh scene")!
+      .click();
+    await flushPromises();
+
+    expect(container.querySelector(".overlay-menu-preview-badge")?.textContent).toBe("Scene 6525");
+    expect(name.value).toBe("Unsaved family draft");
+    expect(x.value).toBe("77");
+    [...container.querySelectorAll("button")]
+      .find((button) => button.textContent === "Save As…")!
+      .click();
+    await flushPromises();
+    expect(saveCurrent).toHaveBeenCalledWith(expect.objectContaining({
+      presetId: null,
+      name: "Unsaved family draft",
+      expectedContext: next.context,
+    }));
     mounted.dispose();
   });
 });

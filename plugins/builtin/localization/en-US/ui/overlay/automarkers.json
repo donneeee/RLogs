@@ -84,6 +84,7 @@
     "ui.automarkers.canary.unique_name": "Setup names must be unique in this dungeon family for the placement evidence test.",
     "ui.automarkers.canary.ready": "Copy the external opt-in Marker 1 placement evidence command. Start it, then select Marker 1 during its ten-second preparation countdown; it requires one human click after aim settles.",
     "ui.automarkers.error.file_too_large": "The automarker preset file exceeds the 64 KiB safety limit.",
+    "ui.automarkers.error.context_changed_during_import": "The active scene changed while the preset file was loading. Choose the file again in the current dungeon.",
     "ui.automarkers.error.coordinates_required": "Every marker needs a number plus X, Y, and Z coordinates.",
     "ui.automarkers.error.coordinates_finite": "Every marker needs finite X, Y, and Z coordinates."
   }

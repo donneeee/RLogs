@@ -171,21 +171,7 @@ export function mountAutomarkerPresetsSurface(
       if (!alive || !automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration) ||
           (automarkerPresetContextKey(next) === automarkerPresetContextKey(view) &&
             observedMarkerSnapshotKey(nextObserved) === observedMarkerSnapshotKey(observedMarkers))) return;
-      const contextChanged = automarkerPresetContextKey(next) !== automarkerPresetContextKey(view);
-      view = next;
-      observedMarkers = nextObserved;
-      if (contextChanged) {
-        selectedId = view.presets[0]?.presetId ?? null;
-        name.value = view.presets[0]?.name ?? "";
-        setEditorPoints(view.presets[0]?.points ?? [{ markerNumber: 1, x: 0, y: 0, z: 0 }]);
-      }
-      status.textContent = view.context === null
-        ? localizer.t("ui.automarkers.status.enter_scene")
-        : view.presets.length === 0
-          ? localizer.t("ui.automarkers.status.no_setups")
-          : localizer.t(view.presets.length === 1
-            ? "ui.automarkers.status.one_setup"
-            : "ui.automarkers.status.many_setups", { count: localizer.formatNumber(view.presets.length) });
+      applyCatalog(next, nextObserved);
       render();
     } catch {
       // Keep the last verified scene catalog visible. Explicit Refresh reports errors.
@@ -202,19 +188,7 @@ export function mountAutomarkerPresetsSurface(
         dependencies.loadObservedMarkers(),
       ]);
       if (!alive || !automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration)) return;
-      view = next;
-      observedMarkers = nextObserved;
-      if (!view.presets.some((preset) => preset.presetId === selectedId)) selectedId = view.presets[0]?.presetId ?? null;
-      const preset = selectedPreset();
-      if (preset !== undefined && name.value.trim() === "") name.value = preset.name;
-      if (!editorDirty && preset !== undefined) setEditorPoints(preset.points);
-      status.textContent = view.context === null
-        ? localizer.t("ui.automarkers.status.enter_scene")
-        : view.presets.length === 0
-          ? localizer.t("ui.automarkers.status.no_setups")
-          : localizer.t(view.presets.length === 1
-            ? "ui.automarkers.status.one_setup"
-            : "ui.automarkers.status.many_setups", { count: localizer.formatNumber(view.presets.length) });
+      applyCatalog(next, nextObserved);
     } catch (error) {
       if (automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration)) {
         status.textContent = message(error);
@@ -388,12 +362,16 @@ export function mountAutomarkerPresetsSurface(
   async function importSelectedFile(): Promise<void> {
     const file = importFile.files?.[0];
     if (file === undefined || view?.context === null || view === null) return;
+    const requestedContextKey = automarkerPresetContextKey(view);
     try {
       if (file.size > AUTOMARKER_EXCHANGE_MAX_BYTES) {
         throw new Error(localizer.t("ui.automarkers.error.file_too_large"));
       }
       const contents = await file.text();
       if (!alive || view?.context === null || view === null) return;
+      if (automarkerPresetContextKey(view) !== requestedContextKey) {
+        throw new Error(localizer.t("ui.automarkers.error.context_changed_during_import"));
+      }
       const imported = parseAutomarkerPresetExchange(contents, view.context.activityFamilyId);
       selectedId = null;
       name.value = imported.name;
@@ -535,6 +513,42 @@ export function mountAutomarkerPresetsSurface(
         reason: captureAvailability.reason,
       }), "card-copy automarker-safety-note"));
     }
+  }
+
+  function applyCatalog(next: AutomarkerPresetView, nextObserved: ObservedMarkerSnapshot): void {
+    const previousFamily = view?.context?.activityFamilyId ?? null;
+    const nextFamily = next.context?.activityFamilyId ?? null;
+    const familyChanged = previousFamily !== nextFamily;
+    view = next;
+    observedMarkers = nextObserved;
+
+    if (familyChanged) {
+      // A draft is marker-location data. Never leave it visible or reusable
+      // after moving to another dungeon family (or leaving supported scenes).
+      selectedId = view.presets[0]?.presetId ?? null;
+      const preset = selectedPreset();
+      name.value = preset?.name ?? "";
+      setEditorPoints(preset?.points ?? [{ markerNumber: 1, x: 0, y: 0, z: 0 }]);
+    } else {
+      // Scene/map/build provenance can change inside one reviewed activity
+      // family. Keep the user's selected setup and unsaved edits in that case.
+      if (!view.presets.some((preset) => preset.presetId === selectedId)) {
+        selectedId = editorDirty ? null : view.presets[0]?.presetId ?? null;
+      }
+      const preset = selectedPreset();
+      if (!editorDirty) {
+        name.value = preset?.name ?? "";
+        setEditorPoints(preset?.points ?? [{ markerNumber: 1, x: 0, y: 0, z: 0 }]);
+      }
+    }
+
+    status.textContent = view.context === null
+      ? localizer.t("ui.automarkers.status.enter_scene")
+      : view.presets.length === 0
+        ? localizer.t("ui.automarkers.status.no_setups")
+        : localizer.t(view.presets.length === 1
+          ? "ui.automarkers.status.one_setup"
+          : "ui.automarkers.status.many_setups", { count: localizer.formatNumber(view.presets.length) });
   }
 
   function setEditorPoints(points: readonly AutomarkerPoint[]): void {
