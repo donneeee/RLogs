@@ -919,6 +919,77 @@ mod tests {
     }
 
     #[test]
+    fn earlier_record_cannot_borrow_a_later_records_terminal_marker_state() {
+        let pack = pack();
+        let binding = binding(&pack);
+        let first_record = record(&[candidate(0)]);
+        let first_pre = mechanics(20);
+        let first_post = replacement_mechanics(21);
+
+        let first_prepared = prepare_marker_confirmation(
+            &pack,
+            &first_record,
+            ProtocolDecodeStatus::Decoded,
+            &first_pre,
+            &binding,
+        )
+        .unwrap();
+        let first_exact = complete_marker_confirmation(first_prepared, &first_post).unwrap();
+        assert!(marker(&first_exact.events[0]).asserted_authoritative_server_decode);
+        assert_eq!(marker(&first_exact.events[0]).runtime_revision, 21);
+
+        let mut second_candidate = candidate(0);
+        second_candidate.raw_skill_id = Some(1_102);
+        second_candidate.derived_marker_number = Some(2);
+        second_candidate.passive_instance_identity = Some(12);
+        second_candidate.x = Some(4.0);
+        second_candidate.y = Some(5.0);
+        second_candidate.z = Some(6.0);
+        let mut later_terminal = first_post.clone();
+        later_terminal.revision = 22;
+        later_terminal.markers = vec![MechanicsMapMarker {
+            marker_id: Some(12),
+            marker_number: Some(2),
+            related_actor_id: Some(7),
+            x: Some(4.0),
+            y: Some(5.0),
+            z: Some(6.0),
+            acknowledgment: Some(MechanicsMapMarkerAcknowledgment {
+                marker_number: 2,
+                slot_id: 202,
+                skill_id: 1_102,
+                observed_micros: 200,
+            }),
+        }];
+
+        let incorrectly_deferred = prepare_marker_confirmation(
+            &pack,
+            &first_record,
+            ProtocolDecodeStatus::Decoded,
+            &first_pre,
+            &binding,
+        )
+        .unwrap();
+        let first_against_later =
+            complete_marker_confirmation(incorrectly_deferred, &later_terminal).unwrap();
+        assert!(!marker(&first_against_later.events[0]).asserted_authoritative_server_decode);
+        assert_eq!(marker(&first_against_later.events[0]).runtime_revision, 20);
+
+        let second_record = record(&[second_candidate]);
+        let second_prepared = prepare_marker_confirmation(
+            &pack,
+            &second_record,
+            ProtocolDecodeStatus::Decoded,
+            &first_post,
+            &binding,
+        )
+        .unwrap();
+        let second_exact = complete_marker_confirmation(second_prepared, &later_terminal).unwrap();
+        assert!(marker(&second_exact.events[0]).asserted_authoritative_server_decode);
+        assert_eq!(marker(&second_exact.events[0]).runtime_revision, 22);
+    }
+
+    #[test]
     fn duplicate_wire_candidates_are_preserved_but_cannot_share_one_replacement_proof() {
         let pack = pack();
         let candidates = [candidate(0), candidate(1)];

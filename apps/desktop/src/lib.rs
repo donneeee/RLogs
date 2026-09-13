@@ -41,7 +41,7 @@ mod training_dummy;
 
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{SyncSender, TrySendError, sync_channel};
@@ -51,6 +51,11 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use automarker_bridge_evidence::{
     AutomarkerBridgeEvidenceFeed, AutomarkerBridgeRecordProvenance, AutomarkerBridgeSessionIdentity,
+};
+use automarker_confirmation_router::PrivateParserConfirmationSnapshot;
+use automarker_marker_confirmation_ingress::{
+    PrivateMarkerConfirmationBinding, PrivatePreparedMarkerConfirmation,
+    complete_marker_confirmation, prepare_marker_confirmation,
 };
 use automarker_native_bridge::AutomarkerNativeBridgeLifecycle;
 use automarker_presets::{
@@ -5033,6 +5038,89 @@ fn automarker_passive_start_key(
     })
 }
 
+const PRIVATE_LIVE_MARKER_CONFIRMATION_CAPACITY: usize = 256;
+
+struct PrivateLiveMarkerRecordPending {
+    prepared: Option<PrivatePreparedMarkerConfirmation>,
+    provenance: AutomarkerBridgeRecordProvenance,
+    previous_markers: BTreeMap<u8, rlogs_game_bpsr::LocalMapMarker>,
+    scene: Option<AutomarkerSceneContext>,
+    record_mechanics: mechanics_map::MechanicsMapSnapshot,
+}
+
+#[derive(Default)]
+struct PrivateLiveMarkerConfirmationSink {
+    snapshots: VecDeque<PrivateParserConfirmationSnapshot>,
+}
+
+impl PrivateLiveMarkerConfirmationSink {
+    fn retain(&mut self, snapshot: PrivateParserConfirmationSnapshot) {
+        if self.snapshots.len() == PRIVATE_LIVE_MARKER_CONFIRMATION_CAPACITY {
+            self.snapshots.pop_front();
+        }
+        self.snapshots.push_back(snapshot);
+    }
+
+    fn clear(&mut self) {
+        self.snapshots.clear();
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prepare_live_marker_record(
+    pack: &ProtocolPack,
+    record: &CaptureRecord,
+    status: ProtocolDecodeStatus,
+    mechanics: &mechanics_map::MechanicsMapSnapshot,
+    scene: Option<AutomarkerSceneContext>,
+    session_id: &str,
+    connection_epoch: u64,
+    previous_markers: BTreeMap<u8, rlogs_game_bpsr::LocalMapMarker>,
+) -> Option<PrivateLiveMarkerRecordPending> {
+    let provenance = AutomarkerBridgeRecordProvenance::from_decoded_marker_record(pack, record)?;
+    let prepared = (provenance.method_id == 46)
+        .then(|| {
+            let packet = match &record.kind {
+                CaptureRecordKind::Packet(packet) => Some(packet),
+                _ => None,
+            }?;
+            let exact_scene = scene.as_ref()?;
+            let source = packet.source.as_ref()?;
+            let destination = packet.destination.as_ref()?;
+            let server_address = source.address.parse::<Ipv4Addr>().ok()?.octets();
+            let client_address = destination.address.parse::<Ipv4Addr>().ok()?.octets();
+            let local_actor_id = mechanics
+                .local_actor_id
+                .and_then(|actor_id| i64::try_from(actor_id).ok())?;
+            let binding = PrivateMarkerConfirmationBinding {
+                session_key: session_id.to_owned(),
+                deployment_id: pack.definition().target.deployment_id.clone(),
+                game_build: pack.definition().target.build_id.clone(),
+                protocol_pack_digest: pack.digest().to_owned(),
+                scene_family: exact_scene.activity_family_id.clone(),
+                scene_id: exact_scene.scene_id,
+                map_id: exact_scene.map_id,
+                local_actor_id,
+                connection_epoch,
+                capture_connection_id: packet.connection_id,
+                stream_id: packet.stream_id,
+                client_address,
+                client_port: destination.port,
+                server_address,
+                server_port: source.port,
+            };
+            prepare_marker_confirmation(pack, record, status, mechanics, &binding).ok()
+        })
+        .flatten();
+    Some(PrivateLiveMarkerRecordPending {
+        prepared,
+        provenance,
+        previous_markers,
+        scene,
+        record_mechanics: mechanics.clone(),
+    })
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SubmissionImportRequest {
@@ -9953,6 +10041,9 @@ impl RuntimeController {
                     live_mechanics_map.reset(&session_id, &live_header.region.client_build);
                     let mut live_local_markers =
                         rlogs_game_bpsr::LocalMapMarkerProjection::default();
+                    let private_marker_confirmations = std::cell::RefCell::new(
+                        PrivateLiveMarkerConfirmationSink::default(),
+                    );
                     let mut last_local_marker_observed_micros = None;
                     let mut automarker_request_decode_scratch = Vec::with_capacity(64);
                     let mut training_dummy = TrainingDummyController::default();
@@ -10226,11 +10317,15 @@ impl RuntimeController {
                         let mut local_photo_assets = Vec::new();
                         let mut sealed_training_logs = Vec::new();
                         let mut training_recording_error = None;
-                        let mut mechanics_map_dirty = false;
-                        let mut local_markers_dirty = false;
-                        let mut automarker_bridge_updates = Vec::new();
+                        let mechanics_map_dirty = std::cell::Cell::new(false);
+                        let pending_marker_record =
+                            std::cell::RefCell::new(None::<PrivateLiveMarkerRecordPending>);
+                        let live_mechanics_map_cell =
+                            std::cell::RefCell::new(&mut live_mechanics_map);
+                        let live_local_markers_cell =
+                            std::cell::RefCell::new(&mut live_local_markers);
                         let automarker_bridge_mechanics_snapshot =
-                            std::cell::RefCell::new(live_mechanics_map.snapshot());
+                            std::cell::RefCell::new(live_mechanics_map_cell.borrow().snapshot());
                         let mut frame_protocol_observability =
                             CastObservabilityCounters::default();
                         let mut frame_event_observability = CastObservabilityCounters::default();
@@ -10240,9 +10335,12 @@ impl RuntimeController {
                             capture.metrics().queue_saturations,
                         );
                         let mut sealed = recorder
-                            .process_frame_with_inspection(frame, |event| {
+                            .process_frame_with_ordered_inspection(frame, |event| {
                                 frame_event_observability.observe_event(event);
-                                mechanics_map_dirty |= live_mechanics_map.observe(event);
+                                mechanics_map_dirty.set(
+                                    mechanics_map_dirty.get()
+                                        | live_mechanics_map_cell.borrow_mut().observe(event),
+                                );
                                 let training_observation = training_dummy.observe(event);
                                 if training_recording_error.is_none() {
                                     match training_dummy_writer
@@ -10364,6 +10462,11 @@ impl RuntimeController {
                                             }
                                         )
                                 ) {
+                                    // A token prepared before this record belongs to the old
+                                    // context. Never let it cross a scene/run boundary, even
+                                    // when both records arrived in one captured frame.
+                                    pending_marker_record.borrow_mut().take();
+                                    private_marker_confirmations.borrow_mut().clear();
                                     let current_context =
                                         live_automarker_scene_context.current();
                                     live_automarker_bridge_evidence
@@ -10380,14 +10483,18 @@ impl RuntimeController {
                                                 &automarker_protocol_pack_digest,
                                             scene_families: &automarker_scene_families,
                                         };
+                                        let mut mechanics_projector =
+                                            live_mechanics_map_cell.borrow_mut();
                                         let consumers = LiveSceneConsumers {
                                             combat_feed: &live_combat_feed,
                                             automarker_feed: &live_automarker_scene_context,
-                                            mechanics_projector: &mut live_mechanics_map,
+                                            mechanics_projector: &mut mechanics_projector,
                                             mechanics_feed: &live_mechanics_map_feed,
                                         };
-                                        mechanics_map_dirty |=
-                                            reconcile_live_world(world, runtime, consumers);
+                                        mechanics_map_dirty.set(
+                                            mechanics_map_dirty.get()
+                                                | reconcile_live_world(world, runtime, consumers),
+                                        );
                                     }
                                     last_world_context_event = merge_live_world_context_event(
                                         last_world_context_event.as_ref(),
@@ -10576,12 +10683,32 @@ impl RuntimeController {
                                 // the inspection callback for the same record receives the
                                 // exact post-record scene/entity revision.
                                 *automarker_bridge_mechanics_snapshot.borrow_mut() =
-                                    live_mechanics_map.snapshot();
+                                    live_mechanics_map_cell.borrow().snapshot();
                                 if live_event_inspector_active {
                                     live_event_lines.push(LiveEventRecord::from_envelope(event));
                                 }
                             }, |photo| {
                                 local_photo_assets.push(photo.clone());
+                            }, |record, status| {
+                                pending_marker_record.borrow_mut().take();
+                                let record_mechanics =
+                                    live_mechanics_map_cell.borrow().snapshot();
+                                let previous_markers = live_local_markers_cell
+                                    .borrow()
+                                    .markers()
+                                    .map(|marker| (marker.marker_number, marker))
+                                    .collect::<BTreeMap<_, _>>();
+                                let prepared = prepare_live_marker_record(
+                                    &pack,
+                                    record,
+                                    status,
+                                    &record_mechanics,
+                                    live_automarker_scene_context.current(),
+                                    &session_id,
+                                    automarker_native_connection_epoch,
+                                    previous_markers,
+                                );
+                                *pending_marker_record.borrow_mut() = prepared;
                             }, |record, status| {
                                 let bridge_scene = live_automarker_scene_context.current();
                                 let bridge_mechanics =
@@ -10594,55 +10721,105 @@ impl RuntimeController {
                                         live_automarker_bridge_evidence.current(),
                                     );
                                 }
-                                let bridge_provenance =
-                                    AutomarkerBridgeRecordProvenance::from_decoded_marker_record(
-                                        &pack, record,
-                                    );
-                                let previous_markers = bridge_provenance.as_ref().map(|_| {
-                                    live_local_markers
-                                        .markers()
-                                        .map(|marker| (marker.marker_number, marker))
-                                        .collect::<BTreeMap<_, _>>()
-                                });
-                                if live_local_markers.observe(&pack, record) {
-                                    local_markers_dirty = true;
+                                let pending = pending_marker_record.borrow_mut().take();
+                                let marker_projection_changed = live_local_markers_cell
+                                    .borrow_mut()
+                                    .observe(&pack, record);
+                                if marker_projection_changed {
                                     last_local_marker_observed_micros =
                                         Some(record.observed_micros);
-                                    if let (Some(provenance), Some(previous_markers)) =
-                                        (bridge_provenance, previous_markers)
+                                }
+                                if let Some(pending) = pending {
+                                    let markers = live_local_markers_cell
+                                        .borrow()
+                                        .markers()
+                                        .collect::<Vec<_>>();
+                                    let next_markers = markers
+                                        .iter()
+                                        .copied()
+                                        .map(|marker| (marker.marker_number, marker))
+                                        .collect::<BTreeMap<_, _>>();
+                                    let changed_marker_numbers = pending
+                                        .previous_markers
+                                        .keys()
+                                        .chain(next_markers.keys())
+                                        .copied()
+                                        .collect::<BTreeSet<_>>()
+                                        .into_iter()
+                                        .filter(|number| {
+                                            pending.previous_markers.get(number)
+                                                != next_markers.get(number)
+                                        })
+                                        .collect::<BTreeSet<_>>();
+                                    let post_replacement_mechanics = {
+                                        let mut mechanics =
+                                            live_mechanics_map_cell.borrow_mut();
+                                        if marker_projection_changed {
+                                            mechanics_map_dirty.set(
+                                                mechanics_map_dirty.get()
+                                                    | mechanics.replace_local_markers(
+                                                        markers.iter().copied(),
+                                                    ),
+                                            );
+                                        }
+                                        mechanics.snapshot()
+                                    };
+                                    if marker_projection_changed {
+                                        live_automarker_bridge_evidence
+                                            .replace_from_decoded_projection(
+                                            pending.scene.as_ref(),
+                                            &pending.record_mechanics,
+                                            &post_replacement_mechanics,
+                                            pending.provenance,
+                                            markers,
+                                            &changed_marker_numbers,
+                                        );
+                                    }
+                                    if let Some(prepared) = pending.prepared
+                                        && let Ok(snapshot) = complete_marker_confirmation(
+                                            prepared,
+                                            &post_replacement_mechanics,
+                                        )
                                     {
+                                        // TODO: hand this bounded, private source-ordered
+                                        // snapshot to the confirmation adapter when its live
+                                        // coordinator lifecycle is owned by this worker.
+                                        private_marker_confirmations
+                                            .borrow_mut()
+                                            .retain(snapshot);
+                                    }
+                                    if marker_projection_changed {
                                         // Preserve the projection as it existed for this
                                         // exact authoritative record. A single captured
                                         // frame may contain multiple marker updates; using
                                         // only the terminal projection would lose the
                                         // earlier records' provenance.
-                                        let markers = live_local_markers
-                                            .markers()
-                                            .collect::<Vec<_>>();
-                                        let next_markers = markers
-                                            .iter()
-                                            .copied()
-                                            .map(|marker| (marker.marker_number, marker))
-                                            .collect::<BTreeMap<_, _>>();
-                                        let changed_marker_numbers = previous_markers
-                                            .keys()
-                                            .chain(next_markers.keys())
-                                            .copied()
-                                            .collect::<BTreeSet<_>>()
-                                            .into_iter()
-                                            .filter(|number| {
-                                                previous_markers.get(number)
-                                                    != next_markers.get(number)
-                                            })
-                                            .collect::<BTreeSet<_>>();
-                                        automarker_bridge_updates.push((
-                                            provenance,
-                                            markers,
-                                            changed_marker_numbers,
-                                            live_automarker_scene_context.current(),
-                                            automarker_bridge_mechanics_snapshot.borrow().clone(),
-                                        ));
+                                        let bridge_scene =
+                                            live_automarker_scene_context.current();
+                                        live_automarker_native_bridge.accept_parser_evidence(
+                                            bridge_scene.as_ref(),
+                                            live_automarker_bridge_evidence.current(),
+                                        );
                                     }
+                                } else if marker_projection_changed {
+                                    // Scene/run changes deliberately invalidate the prepared
+                                    // confirmation token, but the ordinary mechanics UI must
+                                    // still consume the exact record's passive marker state.
+                                    let markers = live_local_markers_cell
+                                        .borrow()
+                                        .markers()
+                                        .collect::<Vec<_>>();
+                                    mechanics_map_dirty.set(
+                                        mechanics_map_dirty.get()
+                                            | live_mechanics_map_cell
+                                                .borrow_mut()
+                                                .replace_local_markers(markers),
+                                    );
+                                    let bridge_scene = live_automarker_scene_context.current();
+                                    live_automarker_native_bridge.accept_parser_evidence(
+                                        bridge_scene.as_ref(),
+                                        live_automarker_bridge_evidence.current(),
+                                    );
                                 }
                                 if let CaptureRecordKind::Packet(packet) = &record.kind
                                     && packet.route.is_some_and(|routed| {
@@ -10715,33 +10892,9 @@ impl RuntimeController {
                                 }
                             })
                             .map_err(|error| format!("live BPSR decoding failed: {error}"))?;
-                        if local_markers_dirty {
-                            mechanics_map_dirty |= live_mechanics_map
-                                .replace_local_markers(live_local_markers.markers());
-                            let post_replacement_mechanics = live_mechanics_map.snapshot();
-                            for (
-                                provenance,
-                                markers,
-                                changed_marker_numbers,
-                                scene,
-                                mechanics_snapshot,
-                            ) in automarker_bridge_updates
-                            {
-                                live_automarker_bridge_evidence.replace_from_decoded_projection(
-                                    scene.as_ref(),
-                                    &mechanics_snapshot,
-                                    &post_replacement_mechanics,
-                                    provenance,
-                                    markers,
-                                    &changed_marker_numbers,
-                                );
-                            }
-                            let bridge_scene = live_automarker_scene_context.current();
-                            live_automarker_native_bridge.accept_parser_evidence(
-                                bridge_scene.as_ref(),
-                                live_automarker_bridge_evidence.current(),
-                            );
-                        }
+                        let _ = live_mechanics_map_cell.into_inner();
+                        let _ = live_local_markers_cell.into_inner();
+                        let mut mechanics_map_dirty = mechanics_map_dirty.get();
                         if let Some(error) = training_recording_error {
                             return Err(error);
                         }
@@ -11085,7 +11238,7 @@ impl RuntimeController {
                             burst_metrics.observe_projection(projection_started.elapsed());
                         }
                         live_combat_feed.signal_damage_batch(&live_damage_activity);
-                        if mechanics_map_dirty || local_markers_dirty {
+                        if mechanics_map_dirty {
                             let mechanics_snapshot = live_mechanics_map.snapshot();
                             live_observed_marker_feed.publish(
                                 &session_id,
