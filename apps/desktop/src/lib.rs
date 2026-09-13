@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 pub mod automarker_activation;
+mod automarker_bridge_evidence;
 pub mod automarker_coordinate_planner;
 mod automarker_presets;
 mod character_identities;
@@ -36,6 +37,9 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use automarker_bridge_evidence::{
+    AutomarkerBridgeEvidenceFeed, AutomarkerBridgeRecordProvenance, AutomarkerBridgeSessionIdentity,
+};
 use automarker_presets::{
     ActivateAutomarkerPresetRequest, AutomarkerActivationLiveContext, AutomarkerLocalLoadResult,
     AutomarkerNativeActivationResult, AutomarkerPresetStore, AutomarkerPresetView,
@@ -5825,6 +5829,7 @@ struct RuntimeController {
     live_combat_feed: Arc<LiveCombatFeed>,
     live_character_stats_feed: Arc<LiveCharacterStatsFeed>,
     live_automarker_scene_context: Arc<AutomarkerSceneContextFeed>,
+    live_automarker_bridge_evidence: Arc<AutomarkerBridgeEvidenceFeed>,
     live_mechanics_map_feed: Arc<MechanicsMapFeed>,
     live_observed_marker_feed: Arc<ObservedMarkerFeed>,
     live_event_feed: Arc<LiveEventFeed>,
@@ -6342,6 +6347,7 @@ impl RuntimeController {
             live_combat_feed: Arc::new(LiveCombatFeed::default()),
             live_character_stats_feed: Arc::new(LiveCharacterStatsFeed::default()),
             live_automarker_scene_context: Arc::new(AutomarkerSceneContextFeed::default()),
+            live_automarker_bridge_evidence: Arc::new(AutomarkerBridgeEvidenceFeed::default()),
             live_mechanics_map_feed: Arc::new(MechanicsMapFeed::default()),
             live_observed_marker_feed: Arc::new(ObservedMarkerFeed::default()),
             live_event_feed: Arc::new(LiveEventFeed::default()),
@@ -9398,6 +9404,7 @@ impl RuntimeController {
         self.live_character_stats_feed
             .publish(LiveCharacterStatsSnapshot::default());
         self.live_automarker_scene_context.reset();
+        self.live_automarker_bridge_evidence.invalidate();
         self.live_mechanics_map_feed.reset();
         // Native identity is a local presentation side channel. Disable any
         // prior session's override before optionally arming the exact-build
@@ -9433,6 +9440,7 @@ impl RuntimeController {
                 .set_native_scene_presentation(true, None);
             let combat_feed = Arc::clone(&self.live_combat_feed);
             let automarker_feed = Arc::clone(&self.live_automarker_scene_context);
+            let automarker_bridge_feed = Arc::clone(&self.live_automarker_bridge_evidence);
             let mechanics_feed = Arc::clone(&self.live_mechanics_map_feed);
             let deployment_id = target.deployment_id.clone();
             let client_build = target.build_id.clone();
@@ -9468,6 +9476,8 @@ impl RuntimeController {
                         &protocol_pack_digest,
                         &scene_families,
                     );
+                    let current_automarker_context = automarker_feed.current();
+                    automarker_bridge_feed.reconcile_context(current_automarker_context.as_ref());
                     // Mechanics receives scene presentation only. The feed
                     // clears layout/encounter state for this side channel and
                     // retains its separate exact-build mechanic gates.
@@ -9510,6 +9520,19 @@ impl RuntimeController {
                     &pack,
                 ),
             });
+        self.live_automarker_bridge_evidence
+            .begin_session(AutomarkerBridgeSessionIdentity {
+                capture_session_id: request.session_id.clone(),
+                deployment_id: pack.definition().target.deployment_id.clone(),
+                client_build: pack.definition().target.build_id.clone(),
+                protocol_pack_digest: pack.digest().to_owned(),
+                protocol_supported: rlogs_game_bpsr::LocalMapMarkerProjection::protocol_supported(
+                    &pack,
+                ),
+            });
+        let initial_automarker_context = self.live_automarker_scene_context.current();
+        self.live_automarker_bridge_evidence
+            .reconcile_context(initial_automarker_context.as_ref());
         self.live_event_feed.reset(request.session_id.clone());
         self.schedule_automatic_local_game_map_refresh();
 
@@ -9530,6 +9553,7 @@ impl RuntimeController {
         let live_combat_feed = Arc::clone(&self.live_combat_feed);
         let live_character_stats_feed = Arc::clone(&self.live_character_stats_feed);
         let live_automarker_scene_context = Arc::clone(&self.live_automarker_scene_context);
+        let live_automarker_bridge_evidence = Arc::clone(&self.live_automarker_bridge_evidence);
         let automarker_scene_families = self.automarker_scene_families.clone();
         let live_mechanics_map_feed = Arc::clone(&self.live_mechanics_map_feed);
         let live_observed_marker_feed = Arc::clone(&self.live_observed_marker_feed);
@@ -9572,6 +9596,8 @@ impl RuntimeController {
         let supervisor_live_observed_marker_feed = Arc::clone(&self.live_observed_marker_feed);
         let supervisor_live_automarker_scene_context =
             Arc::clone(&self.live_automarker_scene_context);
+        let supervisor_live_automarker_bridge_evidence =
+            Arc::clone(&self.live_automarker_bridge_evidence);
         let session_id = request.session_id.clone();
         let supervisor_session_id = session_id.clone();
         let validation_game_build = target.build_id.clone();
@@ -9888,6 +9914,9 @@ impl RuntimeController {
                         let mut training_recording_error = None;
                         let mut mechanics_map_dirty = false;
                         let mut local_markers_dirty = false;
+                        let mut automarker_bridge_updates = Vec::new();
+                        let automarker_bridge_mechanics_snapshot =
+                            std::cell::RefCell::new(live_mechanics_map.snapshot());
                         let mut frame_protocol_observability =
                             CastObservabilityCounters::default();
                         let mut frame_event_observability = CastObservabilityCounters::default();
@@ -10010,6 +10039,21 @@ impl RuntimeController {
                                     &automarker_protocol_pack_digest,
                                     &automarker_scene_families,
                                 );
+                                if matches!(
+                                    &event.event,
+                                    CanonicalEvent::WorldChanged(_)
+                                        | CanonicalEvent::Timeline(
+                                            rlogs_events::TimelineEvent {
+                                                kind: TimelineEventKind::RunBoundary { .. },
+                                                ..
+                                            }
+                                        )
+                                ) {
+                                    let current_context =
+                                        live_automarker_scene_context.current();
+                                    live_automarker_bridge_evidence
+                                        .reconcile_context(current_context.as_ref());
+                                }
                                 if event.event.topic() == EventTopic::World {
                                     if let CanonicalEvent::WorldChanged(world) = &event.event
                                         && let Some(scene_id) = world.scene_id
@@ -10175,6 +10219,7 @@ impl RuntimeController {
                                         // repopulate both shared scene consumers.
                                         last_world_context_event = None;
                                         live_automarker_scene_context.reset();
+                                        live_automarker_bridge_evidence.invalidate();
                                     }
                                     if departed_live_dungeon {
                                         // The terminal projection above is
@@ -10210,16 +10255,66 @@ impl RuntimeController {
                                 // in the byte-bounded Event Inspector ring.
                                 // Full canonical/protobuf serialization stays
                                 // out of the capture callback.
+                                // Snapshot after every consumer has processed this event so
+                                // the inspection callback for the same record receives the
+                                // exact post-record scene/entity revision.
+                                *automarker_bridge_mechanics_snapshot.borrow_mut() =
+                                    live_mechanics_map.snapshot();
                                 if live_event_inspector_active {
                                     live_event_lines.push(LiveEventRecord::from_envelope(event));
                                 }
                             }, |photo| {
                                 local_photo_assets.push(photo.clone());
                             }, |record, status| {
+                                let bridge_provenance =
+                                    AutomarkerBridgeRecordProvenance::from_decoded_marker_record(
+                                        &pack, record,
+                                    );
+                                let previous_markers = bridge_provenance.as_ref().map(|_| {
+                                    live_local_markers
+                                        .markers()
+                                        .map(|marker| (marker.marker_number, marker))
+                                        .collect::<BTreeMap<_, _>>()
+                                });
                                 if live_local_markers.observe(&pack, record) {
                                     local_markers_dirty = true;
                                     last_local_marker_observed_micros =
                                         Some(record.observed_micros);
+                                    if let (Some(provenance), Some(previous_markers)) =
+                                        (bridge_provenance, previous_markers)
+                                    {
+                                        // Preserve the projection as it existed for this
+                                        // exact authoritative record. A single captured
+                                        // frame may contain multiple marker updates; using
+                                        // only the terminal projection would lose the
+                                        // earlier records' provenance.
+                                        let markers = live_local_markers
+                                            .markers()
+                                            .collect::<Vec<_>>();
+                                        let next_markers = markers
+                                            .iter()
+                                            .copied()
+                                            .map(|marker| (marker.marker_number, marker))
+                                            .collect::<BTreeMap<_, _>>();
+                                        let changed_marker_numbers = previous_markers
+                                            .keys()
+                                            .chain(next_markers.keys())
+                                            .copied()
+                                            .collect::<BTreeSet<_>>()
+                                            .into_iter()
+                                            .filter(|number| {
+                                                previous_markers.get(number)
+                                                    != next_markers.get(number)
+                                            })
+                                            .collect::<BTreeSet<_>>();
+                                        automarker_bridge_updates.push((
+                                            provenance,
+                                            markers,
+                                            changed_marker_numbers,
+                                            live_automarker_scene_context.current(),
+                                            automarker_bridge_mechanics_snapshot.borrow().clone(),
+                                        ));
+                                    }
                                 }
                                 if let CaptureRecordKind::Packet(packet) = &record.kind
                                     && packet.route.is_some_and(|routed| {
@@ -10278,6 +10373,22 @@ impl RuntimeController {
                         if local_markers_dirty {
                             mechanics_map_dirty |= live_mechanics_map
                                 .replace_local_markers(live_local_markers.markers());
+                            for (
+                                provenance,
+                                markers,
+                                changed_marker_numbers,
+                                scene,
+                                mechanics_snapshot,
+                            ) in automarker_bridge_updates
+                            {
+                                live_automarker_bridge_evidence.replace_from_decoded_projection(
+                                    scene.as_ref(),
+                                    &mechanics_snapshot,
+                                    provenance,
+                                    markers,
+                                    &changed_marker_numbers,
+                                );
+                            }
                         }
                         if let Some(error) = training_recording_error {
                             return Err(error);
@@ -11013,6 +11124,7 @@ impl RuntimeController {
                     *control = None;
                 }
                 live_observed_marker_feed.finish_session(&session_id);
+                live_automarker_bridge_evidence.finish_session(&session_id);
                 live_automarker_scene_context.reset();
 
                 let mut state = state
@@ -11135,6 +11247,8 @@ impl RuntimeController {
                             *control = None;
                         }
                         supervisor_live_observed_marker_feed.finish_session(&supervisor_session_id);
+                        supervisor_live_automarker_bridge_evidence
+                            .finish_session(&supervisor_session_id);
                         supervisor_live_automarker_scene_context.reset();
                         let terminal_health_snapshot =
                             mark_live_parser_panicked(&supervisor_state, &panic);
@@ -11164,6 +11278,8 @@ impl RuntimeController {
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
                 *control = None;
                 self.live_observed_marker_feed
+                    .finish_session(&request.session_id);
+                self.live_automarker_bridge_evidence
                     .finish_session(&request.session_id);
                 let terminal_health_snapshot = {
                     let mut state = self
