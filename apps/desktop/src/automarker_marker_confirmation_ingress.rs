@@ -179,7 +179,8 @@ pub(crate) fn project_marker_confirmation_snapshot(
             PrivateParserConfirmationEvent::MarkerAdd(PrivateMarkerAdd {
                 provenance: provenance(candidate.record_event_index),
                 source_clocks,
-                asserted_authoritative_server_decode: candidate.asserted_authoritative_decode,
+                asserted_authoritative_server_decode: candidate.asserted_authoritative_decode
+                    && exact,
                 raw_skill_id: candidate.raw_skill_id,
                 derived_marker_number: candidate.derived_marker_number,
                 marker_owner_actor_id: owner_actor_id,
@@ -529,7 +530,29 @@ mod tests {
         assert_eq!(marker(&snapshot.events[1]).provenance.record_event_index, 1);
         assert_eq!(marker(&snapshot.events[0]).marker_owner_actor_id, Some(7));
         assert_eq!(marker(&snapshot.events[0]).runtime_revision, 21);
+        assert!(marker(&snapshot.events[0]).asserted_authoritative_server_decode);
         assert_eq!(snapshot.context.runtime_revision, 21);
+    }
+
+    #[test]
+    fn mixed_batch_never_lends_replacement_authority_to_an_invalid_candidate() {
+        let pack = pack();
+        let mut invalid = candidate(1);
+        invalid.z = Some(f32::NAN);
+        let snapshot = project_marker_confirmation_snapshot(
+            &pack,
+            &record(),
+            &[candidate(0), invalid],
+            &mechanics(20),
+            &replacement_mechanics(21),
+            &binding(&pack),
+        )
+        .unwrap();
+        assert_eq!(snapshot.context.runtime_revision, 21);
+        assert_eq!(marker(&snapshot.events[0]).runtime_revision, 21);
+        assert!(marker(&snapshot.events[0]).asserted_authoritative_server_decode);
+        assert_eq!(marker(&snapshot.events[1]).runtime_revision, 20);
+        assert!(!marker(&snapshot.events[1]).asserted_authoritative_server_decode);
     }
 
     #[test]
@@ -548,8 +571,11 @@ mod tests {
             .unwrap()
         };
 
-        let unrelated = project(&mechanics(20), &mechanics(21));
-        assert_eq!(marker(&unrelated.events[0]).runtime_revision, 20);
+        // A revision that is already far beyond any plausible rewrite stamp
+        // still cannot carry authority without the specific replacement.
+        let unrelated = project(&mechanics(10_000), &mechanics(10_001));
+        assert_eq!(marker(&unrelated.events[0]).runtime_revision, 10_000);
+        assert!(!marker(&unrelated.events[0]).asserted_authoritative_server_decode);
 
         let unchanged = project(&replacement_mechanics(20), &replacement_mechanics(21));
         assert_eq!(marker(&unchanged.events[0]).runtime_revision, 20);
@@ -588,6 +614,7 @@ mod tests {
         ] {
             let snapshot = project(&mechanics(20), &replacement);
             assert_eq!(marker(&snapshot.events[0]).runtime_revision, 20);
+            assert!(!marker(&snapshot.events[0]).asserted_authoritative_server_decode);
             assert_eq!(snapshot.context.runtime_revision, 20);
         }
     }
@@ -642,6 +669,7 @@ mod tests {
         assert_eq!(snapshot.events.len(), candidates.len());
         for event in &snapshot.events {
             assert_eq!(marker(event).runtime_revision, 20);
+            assert!(!marker(event).asserted_authoritative_server_decode);
         }
         assert!(!marker(&snapshot.events[0]).target_position_present);
         assert!(!marker(&snapshot.events[1]).target_position_decode_valid);
