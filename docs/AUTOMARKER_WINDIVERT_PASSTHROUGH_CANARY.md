@@ -35,6 +35,12 @@ within a bounded 64 KiB prefix, verifies process ownership only after a BPSR
 signature is present, and retains a 250 ms uniqueness window. No substitution
 or checksum rewrite is connected to this executable.
 
+The low-level DLL lifetime, owned-handle operations, filter compilation, and
+serialized REFLECT arbitration live in the private shared source
+`automarker_windivert_backend.rs`. The standalone canary includes that file
+directly, so a future in-process coordinator can reuse the same implementation
+without creating a public library API or maintaining a second native backend.
+
 ## Safe first check
 
 From a normal PowerShell console in the package directory:
