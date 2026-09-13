@@ -10574,6 +10574,7 @@ impl RuntimeController {
                         if local_markers_dirty {
                             mechanics_map_dirty |= live_mechanics_map
                                 .replace_local_markers(live_local_markers.markers());
+                            let post_replacement_mechanics = live_mechanics_map.snapshot();
                             for (
                                 provenance,
                                 markers,
@@ -10585,6 +10586,7 @@ impl RuntimeController {
                                 live_automarker_bridge_evidence.replace_from_decoded_projection(
                                     scene.as_ref(),
                                     &mechanics_snapshot,
+                                    &post_replacement_mechanics,
                                     provenance,
                                     markers,
                                     &changed_marker_numbers,

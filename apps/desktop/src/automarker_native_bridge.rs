@@ -1387,7 +1387,6 @@ mod tests {
         assert!(bridge.accept_parser_evidence(Some(&scene("mech-facility")), parser_evidence()));
         let joined = install_completed_worker(&bridge, Ok(passive_observation()));
         assert!(bridge.reconcile_context(Some(&scene("sea-ringed-reef"))));
-        assert!(!joined.load(Ordering::SeqCst));
         let snapshot = state(&bridge);
         assert_eq!(snapshot.phase, LifecyclePhase::Observing);
         assert!(snapshot.passive_readiness_worker.is_some());

@@ -579,12 +579,16 @@ impl AutomarkerBridgeEvidenceFeed {
     }
 
     /// Replace the private baseline after the public decoder changed its
-    /// authoritative projection. Missing, mismatched, or unresolved identity
-    /// evidence clears the baseline rather than retaining stale coordinates.
+    /// authoritative projection. Entity ownership is resolved from the exact
+    /// record-time snapshot, while the evidence revision is stamped only from
+    /// the strictly newer authoritative snapshot taken after the marker layer
+    /// replacement. Missing, mismatched, or unresolved identity evidence
+    /// clears the baseline rather than retaining stale coordinates.
     pub(crate) fn replace_from_decoded_projection(
         &self,
         scene: Option<&AutomarkerSceneContext>,
-        mechanics: &MechanicsMapSnapshot,
+        record_mechanics: &MechanicsMapSnapshot,
+        post_replacement_mechanics: &MechanicsMapSnapshot,
         provenance: AutomarkerBridgeRecordProvenance,
         markers: impl IntoIterator<Item = LocalMapMarker>,
         changed_marker_numbers: &BTreeSet<u8>,
@@ -606,15 +610,22 @@ impl AutomarkerBridgeEvidenceFeed {
             Self::invalidate_locked(&mut state);
             return false;
         };
-        let Some(local_actor_id) = mechanics.local_actor_id else {
+        let Some(local_actor_id) = record_mechanics.local_actor_id else {
             Self::invalidate_locked(&mut state);
             return false;
         };
-        if mechanics.session_id.as_deref() != Some(session.capture_session_id.as_str())
-            || mechanics.client_build.as_deref() != Some(session.client_build.as_str())
-            || mechanics.scene_id != Some(scene.scene_id)
-            || mechanics.map_id != Some(scene.map_id)
+        if record_mechanics.session_id.as_deref() != Some(session.capture_session_id.as_str())
+            || record_mechanics.client_build.as_deref() != Some(session.client_build.as_str())
+            || record_mechanics.scene_id != Some(scene.scene_id)
+            || record_mechanics.map_id != Some(scene.map_id)
+            || post_replacement_mechanics.session_id.as_deref()
+                != Some(session.capture_session_id.as_str())
+            || post_replacement_mechanics.client_build.as_deref()
+                != Some(session.client_build.as_str())
+            || post_replacement_mechanics.scene_id != Some(scene.scene_id)
+            || post_replacement_mechanics.map_id != Some(scene.map_id)
             || scene.client_build != session.client_build
+            || post_replacement_mechanics.revision <= record_mechanics.revision
         {
             Self::invalidate_locked(&mut state);
             return false;
@@ -640,7 +651,7 @@ impl AutomarkerBridgeEvidenceFeed {
             {
                 continue;
             }
-            let Some(owner_actor_id) = mechanics
+            let Some(owner_actor_id) = record_mechanics
                 .entities
                 .iter()
                 .find(|entity| entity.entity_uuid == owner_uuid)
@@ -673,7 +684,7 @@ impl AutomarkerBridgeEvidenceFeed {
                     activity_family_id: scene.activity_family_id.clone(),
                     local_actor_id,
                     feed_revision: next_revision,
-                    mechanics_runtime_revision: mechanics.revision,
+                    mechanics_runtime_revision: post_replacement_mechanics.revision,
                     marker_owner_actor_id: owner_actor_id,
                     marker_owner_entity_uuid: owner_uuid,
                     passive_instance_identity: marker.passive_instance_id,
@@ -888,6 +899,12 @@ mod tests {
         mechanics
     }
 
+    fn post_replacement_matching_mechanics(revision: u64) -> MechanicsMapSnapshot {
+        let mut mechanics = matching_mechanics();
+        mechanics.revision = revision;
+        mechanics
+    }
+
     fn marker_provenance() -> AutomarkerBridgeRecordProvenance {
         AutomarkerBridgeRecordProvenance {
             capture_sequence: 4,
@@ -1015,6 +1032,10 @@ mod tests {
         assert!(!feed.replace_from_decoded_projection(
             Some(&scene),
             &mechanics,
+            &MechanicsMapSnapshot {
+                revision: mechanics.revision.saturating_add(1),
+                ..mechanics.clone()
+            },
             provenance,
             [],
             &BTreeSet::new(),
@@ -1044,6 +1065,7 @@ mod tests {
         assert!(feed.replace_from_decoded_projection(
             Some(&scene),
             &matching_mechanics(),
+            &post_replacement_matching_mechanics(23),
             provenance.clone(),
             [LocalMapMarker {
                 passive_instance_id: 1234,
@@ -1075,8 +1097,66 @@ mod tests {
             (1, 11.0, 12.0, 13.0)
         );
         assert_eq!(marker.feed_revision, snapshot.feed_revision);
-        assert_eq!(marker.mechanics_runtime_revision, 22);
+        assert_eq!(marker.mechanics_runtime_revision, 23);
         assert_eq!(marker.provenance, provenance);
+    }
+
+    #[test]
+    fn marker_evidence_uses_record_identity_with_strictly_post_replacement_revision() {
+        let feed = AutomarkerBridgeEvidenceFeed::default();
+        feed.begin_session(AutomarkerBridgeSessionIdentity {
+            capture_session_id: "capture-a".into(),
+            deployment_id: "global".into(),
+            client_build: "25247556".into(),
+            protocol_pack_digest: "sha256:test".into(),
+            protocol_supported: true,
+        });
+        let scene = AutomarkerSceneContext {
+            client_build: "25247556".into(),
+            scene_id: 1,
+            map_id: 2,
+            activity_family_id: "mech-facility".into(),
+            scene_name: None,
+        };
+        feed.reconcile_context(Some(&scene));
+        let record_mechanics = matching_mechanics();
+        let marker = LocalMapMarker {
+            passive_instance_id: 1234,
+            related_entity_uuid: Some(90),
+            marker_number: 1,
+            x: Some(11.0),
+            y: Some(12.0),
+            z: Some(13.0),
+            observed_micros: 10,
+        };
+
+        // A snapshot that has not advanced beyond the exact marker record is
+        // not authoritative evidence that the marker layer was replaced.
+        assert!(!feed.replace_from_decoded_projection(
+            Some(&scene),
+            &record_mechanics,
+            &record_mechanics,
+            marker_provenance(),
+            [marker],
+            &BTreeSet::from([1]),
+        ));
+        assert!(feed.current().markers.is_empty());
+
+        // Resolve ownership against the exact record-time entity projection,
+        // even if the later authoritative mechanics snapshot has moved on.
+        let mut post_replacement_mechanics = post_replacement_matching_mechanics(23);
+        post_replacement_mechanics.entities[0].actor_id = 99;
+        assert!(feed.replace_from_decoded_projection(
+            Some(&scene),
+            &record_mechanics,
+            &post_replacement_mechanics,
+            marker_provenance(),
+            [marker],
+            &BTreeSet::from([1]),
+        ));
+        let evidence = feed.current().markers.into_iter().next().unwrap();
+        assert_eq!(evidence.marker_owner_actor_id, 9);
+        assert_eq!(evidence.mechanics_runtime_revision, 23);
     }
 
     #[test]
@@ -1127,6 +1207,7 @@ mod tests {
         assert!(feed.replace_from_decoded_projection(
             Some(&scene),
             &mechanics,
+            &post_replacement_matching_mechanics(23),
             first.clone(),
             [marker_one],
             &BTreeSet::from([1]),
@@ -1134,6 +1215,7 @@ mod tests {
         assert!(feed.replace_from_decoded_projection(
             Some(&scene),
             &mechanics,
+            &post_replacement_matching_mechanics(23),
             second.clone(),
             [marker_one, marker_two],
             &BTreeSet::from([2]),
@@ -1168,6 +1250,7 @@ mod tests {
         feed.replace_from_decoded_projection(
             Some(&first_scene),
             &matching_mechanics(),
+            &post_replacement_matching_mechanics(23),
             marker_provenance(),
             [LocalMapMarker {
                 passive_instance_id: 1234,
@@ -1198,6 +1281,7 @@ mod tests {
         assert!(!feed.replace_from_decoded_projection(
             Some(&first_scene),
             &matching_mechanics(),
+            &post_replacement_matching_mechanics(23),
             marker_provenance(),
             [LocalMapMarker {
                 passive_instance_id: 1234,
