@@ -1,20 +1,21 @@
-//! Private desktop-owned lifecycle for the future one-marker native bridge.
+//! Private desktop-owned lifecycle for the one-marker native canary bridge.
 //!
-//! This module intentionally exposes no HTTP or plug-in surface. Its optional
-//! readiness probe may load pinned dependencies and briefly open a false-filter
-//! read-only handle, but it performs no active interception, packet mutation,
-//! or send. It binds private parser evidence to the exact capture session and
-//! scene context that a future in-process `AutomarkerBridgeCoordinator` must
-//! use, and gives all future native resources one invalidation/shutdown domain.
+//! The active path is exposed only through the separately developer-gated host
+//! controller; there is no public or plug-in surface. It binds private parser
+//! evidence to the exact capture session and scene context used by the
+//! in-process `AutomarkerBridgeCoordinator`, and gives every native resource
+//! one invalidation/shutdown domain.
 
 use std::{sync::Mutex, time::Instant};
 
 use rlogs_game_bpsr::{
-    AutomarkerBridgeCoordinator, AutomarkerConfirmationBaseline, AutomarkerConfirmationContext,
-    AutomarkerConfirmationTcpTuple, AutomarkerOwnedTcpConnection, AutomarkerRequestXyz,
-    OfflineAutomarkerConnectionEpochBinding, ProtocolPack, SINGLE_MARKER_XYZ_CANARY_ARM_TOKEN,
-    SingleMarkerXyzCanaryConfig, SingleMarkerXyzCanaryContext,
-    reviewed_automarker_active_filter_plan,
+    AutomarkerBridgeCoordinator, AutomarkerOwnedTcpConnection, AutomarkerRequestXyz,
+    OfflineAutomarkerConnectionEpochBinding, ProtocolPack, reviewed_automarker_active_filter_plan,
+};
+#[cfg(test)]
+use rlogs_game_bpsr::{
+    AutomarkerConfirmationBaseline, AutomarkerConfirmationContext, AutomarkerConfirmationTcpTuple,
+    SINGLE_MARKER_XYZ_CANARY_ARM_TOKEN, SingleMarkerXyzCanaryConfig, SingleMarkerXyzCanaryContext,
 };
 
 #[cfg(windows)]
@@ -1277,6 +1278,7 @@ impl AutomarkerNativeBridgeLifecycle {
 
     /// Arm only the pure one-marker coordinator from the exact retained
     /// parser/native baseline. This opens no handle and cannot send.
+    #[cfg(test)]
     pub(crate) fn arm_one_marker_coordinator(&self, point: AutomarkerPoint) -> bool {
         let Some(mut state) = self.lock_or_poison_shutdown() else {
             return false;
@@ -1568,6 +1570,7 @@ impl AutomarkerNativeBridgeLifecycle {
     /// Production placement remains disabled. Even a future all-positive gate
     /// snapshot cannot enable sending until the in-process packet loop itself
     /// is reviewed and this compile-time boundary is deliberately changed.
+    #[cfg(test)]
     pub(crate) fn placement_enabled(&self) -> bool {
         let Some(state) = self.lock_or_poison_shutdown() else {
             return false;

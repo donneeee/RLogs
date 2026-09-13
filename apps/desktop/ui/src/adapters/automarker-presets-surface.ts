@@ -17,7 +17,6 @@ export interface AutomarkerPresetDependencies {
   loadObservedMarkers(): Promise<ObservedMarkerSnapshot>;
   saveCurrent(request: SaveAutomarkerPresetRequest): Promise<AutomarkerPresetView>;
   loadPreset(request: LoadAutomarkerPresetRequest): Promise<AutomarkerLocalLoadResult>;
-  // Deliberately not called while Place in game remains disabled.
   activatePreset?(request: ActivateAutomarkerPresetRequest): Promise<AutomarkerNativeActivationResult>;
   copyCanaryCommand?(command: string): Promise<void>;
   openOverlay(): Promise<void>;
@@ -29,6 +28,36 @@ export interface OperatorPlacementCanaryCommand {
   enabled: boolean;
   reason: string;
   command?: string;
+}
+
+export interface NativePlacementAvailability {
+  enabled: boolean;
+  reason: string;
+}
+
+export function nativePlacementAvailability(
+  view: AutomarkerPresetView | null,
+  selectedPresetId: string | null,
+  localizer: UiLocalizer,
+): NativePlacementAvailability {
+  if (view === null || view.context === null) {
+    return { enabled: false, reason: localizer.t("ui.automarkers.availability.enter_scene") };
+  }
+  if (!view.nativeLoadSupported) {
+    return { enabled: false, reason: localizer.t("ui.automarkers.help.native_unavailable", { reason: view.nativeLoadReason }) };
+  }
+  const matches = view.presets.filter((preset) => preset.presetId === selectedPresetId);
+  if (matches.length !== 1) {
+    return { enabled: false, reason: localizer.t("ui.automarkers.canary.select_setup") };
+  }
+  const preset = matches[0]!;
+  if (preset.activityFamilyId !== view.context.activityFamilyId) {
+    return { enabled: false, reason: localizer.t("ui.automarkers.canary.wrong_family") };
+  }
+  if (preset.points.length !== 1 || preset.points[0]?.markerNumber !== 1) {
+    return { enabled: false, reason: localizer.t("ui.automarkers.canary.marker_one") };
+  }
+  return { enabled: true, reason: localizer.t("ui.automarkers.help.native_canary_ready") };
 }
 
 export function operatorPlacementCanaryCommand(
@@ -150,6 +179,7 @@ export function mountAutomarkerPresetsSurface(
   saveAs.addEventListener("click", () => void persist(true));
   preview.addEventListener("click", () => void previewOnMap());
   load.addEventListener("click", () => void requestLoad());
+  placeInGame.addEventListener("click", () => void activateInGame());
   exportPreset.addEventListener("click", exportSelectedPreset);
   importPreset.addEventListener("click", () => importFile.click());
   importFile.addEventListener("change", () => void importSelectedFile());
@@ -341,6 +371,36 @@ export function mountAutomarkerPresetsSurface(
     }
   }
 
+  async function activateInGame(): Promise<void> {
+    const availability = nativePlacementAvailability(view, selectedId, localizer);
+    if (!availability.enabled || dependencies.activatePreset === undefined || view?.context === null || view === null || selectedId === null) return;
+    const requestedPresetId = selectedId;
+    const requestedContextKey = automarkerPresetContextKey(view);
+    const requestGeneration = ++catalogRequestGeneration;
+    busy = true;
+    render();
+    try {
+      const result = await dependencies.activatePreset({
+        presetId: requestedPresetId,
+        expectedContext: { ...view.context },
+      });
+      if (!alive || !automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration) ||
+          requestedContextKey !== automarkerPresetContextKey(view) || selectedId !== requestedPresetId) return;
+      status.textContent = localizer.t(result.activated
+        ? "ui.automarkers.status.native_canary_armed"
+        : "ui.automarkers.status.native_canary_not_ready");
+    } catch (error) {
+      if (automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration)) {
+        status.textContent = message(error);
+      }
+    } finally {
+      if (automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration)) {
+        busy = false;
+        if (alive) render();
+      }
+    }
+  }
+
   function exportSelectedPreset(): void {
     const preset = selectedPreset();
     if (preset === undefined) return;
@@ -445,10 +505,11 @@ export function mountAutomarkerPresetsSurface(
     const captureAvailability = observedMarkerCaptureAvailability(view, observedMarkers, localizer);
     captureCurrent.disabled = busy || !captureAvailability.enabled;
     captureCurrent.title = captureAvailability.reason;
-    placeInGame.disabled = true;
-    placeInGame.title = localizer.t("ui.automarkers.help.native_unavailable", {
-      reason: view?.nativeLoadReason ?? "native_waymark_transport_unavailable",
-    });
+    const nativeAvailability = nativePlacementAvailability(view, selectedId, localizer);
+    placeInGame.disabled = busy || !nativeAvailability.enabled || dependencies.activatePreset === undefined;
+    placeInGame.title = dependencies.activatePreset === undefined
+      ? localizer.t("ui.automarkers.help.native_unavailable", { reason: "native_waymark_transport_unavailable" })
+      : nativeAvailability.reason;
     const canary = operatorPlacementCanaryCommand(view, selectedId, localizer);
     copyCanary.disabled = busy || !canary.enabled || dependencies.copyCanaryCommand === undefined;
     copyCanary.title = dependencies.copyCanaryCommand === undefined
@@ -496,7 +557,9 @@ export function mountAutomarkerPresetsSurface(
       if (view.nativeStatus.failureCategory !== null) {
         milestones.append(text("li", nativeFailureLabel(view.nativeStatus.failureCategory, localizer)));
       }
-      milestones.append(text("li", localizer.t("ui.automarkers.native_status.placement_disabled")));
+      milestones.append(text("li", localizer.t(view.nativeLoadSupported
+        ? "ui.automarkers.native_status.canary_available"
+        : "ui.automarkers.native_status.placement_disabled")));
       detail.append(
         text("p", localizer.t("ui.automarkers.native_status.title"), "card-copy automarker-live-heading"),
         milestones,

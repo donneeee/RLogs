@@ -41,7 +41,7 @@ export interface AutomarkerPresetView {
   deploymentId: string | null;
   protocolPackDigest: string | null;
   nativeLoadSupported: boolean;
-  nativeLoadReason: "native_waymark_transport_unavailable";
+  nativeLoadReason: "native_waymark_transport_unavailable" | "native_waymark_canary_available";
   nativeStatus: AutomarkerNativeStatus;
   previewSessionId: string;
 }
@@ -77,10 +77,9 @@ export interface ActivateAutomarkerPresetRequest {
   expectedContext: AutomarkerSceneContext;
 }
 
-export interface AutomarkerNativeActivationResult {
-  activated: false;
-  reason: "native_waymark_transport_unavailable";
-}
+export type AutomarkerNativeActivationResult =
+  { activated: true; reason: "native_waymark_canary_armed" } |
+  { activated: false; reason: "native_waymark_canary_not_ready" };
 
 export interface AutomarkerPreview {
   schemaVersion: 1;
@@ -183,8 +182,9 @@ export function automarkerActivationRequest(
 }
 
 export function parseAutomarkerNativeActivationResult(value: unknown): AutomarkerNativeActivationResult {
-  if (!record(value) || !exactKeys(value, ["activated", "reason"]) || value.activated !== false ||
-      value.reason !== "native_waymark_transport_unavailable") {
+  if (!record(value) || !exactKeys(value, ["activated", "reason"]) ||
+      !((value.activated === true && value.reason === "native_waymark_canary_armed") ||
+        (value.activated === false && value.reason === "native_waymark_canary_not_ready"))) {
     throw new Error("The local host returned an invalid automarker activation result.");
   }
   return value as unknown as AutomarkerNativeActivationResult;
@@ -348,7 +348,8 @@ export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView 
       !optionalIdentity(value.deploymentId, 64) ||
       !optionalDigest(value.protocolPackDigest) ||
       typeof value.nativeLoadSupported !== "boolean" ||
-      value.nativeLoadReason !== "native_waymark_transport_unavailable" ||
+      !((value.nativeLoadSupported && value.nativeLoadReason === "native_waymark_canary_available") ||
+        (!value.nativeLoadSupported && value.nativeLoadReason === "native_waymark_transport_unavailable")) ||
       !validNativeStatus(value.nativeStatus) ||
       typeof value.previewSessionId !== "string" || value.previewSessionId.length < 8 || value.previewSessionId.length > 128) {
     throw new Error("The local host returned an invalid automarker preset catalog.");

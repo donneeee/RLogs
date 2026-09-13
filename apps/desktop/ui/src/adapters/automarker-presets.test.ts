@@ -45,6 +45,16 @@ function view() {
 
 describe("automarker preset catalog", () => {
   it("accepts only coherent sanitized native readiness milestones", () => {
+    const developerCanary = view();
+    developerCanary.nativeLoadSupported = true;
+    developerCanary.nativeLoadReason = "native_waymark_canary_available";
+    expect(parseAutomarkerPresetView(developerCanary).nativeLoadSupported).toBe(true);
+
+    const contradictoryCapability = view();
+    contradictoryCapability.nativeLoadSupported = true;
+    expect(() => parseAutomarkerPresetView(contradictoryCapability))
+      .toThrow(/invalid automarker preset catalog/i);
+
     const candidate = view();
     candidate.nativeStatus = { observerReady: true, synCandidateObserved: true, bpsrTupleConfirmed: false, markerCarrierObserved: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null };
     expect(parseAutomarkerPresetView(candidate).nativeStatus).toEqual(candidate.nativeStatus);
@@ -84,9 +94,15 @@ describe("automarker preset catalog", () => {
     expect(Object.keys(request).sort()).toEqual(["expectedContext", "presetId"]);
     expect(Object.keys(request.expectedContext).sort()).toEqual(["activityFamilyId", "clientBuild", "mapId", "sceneId", "sceneName"]);
     expect(JSON.stringify(request)).not.toMatch(/account|character|player|entity|actionUuid|skillUuid|sequence|timestamp|auth|positionSource|rawPayload/i);
-    expect(parseAutomarkerNativeActivationResult({ activated: false, reason: "native_waymark_transport_unavailable" }))
-      .toEqual({ activated: false, reason: "native_waymark_transport_unavailable" });
-    expect(() => parseAutomarkerNativeActivationResult({ activated: false, reason: "native_waymark_transport_unavailable", sequence: 7 }))
+    expect(parseAutomarkerNativeActivationResult({ activated: true, reason: "native_waymark_canary_armed" }))
+      .toEqual({ activated: true, reason: "native_waymark_canary_armed" });
+    expect(parseAutomarkerNativeActivationResult({ activated: false, reason: "native_waymark_canary_not_ready" }))
+      .toEqual({ activated: false, reason: "native_waymark_canary_not_ready" });
+    expect(() => parseAutomarkerNativeActivationResult({ activated: false, reason: "native_waymark_canary_not_ready", sequence: 7 }))
+      .toThrow(/invalid automarker activation result/i);
+    expect(() => parseAutomarkerNativeActivationResult({ activated: true, reason: "native_waymark_canary_not_ready" }))
+      .toThrow(/invalid automarker activation result/i);
+    expect(() => parseAutomarkerNativeActivationResult({ activated: false, reason: "native_waymark_transport_unavailable" }))
       .toThrow(/invalid automarker activation result/i);
     expect(() => automarkerActivationRequest(catalog.presets[0]!.presetId, { ...catalog, context: null }))
       .toThrow(/matching current automarker scene/i);

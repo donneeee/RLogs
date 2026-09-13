@@ -290,21 +290,6 @@ impl AutomarkerPresetStore {
         })
     }
 
-    /// Resolves a preset only after every optimistic live identity has been
-    /// revalidated. The terminal result is deliberately unavailable: there is
-    /// no native transport call or send hook in this contract.
-    pub fn activate_native_unavailable(
-        &self,
-        request: ActivateAutomarkerPresetRequest,
-        live: AutomarkerActivationLiveContext,
-    ) -> Result<AutomarkerNativeActivationResult, String> {
-        self.resolve_native_one_marker(&request, &live)?;
-        Ok(AutomarkerNativeActivationResult {
-            activated: false,
-            reason: "native_waymark_transport_unavailable",
-        })
-    }
-
     pub(crate) fn resolve_native_one_marker(
         &self,
         request: &ActivateAutomarkerPresetRequest,
@@ -795,7 +780,7 @@ mod tests {
         stale.context = None;
         assert!(
             store
-                .activate_native_unavailable(request(), stale)
+                .resolve_native_one_marker(&request(), &stale)
                 .unwrap_err()
                 .contains("current supported automarker scene")
         );
@@ -811,14 +796,14 @@ mod tests {
             mutate(&mut stale_request.expected_context);
             assert!(
                 store
-                    .activate_native_unavailable(stale_request, activation_live())
+                    .resolve_native_one_marker(&stale_request, &activation_live())
                     .unwrap_err()
                     .contains("dungeon family")
             );
         }
         assert!(
             store
-                .activate_native_unavailable(request(), activation_live())
+                .resolve_native_one_marker(&request(), &activation_live())
                 .unwrap_err()
                 .contains("no longer exists")
         );
@@ -826,32 +811,21 @@ mod tests {
     }
 
     #[test]
-    fn native_activation_returns_unavailable_without_mutating_or_sending() {
+    fn native_activation_resolution_returns_the_exact_point_without_mutating() {
         let path = temporary_path("activate-no-send");
         let (store, preset_id) = saved_for_activation(&path);
         let before = std::fs::read(&path).unwrap();
         let result = store
-            .activate_native_unavailable(
-                ActivateAutomarkerPresetRequest {
+            .resolve_native_one_marker(
+                &ActivateAutomarkerPresetRequest {
                     preset_id,
                     expected_context: mech(),
                 },
-                activation_live(),
+                &activation_live(),
             )
             .unwrap();
-        assert_eq!(
-            result,
-            AutomarkerNativeActivationResult {
-                activated: false,
-                reason: "native_waymark_transport_unavailable"
-            }
-        );
+        assert_eq!(result, points(1.0)[0]);
         assert_eq!(std::fs::read(&path).unwrap(), before);
-        let encoded = serde_json::to_value(result).unwrap();
-        assert_eq!(
-            encoded,
-            serde_json::json!({"activated": false, "reason": "native_waymark_transport_unavailable"})
-        );
         let _ = std::fs::remove_file(path);
     }
 

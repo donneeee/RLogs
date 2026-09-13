@@ -182,7 +182,7 @@ describe("mounted automarker preset editor request ordering", () => {
     const catalog = view(1_633, "dungeon.1633", "Boss's opener", 91.25);
     catalog.context!.clientBuild = "25247556";
     const copyCanaryCommand = vi.fn(async (_command: string) => undefined);
-    const activatePreset = vi.fn(async (_request: ActivateAutomarkerPresetRequest): Promise<AutomarkerNativeActivationResult> => ({ activated: false, reason: "native_waymark_transport_unavailable" }));
+    const activatePreset = vi.fn(async (_request: ActivateAutomarkerPresetRequest): Promise<AutomarkerNativeActivationResult> => ({ activated: false, reason: "native_waymark_canary_not_ready" }));
     const saveCurrent = vi.fn(async () => catalog);
     const loadPreset = vi.fn(async () => { throw new Error("not used"); });
     const openOverlay = vi.fn(async () => undefined);
@@ -226,6 +226,105 @@ describe("mounted automarker preset editor request ordering", () => {
     expect(container.querySelector(".automarker-status")?.textContent).toMatch(/click exactly once after the Marker 1 reticle visibly stops moving/i);
     expect(container.querySelector(".automarker-status")?.textContent).toMatch(/eight-second confirmation window/i);
     expect(container.querySelector(".automarker-status")?.textContent).toMatch(/never synthesizes a click/i);
+    mounted.dispose();
+  });
+
+  it("arms the current compatible one-point Marker 1 preset and reports both bounded outcomes", async () => {
+    const catalog = view(6_525, "mech-facility", "Opener", 7);
+    catalog.nativeLoadSupported = true;
+    catalog.nativeLoadReason = "native_waymark_canary_available";
+    const outcomes: AutomarkerNativeActivationResult[] = [
+      { activated: true, reason: "native_waymark_canary_armed" },
+      { activated: false, reason: "native_waymark_canary_not_ready" },
+    ];
+    const activatePreset = vi.fn(async (_request: ActivateAutomarkerPresetRequest) => outcomes.shift()!);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const mounted = mountAutomarkerPresetsSurface(container, {
+      loadPresets: async () => catalog,
+      loadObservedMarkers: async () => unavailableObserved(),
+      saveCurrent: async () => { throw new Error("not used"); },
+      loadPreset: async () => { throw new Error("not used"); },
+      activatePreset,
+      openOverlay: async () => undefined,
+    });
+    await flushPromises();
+
+    const place = [...container.querySelectorAll("button")]
+      .find((candidate) => candidate.textContent === "Place in game")!;
+    expect(place.disabled).toBe(false);
+    place.click();
+    await flushPromises();
+    expect(activatePreset).toHaveBeenLastCalledWith({
+      presetId: catalog.presets[0]!.presetId,
+      expectedContext: catalog.context,
+    });
+    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/Marker 1 is armed/i);
+
+    place.click();
+    await flushPromises();
+    expect(activatePreset).toHaveBeenCalledTimes(2);
+    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/fresh verified placement authority is not ready/i);
+    mounted.dispose();
+
+    const multiPoint = view(6_525, "mech-facility", "Unsafe", 7);
+    multiPoint.nativeLoadSupported = true;
+    multiPoint.nativeLoadReason = "native_waymark_canary_available";
+    multiPoint.presets = [{
+      ...multiPoint.presets[0]!,
+      points: [...multiPoint.presets[0]!.points, { markerNumber: 2, x: 4, y: 5, z: 6 }],
+    }];
+    const secondContainer = document.createElement("div");
+    document.body.append(secondContainer);
+    const secondMounted = mountAutomarkerPresetsSurface(secondContainer, {
+      loadPresets: async () => multiPoint,
+      loadObservedMarkers: async () => unavailableObserved(),
+      saveCurrent: async () => { throw new Error("not used"); },
+      loadPreset: async () => { throw new Error("not used"); },
+      activatePreset,
+      openOverlay: async () => undefined,
+    });
+    await flushPromises();
+    const blockedPlace = [...secondContainer.querySelectorAll("button")]
+      .find((candidate) => candidate.textContent === "Place in game")!;
+    expect(blockedPlace.disabled).toBe(true);
+    blockedPlace.click();
+    await flushPromises();
+    expect(activatePreset).toHaveBeenCalledTimes(2);
+    secondMounted.dispose();
+  });
+
+  it("suppresses a delayed activation result after the selected preset changes", async () => {
+    const catalog = view(6_525, "mech-facility", "First", 7);
+    catalog.nativeLoadSupported = true;
+    catalog.nativeLoadReason = "native_waymark_canary_available";
+    catalog.presets = [
+      catalog.presets[0]!,
+      { ...catalog.presets[0]!, presetId: "preset-6525-11111111", name: "Second" },
+    ];
+    const pending = deferred<AutomarkerNativeActivationResult>();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const mounted = mountAutomarkerPresetsSurface(container, {
+      loadPresets: async () => catalog,
+      loadObservedMarkers: async () => unavailableObserved(),
+      saveCurrent: async () => { throw new Error("not used"); },
+      loadPreset: async () => { throw new Error("not used"); },
+      activatePreset: async () => pending.promise,
+      openOverlay: async () => undefined,
+    });
+    await flushPromises();
+
+    const place = [...container.querySelectorAll("button")]
+      .find((candidate) => candidate.textContent === "Place in game")!;
+    place.click();
+    const select = container.querySelector("select")!;
+    select.value = catalog.presets[1]!.presetId;
+    select.dispatchEvent(new Event("change"));
+    pending.resolve({ activated: true, reason: "native_waymark_canary_armed" });
+    await flushPromises();
+
+    expect(container.querySelector(".automarker-status")?.textContent).not.toMatch(/Marker 1 is armed/i);
     mounted.dispose();
   });
 

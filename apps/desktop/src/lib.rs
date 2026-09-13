@@ -7654,6 +7654,12 @@ impl RuntimeController {
 
     fn enrich_automarker_view(&self, view: &mut AutomarkerPresetView) {
         view.preview_session_id = self.automarker_preview_session_id.clone();
+        view.native_load_supported = self.developer_mode_enabled() && cfg!(windows);
+        view.native_load_reason = if view.native_load_supported {
+            "native_waymark_canary_available"
+        } else {
+            "native_waymark_transport_unavailable"
+        };
         let native = self
             .live_automarker_native_bridge
             .sanitized_operator_status();
@@ -7729,11 +7735,8 @@ impl RuntimeController {
         &self,
         request: ActivateAutomarkerPresetRequest,
     ) -> Result<AutomarkerNativeActivationResult, String> {
-        if self.live_automarker_native_bridge.placement_enabled() {
-            return Err(
-                "native bridge reached an impossible enabled state before activation routing"
-                    .into(),
-            );
+        if !self.developer_mode_enabled() {
+            return Err("native Marker 1 canary activation is unavailable".into());
         }
         let live = AutomarkerActivationLiveContext {
             context: self.live_automarker_scene_context.current(),
@@ -7743,12 +7746,21 @@ impl RuntimeController {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let point = store.resolve_native_one_marker(&request, &live)?;
-        let result = store.activate_native_unavailable(request, live)?;
         drop(store);
-        let _ = self
+        #[cfg(windows)]
+        let armed = self
             .live_automarker_native_bridge
-            .arm_one_marker_coordinator(point);
-        Ok(result)
+            .arm_private_one_marker_canary(
+                point,
+                &automarker_native_dependency_directory(&self.install_root),
+            )
+            .map_err(|_| "native Marker 1 canary could not be armed".to_owned())?;
+        #[cfg(not(windows))]
+        let armed = {
+            let _ = point;
+            false
+        };
+        Ok(automarker_native_activation_result(armed))
     }
 
     #[cfg(windows)]
@@ -16768,7 +16780,19 @@ fn is_developer_only_route(method: &str, route: &str) -> bool {
             | ("POST", "/api/submissions/queue/import")
             | ("POST", "/api/submissions/queue/verify")
             | ("POST", "/api/profiles/packages/inspect")
+            | ("POST", "/api/automarkers/presets/activate")
     )
+}
+
+fn automarker_native_activation_result(activated: bool) -> AutomarkerNativeActivationResult {
+    AutomarkerNativeActivationResult {
+        activated,
+        reason: if activated {
+            "native_waymark_canary_armed"
+        } else {
+            "native_waymark_canary_not_ready"
+        },
+    }
 }
 
 fn is_developer_mode_route(method: &str, route: &str) -> bool {
@@ -23343,6 +23367,7 @@ developer_only = true
             ("POST", "/api/submissions/queue/import"),
             ("POST", "/api/submissions/queue/verify"),
             ("POST", "/api/profiles/packages/inspect"),
+            ("POST", "/api/automarkers/presets/activate"),
         ] {
             assert!(is_developer_only_route(method, route), "{method} {route}");
         }
@@ -23375,6 +23400,121 @@ developer_only = true
             "GET",
             "/api/runtime/local-game-assets/prepare"
         ));
+    }
+
+    #[test]
+    fn automarker_activation_is_defended_internally_and_maps_only_bounded_results() {
+        let root = temporary_root();
+        let controller = RuntimeController::new_with_developer_tools(root.clone(), false).unwrap();
+        let public_view = controller.automarker_presets();
+        assert!(!public_view.native_load_supported);
+        assert_eq!(
+            public_view.native_load_reason,
+            "native_waymark_transport_unavailable"
+        );
+        let denied = controller
+            .activate_automarker_preset(ActivateAutomarkerPresetRequest {
+                preset_id: "preset-missing".into(),
+                expected_context: AutomarkerSceneContext {
+                    client_build: "24687926".into(),
+                    scene_id: 1,
+                    map_id: 1,
+                    activity_family_id: "family".into(),
+                    scene_name: None,
+                },
+            })
+            .unwrap_err();
+        assert_eq!(denied, "native Marker 1 canary activation is unavailable");
+        drop(controller);
+
+        let developer = RuntimeController::new_with_developer_tools(root.clone(), true).unwrap();
+        let developer_view = developer.automarker_presets();
+        assert_eq!(developer_view.native_load_supported, cfg!(windows));
+        assert_eq!(
+            developer_view.native_load_reason,
+            if cfg!(windows) {
+                "native_waymark_canary_available"
+            } else {
+                "native_waymark_transport_unavailable"
+            }
+        );
+
+        let (&scene_id, family_id) = developer
+            .automarker_scene_families
+            .iter()
+            .next()
+            .expect("bundled automarker scene family");
+        let context = AutomarkerSceneContext {
+            client_build: "24687926".into(),
+            scene_id,
+            map_id: u32::try_from(scene_id).unwrap(),
+            activity_family_id: family_id.clone(),
+            scene_name: Some("Developer canary".into()),
+        };
+        developer
+            .live_automarker_scene_context
+            .context
+            .lock()
+            .unwrap()
+            .current = Some(context.clone());
+        let preset_id = developer
+            .automarker_presets
+            .lock()
+            .unwrap()
+            .save(
+                SaveAutomarkerPresetRequest {
+                    preset_id: None,
+                    name: "Marker 1 canary".into(),
+                    points: vec![automarker_presets::AutomarkerPoint {
+                        marker_number: 1,
+                        x: 1.0,
+                        y: 2.0,
+                        z: 3.0,
+                    }],
+                    expected_context: context.clone(),
+                },
+                context.clone(),
+                1,
+            )
+            .unwrap()
+            .presets[0]
+            .preset_id
+            .clone();
+        let not_ready = developer
+            .activate_automarker_preset(ActivateAutomarkerPresetRequest {
+                preset_id,
+                expected_context: context,
+            })
+            .unwrap();
+        assert_eq!(not_ready, automarker_native_activation_result(false));
+        assert_eq!(
+            serde_json::to_value(automarker_native_activation_result(true)).unwrap(),
+            serde_json::json!({"activated": true, "reason": "native_waymark_canary_armed"})
+        );
+        assert_eq!(
+            serde_json::to_value(automarker_native_activation_result(false)).unwrap(),
+            serde_json::json!({"activated": false, "reason": "native_waymark_canary_not_ready"})
+        );
+        drop(developer);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn public_automarker_activation_route_is_not_discoverable() {
+        let root = temporary_root();
+        let controller =
+            Arc::new(RuntimeController::new_with_developer_tools(root.clone(), false).unwrap());
+        let response = invoke_local_http_route(
+            Arc::clone(&controller),
+            root.clone(),
+            "POST",
+            "/api/automarkers/presets/activate",
+            br#"{}"#,
+        );
+        assert!(response.starts_with("HTTP/1.1 404 Not Found"));
+        assert!(response.ends_with(r#"{"error":"route not found"}"#));
+        drop(controller);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
