@@ -7,8 +7,9 @@
 #![allow(dead_code)]
 
 use rlogs_game_bpsr::{
-    CaptureRecord, CaptureRecordKind, CompressionState, DecoderKind, FragmentKind, PacketDirection,
-    ProtocolDecodeStatus, ProtocolPack, RouteKey,
+    AUTOMARKER_REQUEST_BUILD, AUTOMARKER_REQUEST_PACK_DIGEST, CaptureRecord, CaptureRecordKind,
+    CompressionState, DecoderKind, FragmentKind, PacketDirection, ProtocolDecodeStatus,
+    ProtocolPack, RouteKey,
 };
 
 use crate::{
@@ -20,11 +21,14 @@ use crate::{
 };
 
 const WORLD_SERVICE_ID: u64 = 103_198_054;
+const WORLD_STUB_ID: u32 = 1;
 const WORLD_USE_SLOT_METHOD_ID: u32 = 249_858;
 const RETURN_FRAGMENT_TAG: u16 = 3;
+const COMPRESSION_FLAG: u16 = 0x8000;
 const RETURN_HEADER_BYTES: usize = 18;
 const MAX_RETURN_FRAME_BYTES: usize = 65_536;
 const RETURN_CORRELATION_MAX_MICROS: u64 = 2_000_000;
+const EXACT_CARRIER_APPLICATION_BYTES: usize = 161;
 
 /// Exact private identity of the currently active capture/pack ingress.
 /// This is deliberately not serializable and must be supplied independently
@@ -39,6 +43,7 @@ pub(crate) struct PrivateConfirmationIngressIdentity {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct BorrowedReturnHeader {
+    compressed_on_wire: bool,
     raw_stub_id: u32,
     raw_call_id: u32,
     raw_status: u32,
@@ -63,13 +68,15 @@ pub(crate) fn extract_private_return_candidate(
     };
     if packet.direction != PacketDirection::ServerToClient
         || packet.fragment != Some(FragmentKind::Return)
-        || packet.compression != CompressionState::NotCompressed
         || packet.connection_id == 0
         || packet.stream_id == 0
         || packet.stream_id != carrier.provenance.stream_id
         || !carrier.tcp_connection.matches_reverse_packet(packet)
         || record.sequence <= carrier.provenance.capture_sequence
-        || record.observed_micros <= carrier.provenance.observed_micros
+        // Capture timestamps have microsecond resolution, so two records can
+        // legitimately share a timestamp. The strictly newer capture sequence
+        // supplies ordering while the clock supplies the bounded window.
+        || record.observed_micros < carrier.provenance.observed_micros
         || record
             .observed_micros
             .checked_sub(carrier.provenance.observed_micros)?
@@ -80,16 +87,32 @@ pub(crate) fn extract_private_return_candidate(
 
     let header = parse_return_header(&packet.payload.wire_bytes)?;
     let decoded_body = packet.payload.application_bytes.as_deref();
-    if decoded_body.is_some_and(|body| body.len() != header.raw_body_length) {
-        return None;
-    }
+    let body_decode_authoritative = match (header.compressed_on_wire, packet.compression) {
+        (false, CompressionState::NotCompressed) => match decoded_body {
+            Some(body) if body.len() == header.raw_body_length => true,
+            Some(_) => return None,
+            None => false,
+        },
+        // The framing layer, rather than this ingress, owns bounded zstd
+        // validation. Its decoded application payload is therefore the only
+        // body length that can cross the confirmation boundary.
+        (true, CompressionState::ZstdDecoded) => decoded_body.is_some(),
+        // Preserve an exactly correlated decompression failure so the
+        // coordinator can reject immediately instead of silently timing out.
+        (true, CompressionState::ZstdFailed) if decoded_body.is_none() => false,
+        _ => return None,
+    };
 
     let resolved_route = packet.route.filter(|routed| {
         routed.key.direction == packet.direction
             && routed.key.fragment == FragmentKind::Return
             && routed.stub_id == header.raw_stub_id
             && routed.call_id == Some(header.raw_call_id)
-            && decode_status == ProtocolDecodeStatus::Decoded
+            // Return routes are correlated from the preceding Call by the
+            // framing pipeline. The current pack intentionally has no S2C
+            // Return decoder, so a correctly correlated Return is reported as
+            // opaque-local-only even though its paired Call route is reviewed.
+            && decode_status == ProtocolDecodeStatus::OpaqueLocalOnly
             && pack
                 .decoder(&RouteKey::new(
                     PacketDirection::ClientToServer,
@@ -121,8 +144,8 @@ pub(crate) fn extract_private_return_candidate(
         .unwrap_or((0, 0, 0));
     let asserted_authoritative_server_decode = target_route
         && raw_call_matches_carrier
-        && decode_status == ProtocolDecodeStatus::Decoded
-        && decoded_body.is_some();
+        && decode_status == ProtocolDecodeStatus::OpaqueLocalOnly
+        && body_decode_authoritative;
 
     Some(PrivateParserConfirmationEvent::CorrelatedReturn(
         PrivateCorrelatedReturn {
@@ -167,13 +190,21 @@ fn carrier_matches_ingress(
         && identity.deployment_id == pack.definition().target.deployment_id
         && identity.client_build == pack.definition().target.build_id
         && identity.protocol_pack_digest == pack.digest()
+        && identity.deployment_id == "global"
+        && identity.client_build == AUTOMARKER_REQUEST_BUILD
+        && identity.protocol_pack_digest == AUTOMARKER_REQUEST_PACK_DIGEST
         && carrier.provenance.direction == PacketDirection::ClientToServer
         && carrier.provenance.fragment == FragmentKind::Call
         && carrier.provenance.service_id == WORLD_SERVICE_ID
+        && carrier.provenance.stub_id == WORLD_STUB_ID
         && carrier.provenance.method_id == WORLD_USE_SLOT_METHOD_ID
         && carrier.provenance.decoder == DecoderKind::WorldUseSlotV1
         && carrier.provenance.connection_id == carrier.tcp_connection.capture_connection_id
         && carrier.provenance.stream_id != 0
+        && carrier.provenance.capture_sequence != 0
+        && carrier.application_bytes.len() == EXACT_CARRIER_APPLICATION_BYTES
+        && carrier.tcp_connection.client_port != 0
+        && carrier.tcp_connection.server_port != 0
 }
 
 fn parse_return_header(wire: &[u8]) -> Option<BorrowedReturnHeader> {
@@ -181,11 +212,12 @@ fn parse_return_header(wire: &[u8]) -> Option<BorrowedReturnHeader> {
         return None;
     }
     let declared_length = u32::from_be_bytes(wire.get(0..4)?.try_into().ok()?) as usize;
-    let tag = u16::from_be_bytes(wire.get(4..6)?.try_into().ok()?);
-    if declared_length != wire.len() || tag != RETURN_FRAGMENT_TAG {
+    let raw_tag = u16::from_be_bytes(wire.get(4..6)?.try_into().ok()?);
+    if declared_length != wire.len() || raw_tag & !COMPRESSION_FLAG != RETURN_FRAGMENT_TAG {
         return None;
     }
     Some(BorrowedReturnHeader {
+        compressed_on_wire: raw_tag & COMPRESSION_FLAG != 0,
         raw_stub_id: u32::from_be_bytes(wire.get(6..10)?.try_into().ok()?),
         raw_call_id: u32::from_be_bytes(wire.get(10..14)?.try_into().ok()?),
         raw_status: u32::from_be_bytes(wire.get(14..18)?.try_into().ok()?),
@@ -198,8 +230,8 @@ mod tests {
     use std::net::Ipv4Addr;
 
     use rlogs_game_bpsr::{
-        CaptureRecordKind, CompressionState, NetworkEndpoint, PacketEnvelope, PacketPayload,
-        RoutedMessage,
+        CaptureRecordKind, CompressionState, MappingProvenance, NetworkEndpoint, PacketEnvelope,
+        PacketPayload, RoutedMessage,
     };
 
     use super::*;
@@ -213,10 +245,26 @@ mod tests {
     const CALL_ID: u32 = 77;
 
     fn pack() -> ProtocolPack {
-        ProtocolPack::from_json(include_bytes!(
+        let source = ProtocolPack::from_json(include_bytes!(
             "../../../plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24687926/pack.json"
         ))
-        .unwrap()
+        .unwrap();
+        let source_build = source.definition().target.build_id.clone();
+        let mut definition = source.definition().clone();
+        definition.pack_id = format!("{}-compatibility-fallback-steam", definition.pack_id);
+        definition.target.deployment_id = "global".into();
+        definition.target.region_id = None;
+        definition.target.channel = "steam".into();
+        definition.target.build_id = AUTOMARKER_REQUEST_BUILD.into();
+        definition.provenance.push(MappingProvenance {
+            source: "provisional-compatibility-fallback".into(),
+            reference: format!(
+                "pack_build={source_build};client_deployment=global;client_channel=steam;client_build={AUTOMARKER_REQUEST_BUILD}"
+            ),
+        });
+        let pack = ProtocolPack::build(definition).unwrap();
+        assert_eq!(pack.digest(), AUTOMARKER_REQUEST_PACK_DIGEST);
+        pack
     }
 
     fn identity(pack: &ProtocolPack) -> PrivateConfirmationIngressIdentity {
@@ -334,7 +382,7 @@ mod tests {
             &identity,
             &pack,
             &record(CALL_ID, 0, Some(&[])),
-            ProtocolDecodeStatus::Decoded,
+            ProtocolDecodeStatus::OpaqueLocalOnly,
             &carrier,
         )
         .unwrap();
@@ -347,7 +395,7 @@ mod tests {
             &identity,
             &pack,
             &record(CALL_ID, 9, Some(&[])),
-            ProtocolDecodeStatus::Decoded,
+            ProtocolDecodeStatus::OpaqueLocalOnly,
             &carrier,
         )
         .unwrap();
@@ -359,7 +407,7 @@ mod tests {
             &identity,
             &pack,
             &record(CALL_ID, 0, Some(&[1, 2, 3])),
-            ProtocolDecodeStatus::Decoded,
+            ProtocolDecodeStatus::OpaqueLocalOnly,
             &carrier,
         )
         .unwrap();
@@ -418,7 +466,7 @@ mod tests {
                 &identity,
                 &pack,
                 &wrong,
-                ProtocolDecodeStatus::Decoded,
+                ProtocolDecodeStatus::OpaqueLocalOnly,
                 &carrier,
             )
             .unwrap();
@@ -453,12 +501,29 @@ mod tests {
             &identity,
             &pack,
             &record(CALL_ID + 1, 0, Some(&[])),
-            ProtocolDecodeStatus::Decoded,
+            ProtocolDecodeStatus::OpaqueLocalOnly,
             &carrier,
         )
         .unwrap();
         assert!(event.provenance.route_resolved);
         assert_eq!(event.provenance.call_id, Some(CALL_ID + 1));
+        assert!(!event.asserted_authoritative_server_decode);
+    }
+
+    #[test]
+    fn parser_status_must_match_the_actual_opaque_return_pipeline_contract() {
+        let pack = pack();
+        let identity = identity(&pack);
+        let carrier = carrier(&pack);
+        let event = extracted(
+            &identity,
+            &pack,
+            &record(CALL_ID, 0, Some(&[])),
+            ProtocolDecodeStatus::Decoded,
+            &carrier,
+        )
+        .unwrap();
+        assert!(!event.provenance.route_resolved);
         assert!(!event.asserted_authoritative_server_decode);
     }
 
@@ -479,7 +544,7 @@ mod tests {
                 &identity,
                 &pack,
                 &malformed,
-                ProtocolDecodeStatus::Decoded,
+                ProtocolDecodeStatus::OpaqueLocalOnly,
                 &carrier
             )
             .is_none()
@@ -495,7 +560,7 @@ mod tests {
                 &identity,
                 &pack,
                 &wrong_tag,
-                ProtocolDecodeStatus::Decoded,
+                ProtocolDecodeStatus::OpaqueLocalOnly,
                 &carrier
             )
             .is_none()
@@ -511,11 +576,49 @@ mod tests {
                 &identity,
                 &pack,
                 &compression_mismatch,
-                ProtocolDecodeStatus::Decoded,
+                ProtocolDecodeStatus::OpaqueLocalOnly,
                 &carrier
             )
             .is_none()
         );
+
+        let mut compressed = record(CALL_ID, 0, Some(&[]));
+        let CaptureRecordKind::Packet(packet) = &mut compressed.kind else {
+            unreachable!();
+        };
+        packet.payload.wire_bytes[4..6]
+            .copy_from_slice(&(RETURN_FRAGMENT_TAG | COMPRESSION_FLAG).to_be_bytes());
+        packet.payload.wire_bytes.extend_from_slice(&[1, 2, 3, 4]);
+        let compressed_length = u32::try_from(packet.payload.wire_bytes.len()).unwrap();
+        packet.payload.wire_bytes[0..4].copy_from_slice(&compressed_length.to_be_bytes());
+        packet.compression = CompressionState::ZstdDecoded;
+        let event = extracted(
+            &identity,
+            &pack,
+            &compressed,
+            ProtocolDecodeStatus::OpaqueLocalOnly,
+            &carrier,
+        )
+        .unwrap();
+        assert!(event.asserted_authoritative_server_decode);
+        assert!(event.decoded_body_present);
+        assert_eq!(event.decoded_body_length, 0);
+
+        let CaptureRecordKind::Packet(packet) = &mut compressed.kind else {
+            unreachable!();
+        };
+        packet.compression = CompressionState::ZstdFailed;
+        packet.payload.application_bytes = None;
+        let event = extracted(
+            &identity,
+            &pack,
+            &compressed,
+            ProtocolDecodeStatus::OpaqueLocalOnly,
+            &carrier,
+        )
+        .unwrap();
+        assert!(!event.asserted_authoritative_server_decode);
+        assert!(!event.decoded_body_present);
 
         let mut wrong_envelope = record(CALL_ID, 0, Some(&[]));
         let CaptureRecordKind::Packet(packet) = &mut wrong_envelope.kind else {
@@ -527,7 +630,7 @@ mod tests {
                 &identity,
                 &pack,
                 &wrong_envelope,
-                ProtocolDecodeStatus::Decoded,
+                ProtocolDecodeStatus::OpaqueLocalOnly,
                 &carrier
             )
             .is_none()
@@ -542,7 +645,7 @@ mod tests {
             &identity,
             &pack,
             &route_mismatch,
-            ProtocolDecodeStatus::Decoded,
+            ProtocolDecodeStatus::OpaqueLocalOnly,
             &carrier,
         )
         .unwrap();
@@ -557,9 +660,22 @@ mod tests {
         let carrier = carrier(&pack);
         let base = record(CALL_ID, 0, Some(&[]));
 
+        let mut equal_timestamp = base.clone();
+        equal_timestamp.observed_micros = carrier.provenance.observed_micros;
+        assert!(
+            extracted(
+                &identity,
+                &pack,
+                &equal_timestamp,
+                ProtocolDecodeStatus::OpaqueLocalOnly,
+                &carrier
+            )
+            .is_some(),
+            "capture sequence, not timestamp granularity, proves strict ordering"
+        );
+
         for mutate in [
             |record: &mut CaptureRecord| record.sequence = 30,
-            |record: &mut CaptureRecord| record.observed_micros = 1_000,
             |record: &mut CaptureRecord| record.observed_micros = 2_001_001,
             |record: &mut CaptureRecord| {
                 let CaptureRecordKind::Packet(packet) = &mut record.kind else {
@@ -587,7 +703,7 @@ mod tests {
                     &identity,
                     &pack,
                     &candidate,
-                    ProtocolDecodeStatus::Decoded,
+                    ProtocolDecodeStatus::OpaqueLocalOnly,
                     &carrier
                 )
                 .is_none()
@@ -615,7 +731,7 @@ mod tests {
                     &candidate_identity,
                     &pack,
                     &base,
-                    ProtocolDecodeStatus::Decoded,
+                    ProtocolDecodeStatus::OpaqueLocalOnly,
                     &carrier
                 )
                 .is_none()
@@ -632,6 +748,15 @@ mod tests {
             |carrier: &mut AutomarkerBridgeOutboundCarrierEvidence| {
                 carrier.protocol_pack_digest = "sha256:wrong".into()
             },
+            |carrier: &mut AutomarkerBridgeOutboundCarrierEvidence| {
+                carrier.application_bytes.clear()
+            },
+            |carrier: &mut AutomarkerBridgeOutboundCarrierEvidence| {
+                carrier.provenance.capture_sequence = 0
+            },
+            |carrier: &mut AutomarkerBridgeOutboundCarrierEvidence| {
+                carrier.tcp_connection.client_port = 0
+            },
         ] {
             let mut stale_carrier = carrier.clone();
             mutate(&mut stale_carrier);
@@ -640,12 +765,32 @@ mod tests {
                     &identity,
                     &pack,
                     &base,
-                    ProtocolDecodeStatus::Decoded,
+                    ProtocolDecodeStatus::OpaqueLocalOnly,
                     &stale_carrier
                 )
                 .is_none()
             );
         }
+    }
+
+    #[test]
+    fn mutually_consistent_but_obsolete_pack_and_carrier_cannot_self_validate() {
+        let obsolete = ProtocolPack::from_json(include_bytes!(
+            "../../../plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24687926/pack.json"
+        ))
+        .unwrap();
+        let identity = identity(&obsolete);
+        let carrier = carrier(&obsolete);
+        assert!(
+            extracted(
+                &identity,
+                &obsolete,
+                &record(CALL_ID, 0, Some(&[])),
+                ProtocolDecodeStatus::OpaqueLocalOnly,
+                &carrier
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -658,7 +803,7 @@ mod tests {
             &identity,
             &pack,
             &record,
-            ProtocolDecodeStatus::Decoded,
+            ProtocolDecodeStatus::OpaqueLocalOnly,
             &carrier,
         )
         .unwrap();

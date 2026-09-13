@@ -17,6 +17,7 @@ use std::{
 
 const WORLD_NOTIFICATION_SERVICE_ID: u64 = 1_664_308_034;
 const WORLD_SERVICE_ID: u64 = 103_198_054;
+const WORLD_STUB_ID: u32 = 1;
 const WORLD_USE_SLOT_METHOD_ID: u32 = 249_858;
 const WORLD_SYNC_TO_ME_DELTA_METHOD_ID: u32 = 46;
 /// A session containing more Automarker confirmation candidates than this is
@@ -342,7 +343,9 @@ impl AutomarkerConfirmationRouter {
                         continue;
                     }
                     let target_route_authoritative = event.provenance.route_resolved
-                        && event.provenance.service_id == WORLD_SERVICE_ID;
+                        && event.provenance.service_id == WORLD_SERVICE_ID
+                        && event.provenance.stub_id == WORLD_STUB_ID
+                        && event.raw_stub_id == event.provenance.stub_id;
                     let authoritative_body_decode = target_route_authoritative
                         && event.decoded_body_present
                         && event.asserted_authoritative_server_decode;
@@ -355,7 +358,7 @@ impl AutomarkerConfirmationRouter {
                         route_resolved: event.provenance.route_resolved,
                         original_call_id: event.provenance.call_id.unwrap_or(0),
                         asserted_authoritative_server_decode: authoritative_body_decode,
-                        decoded_as_success: event.decoded_as_success,
+                        decoded_as_success: event.decoded_as_success && event.raw_status == 0,
                         decoded_body_length: if event.decoded_body_present {
                             event.decoded_body_length
                         } else {
@@ -636,21 +639,23 @@ mod tests {
     }
 
     fn successful_return(sequence: u64, source_clock: u64) -> PrivateParserConfirmationEvent {
+        let mut provenance = provenance(
+            sequence,
+            0,
+            PrivateFragmentKind::Return,
+            WORLD_SERVICE_ID,
+            WORLD_USE_SLOT_METHOD_ID,
+            Some(91),
+        );
+        provenance.stub_id = WORLD_STUB_ID;
         PrivateParserConfirmationEvent::CorrelatedReturn(PrivateCorrelatedReturn {
-            provenance: provenance(
-                sequence,
-                0,
-                PrivateFragmentKind::Return,
-                WORLD_SERVICE_ID,
-                WORLD_USE_SLOT_METHOD_ID,
-                Some(91),
-            ),
+            provenance,
             source_clocks: PrivateSourceClocks {
                 observed_micros: source_clock,
                 wall_clock_unix_micros: Some(1_800_000_000_000_000),
             },
             carrier_capture_sequence: 8,
-            raw_stub_id: 99,
+            raw_stub_id: WORLD_STUB_ID,
             raw_status: 0,
             asserted_authoritative_server_decode: true,
             decoded_as_success: true,
@@ -1058,6 +1063,45 @@ mod tests {
         assert_eq!(missing.method_id, WORLD_USE_SLOT_METHOD_ID);
         assert!(!missing.asserted_authoritative_server_decode);
         assert_eq!(missing.decoded_body_length, usize::MAX);
+    }
+
+    #[test]
+    fn raw_return_header_contradictions_cannot_become_successful_authority() {
+        let origin = Instant::now();
+        let mut router =
+            AutomarkerConfirmationRouter::begin_at("private-session".into(), 1, origin).unwrap();
+        let mut wrong_stub = successful_return(10, 1);
+        let PrivateParserConfirmationEvent::CorrelatedReturn(wrong_stub_event) = &mut wrong_stub
+        else {
+            unreachable!();
+        };
+        wrong_stub_event.raw_stub_id = WORLD_STUB_ID + 1;
+
+        let mut contradictory_status = successful_return(11, 2);
+        let PrivateParserConfirmationEvent::CorrelatedReturn(status_event) =
+            &mut contradictory_status
+        else {
+            unreachable!();
+        };
+        status_event.raw_status = 7;
+        status_event.decoded_as_success = true;
+
+        let routed = router
+            .route_snapshot_at(
+                snapshot(vec![wrong_stub, contradictory_status]),
+                origin + Duration::from_micros(5),
+            )
+            .unwrap();
+        let OwnedConfirmationEventKind::RpcReturnCandidate(wrong_stub) = &routed[0].kind else {
+            panic!("expected Return candidate");
+        };
+        assert_eq!(wrong_stub.method_id, 0);
+        assert!(!wrong_stub.asserted_authoritative_server_decode);
+
+        let OwnedConfirmationEventKind::RpcReturnCandidate(status) = &routed[1].kind else {
+            panic!("expected Return candidate");
+        };
+        assert!(!status.decoded_as_success);
     }
 
     #[test]
