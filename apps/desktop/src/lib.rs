@@ -4971,6 +4971,16 @@ struct AutomarkerPassiveHostKey {
 }
 
 #[cfg(windows)]
+fn automarker_native_dependency_directory(install_root: &Path) -> PathBuf {
+    let packaged = install_root.join("resources/automarker-windivert");
+    if packaged.join("WinDivert.dll").is_file() && packaged.join("WinDivert64.sys").is_file() {
+        packaged
+    } else {
+        install_root.join("apps/desktop-tauri/resources/automarker-windivert")
+    }
+}
+
+#[cfg(windows)]
 fn automarker_passive_host_key(
     process_id: u32,
     connection_epoch: u64,
@@ -7434,10 +7444,17 @@ impl RuntimeController {
         let live = AutomarkerActivationLiveContext {
             context: self.live_automarker_scene_context.current(),
         };
-        self.automarker_presets
+        let store = self
+            .automarker_presets
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .activate_native_unavailable(request, live)
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let point = store.resolve_native_one_marker(&request, &live)?;
+        let result = store.activate_native_unavailable(request, live)?;
+        drop(store);
+        let _ = self
+            .live_automarker_native_bridge
+            .arm_one_marker_coordinator(point);
+        Ok(result)
     }
 
     #[cfg(windows)]
@@ -9617,7 +9634,7 @@ impl RuntimeController {
             .begin_session(automarker_bridge_session.clone());
         let automarker_passive_session = automarker_bridge_session.clone();
         self.live_automarker_native_bridge
-            .begin_session(automarker_bridge_session);
+            .begin_session_with_pack(automarker_bridge_session, pack.clone());
         let initial_automarker_context = self.live_automarker_scene_context.current();
         self.live_automarker_bridge_evidence
             .reconcile_context(initial_automarker_context.as_ref());
@@ -9649,7 +9666,7 @@ impl RuntimeController {
         let live_automarker_native_bridge = Arc::clone(&self.live_automarker_native_bridge);
         let automarker_native_process_id = request.process_id;
         let automarker_native_dependency_directory =
-            self.install_root.join("resources/automarker-windivert");
+            automarker_native_dependency_directory(&self.install_root);
         let automarker_scene_families = self.automarker_scene_families.clone();
         let live_mechanics_map_feed = Arc::clone(&self.live_mechanics_map_feed);
         let live_observed_marker_feed = Arc::clone(&self.live_observed_marker_feed);
@@ -16788,6 +16805,24 @@ mod tests {
         let mut wrong_scene = scene.clone();
         wrong_scene.client_build = "other".into();
         assert!(automarker_passive_host_key(42, 7, &session, Some(&wrong_scene), &root).is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn automarker_dependencies_prefer_packaged_resources_and_fall_back_for_debug_root() {
+        let root = temporary_root();
+        let development = root.join("apps/desktop-tauri/resources/automarker-windivert");
+        std::fs::create_dir_all(&development).unwrap();
+        std::fs::write(development.join("WinDivert.dll"), b"development").unwrap();
+        std::fs::write(development.join("WinDivert64.sys"), b"development").unwrap();
+        assert_eq!(automarker_native_dependency_directory(&root), development);
+
+        let packaged = root.join("resources/automarker-windivert");
+        std::fs::create_dir_all(&packaged).unwrap();
+        std::fs::write(packaged.join("WinDivert.dll"), b"packaged").unwrap();
+        std::fs::write(packaged.join("WinDivert64.sys"), b"packaged").unwrap();
+        assert_eq!(automarker_native_dependency_directory(&root), packaged);
         std::fs::remove_dir_all(root).unwrap();
     }
 

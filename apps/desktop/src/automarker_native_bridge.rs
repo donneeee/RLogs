@@ -7,11 +7,13 @@
 //! scene context that a future in-process `AutomarkerBridgeCoordinator` must
 //! use, and gives all future native resources one invalidation/shutdown domain.
 
-use std::sync::Mutex;
+use std::{sync::Mutex, time::Instant};
 
 use rlogs_game_bpsr::{
-    AutomarkerBridgeCoordinator, AutomarkerOwnedTcpConnection,
-    OfflineAutomarkerConnectionEpochBinding,
+    AutomarkerBridgeCoordinator, AutomarkerConfirmationBaseline, AutomarkerConfirmationContext,
+    AutomarkerConfirmationTcpTuple, AutomarkerOwnedTcpConnection, AutomarkerRequestXyz,
+    OfflineAutomarkerConnectionEpochBinding, ProtocolPack, SINGLE_MARKER_XYZ_CANARY_ARM_TOKEN,
+    SingleMarkerXyzCanaryConfig, SingleMarkerXyzCanaryContext,
 };
 
 #[cfg(windows)]
@@ -26,7 +28,7 @@ use crate::{
         AutomarkerBridgeCaptureTcpConnection, AutomarkerBridgeEvidenceSnapshot,
         AutomarkerBridgeSessionIdentity,
     },
-    automarker_presets::AutomarkerSceneContext,
+    automarker_presets::{AutomarkerPoint, AutomarkerSceneContext},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,6 +141,8 @@ struct NativeBridgeState {
     session: Option<AutomarkerBridgeSessionIdentity>,
     continuity: Option<BridgeContinuity>,
     parser_evidence: Option<AutomarkerBridgeEvidenceSnapshot>,
+    parser_carrier_received_at: Option<Instant>,
+    protocol_pack: Option<ProtocolPack>,
     native_flow: Option<NativeFlowEvidence>,
     gates: NativeGateState,
     #[cfg(windows)]
@@ -179,7 +183,24 @@ pub(crate) struct AutomarkerNativeBridgeLifecycle {
 }
 
 impl AutomarkerNativeBridgeLifecycle {
+    #[allow(dead_code)] // Tests and pack-less fail-closed embeddings.
     pub(crate) fn begin_session(&self, session: AutomarkerBridgeSessionIdentity) {
+        self.begin_session_inner(session, None);
+    }
+
+    pub(crate) fn begin_session_with_pack(
+        &self,
+        session: AutomarkerBridgeSessionIdentity,
+        pack: ProtocolPack,
+    ) {
+        self.begin_session_inner(session, Some(pack));
+    }
+
+    fn begin_session_inner(
+        &self,
+        session: AutomarkerBridgeSessionIdentity,
+        pack: Option<ProtocolPack>,
+    ) {
         let Some(mut state) = self.lock_or_poison_shutdown() else {
             return;
         };
@@ -188,6 +209,7 @@ impl AutomarkerNativeBridgeLifecycle {
         }
         let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Observing, true);
         state.session = Some(session);
+        state.protocol_pack = pack;
         drop(state);
         detached.drop_in_shutdown_order();
     }
@@ -270,7 +292,20 @@ impl AutomarkerNativeBridgeLifecycle {
             return Self::invalidate_and_release(state);
         }
         state.continuity = Some(continuity);
+        let carrier_changed = state
+            .parser_evidence
+            .as_ref()
+            .and_then(|previous| previous.outbound_carrier.as_ref())
+            .map(|carrier| carrier.provenance.capture_sequence)
+            != evidence
+                .outbound_carrier
+                .as_ref()
+                .map(|carrier| carrier.provenance.capture_sequence);
+        let carrier_present = evidence.outbound_carrier.is_some();
         state.parser_evidence = Some(evidence);
+        if carrier_changed {
+            state.parser_carrier_received_at = carrier_present.then(Instant::now);
+        }
         let capture_connection = state
             .parser_evidence
             .as_ref()
@@ -488,6 +523,115 @@ impl AutomarkerNativeBridgeLifecycle {
         }
     }
 
+    /// Arm only the pure one-marker coordinator from the exact retained
+    /// parser/native baseline. This opens no handle and cannot send.
+    pub(crate) fn arm_one_marker_coordinator(&self, point: AutomarkerPoint) -> bool {
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            return false;
+        };
+        let (Some(continuity), Some(evidence), Some(received_at), Some(flow), Some(pack)) = (
+            state.continuity.as_ref(),
+            state.parser_evidence.as_ref(),
+            state.parser_carrier_received_at,
+            state.native_flow.as_ref(),
+            state.protocol_pack.as_ref(),
+        ) else {
+            return false;
+        };
+        let Some(carrier) = evidence.outbound_carrier.as_ref() else {
+            return false;
+        };
+        let Ok(local_actor_id) = i64::try_from(carrier.local_actor_id) else {
+            return false;
+        };
+        let age_millis = received_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+        if state.phase != LifecyclePhase::Observing
+            || carrier.marker_number != point.marker_number
+            || carrier.mechanics_runtime_revision == 0
+            || carrier.local_actor_id == 0
+            || carrier.provenance.capture_sequence == 0
+            || age_millis > rlogs_game_bpsr::SINGLE_MARKER_XYZ_MAX_CONTEXT_AGE_MILLIS
+            || ![point.x, point.y, point.z]
+                .iter()
+                .all(|value| value.is_finite() && value.abs() <= 1_000_000.0)
+            || pack.definition().target.build_id != continuity.client_build
+            || pack.digest() != continuity.protocol_pack_digest
+        {
+            return false;
+        }
+        let connection = flow.binding.connection();
+        let context = AutomarkerConfirmationContext {
+            game_build: continuity.client_build.clone(),
+            scene_family: continuity.activity_family_id.clone(),
+            local_actor_id,
+            connection_epoch: flow.binding.connection_epoch(),
+            client_to_server_tuple: AutomarkerConfirmationTcpTuple {
+                client_address: connection.local.address.octets(),
+                client_port: connection.local.port,
+                server_address: connection.remote.address.octets(),
+                server_port: connection.remote.port,
+            },
+            runtime_revision: carrier.mechanics_runtime_revision,
+            observed_micros: carrier.provenance.observed_micros,
+        };
+        let baseline = AutomarkerConfirmationBaseline {
+            context,
+            observation_ordinal: carrier.provenance.capture_sequence,
+            same_number_passive_instance_identities: evidence
+                .markers
+                .iter()
+                .filter(|marker| marker.marker_number == point.marker_number)
+                .map(|marker| marker.passive_instance_identity)
+                .collect(),
+        };
+        let config = SingleMarkerXyzCanaryConfig {
+            expected_scene_family: continuity.activity_family_id.clone(),
+            marker_number: point.marker_number,
+            target_position: AutomarkerRequestXyz {
+                x: point.x,
+                y: point.y,
+                z: point.z,
+            },
+        };
+        let canary_context = SingleMarkerXyzCanaryContext {
+            game_build: &continuity.client_build,
+            current_scene_family: &continuity.activity_family_id,
+            runtime_revision: carrier.mechanics_runtime_revision,
+            observation_monotonic_millis: carrier.provenance.observed_micros / 1_000,
+            observation_age_millis: age_millis,
+        };
+        let Ok(coordinator) = AutomarkerBridgeCoordinator::arm(
+            config,
+            SINGLE_MARKER_XYZ_CANARY_ARM_TOKEN,
+            pack,
+            flow.binding,
+            canary_context,
+            baseline,
+        ) else {
+            return false;
+        };
+        let previous = state.coordinator.replace(coordinator);
+        // An armed pure coordinator is still waiting for a future carrier;
+        // no active packet has been held by this process.
+        state.gates.fresh_world_use_slot_carrier = false;
+        drop(state);
+        drop(previous);
+        true
+    }
+
+    #[allow(dead_code)] // Awaiting an explicit bounded operator cancel request.
+    pub(crate) fn cancel_armed_coordinator(&self) -> bool {
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            return false;
+        };
+        let coordinator = state.coordinator.take();
+        state.gates.fresh_world_use_slot_carrier = false;
+        drop(state);
+        let cancelled = coordinator.is_some();
+        drop(coordinator);
+        cancelled
+    }
+
     /// Retain the latest reverse cumulative ACK only on the exact bound epoch
     /// and tuple. SYN/FIN/RST or regressed capture order invalidates the flow.
     #[allow(dead_code)] // Consumed by the future reviewed passive WinDivert loop.
@@ -663,6 +807,10 @@ impl AutomarkerNativeBridgeLifecycle {
         }
         state.continuity = None;
         state.parser_evidence = None;
+        state.parser_carrier_received_at = None;
+        if clear_session {
+            state.protocol_pack = None;
+        }
         state.native_flow = None;
         state.gates = NativeGateState::default();
         DetachedNativeResources {
@@ -719,8 +867,8 @@ mod tests {
         AutomarkerBridgeOutboundCarrierEvidence, AutomarkerBridgeRecordProvenance,
     };
     use rlogs_game_bpsr::{
-        AutomarkerIpv4Endpoint, DecoderKind, FragmentKind, PacketDirection,
-        bind_offline_automarker_connection_epoch,
+        AUTOMARKER_REQUEST_BUILD, AutomarkerIpv4Endpoint, DecoderKind, FragmentKind,
+        MappingProvenance, PacketDirection, bind_offline_automarker_connection_epoch,
     };
     use std::net::Ipv4Addr;
     #[cfg(windows)]
@@ -743,6 +891,27 @@ mod tests {
             protocol_pack_digest: "sha256:exact".into(),
             protocol_supported: true,
         }
+    }
+
+    fn exact_automarker_pack() -> ProtocolPack {
+        let source = ProtocolPack::from_json(include_bytes!(
+            "../../../plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24687926/pack.json"
+        ))
+        .unwrap();
+        let source_build = source.definition().target.build_id.clone();
+        let mut definition = source.definition().clone();
+        definition.pack_id = format!("{}-compatibility-fallback-steam", definition.pack_id);
+        definition.target.deployment_id = "global".into();
+        definition.target.region_id = None;
+        definition.target.channel = "steam".into();
+        definition.target.build_id = AUTOMARKER_REQUEST_BUILD.into();
+        definition.provenance.push(MappingProvenance {
+            source: "provisional-compatibility-fallback".into(),
+            reference: format!(
+                "pack_build={source_build};client_deployment=global;client_channel=steam;client_build={AUTOMARKER_REQUEST_BUILD}"
+            ),
+        });
+        ProtocolPack::build(definition).unwrap()
     }
 
     fn scene(family: &str) -> AutomarkerSceneContext {
@@ -777,6 +946,7 @@ mod tests {
                 scene_id: 6525,
                 map_id: 6525,
                 activity_family_id: "mech-facility".into(),
+                local_actor_id: 99,
                 mechanics_runtime_revision: 7,
                 marker_number: 1,
                 session_sequence: 9,
@@ -1013,6 +1183,54 @@ mod tests {
         assert!(!snapshot.gates.reflect_arbitrated);
         drop(snapshot);
         assert!(!bridge.placement_enabled());
+    }
+
+    #[test]
+    fn exact_one_marker_request_arms_only_pure_coordinator_and_rearms_safely() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        let pack = exact_automarker_pack();
+        let exact_session = AutomarkerBridgeSessionIdentity {
+            capture_session_id: "capture-a".into(),
+            deployment_id: "global".into(),
+            client_build: AUTOMARKER_REQUEST_BUILD.into(),
+            protocol_pack_digest: pack.digest().into(),
+            protocol_supported: true,
+        };
+        let exact_scene = AutomarkerSceneContext {
+            client_build: AUTOMARKER_REQUEST_BUILD.into(),
+            scene_id: 6525,
+            map_id: 6525,
+            activity_family_id: "mech-facility".into(),
+            scene_name: None,
+        };
+        let mut evidence = parser_evidence();
+        let carrier = evidence.outbound_carrier.as_mut().unwrap();
+        carrier.client_build = AUTOMARKER_REQUEST_BUILD.into();
+        carrier.protocol_pack_digest = pack.digest().into();
+        bridge.begin_session_with_pack(exact_session, pack);
+        assert!(bridge.accept_parser_evidence(Some(&exact_scene), evidence));
+        assert!(bridge.accept_native_flow_binding(binding(443), 10, 900));
+        let point = AutomarkerPoint {
+            marker_number: 1,
+            x: 101.25,
+            y: -22.5,
+            z: 303.75,
+        };
+        assert!(bridge.arm_one_marker_coordinator(point.clone()));
+        assert!(state(&bridge).coordinator.is_some());
+        assert!(!bridge.placement_enabled());
+        assert!(bridge.arm_one_marker_coordinator(point));
+        assert!(state(&bridge).coordinator.is_some());
+        assert!(bridge.cancel_armed_coordinator());
+        assert!(state(&bridge).coordinator.is_none());
+        assert!(bridge.arm_one_marker_coordinator(AutomarkerPoint {
+            marker_number: 1,
+            x: 101.25,
+            y: -22.5,
+            z: 303.75,
+        }));
+        assert!(bridge.reconcile_context(Some(&scene("sea-ringed-reef"))));
+        assert!(state(&bridge).coordinator.is_none());
     }
 
     #[cfg(windows)]

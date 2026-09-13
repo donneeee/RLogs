@@ -284,6 +284,18 @@ impl AutomarkerPresetStore {
         request: ActivateAutomarkerPresetRequest,
         live: AutomarkerActivationLiveContext,
     ) -> Result<AutomarkerNativeActivationResult, String> {
+        self.resolve_native_one_marker(&request, &live)?;
+        Ok(AutomarkerNativeActivationResult {
+            activated: false,
+            reason: "native_waymark_transport_unavailable",
+        })
+    }
+
+    pub(crate) fn resolve_native_one_marker(
+        &self,
+        request: &ActivateAutomarkerPresetRequest,
+        live: &AutomarkerActivationLiveContext,
+    ) -> Result<AutomarkerPoint, String> {
         let current = live.context.as_ref().ok_or_else(|| {
             "a current supported automarker scene is required before activation".to_owned()
         })?;
@@ -303,10 +315,13 @@ impl AutomarkerPresetStore {
                 "the selected automarker preset belongs to a different dungeon family".into(),
             );
         }
-        Ok(AutomarkerNativeActivationResult {
-            activated: false,
-            reason: "native_waymark_transport_unavailable",
-        })
+        let [point] = preset.points.as_slice() else {
+            return Err(
+                "the passive native milestone requires a preset containing exactly one marker"
+                    .into(),
+            );
+        };
+        Ok(point.clone())
     }
 
     #[allow(dead_code)]

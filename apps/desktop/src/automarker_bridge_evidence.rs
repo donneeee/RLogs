@@ -185,6 +185,7 @@ pub(crate) struct AutomarkerBridgeOutboundCarrierEvidence {
     pub scene_id: i32,
     pub map_id: u32,
     pub activity_family_id: String,
+    pub local_actor_id: u64,
     pub mechanics_runtime_revision: u64,
     pub marker_number: u8,
     pub session_sequence: u32,
@@ -450,6 +451,8 @@ impl AutomarkerBridgeEvidenceFeed {
             || mechanics.client_build.as_deref() != Some(session.client_build.as_str())
             || mechanics.scene_id != Some(scene.scene_id)
             || mechanics.map_id != Some(scene.map_id)
+            || mechanics.local_actor_id.is_none()
+            || mechanics.revision == 0
             || scene.client_build != session.client_build
             || observed_pack.0 != session.client_build
             || observed_pack.1 != session.protocol_pack_digest
@@ -474,6 +477,9 @@ impl AutomarkerBridgeEvidenceFeed {
             scene_id: scene.scene_id,
             map_id: scene.map_id,
             activity_family_id: scene.activity_family_id.clone(),
+            local_actor_id: mechanics
+                .local_actor_id
+                .expect("validated local actor identity"),
             mechanics_runtime_revision: mechanics.revision,
             marker_number: request.marker_number,
             session_sequence: request.session_sequence,
@@ -848,6 +854,7 @@ mod tests {
             client_build: Some(build),
             scene_id: Some(1),
             map_id: Some(2),
+            local_actor_id: Some(7),
             ..MechanicsMapSnapshot::default()
         };
         (feed, scene, mechanics)
