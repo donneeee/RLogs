@@ -266,7 +266,7 @@ pub use journal::{
 pub use loadout::{normalize_auxiliary_imagine_tier, project_actor_loadouts};
 pub use local_marker::{
     DecodedLocalMarkerStart, LocalMapMarker, LocalMapMarkerProjection, LocalMapMarkerSnapshotError,
-    decode_local_marker_start_candidates,
+    LocalMarkerStartDecodeError, decode_local_marker_start_candidates,
 };
 pub use module_effect_resolution::{
     ActiveModuleEffect, ActiveModuleEffectSnapshot, ModuleEffectCatalog, ModuleEffectCatalogError,
