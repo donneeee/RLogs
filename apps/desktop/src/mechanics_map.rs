@@ -325,6 +325,7 @@ struct MechanicsMapFeedState {
     snapshot: MechanicsMapSnapshot,
     native_scene_active: bool,
     native_scene: Option<(i32, u32, Option<String>)>,
+    packet_scene_authoritative: bool,
 }
 
 impl MechanicsMapFeed {
@@ -338,6 +339,9 @@ impl MechanicsMapFeed {
         }
         if snapshot.revision <= current.snapshot.revision {
             snapshot.revision = current.snapshot.revision.saturating_add(1);
+        }
+        if snapshot.scene_id.is_some() {
+            current.packet_scene_authoritative = true;
         }
         current.snapshot = snapshot;
         self.changed.notify_all();
@@ -364,7 +368,19 @@ impl MechanicsMapFeed {
     }
 
     pub fn reset(&self) {
-        self.publish(MechanicsMapSnapshot::default());
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let revision = state.snapshot.revision.saturating_add(1);
+        state.snapshot = MechanicsMapSnapshot {
+            revision,
+            ..MechanicsMapSnapshot::default()
+        };
+        state.packet_scene_authoritative = false;
+        state.native_scene_active = false;
+        state.native_scene = None;
+        self.changed.notify_all();
     }
 
     pub fn current(&self) -> MechanicsMapUpdate {
@@ -407,7 +423,7 @@ impl MechanicsMapFeed {
 
 fn effective_snapshot(state: &MechanicsMapFeedState) -> MechanicsMapSnapshot {
     let mut snapshot = state.snapshot.clone();
-    if state.native_scene_active {
+    if state.native_scene_active && !state.packet_scene_authoritative {
         snapshot.scene_id = state.native_scene.as_ref().map(|scene| scene.0);
         snapshot.map_id = state.native_scene.as_ref().map(|scene| scene.1);
         snapshot.scene_name = state
@@ -4323,13 +4339,19 @@ mod tests {
     }
 
     #[test]
-    fn native_scene_presentation_reconciles_and_clears_stale_packet_identity() {
+    fn packet_scene_presentation_supersedes_native_startup_fallback() {
         let feed = MechanicsMapFeed::default();
+        feed.set_native_scene_presentation(
+            true,
+            Some((6_515, 6_515, Some("Chaotic - Mech Facility".into()))),
+        );
+        assert_eq!(feed.current().snapshot.scene_id, Some(6_515));
+
         feed.publish(MechanicsMapSnapshot {
             revision: 8,
-            scene_id: Some(6_515),
-            map_id: Some(6_515),
-            scene_name: Some("Chaotic - Mech Facility".into()),
+            scene_id: Some(6_561),
+            map_id: Some(6_561),
+            scene_name: Some("Sea-Ringed Reef".into()),
             map_layout: Some("reviewed-packet-layout"),
             background_asset_url: Some("/reviewed-packet-map.png".into()),
             encounter_pack: Some("packet-authorized-pack"),
@@ -4338,25 +4360,31 @@ mod tests {
         });
         feed.set_native_scene_presentation(
             true,
-            Some((6_561, 6_561, Some("Sea-Ringed Reef".into()))),
+            Some((6_515, 6_515, Some("Chaotic - Mech Facility".into()))),
         );
         let reef = feed.current();
         assert_eq!(reef.snapshot.scene_id, Some(6_561));
         assert_eq!(reef.snapshot.map_id, Some(6_561));
         assert_eq!(reef.snapshot.scene_name.as_deref(), Some("Sea-Ringed Reef"));
-        assert_eq!(reef.snapshot.map_layout, None);
-        assert_eq!(reef.snapshot.background_asset_url, None);
-        assert_eq!(reef.snapshot.encounter_pack, None);
-        assert!(!reef.snapshot.encounter_pack_reviewed);
+        assert_eq!(reef.snapshot.map_layout, Some("reviewed-packet-layout"));
+        assert_eq!(
+            reef.snapshot.background_asset_url.as_deref(),
+            Some("/reviewed-packet-map.png")
+        );
+        assert_eq!(reef.snapshot.encounter_pack, Some("packet-authorized-pack"));
+        assert!(reef.snapshot.encounter_pack_reviewed);
 
         feed.set_native_scene_presentation(true, None);
         let unavailable = feed.current();
-        assert_eq!(unavailable.snapshot.scene_id, None);
-        assert_eq!(unavailable.snapshot.map_id, None);
-        assert_eq!(unavailable.snapshot.scene_name, None);
+        assert_eq!(unavailable.snapshot.scene_id, Some(6_561));
+        assert_eq!(unavailable.snapshot.map_id, Some(6_561));
+        assert_eq!(
+            unavailable.snapshot.scene_name.as_deref(),
+            Some("Sea-Ringed Reef")
+        );
 
         feed.set_native_scene_presentation(false, None);
-        assert_eq!(feed.current().snapshot.scene_id, Some(6_515));
+        assert_eq!(feed.current().snapshot.scene_id, Some(6_561));
     }
 
     #[test]

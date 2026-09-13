@@ -1961,6 +1961,12 @@ struct LiveCombatFeedState {
     native_scene_active: bool,
     #[cfg(windows)]
     native_scene: Option<native_scene_observer::NativeSceneIdentity>,
+    /// Once a canonical packet-backed snapshot carries a scene, it is the
+    /// live authority for the remainder of this capture session. Native
+    /// identity is only a startup fallback while packet scene evidence is
+    /// unavailable.
+    #[cfg(windows)]
+    packet_scene_authoritative: bool,
 }
 
 #[cfg(windows)]
@@ -2054,6 +2060,18 @@ impl LiveCombatFeed {
             state.ambient_last_damage_micros = None;
         }
         state.snapshot = snapshot;
+        #[cfg(windows)]
+        {
+            if state.snapshot.is_none() {
+                state.packet_scene_authoritative = false;
+            } else if state
+                .snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.scene_id.is_some())
+            {
+                state.packet_scene_authoritative = true;
+            }
+        }
         state.run_projection = run_projection;
         self.changed.notify_all();
     }
@@ -2152,6 +2170,7 @@ impl LiveCombatFeed {
         let mut snapshot = state.snapshot.clone();
         #[cfg(windows)]
         if state.native_scene_active
+            && !state.packet_scene_authoritative
             && let Some(snapshot) = snapshot.as_mut()
         {
             snapshot.scene_id = state.native_scene.map(|scene| scene.scene_id);
@@ -5828,6 +5847,7 @@ struct AutomarkerSceneContextFeed {
 #[derive(Debug, Default)]
 struct AutomarkerSceneContextState {
     packet: Option<AutomarkerSceneContext>,
+    packet_scene_authoritative: bool,
     #[cfg(windows)]
     native_active: bool,
     #[cfg(windows)]
@@ -5836,10 +5856,17 @@ struct AutomarkerSceneContextState {
 
 impl AutomarkerSceneContextFeed {
     fn reset(&self) {
-        self.context
+        let mut state = self
+            .context
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .packet = None;
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.packet = None;
+        state.packet_scene_authoritative = false;
+        #[cfg(windows)]
+        {
+            state.native_active = false;
+            state.native = None;
+        }
     }
 
     fn current(&self) -> Option<AutomarkerSceneContext> {
@@ -5848,7 +5875,7 @@ impl AutomarkerSceneContextFeed {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         #[cfg(windows)]
-        if state.native_active {
+        if state.native_active && !state.packet_scene_authoritative {
             return state.native.clone();
         }
         state.packet.clone()
@@ -5928,10 +5955,14 @@ impl AutomarkerSceneContextFeed {
                 .map(str::to_owned),
             })
         });
-        self.context
+        let mut state = self
+            .context
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .packet = next;
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.packet = next;
+        if matches!(event, CanonicalEvent::WorldChanged(world) if world.scene_id.is_some()) {
+            state.packet_scene_authoritative = true;
+        }
     }
 }
 
@@ -9739,6 +9770,7 @@ impl RuntimeController {
                                 })?;
                         }
                         let mut live_boundary_changed = false;
+                        let mut live_scene_changed = false;
                         let mut freeze_history = false;
                         let mut frozen_capture_time_identities = None;
                         let mut live_snapshot_error = None;
@@ -9875,6 +9907,8 @@ impl RuntimeController {
                                 );
                                 if event.event.topic() == EventTopic::World {
                                     last_world_context_event = Some(event.clone());
+                                    live_scene_changed |=
+                                        live_overlay_event_requires_immediate_publish(&event.event);
                                 }
                                 let opening = matches!(
                                     &event.event,
@@ -10290,6 +10324,7 @@ impl RuntimeController {
                         // reduced so a large decoded burst can cause at most one
                         // history clone and one overlay publication.
                         if live_boundary_changed
+                            || live_scene_changed
                             || (live_dirty && last_live_publish.elapsed() >= live_refresh_interval)
                         {
                             let projection_started = Instant::now();
@@ -14587,6 +14622,10 @@ fn live_overlay_topic_invalidates(topic: EventTopic) -> bool {
     )
 }
 
+fn live_overlay_event_requires_immediate_publish(event: &CanonicalEvent) -> bool {
+    matches!(event, CanonicalEvent::WorldChanged(_))
+}
+
 fn actor_display_name_needs_identity(name: Option<&str>) -> bool {
     let Some(name) = name.map(str::trim).filter(|name| !name.is_empty()) else {
         return true;
@@ -16901,10 +16940,26 @@ mod tests {
 
     #[test]
     fn live_overlay_republishes_capture_time_identity_before_run_completion() {
+        assert!(!live_overlay_topic_invalidates(EventTopic::World));
         assert!(live_overlay_topic_invalidates(EventTopic::Actor));
         assert!(live_overlay_topic_invalidates(EventTopic::CharacterProfile));
         assert!(live_overlay_topic_invalidates(EventTopic::Combat));
         assert!(!live_overlay_topic_invalidates(EventTopic::Chat));
+
+        assert!(live_overlay_event_requires_immediate_publish(
+            &CanonicalEvent::WorldChanged(WorldContext {
+                scene_id: Some(SceneId(6_561)),
+                map_id: Some(6_561),
+                line_id: Some(2),
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            })
+        ));
+        assert!(!live_overlay_event_requires_immediate_publish(
+            &CanonicalEvent::PartyChanged {
+                members: Vec::new(),
+            }
+        ));
     }
 
     #[test]
@@ -17814,17 +17869,30 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn native_scene_presentation_overrides_and_clears_stale_packet_context() {
+    fn packet_scene_presentation_supersedes_native_startup_fallback() {
         let feed = AutomarkerSceneContextFeed::default();
         let families = BTreeMap::from([
             (6_515, "mech-facility".to_owned()),
             (6_561, "sea-ringed-reef".to_owned()),
         ]);
+        feed.set_native_scene_presentation(
+            true,
+            Some(native_scene_observer::NativeSceneIdentity {
+                scene_id: 6_515,
+                map_id: 6_515,
+            }),
+            "global",
+            "25247556",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+            &families,
+        );
+        assert_eq!(feed.current().unwrap().scene_id, 6_515);
+
         feed.observe(
             &CanonicalEvent::WorldChanged(WorldContext {
-                scene_id: Some(SceneId(6_515)),
-                map_id: Some(6_515),
-                line_id: None,
+                scene_id: Some(SceneId(6_561)),
+                map_id: Some(6_561),
+                line_id: Some(2),
                 scene_instance_id: None,
                 dungeon_instance_id: None,
             }),
@@ -17833,18 +17901,11 @@ mod tests {
             BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
             &families,
         );
-        feed.set_native_scene_presentation(
-            true,
-            Some(native_scene_observer::NativeSceneIdentity {
-                scene_id: 6_561,
-                map_id: 6_561,
-            }),
-            "global",
-            "25247556",
-            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
-            &families,
+        assert_eq!(
+            feed.current().unwrap().scene_id,
+            6_561,
+            "fresh packet world evidence must replace the native startup fallback"
         );
-        assert_eq!(feed.current().unwrap().scene_id, 6_561);
 
         feed.set_native_scene_presentation(
             true,
@@ -17854,11 +17915,7 @@ mod tests {
             BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
             &families,
         );
-        assert_eq!(
-            feed.current(),
-            None,
-            "native failure must clear stale packets"
-        );
+        assert_eq!(feed.current().unwrap().scene_id, 6_561);
 
         feed.set_native_scene_presentation(
             false,
@@ -17868,7 +17925,37 @@ mod tests {
             BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
             &families,
         );
-        assert_eq!(feed.current().unwrap().scene_id, 6_515);
+        assert_eq!(feed.current().unwrap().scene_id, 6_561);
+
+        feed.set_native_scene_presentation(
+            true,
+            Some(native_scene_observer::NativeSceneIdentity {
+                scene_id: 6_515,
+                map_id: 6_515,
+            }),
+            "global",
+            "25247556",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+            &families,
+        );
+        feed.observe(
+            &CanonicalEvent::WorldChanged(WorldContext {
+                scene_id: Some(SceneId(99_999)),
+                map_id: Some(99_999),
+                line_id: None,
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            }),
+            "global",
+            "25247556",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+            &families,
+        );
+        assert_eq!(
+            feed.current(),
+            None,
+            "an unsupported packet scene must clear rather than expose a stale native family"
+        );
     }
 
     #[cfg(windows)]
@@ -17931,9 +18018,9 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn live_combat_native_scene_is_presentation_only_and_fail_closed() {
+    fn live_combat_packet_scene_supersedes_native_startup_fallback() {
         let feed = LiveCombatFeed::default();
-        let packet_snapshot = CombatTimelineSnapshot {
+        let mut packet_snapshot = CombatTimelineSnapshot {
             schema_version: 1,
             session_id: "live".into(),
             deployment_id: "global".into(),
@@ -17944,7 +18031,7 @@ mod tests {
             rdps_status: "unavailable".into(),
             encounter_id: None,
             encounter_state: None,
-            scene_id: Some(6_515),
+            scene_id: None,
             event_count: 0,
             data_gap_count: 0,
             combat_window_count: 0,
@@ -17973,15 +18060,19 @@ mod tests {
         feed.set_native_scene_presentation(
             true,
             Some(native_scene_observer::NativeSceneIdentity {
-                scene_id: 6_561,
-                map_id: 6_561,
+                scene_id: 6_515,
+                map_id: 6_515,
             }),
         );
+        assert_eq!(feed.current().snapshot.unwrap().scene_id, Some(6_515));
+        packet_snapshot = feed.current().snapshot.unwrap();
+        packet_snapshot.scene_id = Some(6_561);
+        feed.publish(Some(packet_snapshot));
         assert_eq!(feed.current().snapshot.unwrap().scene_id, Some(6_561));
         feed.set_native_scene_presentation(true, None);
-        assert_eq!(feed.current().snapshot.unwrap().scene_id, None);
+        assert_eq!(feed.current().snapshot.unwrap().scene_id, Some(6_561));
         feed.set_native_scene_presentation(false, None);
-        assert_eq!(feed.current().snapshot.unwrap().scene_id, Some(6_515));
+        assert_eq!(feed.current().snapshot.unwrap().scene_id, Some(6_561));
     }
 
     #[test]
