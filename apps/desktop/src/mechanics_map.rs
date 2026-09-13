@@ -316,23 +316,50 @@ pub struct MechanicsMapWaitRequest {
 
 #[derive(Debug, Default)]
 pub struct MechanicsMapFeed {
-    snapshot: Mutex<MechanicsMapSnapshot>,
+    state: Mutex<MechanicsMapFeedState>,
     changed: Condvar,
+}
+
+#[derive(Debug, Default)]
+struct MechanicsMapFeedState {
+    snapshot: MechanicsMapSnapshot,
+    native_scene_active: bool,
+    native_scene: Option<(i32, u32, Option<String>)>,
 }
 
 impl MechanicsMapFeed {
     pub fn publish(&self, mut snapshot: MechanicsMapSnapshot) {
         let mut current = self
-            .snapshot
+            .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if *current == snapshot {
+        if current.snapshot == snapshot {
             return;
         }
-        if snapshot.revision <= current.revision {
-            snapshot.revision = current.revision.saturating_add(1);
+        if snapshot.revision <= current.snapshot.revision {
+            snapshot.revision = current.snapshot.revision.saturating_add(1);
         }
-        *current = snapshot;
+        current.snapshot = snapshot;
+        self.changed.notify_all();
+    }
+
+    /// Applies a local read-only scene identity without creating a canonical
+    /// event. Active + absent is intentional: it clears stale packet identity.
+    pub fn set_native_scene_presentation(
+        &self,
+        active: bool,
+        scene: Option<(i32, u32, Option<String>)>,
+    ) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.native_scene_active == active && state.native_scene == scene {
+            return;
+        }
+        state.native_scene_active = active;
+        state.native_scene = scene;
+        state.snapshot.revision = state.snapshot.revision.saturating_add(1);
         self.changed.notify_all();
     }
 
@@ -342,10 +369,10 @@ impl MechanicsMapFeed {
 
     pub fn current(&self) -> MechanicsMapUpdate {
         let snapshot = self
-            .snapshot
+            .state
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let snapshot = effective_snapshot(&snapshot);
         MechanicsMapUpdate {
             schema_version: MECHANICS_MAP_SCHEMA_VERSION,
             revision: snapshot.revision,
@@ -355,26 +382,46 @@ impl MechanicsMapFeed {
 
     pub fn wait_after(&self, after_revision: u64, timeout: Duration) -> MechanicsMapUpdate {
         let deadline = Instant::now() + timeout;
-        let mut snapshot = self
-            .snapshot
+        let mut state = self
+            .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        while snapshot.revision <= after_revision {
+        while state.snapshot.revision <= after_revision {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 break;
             }
-            snapshot = match self.changed.wait_timeout(snapshot, remaining) {
-                Ok((snapshot, _)) => snapshot,
+            state = match self.changed.wait_timeout(state, remaining) {
+                Ok((state, _)) => state,
                 Err(poisoned) => poisoned.into_inner().0,
             };
         }
+        let snapshot = effective_snapshot(&state);
         MechanicsMapUpdate {
             schema_version: MECHANICS_MAP_SCHEMA_VERSION,
             revision: snapshot.revision,
-            snapshot: snapshot.clone(),
+            snapshot,
         }
     }
+}
+
+fn effective_snapshot(state: &MechanicsMapFeedState) -> MechanicsMapSnapshot {
+    let mut snapshot = state.snapshot.clone();
+    if state.native_scene_active {
+        snapshot.scene_id = state.native_scene.as_ref().map(|scene| scene.0);
+        snapshot.map_id = state.native_scene.as_ref().map(|scene| scene.1);
+        snapshot.scene_name = state
+            .native_scene
+            .as_ref()
+            .and_then(|scene| scene.2.clone());
+        // These are keyed by the packet projector's scene. Never present
+        // stale geometry or encounter semantics under the native identity.
+        snapshot.map_layout = None;
+        snapshot.background_asset_url = None;
+        snapshot.encounter_pack = None;
+        snapshot.encounter_pack_reviewed = false;
+    }
+    snapshot
 }
 
 fn default_wait_millis() -> u64 {
@@ -4273,6 +4320,35 @@ mod tests {
         let update = feed.current();
         assert_eq!(update.revision, 9);
         assert_eq!(update.snapshot.scene_id, None);
+    }
+
+    #[test]
+    fn native_scene_presentation_reconciles_and_clears_stale_packet_identity() {
+        let feed = MechanicsMapFeed::default();
+        feed.publish(MechanicsMapSnapshot {
+            revision: 8,
+            scene_id: Some(6_515),
+            map_id: Some(6_515),
+            scene_name: Some("Chaotic - Mech Facility".into()),
+            ..MechanicsMapSnapshot::default()
+        });
+        feed.set_native_scene_presentation(
+            true,
+            Some((6_561, 6_561, Some("Sea-Ringed Reef".into()))),
+        );
+        let reef = feed.current();
+        assert_eq!(reef.snapshot.scene_id, Some(6_561));
+        assert_eq!(reef.snapshot.map_id, Some(6_561));
+        assert_eq!(reef.snapshot.scene_name.as_deref(), Some("Sea-Ringed Reef"));
+
+        feed.set_native_scene_presentation(true, None);
+        let unavailable = feed.current();
+        assert_eq!(unavailable.snapshot.scene_id, None);
+        assert_eq!(unavailable.snapshot.map_id, None);
+        assert_eq!(unavailable.snapshot.scene_name, None);
+
+        feed.set_native_scene_presentation(false, None);
+        assert_eq!(feed.current().snapshot.scene_id, Some(6_515));
     }
 
     #[test]
