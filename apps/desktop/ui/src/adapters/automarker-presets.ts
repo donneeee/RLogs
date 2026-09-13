@@ -32,7 +32,7 @@ export interface AutomarkerSceneContext {
 }
 
 export interface AutomarkerPresetView {
-  schemaVersion: 5;
+  schemaVersion: 6;
   context: AutomarkerSceneContext | null;
   presets: readonly AutomarkerPreset[];
   captureSupported: boolean;
@@ -48,14 +48,21 @@ export interface AutomarkerPresetView {
 
 export type AutomarkerNativeFailureCategory = "not_elevated" | "dependency_hash_mismatch" |
   "driver_signature_invalid" | "driver_open_failed" | "handle_conflict" |
-  "process_or_socket" | "internal";
+  "process_or_socket" | "carrier" | "transport" | "confirmation" | "timeout" |
+  "connection" | "lifecycle" | "internal";
+
+export type AutomarkerCanaryPhase = "idle" | "armed" | "carrier_intercepted" |
+  "modified_send_committed" | "awaiting_confirmation" | "succeeded" | "failed";
 
 export interface AutomarkerNativeStatus {
   observerReady: boolean;
   synCandidateObserved: boolean;
   bpsrTupleConfirmed: boolean;
-  markerCarrierObserved: boolean;
-  returnConfirmed: boolean;
+  canaryPhase: AutomarkerCanaryPhase;
+  transportAckConfirmed: boolean;
+  rpcReturnConfirmed: boolean;
+  authoritativeMarkerConfirmed: boolean;
+  rearmAvailable: boolean;
   activePlacementEnabled: false;
   failureCategory: AutomarkerNativeFailureCategory | null;
 }
@@ -339,7 +346,7 @@ export function newlyCreatedPresetId(
 }
 
 export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView {
-  if (!record(value) || value.schemaVersion !== 5 ||
+  if (!record(value) || value.schemaVersion !== 6 ||
       !(value.context === null || validContext(value.context)) ||
       !Array.isArray(value.presets) || !value.presets.every(validPreset) ||
       typeof value.captureSupported !== "boolean" ||
@@ -373,23 +380,43 @@ export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView 
 }
 
 function validNativeStatus(value: unknown): value is AutomarkerNativeStatus {
-  if (!record(value) || typeof value.observerReady !== "boolean" ||
+  if (!record(value) || !exactKeys(value, [
+      "activePlacementEnabled", "authoritativeMarkerConfirmed", "bpsrTupleConfirmed", "canaryPhase",
+      "failureCategory", "observerReady", "rearmAvailable", "rpcReturnConfirmed",
+      "synCandidateObserved", "transportAckConfirmed",
+    ]) || typeof value.observerReady !== "boolean" ||
       typeof value.synCandidateObserved !== "boolean" ||
       typeof value.bpsrTupleConfirmed !== "boolean" ||
-      typeof value.markerCarrierObserved !== "boolean" ||
-      typeof value.returnConfirmed !== "boolean" || value.activePlacementEnabled !== false ||
+      !canaryPhase(value.canaryPhase) ||
+      typeof value.transportAckConfirmed !== "boolean" ||
+      typeof value.rpcReturnConfirmed !== "boolean" ||
+      typeof value.authoritativeMarkerConfirmed !== "boolean" ||
+      typeof value.rearmAvailable !== "boolean" || value.activePlacementEnabled !== false ||
       !(value.failureCategory === null || nativeFailureCategory(value.failureCategory))) return false;
+  const confirmations = value.transportAckConfirmed && value.rpcReturnConfirmed &&
+    value.authoritativeMarkerConfirmed;
   return (!value.synCandidateObserved || value.observerReady) &&
     (!value.bpsrTupleConfirmed || value.synCandidateObserved) &&
-    (!value.returnConfirmed || value.markerCarrierObserved) &&
-    (value.failureCategory === null ||
-      (!value.observerReady && !value.synCandidateObserved && !value.bpsrTupleConfirmed));
+    (!value.rearmAvailable || value.canaryPhase === "succeeded" || value.canaryPhase === "failed") &&
+    (value.canaryPhase !== "succeeded" || (confirmations && value.failureCategory === null)) &&
+    (value.canaryPhase !== "failed" || value.failureCategory !== null) &&
+    (!(value.canaryPhase === "idle" || value.canaryPhase === "armed" ||
+       value.canaryPhase === "carrier_intercepted" || value.canaryPhase === "modified_send_committed") ||
+      !value.transportAckConfirmed && !value.rpcReturnConfirmed && !value.authoritativeMarkerConfirmed);
+}
+
+function canaryPhase(value: unknown): value is AutomarkerCanaryPhase {
+  return value === "idle" || value === "armed" || value === "carrier_intercepted" ||
+    value === "modified_send_committed" || value === "awaiting_confirmation" ||
+    value === "succeeded" || value === "failed";
 }
 
 function nativeFailureCategory(value: unknown): value is AutomarkerNativeFailureCategory {
   return value === "not_elevated" || value === "dependency_hash_mismatch" ||
     value === "driver_signature_invalid" || value === "driver_open_failed" ||
-    value === "handle_conflict" || value === "process_or_socket" || value === "internal";
+    value === "handle_conflict" || value === "process_or_socket" || value === "carrier" ||
+    value === "transport" || value === "confirmation" || value === "timeout" ||
+    value === "connection" || value === "lifecycle" || value === "internal";
 }
 
 export function parseObservedMarkerSnapshot(value: unknown): ObservedMarkerSnapshot {

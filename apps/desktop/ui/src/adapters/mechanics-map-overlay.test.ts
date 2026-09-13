@@ -13,12 +13,12 @@ describe("Mechanics Map overlay canvas preferences", () => {
     expect(automarkerResponseIsCurrent(6, 7, master, master)).toBe(false);
     expect(automarkerResponseIsCurrent(7, 7, master, normal)).toBe(false);
     expect(automarkerPresetViewSnapshotKey({
-      schemaVersion: 5,
+      schemaVersion: 6,
       context: { clientBuild: "24687926", sceneId: 1631, mapId: 1631, activityFamilyId: "tina-mindrealm", sceneName: "Tina" },
       presets: [], captureSupported: false, captureReason: "native_waymark_state_unverified",
       captureSessionId: null, deploymentId: null, protocolPackDigest: null,
       nativeLoadSupported: false, nativeLoadReason: "native_waymark_transport_unavailable",
-      nativeStatus: { observerReady: false, synCandidateObserved: false, bpsrTupleConfirmed: false, markerCarrierObserved: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null },
+      nativeStatus: { observerReady: false, synCandidateObserved: false, bpsrTupleConfirmed: false, canaryPhase: "idle", transportAckConfirmed: false, rpcReturnConfirmed: false, authoritativeMarkerConfirmed: false, rearmAvailable: false, activePlacementEnabled: false, failureCategory: null },
       previewSessionId: "preview-test-session",
     })).toBe(normal);
   });

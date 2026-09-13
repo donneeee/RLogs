@@ -2,6 +2,7 @@ import type { MountedSurface } from "../shell/types";
 import type { UiLocalizer } from "../localization/ui-locale";
 import type {
   AutomarkerLocalLoadResult,
+  AutomarkerCanaryPhase,
   ActivateAutomarkerPresetRequest,
   AutomarkerNativeActivationResult,
   AutomarkerPoint,
@@ -549,14 +550,19 @@ export function mountAutomarkerPresetsSurface(
         : view.nativeStatus.synCandidateObserved
           ? "ui.automarkers.native_status.tuple_waiting"
           : "ui.automarkers.native_status.tuple_pending")));
-      milestones.append(text("li", localizer.t(view.nativeStatus.markerCarrierObserved
-        ? "ui.automarkers.native_status.carrier_observed"
-        : "ui.automarkers.native_status.carrier_pending")));
-      milestones.append(text("li", localizer.t(view.nativeStatus.returnConfirmed
-        ? "ui.automarkers.native_status.return_confirmed"
-        : view.nativeStatus.markerCarrierObserved
-          ? "ui.automarkers.native_status.return_waiting"
-          : "ui.automarkers.native_status.return_pending")));
+      milestones.append(text("li", canaryPhaseLabel(view.nativeStatus.canaryPhase, localizer)));
+      milestones.append(text("li", localizer.t(view.nativeStatus.transportAckConfirmed
+        ? "ui.automarkers.native_status.transport_ack_confirmed"
+        : "ui.automarkers.native_status.transport_ack_pending")));
+      milestones.append(text("li", localizer.t(view.nativeStatus.rpcReturnConfirmed
+        ? "ui.automarkers.native_status.rpc_return_confirmed"
+        : "ui.automarkers.native_status.rpc_return_pending")));
+      milestones.append(text("li", localizer.t(view.nativeStatus.authoritativeMarkerConfirmed
+        ? "ui.automarkers.native_status.marker_confirmed"
+        : "ui.automarkers.native_status.marker_pending")));
+      milestones.append(text("li", localizer.t(view.nativeStatus.rearmAvailable
+        ? "ui.automarkers.native_status.rearm_available"
+        : "ui.automarkers.native_status.rearm_pending")));
       if (view.nativeStatus.failureCategory !== null) {
         milestones.append(text("li", nativeFailureLabel(view.nativeStatus.failureCategory, localizer)));
       }
@@ -701,6 +707,18 @@ export function mountAutomarkerPresetsSurface(
   return { dispose() { alive = false; catalogRequestGeneration += 1; if (contextRefresh !== null) window.clearInterval(contextRefresh); } };
 }
 
+function canaryPhaseLabel(phase: AutomarkerCanaryPhase, localizer: UiLocalizer): string {
+  switch (phase) {
+    case "idle": return localizer.t("ui.automarkers.native_status.phase.idle");
+    case "armed": return localizer.t("ui.automarkers.native_status.phase.armed");
+    case "carrier_intercepted": return localizer.t("ui.automarkers.native_status.phase.carrier_intercepted");
+    case "modified_send_committed": return localizer.t("ui.automarkers.native_status.phase.modified_send_committed");
+    case "awaiting_confirmation": return localizer.t("ui.automarkers.native_status.phase.awaiting_confirmation");
+    case "succeeded": return localizer.t("ui.automarkers.native_status.phase.succeeded");
+    case "failed": return localizer.t("ui.automarkers.native_status.phase.failed");
+  }
+}
+
 export function automarkerPresetContextKey(
   view: Pick<AutomarkerPresetView, "context" | "previewSessionId" | "captureSessionId" | "deploymentId" | "protocolPackDigest"> | null,
 ): string {
@@ -716,8 +734,11 @@ function automarkerNativeStatusKey(view: AutomarkerPresetView | null): string {
     status.observerReady,
     status.synCandidateObserved,
     status.bpsrTupleConfirmed,
-    status.markerCarrierObserved,
-    status.returnConfirmed,
+    status.canaryPhase,
+    status.transportAckConfirmed,
+    status.rpcReturnConfirmed,
+    status.authoritativeMarkerConfirmed,
+    status.rearmAvailable,
     status.activePlacementEnabled,
     status.failureCategory ?? "",
   ].join(":");
@@ -734,6 +755,12 @@ function nativeFailureLabel(
     case "driver_open_failed": return localizer.t("ui.automarkers.native_status.failure.driver_open_failed");
     case "handle_conflict": return localizer.t("ui.automarkers.native_status.failure.handle_conflict");
     case "process_or_socket": return localizer.t("ui.automarkers.native_status.failure.process_or_socket");
+    case "carrier": return localizer.t("ui.automarkers.native_status.failure.carrier");
+    case "transport": return localizer.t("ui.automarkers.native_status.failure.transport");
+    case "confirmation": return localizer.t("ui.automarkers.native_status.failure.confirmation");
+    case "timeout": return localizer.t("ui.automarkers.native_status.failure.timeout");
+    case "connection": return localizer.t("ui.automarkers.native_status.failure.connection");
+    case "lifecycle": return localizer.t("ui.automarkers.native_status.failure.lifecycle");
     case "internal": return localizer.t("ui.automarkers.native_status.failure.internal");
   }
 }

@@ -96,7 +96,7 @@ function deferred<T>(): Deferred<T> {
 
 function view(sceneId: number, familyId: string, name: string, x: number): AutomarkerPresetView {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     context: {
       clientBuild: "24687926",
       sceneId,
@@ -118,7 +118,7 @@ function view(sceneId: number, familyId: string, name: string, x: number): Autom
     protocolPackDigest: null,
     nativeLoadSupported: false,
     nativeLoadReason: "native_waymark_transport_unavailable",
-    nativeStatus: { observerReady: false, synCandidateObserved: false, bpsrTupleConfirmed: false, markerCarrierObserved: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null },
+    nativeStatus: { observerReady: false, synCandidateObserved: false, bpsrTupleConfirmed: false, canaryPhase: "idle", transportAckConfirmed: false, rpcReturnConfirmed: false, authoritativeMarkerConfirmed: false, rearmAvailable: false, activePlacementEnabled: false, failureCategory: null },
     previewSessionId: "preview-test-session",
   };
 }
@@ -151,8 +151,11 @@ describe("mounted automarker preset editor request ordering", () => {
       observerReady: true,
       synCandidateObserved: true,
       bpsrTupleConfirmed: false,
-      markerCarrierObserved: true,
-      returnConfirmed: true,
+      canaryPhase: "succeeded",
+      transportAckConfirmed: true,
+      rpcReturnConfirmed: true,
+      authoritativeMarkerConfirmed: true,
+      rearmAvailable: true,
       activePlacementEnabled: false,
       failureCategory: null,
     };
@@ -171,10 +174,13 @@ describe("mounted automarker preset editor request ordering", () => {
     expect(milestones).toContain("Native driver verified; passive connection observer ready");
     expect(milestones).toContain("Process-owned connection candidate observed");
     expect(milestones).toContain("Checking whether the connection candidate is the captured BPSR connection");
-    expect(milestones).toContain("Verified marker request observed from the game");
-    expect(milestones).toContain("Server confirmed the observed marker request");
+    expect(milestones).toContain("Marker 1 placement confirmed by transport, RPC, and authoritative marker state");
+    expect(milestones).toContain("Mapped transport acknowledgement confirmed");
+    expect(milestones).toContain("Successful RPC return confirmed");
+    expect(milestones).toContain("Authoritative Marker 1 update confirmed");
+    expect(milestones).toContain("Fresh authority is ready; Marker 1 may be re-armed");
     expect(milestones).toContain("Active placement is still disabled");
-    expect(milestones).not.toMatch(/pid|address|port|epoch|packet bytes|call id/i);
+    expect(milestones).not.toMatch(/\bpid\b|\baddress\b|\bport\b|\bepoch\b|packet bytes|call id/i);
     mounted.dispose();
   });
 

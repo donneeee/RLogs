@@ -6,7 +6,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 const PRESET_FILE_SCHEMA_VERSION: u16 = 4;
-const PRESET_VIEW_SCHEMA_VERSION: u16 = 5;
+const PRESET_VIEW_SCHEMA_VERSION: u16 = 6;
 const MAX_PRESETS: usize = 128;
 const MAX_STORE_BYTES: u64 = 512 * 1024;
 const MAX_NAME_CHARS: usize = 80;
@@ -112,16 +112,36 @@ pub struct AutomarkerPresetView {
     pub preview_session_id: String,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AutomarkerNativeStatusView {
     pub observer_ready: bool,
     pub syn_candidate_observed: bool,
     pub bpsr_tuple_confirmed: bool,
-    pub marker_carrier_observed: bool,
-    pub return_confirmed: bool,
+    pub canary_phase: &'static str,
+    pub transport_ack_confirmed: bool,
+    pub rpc_return_confirmed: bool,
+    pub authoritative_marker_confirmed: bool,
+    pub rearm_available: bool,
     pub active_placement_enabled: bool,
     pub failure_category: Option<&'static str>,
+}
+
+impl Default for AutomarkerNativeStatusView {
+    fn default() -> Self {
+        Self {
+            observer_ready: false,
+            syn_candidate_observed: false,
+            bpsr_tuple_confirmed: false,
+            canary_phase: "idle",
+            transport_ack_confirmed: false,
+            rpc_return_confirmed: false,
+            authoritative_marker_confirmed: false,
+            rearm_available: false,
+            active_placement_enabled: false,
+            failure_category: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]

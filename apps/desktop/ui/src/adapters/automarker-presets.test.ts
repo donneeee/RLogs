@@ -24,7 +24,7 @@ import { automarkerPresetContextKey } from "./automarker-presets-surface";
 
 function view() {
   return {
-    schemaVersion: 5 as const,
+    schemaVersion: 6,
     context: { clientBuild: "24687926", sceneId: 1633, mapId: 1633, activityFamilyId: "dungeon.1633", sceneName: "Tina M1" },
     presets: [{
       presetId: "preset-000000000001-0000", name: "Opener",
@@ -38,7 +38,7 @@ function view() {
     protocolPackDigest: null,
     nativeLoadSupported: false,
     nativeLoadReason: "native_waymark_transport_unavailable",
-    nativeStatus: { observerReady: false, synCandidateObserved: false, bpsrTupleConfirmed: false, markerCarrierObserved: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null },
+    nativeStatus: { observerReady: false, synCandidateObserved: false, bpsrTupleConfirmed: false, canaryPhase: "idle", transportAckConfirmed: false, rpcReturnConfirmed: false, authoritativeMarkerConfirmed: false, rearmAvailable: false, activePlacementEnabled: false, failureCategory: null },
     previewSessionId: "preview-test-session",
   };
 }
@@ -56,11 +56,11 @@ describe("automarker preset catalog", () => {
       .toThrow(/invalid automarker preset catalog/i);
 
     const candidate = view();
-    candidate.nativeStatus = { observerReady: true, synCandidateObserved: true, bpsrTupleConfirmed: false, markerCarrierObserved: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null };
+    candidate.nativeStatus = { observerReady: true, synCandidateObserved: true, bpsrTupleConfirmed: false, canaryPhase: "idle", transportAckConfirmed: false, rpcReturnConfirmed: false, authoritativeMarkerConfirmed: false, rearmAvailable: false, activePlacementEnabled: false, failureCategory: null };
     expect(parseAutomarkerPresetView(candidate).nativeStatus).toEqual(candidate.nativeStatus);
 
     const ready = view();
-    ready.nativeStatus = { observerReady: true, synCandidateObserved: true, bpsrTupleConfirmed: true, markerCarrierObserved: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null };
+    ready.nativeStatus = { observerReady: true, synCandidateObserved: true, bpsrTupleConfirmed: true, canaryPhase: "idle", transportAckConfirmed: false, rpcReturnConfirmed: false, authoritativeMarkerConfirmed: false, rearmAvailable: false, activePlacementEnabled: false, failureCategory: null };
     expect(parseAutomarkerPresetView(ready).nativeStatus).toEqual(ready.nativeStatus);
 
     const active = view();
@@ -75,16 +75,29 @@ describe("automarker preset catalog", () => {
     inconsistent.nativeStatus.bpsrTupleConfirmed = true;
     expect(() => parseAutomarkerPresetView(inconsistent)).toThrow(/invalid automarker preset catalog/i);
 
-    const impossibleReturn = view();
-    impossibleReturn.nativeStatus.returnConfirmed = true;
-    expect(() => parseAutomarkerPresetView(impossibleReturn)).toThrow(/invalid automarker preset catalog/i);
+    const impossibleSuccess = view();
+    impossibleSuccess.nativeStatus.canaryPhase = "succeeded";
+    expect(() => parseAutomarkerPresetView(impossibleSuccess)).toThrow(/invalid automarker preset catalog/i);
+
+    const succeeded = view();
+    succeeded.nativeStatus = { ...succeeded.nativeStatus, canaryPhase: "succeeded", transportAckConfirmed: true, rpcReturnConfirmed: true, authoritativeMarkerConfirmed: true, rearmAvailable: true };
+    expect(parseAutomarkerPresetView(succeeded).nativeStatus).toEqual(succeeded.nativeStatus);
+
+    const failedWithoutCategory = view();
+    failedWithoutCategory.nativeStatus.canaryPhase = "failed";
+    expect(() => parseAutomarkerPresetView(failedWithoutCategory)).toThrow(/invalid automarker preset catalog/i);
+
+    const expanded = view() as unknown as { nativeStatus: Record<string, unknown> };
+    expanded.nativeStatus.rawSession = "private";
+    expect(() => parseAutomarkerPresetView(expanded)).toThrow(/invalid automarker preset catalog/i);
 
     const leaking = JSON.stringify(parseAutomarkerPresetView(ready).nativeStatus);
     expect(Object.keys(JSON.parse(leaking) as Record<string, unknown>).sort()).toEqual([
-      "activePlacementEnabled", "bpsrTupleConfirmed", "failureCategory", "markerCarrierObserved",
-      "observerReady", "returnConfirmed", "synCandidateObserved",
+      "activePlacementEnabled", "authoritativeMarkerConfirmed", "bpsrTupleConfirmed", "canaryPhase",
+      "failureCategory", "observerReady", "rearmAvailable", "rpcReturnConfirmed",
+      "synCandidateObserved", "transportAckConfirmed",
     ]);
-    expect(leaking).not.toMatch(/pid|processId|address|port|epoch|packet|bytes|callId|session/i);
+    expect(leaking).not.toMatch(/"(?:pid|processId|address|port|epoch|packet|bytes|callId|session)"\s*:/i);
   });
 
   it("builds the exact bounded native activation request and rejects response expansion", () => {

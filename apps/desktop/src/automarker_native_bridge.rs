@@ -30,6 +30,7 @@ use crate::automarker_native_readiness::{
 use crate::automarker_windivert_backend::WinDivertHandle;
 use crate::{
     automarker_active_coordinator::{
+        ActiveAutomarkerCanaryFailureCategory, ActiveAutomarkerCanaryProgressSink,
         ActiveAutomarkerControl, ActiveAutomarkerCoordinatorConfig,
         ProductionActiveAutomarkerCoordinator,
     },
@@ -71,15 +72,35 @@ struct NativeFlowEvidence {
     reverse_ack: Option<AutomarkerBridgeReverseAckObservation>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct AutomarkerNativeOperatorStatus {
     pub observer_ready: bool,
     pub syn_candidate_observed: bool,
     pub bpsr_tuple_confirmed: bool,
-    pub marker_carrier_observed: bool,
-    pub return_confirmed: bool,
+    pub canary_phase: &'static str,
+    pub transport_ack_confirmed: bool,
+    pub rpc_return_confirmed: bool,
+    pub authoritative_marker_confirmed: bool,
+    pub rearm_available: bool,
     pub active_placement_enabled: bool,
     pub failure_category: Option<&'static str>,
+}
+
+impl Default for AutomarkerNativeOperatorStatus {
+    fn default() -> Self {
+        Self {
+            observer_ready: false,
+            syn_candidate_observed: false,
+            bpsr_tuple_confirmed: false,
+            canary_phase: "idle",
+            transport_ack_confirmed: false,
+            rpc_return_confirmed: false,
+            authoritative_marker_confirmed: false,
+            rearm_available: false,
+            active_placement_enabled: false,
+            failure_category: None,
+        }
+    }
 }
 
 const LIVE_PACKET_MUTATION_WIRED: bool = false;
@@ -106,7 +127,7 @@ struct BridgeContinuity {
 
 #[derive(Debug, Clone, PartialEq)]
 struct ActiveCanaryAuthority {
-    activation_authority_revision: u64,
+    carrier_authority_revision: u64,
     capture_session_id: String,
     deployment_id: String,
     client_build: String,
@@ -132,8 +153,13 @@ impl ActiveCanaryAuthority {
         let carrier = evidence.outbound_carrier.as_ref()?;
         let flow = state.native_flow.as_ref()?;
         let pack = state.protocol_pack.as_ref()?;
+        if state.carrier_authority_revision == 0
+            || state.carrier_authority_revision != carrier.provenance.capture_sequence
+        {
+            return None;
+        }
         Some(Self {
-            activation_authority_revision: state.activation_authority_revision,
+            carrier_authority_revision: state.carrier_authority_revision,
             capture_session_id: session.capture_session_id.clone(),
             deployment_id: continuity.deployment_id.clone(),
             client_build: continuity.client_build.clone(),
@@ -233,8 +259,8 @@ pub(crate) enum AutomarkerActiveOwnershipStatus {
 struct NativeBridgeState {
     phase: LifecyclePhase,
     generation: u64,
-    activation_authority_revision: u64,
-    last_attempted_authority_revision: Option<u64>,
+    carrier_authority_revision: u64,
+    last_attempted_carrier_authority_revision: Option<u64>,
     session: Option<AutomarkerBridgeSessionIdentity>,
     continuity: Option<BridgeContinuity>,
     parser_evidence: Option<AutomarkerBridgeEvidenceSnapshot>,
@@ -244,6 +270,7 @@ struct NativeBridgeState {
     gates: NativeGateState,
     active_worker: Option<ActiveAutomarkerWorkerBundle>,
     active_control: Option<ActiveAutomarkerControl>,
+    active_progress: ActiveAutomarkerCanaryProgressSink,
     #[cfg(windows)]
     active_receive_control:
         Option<crate::automarker_active_windivert::ActiveAutomarkerReceiveControl>,
@@ -343,6 +370,9 @@ impl AutomarkerNativeBridgeLifecycle {
             return false;
         };
         if control.parser_snapshot(snapshot).is_err() {
+            state
+                .active_progress
+                .fail(ActiveAutomarkerCanaryFailureCategory::Lifecycle);
             let _ = control.context_invalidated();
             Self::request_active_stop_locked(&mut state, false);
             return false;
@@ -387,15 +417,27 @@ impl AutomarkerNativeBridgeLifecycle {
             passive.stop_drain_join();
         }
 
-        let (coordinator, control) =
+        let (coordinator, control, progress) =
             ProductionActiveAutomarkerCoordinator::create(config, ACTIVE_COMMAND_CAPACITY)
                 .map_err(str::to_owned)?;
         let (backend, receive_control) =
-            crate::automarker_active_windivert::WindowsActiveAutomarkerBackend::open(
+            match crate::automarker_active_windivert::WindowsActiveAutomarkerBackend::open(
                 dependency_directory,
                 binding,
-            )?;
+            ) {
+                Ok(opened) => opened,
+                Err(error) => {
+                    progress.fail(ActiveAutomarkerCanaryFailureCategory::Transport);
+                    if let Some(mut state) = self.lock_or_poison_shutdown()
+                        && state.generation == generation
+                    {
+                        state.active_progress = progress;
+                    }
+                    return Err(error);
+                }
+            };
         if !backend.active_lifetime_arbitration_healthy() {
+            progress.fail(ActiveAutomarkerCanaryFailureCategory::Transport);
             let worker =
                 ActiveAutomarkerWorkerBundle::spawn_recoverable(backend, coordinator, true);
             let Some(mut state) = self.lock_or_poison_shutdown() else {
@@ -409,6 +451,7 @@ impl AutomarkerNativeBridgeLifecycle {
                     "Automarker lifecycle was poisoned while retaining startup drain".into(),
                 );
             };
+            state.active_progress = progress.clone();
             Self::retain_startup_drain_locked(&mut state, worker, control, receive_control)?;
             return Ok(false);
         }
@@ -432,6 +475,8 @@ impl AutomarkerNativeBridgeLifecycle {
             binding,
         );
         if !still_exact {
+            progress.fail(ActiveAutomarkerCanaryFailureCategory::Lifecycle);
+            state.active_progress = progress.clone();
             let worker =
                 ActiveAutomarkerWorkerBundle::spawn_recoverable(backend, coordinator, true);
             Self::retain_startup_drain_locked(&mut state, worker, control, receive_control)?;
@@ -444,6 +489,8 @@ impl AutomarkerNativeBridgeLifecycle {
             match ActiveAutomarkerWorkerBundle::spawn_recoverable(backend, coordinator, false) {
                 Ok(worker) => worker,
                 Err(failure) => {
+                    progress.fail(ActiveAutomarkerCanaryFailureCategory::Lifecycle);
+                    state.active_progress = progress.clone();
                     let (spawn_error, mut fatal) = (*failure).into_parts();
                     match fatal.drain_unstarted() {
                         Ok(ActiveAutomarkerFatalRecoveryStatus::Released) => {
@@ -464,6 +511,8 @@ impl AutomarkerNativeBridgeLifecycle {
         state.active_control = Some(control);
         state.active_receive_control = Some(receive_control);
         state.active_worker = Some(worker);
+        state.active_progress = progress;
+        state.active_progress.armed();
         state.gates.reflect_arbitrated = true;
         state.gates.authoritative_inbound_decoder_ready = true;
         Ok(true)
@@ -514,7 +563,8 @@ impl AutomarkerNativeBridgeLifecycle {
             return None;
         }
         let authority = ActiveCanaryAuthority::from_state(state)?;
-        if state.last_attempted_authority_revision == Some(authority.activation_authority_revision)
+        if state.last_attempted_carrier_authority_revision
+            == Some(authority.carrier_authority_revision)
         {
             return None;
         }
@@ -522,7 +572,8 @@ impl AutomarkerNativeBridgeLifecycle {
         // Consume this exact authority before releasing the lock. Open
         // failure, a racing parser update, and clean completion all require a
         // freshly revalidated evidence revision before another explicit arm.
-        state.last_attempted_authority_revision = Some(authority.activation_authority_revision);
+        state.last_attempted_carrier_authority_revision =
+            Some(authority.carrier_authority_revision);
         Some((authority, config))
     }
 
@@ -677,6 +728,9 @@ impl AutomarkerNativeBridgeLifecycle {
             Ok(None) => return,
             Err(_) => {
                 state.active_worker = None;
+                state
+                    .active_progress
+                    .fail(ActiveAutomarkerCanaryFailureCategory::Internal);
                 state.phase = LifecyclePhase::Poisoned;
                 return;
             }
@@ -688,19 +742,59 @@ impl AutomarkerNativeBridgeLifecycle {
             state.active_receive_control = None;
         }
         if let Some(fatal) = completion.fatal_ownership {
+            state
+                .active_progress
+                .fail(ActiveAutomarkerCanaryFailureCategory::Transport);
             state.fatal_ownership = Some(fatal);
             state.phase = LifecyclePhase::OwnershipRecoveryRequired;
+        } else if !state.active_progress.terminal() {
+            let category = match completion.report.exit {
+                crate::automarker_active_worker::ActiveAutomarkerWorkerExit::Timeout => {
+                    ActiveAutomarkerCanaryFailureCategory::Timeout
+                }
+                crate::automarker_active_worker::ActiveAutomarkerWorkerExit::ConnectionTerminated
+                | crate::automarker_active_worker::ActiveAutomarkerWorkerExit::RequiresConnectionTermination => {
+                    ActiveAutomarkerCanaryFailureCategory::Connection
+                }
+                crate::automarker_active_worker::ActiveAutomarkerWorkerExit::BackendFailure
+                | crate::automarker_active_worker::ActiveAutomarkerWorkerExit::LifetimeArbitrationLost => {
+                    ActiveAutomarkerCanaryFailureCategory::Transport
+                }
+                crate::automarker_active_worker::ActiveAutomarkerWorkerExit::CoordinatorAbort => {
+                    ActiveAutomarkerCanaryFailureCategory::Confirmation
+                }
+                _ => ActiveAutomarkerCanaryFailureCategory::Lifecycle,
+            };
+            state.active_progress.fail(category);
         }
     }
 
     fn request_active_stop_locked(state: &mut NativeBridgeState, process_terminated: bool) {
         Self::collect_finished_worker_locked(state);
+        if state.active_worker.is_some()
+            || state.active_control.is_some()
+            || state.active_progress.snapshot().phase
+                != crate::automarker_active_coordinator::ActiveAutomarkerCanaryPhase::Idle
+        {
+            state.active_progress.fail(if process_terminated {
+                ActiveAutomarkerCanaryFailureCategory::Connection
+            } else {
+                ActiveAutomarkerCanaryFailureCategory::Lifecycle
+            });
+        }
         if let Some(control) = state.active_control.as_ref() {
-            let _ = if process_terminated {
+            let sent = if process_terminated {
                 control.process_terminated()
             } else {
                 control.context_invalidated()
             };
+            if sent.is_err() {
+                state.active_progress.fail(if process_terminated {
+                    ActiveAutomarkerCanaryFailureCategory::Connection
+                } else {
+                    ActiveAutomarkerCanaryFailureCategory::Lifecycle
+                });
+            }
         }
         #[cfg(windows)]
         if let Some(receive_control) = state.active_receive_control.as_ref() {
@@ -715,6 +809,9 @@ impl AutomarkerNativeBridgeLifecycle {
                         state.active_receive_control = None;
                     }
                     if let Some(fatal) = completion.fatal_ownership {
+                        state
+                            .active_progress
+                            .fail(ActiveAutomarkerCanaryFailureCategory::Transport);
                         state.fatal_ownership = Some(fatal);
                     }
                 }
@@ -722,7 +819,12 @@ impl AutomarkerNativeBridgeLifecycle {
                     state.active_worker = Some(worker);
                     Self::collect_finished_worker_locked(state);
                 }
-                Err(_) => state.active_worker = Some(worker),
+                Err(_) => {
+                    state
+                        .active_progress
+                        .fail(ActiveAutomarkerCanaryFailureCategory::Internal);
+                    state.active_worker = Some(worker);
+                }
             }
         }
         Self::collect_finished_worker_locked(state);
@@ -780,8 +882,8 @@ impl AutomarkerNativeBridgeLifecycle {
         let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Observing, true);
         state.session = Some(session);
         state.protocol_pack = pack;
-        state.activation_authority_revision = 0;
-        state.last_attempted_authority_revision = None;
+        state.carrier_authority_revision = 0;
+        state.last_attempted_carrier_authority_revision = None;
         drop(state);
         detached.drop_in_shutdown_order();
     }
@@ -867,23 +969,33 @@ impl AutomarkerNativeBridgeLifecycle {
             return Self::invalidate_and_release(state);
         }
         state.continuity = Some(continuity);
-        let carrier_changed = state
+        let previous_carrier_sequence = state
             .parser_evidence
             .as_ref()
             .and_then(|previous| previous.outbound_carrier.as_ref())
-            .map(|carrier| carrier.provenance.capture_sequence)
-            != evidence
-                .outbound_carrier
-                .as_ref()
-                .map(|carrier| carrier.provenance.capture_sequence);
+            .map(|carrier| carrier.provenance.capture_sequence);
+        let next_carrier_sequence = evidence
+            .outbound_carrier
+            .as_ref()
+            .map(|carrier| carrier.provenance.capture_sequence);
+        if matches!(
+            (previous_carrier_sequence, next_carrier_sequence),
+            (Some(previous), Some(next)) if next < previous
+        ) {
+            return Self::invalidate_and_release(state);
+        }
+        let carrier_changed = previous_carrier_sequence != next_carrier_sequence;
+        let carrier_advanced = next_carrier_sequence
+            .is_some_and(|next| next > previous_carrier_sequence.unwrap_or_default());
         let carrier_present = evidence.outbound_carrier.is_some();
         state.parser_evidence = Some(evidence);
-        state.activation_authority_revision = state
-            .parser_evidence
-            .as_ref()
-            .map_or(0, |evidence| evidence.feed_revision);
         if carrier_changed {
             state.parser_carrier_received_at = carrier_present.then(Instant::now);
+            state.carrier_authority_revision = if carrier_advanced {
+                next_carrier_sequence.unwrap_or_default()
+            } else {
+                0
+            };
         }
         let capture_connection = state
             .parser_evidence
@@ -915,7 +1027,7 @@ impl AutomarkerNativeBridgeLifecycle {
         state.gates.fresh_world_use_slot_carrier = false;
         #[cfg(windows)]
         Self::try_promote_pending_readiness_locked(&mut state);
-        if carrier_changed
+        if carrier_advanced
             && let Some((capture_sequence, Some(rpc_call_id))) = state
                 .parser_evidence
                 .as_ref()
@@ -932,11 +1044,14 @@ impl AutomarkerNativeBridgeLifecycle {
                     .is_err()
             })
         {
+            state
+                .active_progress
+                .fail(ActiveAutomarkerCanaryFailureCategory::Lifecycle);
             Self::request_active_stop_locked(&mut state, false);
             return false;
         }
         #[cfg(windows)]
-        if carrier_changed && let Some(receive_control) = state.active_receive_control.as_ref() {
+        if carrier_advanced && let Some(receive_control) = state.active_receive_control.as_ref() {
             let _ = receive_control.wake();
         }
         true
@@ -1194,12 +1309,14 @@ impl AutomarkerNativeBridgeLifecycle {
     }
 
     pub(crate) fn sanitized_operator_status(&self) -> AutomarkerNativeOperatorStatus {
-        let Some(state) = self.lock_or_poison_shutdown() else {
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
             return AutomarkerNativeOperatorStatus {
                 failure_category: Some("internal"),
                 ..AutomarkerNativeOperatorStatus::default()
             };
         };
+        Self::collect_finished_worker_locked(&mut state);
+        let active_progress = state.active_progress.snapshot();
         #[cfg(windows)]
         let worker_status = state
             .passive_readiness_worker
@@ -1222,21 +1339,22 @@ impl AutomarkerNativeBridgeLifecycle {
         // it as readiness until SignatureFlowCapture and the parser carrier
         // have both matched the exact tuple.
         let native_readiness_proven = retained_readiness_proven;
-        let marker_carrier_present = state
-            .parser_evidence
-            .as_ref()
-            .is_some_and(|evidence| evidence.outbound_carrier.is_some());
         #[cfg(windows)]
         let failure = state.native_failure.or(match worker_status {
             Some(AutomarkerPassiveReadinessStatus::Failed(category)) => Some(category),
             _ => None,
         });
         #[cfg(windows)]
-        let failure_present = failure.is_some();
+        let failure_present = failure.is_some() || active_progress.failure_category.is_some();
         #[cfg(not(windows))]
-        let failure_category = None;
+        let failure_category = active_progress
+            .failure_category
+            .map(ActiveAutomarkerCanaryFailureCategory::as_str);
         #[cfg(windows)]
-        let failure_category = failure.map(AutomarkerNativeFailureCategory::as_str);
+        let failure_category = active_progress
+            .failure_category
+            .map(ActiveAutomarkerCanaryFailureCategory::as_str)
+            .or_else(|| failure.map(AutomarkerNativeFailureCategory::as_str));
         #[cfg(windows)]
         let observer_ready = !failure_present
             && (state.passive_readiness_worker.is_some()
@@ -1266,11 +1384,11 @@ impl AutomarkerNativeBridgeLifecycle {
             observer_ready,
             syn_candidate_observed,
             bpsr_tuple_confirmed,
-            marker_carrier_observed: marker_carrier_present,
-            return_confirmed: state
-                .parser_evidence
-                .as_ref()
-                .is_some_and(|evidence| evidence.correlated_return.is_some()),
+            canary_phase: active_progress.phase.as_str(),
+            transport_ack_confirmed: active_progress.transport_ack_confirmed,
+            rpc_return_confirmed: active_progress.rpc_return_confirmed,
+            authoritative_marker_confirmed: active_progress.authoritative_marker_confirmed,
+            rearm_available: Self::rearm_available_locked(&state, active_progress),
             active_placement_enabled: Self::placement_enabled_locked(&state),
             failure_category,
         }
@@ -1440,6 +1558,7 @@ impl AutomarkerNativeBridgeLifecycle {
             .as_ref()
             .is_some_and(|flow| flow.binding.connection_epoch() == connection_epoch)
         {
+            Self::request_active_stop_locked(&mut state, true);
             let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Invalidated, false);
             drop(state);
             detached.drop_in_shutdown_order();
@@ -1602,6 +1721,25 @@ impl AutomarkerNativeBridgeLifecycle {
             && STOP_DRAIN_JOIN_RESOURCE_BUNDLE_WIRED
     }
 
+    fn rearm_available_locked(
+        state: &NativeBridgeState,
+        progress: crate::automarker_active_coordinator::ActiveAutomarkerCanaryProgress,
+    ) -> bool {
+        progress.phase.terminal()
+            && state.phase == LifecyclePhase::Observing
+            && state.active_worker.is_none()
+            && state.active_control.is_none()
+            && state.fatal_ownership.is_none()
+            && state.parser_carrier_received_at.is_some_and(|received_at| {
+                received_at.elapsed().as_millis()
+                    <= rlogs_game_bpsr::SINGLE_MARKER_XYZ_MAX_CONTEXT_AGE_MILLIS as u128
+            })
+            && ActiveCanaryAuthority::from_state(state).is_some_and(|authority| {
+                state.last_attempted_carrier_authority_revision
+                    != Some(authority.carrier_authority_revision)
+            })
+    }
+
     fn detach_owned_state(
         state: &mut NativeBridgeState,
         phase: LifecyclePhase,
@@ -1623,8 +1761,8 @@ impl AutomarkerNativeBridgeLifecycle {
         state.parser_carrier_received_at = None;
         if clear_session {
             state.protocol_pack = None;
-            state.activation_authority_revision = 0;
-            state.last_attempted_authority_revision = None;
+            state.carrier_authority_revision = 0;
+            state.last_attempted_carrier_authority_revision = None;
         }
         state.native_flow = None;
         state.gates = NativeGateState::default();
@@ -2213,6 +2351,72 @@ mod tests {
         assert!(snapshot.fatal_ownership.is_none());
     }
 
+    #[test]
+    fn context_stop_fails_armed_no_packet_attempt_before_join_and_survives_detach() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        let worker = ActiveAutomarkerWorkerBundle::spawn(
+            ActiveLifecycleBackend(ActiveLifecycleHarness::default()),
+            ActiveLifecycleCoordinator { obligation: false },
+        )
+        .unwrap();
+        bridge
+            .retain_active_worker(worker)
+            .unwrap_or_else(|worker| {
+                std::mem::forget(worker);
+                panic!("test lifecycle rejected its clean worker")
+            });
+        let mut snapshot = state(&bridge);
+        snapshot.active_progress.armed();
+        AutomarkerNativeBridgeLifecycle::request_active_stop_locked(&mut snapshot, false);
+        let detached = AutomarkerNativeBridgeLifecycle::detach_owned_state(
+            &mut snapshot,
+            LifecyclePhase::Observing,
+            false,
+        );
+        let progress = snapshot.active_progress.snapshot();
+        drop(snapshot);
+        detached.drop_in_shutdown_order();
+        assert_eq!(progress.phase.as_str(), "failed");
+        assert_eq!(
+            progress.failure_category,
+            Some(ActiveAutomarkerCanaryFailureCategory::Lifecycle)
+        );
+    }
+
+    #[test]
+    fn process_stop_fails_armed_no_packet_attempt_before_join_and_survives_detach() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        let worker = ActiveAutomarkerWorkerBundle::spawn(
+            ActiveLifecycleBackend(ActiveLifecycleHarness::default()),
+            ActiveLifecycleCoordinator { obligation: false },
+        )
+        .unwrap();
+        bridge
+            .retain_active_worker(worker)
+            .unwrap_or_else(|worker| {
+                std::mem::forget(worker);
+                panic!("test lifecycle rejected its clean worker")
+            });
+        let mut snapshot = state(&bridge);
+        snapshot.active_progress.armed();
+        AutomarkerNativeBridgeLifecycle::request_active_stop_locked(&mut snapshot, true);
+        let detached = AutomarkerNativeBridgeLifecycle::detach_owned_state(
+            &mut snapshot,
+            LifecyclePhase::Invalidated,
+            false,
+        );
+        let progress = snapshot.active_progress.snapshot();
+        drop(snapshot);
+        detached.drop_in_shutdown_order();
+        assert_eq!(progress.phase.as_str(), "failed");
+        assert_eq!(
+            progress.failure_category,
+            Some(ActiveAutomarkerCanaryFailureCategory::Connection)
+        );
+    }
+
     #[cfg(windows)]
     #[test]
     fn session_shutdown_stops_and_joins_passive_worker() {
@@ -2295,6 +2499,24 @@ mod tests {
         bridge.begin_session(session());
         assert!(bridge.accept_parser_evidence(Some(&scene("mech-facility")), parser_evidence(),));
         assert!(!state(&bridge).gates.fresh_world_use_slot_carrier);
+    }
+
+    #[test]
+    fn terminal_canary_status_survives_detach_and_session_transition() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        state(&bridge)
+            .active_progress
+            .fail(ActiveAutomarkerCanaryFailureCategory::Timeout);
+        bridge.finish_session("capture-a");
+        let finished = bridge.sanitized_operator_status();
+        assert_eq!(finished.canary_phase, "failed");
+        assert_eq!(finished.failure_category, Some("timeout"));
+
+        bridge.begin_session(session());
+        let next_session = bridge.sanitized_operator_status();
+        assert_eq!(next_session.canary_phase, "failed");
+        assert_eq!(next_session.failure_category, Some("timeout"));
     }
 
     #[test]
@@ -2455,7 +2677,37 @@ mod tests {
                 )
                 .is_none()
             );
-            snapshot.activation_authority_revision += 1;
+            snapshot
+                .active_progress
+                .fail(ActiveAutomarkerCanaryFailureCategory::Lifecycle);
+            snapshot.parser_evidence.as_mut().unwrap().feed_revision += 1;
+            assert!(!AutomarkerNativeBridgeLifecycle::rearm_available_locked(
+                &snapshot,
+                snapshot.active_progress.snapshot(),
+            ));
+            snapshot
+                .parser_evidence
+                .as_mut()
+                .unwrap()
+                .outbound_carrier
+                .as_mut()
+                .unwrap()
+                .provenance
+                .capture_sequence += 1;
+            snapshot.carrier_authority_revision = snapshot
+                .parser_evidence
+                .as_ref()
+                .unwrap()
+                .outbound_carrier
+                .as_ref()
+                .unwrap()
+                .provenance
+                .capture_sequence;
+            snapshot.parser_carrier_received_at = Some(Instant::now());
+            assert!(AutomarkerNativeBridgeLifecycle::rearm_available_locked(
+                &snapshot,
+                snapshot.active_progress.snapshot(),
+            ));
             assert!(
                 AutomarkerNativeBridgeLifecycle::claim_activation_authority_locked(
                     &mut snapshot,
@@ -2493,7 +2745,7 @@ mod tests {
         assert!(candidate_status.observer_ready);
         assert!(candidate_status.syn_candidate_observed);
         assert!(!candidate_status.bpsr_tuple_confirmed);
-        assert!(!candidate_status.marker_carrier_observed);
+        assert_eq!(candidate_status.canary_phase, "idle");
         assert!(!bridge.confirmed_connections_require_restart(&[confirmed_connection()]));
         assert!(bridge.sanitized_operator_status().bpsr_tuple_confirmed);
         assert!(state(&bridge).parser_evidence.is_none());
@@ -2530,7 +2782,7 @@ mod tests {
         ));
         let before_carrier = bridge.sanitized_operator_status();
         assert!(before_carrier.bpsr_tuple_confirmed);
-        assert!(!before_carrier.marker_carrier_observed);
+        assert_eq!(before_carrier.canary_phase, "idle");
 
         assert!(bridge.accept_parser_evidence(Some(&scene("mech-facility")), parser_evidence()));
         let snapshot = state(&bridge);
@@ -2586,8 +2838,11 @@ mod tests {
         assert!(status.observer_ready);
         assert!(status.syn_candidate_observed);
         assert!(!status.bpsr_tuple_confirmed);
-        assert!(!status.marker_carrier_observed);
-        assert!(!status.return_confirmed);
+        assert_eq!(status.canary_phase, "idle");
+        assert!(!status.transport_ack_confirmed);
+        assert!(!status.rpc_return_confirmed);
+        assert!(!status.authoritative_marker_confirmed);
+        assert!(!status.rearm_available);
         assert!(!status.active_placement_enabled);
         assert_eq!(status.failure_category, None);
         bridge.finish_session("capture-a");

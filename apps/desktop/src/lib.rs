@@ -7768,8 +7768,11 @@ impl RuntimeController {
             observer_ready: native.observer_ready,
             syn_candidate_observed: native.syn_candidate_observed,
             bpsr_tuple_confirmed: native.bpsr_tuple_confirmed,
-            marker_carrier_observed: native.marker_carrier_observed,
-            return_confirmed: native.return_confirmed,
+            canary_phase: native.canary_phase,
+            transport_ack_confirmed: native.transport_ack_confirmed,
+            rpc_return_confirmed: native.rpc_return_confirmed,
+            authoritative_marker_confirmed: native.authoritative_marker_confirmed,
+            rearm_available: native.rearm_available,
             active_placement_enabled: native.active_placement_enabled,
             failure_category: native.failure_category,
         };

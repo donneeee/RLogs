@@ -8,7 +8,10 @@
 #![allow(dead_code)]
 
 use std::{
-    sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError},
+    sync::{
+        Arc, Mutex,
+        mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError},
+    },
     time::Instant,
 };
 
@@ -16,9 +19,9 @@ use rlogs_game_bpsr::{
     AUTOMARKER_REQUEST_BUILD, AutomarkerActiveFilterPlan, AutomarkerActivePacketRole,
     AutomarkerBridgeCommitDisposition as BridgeCommitDisposition, AutomarkerBridgeCoordinator,
     AutomarkerBridgeCoordinatorError, AutomarkerBridgePrepareDisposition,
-    AutomarkerConfirmationBaseline, AutomarkerRequestXyz, OfflineAutomarkerConnectionEpochBinding,
-    ProtocolPack, SINGLE_MARKER_XYZ_CANARY_ARM_TOKEN, SingleMarkerXyzCanaryConfig,
-    SingleMarkerXyzCanaryContext, SingleMarkerXyzExternalSendOutcome,
+    AutomarkerConfirmationBaseline, AutomarkerConfirmationState, AutomarkerRequestXyz,
+    OfflineAutomarkerConnectionEpochBinding, ProtocolPack, SINGLE_MARKER_XYZ_CANARY_ARM_TOKEN,
+    SingleMarkerXyzCanaryConfig, SingleMarkerXyzCanaryContext, SingleMarkerXyzExternalSendOutcome,
     decode_observed_automarker_request_into,
 };
 
@@ -39,6 +42,196 @@ use crate::{
 const EXACT_CARRIER_BYTES: usize = 197;
 const APPLICATION_OFFSET: usize = 36;
 const COMMAND_CAPACITY_MAX: usize = 256;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum ActiveAutomarkerCanaryPhase {
+    #[default]
+    Idle,
+    Armed,
+    CarrierIntercepted,
+    ModifiedSendCommitted,
+    AwaitingConfirmation,
+    Succeeded,
+    Failed,
+}
+
+impl ActiveAutomarkerCanaryPhase {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Armed => "armed",
+            Self::CarrierIntercepted => "carrier_intercepted",
+            Self::ModifiedSendCommitted => "modified_send_committed",
+            Self::AwaitingConfirmation => "awaiting_confirmation",
+            Self::Succeeded => "succeeded",
+            Self::Failed => "failed",
+        }
+    }
+
+    pub(crate) fn terminal(self) -> bool {
+        matches!(self, Self::Succeeded | Self::Failed)
+    }
+
+    fn rank(self) -> u8 {
+        match self {
+            Self::Idle => 0,
+            Self::Armed => 1,
+            Self::CarrierIntercepted => 2,
+            Self::ModifiedSendCommitted => 3,
+            Self::AwaitingConfirmation => 4,
+            Self::Succeeded | Self::Failed => 5,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ActiveAutomarkerCanaryFailureCategory {
+    Carrier,
+    Transport,
+    Confirmation,
+    Timeout,
+    Connection,
+    Lifecycle,
+    Internal,
+}
+
+impl ActiveAutomarkerCanaryFailureCategory {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Carrier => "carrier",
+            Self::Transport => "transport",
+            Self::Confirmation => "confirmation",
+            Self::Timeout => "timeout",
+            Self::Connection => "connection",
+            Self::Lifecycle => "lifecycle",
+            Self::Internal => "internal",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct ActiveAutomarkerCanaryProgress {
+    pub phase: ActiveAutomarkerCanaryPhase,
+    pub transport_ack_confirmed: bool,
+    pub rpc_return_confirmed: bool,
+    pub authoritative_marker_confirmed: bool,
+    pub failure_category: Option<ActiveAutomarkerCanaryFailureCategory>,
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct ActiveAutomarkerCanaryProgressSink(Arc<Mutex<ActiveAutomarkerCanaryProgress>>);
+
+impl ActiveAutomarkerCanaryProgressSink {
+    pub(crate) fn snapshot(&self) -> ActiveAutomarkerCanaryProgress {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn update(&self, update: impl FnOnce(&mut ActiveAutomarkerCanaryProgress)) {
+        update(
+            &mut self
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
+    }
+
+    pub(crate) fn armed(&self) {
+        self.update(|progress| {
+            if progress.phase == ActiveAutomarkerCanaryPhase::Idle {
+                progress.phase = ActiveAutomarkerCanaryPhase::Armed;
+            }
+        });
+    }
+
+    fn carrier_intercepted(&self) {
+        self.advance(ActiveAutomarkerCanaryPhase::CarrierIntercepted);
+    }
+
+    fn modified_send_committed_awaiting_confirmation(&self) {
+        // Commit and the resulting AwaitingEvidence state are one externally
+        // visible milestone. ModifiedSendCommitted remains an accepted schema
+        // phase for bounded compatibility, but a successful coordinator never
+        // leaves status parked between those two facts.
+        self.advance(ActiveAutomarkerCanaryPhase::AwaitingConfirmation);
+    }
+
+    fn advance(&self, phase: ActiveAutomarkerCanaryPhase) {
+        self.update(|progress| {
+            if !progress.phase.terminal() && phase.rank() > progress.phase.rank() {
+                progress.phase = phase;
+            }
+        });
+    }
+
+    pub(crate) fn fail(&self, category: ActiveAutomarkerCanaryFailureCategory) {
+        self.update(|progress| {
+            if !progress.phase.terminal() {
+                progress.phase = ActiveAutomarkerCanaryPhase::Failed;
+                progress.failure_category = Some(category);
+            }
+        });
+    }
+
+    fn sync_adapter(&self, adapter: &PrivateAutomarkerConfirmationAdapter) {
+        let state = adapter.coordinator_state();
+        self.update(|progress| {
+            if progress.phase.terminal() {
+                return;
+            }
+            if let Some(confirmation) = state.confirmation {
+                match confirmation {
+                    AutomarkerConfirmationState::AwaitingEvidence {
+                        reverse_cumulative_ack,
+                        successful_empty_rpc_return,
+                        new_authoritative_marker_add,
+                    } => {
+                        progress.transport_ack_confirmed |= reverse_cumulative_ack;
+                        progress.rpc_return_confirmed |= successful_empty_rpc_return;
+                        progress.authoritative_marker_confirmed |= new_authoritative_marker_add;
+                        if ActiveAutomarkerCanaryPhase::AwaitingConfirmation.rank()
+                            > progress.phase.rank()
+                        {
+                            progress.phase = ActiveAutomarkerCanaryPhase::AwaitingConfirmation;
+                        }
+                    }
+                    AutomarkerConfirmationState::Confirmed => {
+                        progress.transport_ack_confirmed = true;
+                        progress.rpc_return_confirmed = true;
+                        progress.authoritative_marker_confirmed = true;
+                        progress.phase = if state.tcp_rewrite_obligation_active {
+                            ActiveAutomarkerCanaryPhase::AwaitingConfirmation
+                        } else {
+                            ActiveAutomarkerCanaryPhase::Succeeded
+                        };
+                    }
+                    AutomarkerConfirmationState::Aborted(_) => {
+                        progress.phase = ActiveAutomarkerCanaryPhase::Failed;
+                        progress.failure_category =
+                            Some(ActiveAutomarkerCanaryFailureCategory::Confirmation);
+                    }
+                }
+            }
+            if state.coordinator_error.is_some()
+                || matches!(
+                    adapter.state(),
+                    PrivateAutomarkerConfirmationAdapterState::Failed
+                        | PrivateAutomarkerConfirmationAdapterState::ConfirmationFailedAwaitingTransportRetirement
+                )
+            {
+                progress.phase = ActiveAutomarkerCanaryPhase::Failed;
+                progress.failure_category
+                    .get_or_insert(ActiveAutomarkerCanaryFailureCategory::Confirmation);
+            }
+        });
+    }
+
+    pub(crate) fn terminal(&self) -> bool {
+        self.snapshot().phase.terminal()
+    }
+}
 
 enum ActiveAutomarkerCommand {
     ParserCarrier {
@@ -132,13 +325,21 @@ pub(crate) struct ProductionActiveAutomarkerCoordinator {
     pending_parser_carrier: Option<(u64, u32)>,
     context_invalidated: bool,
     termination_requested: bool,
+    progress: ActiveAutomarkerCanaryProgressSink,
 }
 
 impl ProductionActiveAutomarkerCoordinator {
     pub(crate) fn create(
         config: ActiveAutomarkerCoordinatorConfig,
         command_capacity: usize,
-    ) -> Result<(Self, ActiveAutomarkerControl), &'static str> {
+    ) -> Result<
+        (
+            Self,
+            ActiveAutomarkerControl,
+            ActiveAutomarkerCanaryProgressSink,
+        ),
+        &'static str,
+    > {
         if command_capacity == 0 || command_capacity > COMMAND_CAPACITY_MAX {
             return Err("Automarker command capacity is outside the reviewed bound");
         }
@@ -165,6 +366,7 @@ impl ProductionActiveAutomarkerCoordinator {
         }
         let (sender, commands) = mpsc::sync_channel(command_capacity);
         let control = ActiveAutomarkerControl { sender };
+        let progress = ActiveAutomarkerCanaryProgressSink::default();
         Ok((
             Self {
                 pack: config.pack,
@@ -188,8 +390,10 @@ impl ProductionActiveAutomarkerCoordinator {
                 pending_parser_carrier: None,
                 context_invalidated: false,
                 termination_requested: false,
+                progress: progress.clone(),
             },
             control,
+            progress,
         ))
     }
 
@@ -224,11 +428,17 @@ impl ProductionActiveAutomarkerCoordinator {
                     if let Some(adapter) = self.adapter.as_mut() {
                         if adapter.route_parser_snapshot(snapshot).is_err() {
                             self.context_invalidated = true;
+                            self.progress
+                                .fail(ActiveAutomarkerCanaryFailureCategory::Confirmation);
+                        } else {
+                            self.progress.sync_adapter(adapter);
                         }
                     }
                 }
                 Ok(ActiveAutomarkerCommand::ContextInvalidated) => {
                     self.context_invalidated = true;
+                    self.progress
+                        .fail(ActiveAutomarkerCanaryFailureCategory::Lifecycle);
                     if let Some(adapter) = self.adapter.as_mut() {
                         adapter.invalidate_context();
                     }
@@ -240,6 +450,8 @@ impl ProductionActiveAutomarkerCoordinator {
                 }
                 Ok(ActiveAutomarkerCommand::ProcessTerminated) => {
                     self.termination_requested = true;
+                    self.progress
+                        .fail(ActiveAutomarkerCanaryFailureCategory::Connection);
                     if let Some(adapter) = self.adapter.as_mut() {
                         let _ = adapter.observe_connection_terminated(
                             self.connection_binding.connection_epoch(),
@@ -249,6 +461,8 @@ impl ProductionActiveAutomarkerCoordinator {
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
                     self.termination_requested = true;
+                    self.progress
+                        .fail(ActiveAutomarkerCanaryFailureCategory::Lifecycle);
                     break;
                 }
             }
@@ -447,6 +661,8 @@ impl ProductionActiveAutomarkerCoordinator {
         let adapter = match adapter {
             Ok(adapter) => adapter,
             Err(_reason) => {
+                self.progress
+                    .fail(ActiveAutomarkerCanaryFailureCategory::Carrier);
                 #[cfg(test)]
                 eprintln!("active coordinator rejected carrier: {_reason:?}");
                 return ActiveAutomarkerDisposition::PassThrough;
@@ -462,6 +678,7 @@ impl ProductionActiveAutomarkerCoordinator {
             return ActiveAutomarkerDisposition::AbortWithoutReinject;
         }
         self.adapter = Some(adapter);
+        self.progress.carrier_intercepted();
         self.pending_packet_len = Some(packet.bytes.len());
         ActiveAutomarkerDisposition::HoldExactCarrier {
             preparation_id: input.preparation_id,
@@ -496,6 +713,7 @@ impl ActiveAutomarkerCoordinator for ProductionActiveAutomarkerCoordinator {
                     rst: transport.rst,
                     runtime_revision: self.runtime_revision,
                 });
+                self.progress.sync_adapter(adapter);
             }
             return if inspection.transport.rst {
                 ActiveAutomarkerDisposition::ConnectionTerminatedAfterPassThrough
@@ -554,9 +772,15 @@ impl ActiveAutomarkerCoordinator for ProductionActiveAutomarkerCoordinator {
         };
         let disposition = match adapter.cancel_prepared_send(preparation_id) {
             Ok(AutomarkerBridgePrepareDisposition::SendOriginal(_)) => {
+                self.progress
+                    .fail(ActiveAutomarkerCanaryFailureCategory::Transport);
                 ActiveAutomarkerCancelDisposition::ReinjectHeldOriginal
             }
-            _ => ActiveAutomarkerCancelDisposition::AbortWithoutReinject,
+            _ => {
+                self.progress
+                    .fail(ActiveAutomarkerCanaryFailureCategory::Transport);
+                ActiveAutomarkerCancelDisposition::AbortWithoutReinject
+            }
         };
         self.pending_packet_len = None;
         disposition
@@ -571,7 +795,11 @@ impl ActiveAutomarkerCoordinator for ProductionActiveAutomarkerCoordinator {
         };
         match adapter.record_modified_send_may_begin(preparation_id) {
             Ok(BridgeCommitDisposition::Committed) => ActiveAutomarkerCommitDisposition::Committed,
-            _ => ActiveAutomarkerCommitDisposition::AbortWithoutReinject,
+            _ => {
+                self.progress
+                    .fail(ActiveAutomarkerCanaryFailureCategory::Transport);
+                ActiveAutomarkerCommitDisposition::AbortWithoutReinject
+            }
         }
     }
 
@@ -593,11 +821,21 @@ impl ActiveAutomarkerCoordinator for ProductionActiveAutomarkerCoordinator {
             }
         };
         match adapter.commit_modified_send(preparation_id, outcome) {
-            Ok(BridgeCommitDisposition::Committed) => ActiveAutomarkerCommitDisposition::Committed,
+            Ok(BridgeCommitDisposition::Committed) => {
+                self.progress
+                    .modified_send_committed_awaiting_confirmation();
+                ActiveAutomarkerCommitDisposition::Committed
+            }
             Ok(BridgeCommitDisposition::CommittedButConfirmationAborted(_)) => {
+                self.progress
+                    .fail(ActiveAutomarkerCanaryFailureCategory::Confirmation);
                 ActiveAutomarkerCommitDisposition::CommittedButConfirmationAborted
             }
-            _ => ActiveAutomarkerCommitDisposition::AbortWithoutReinject,
+            _ => {
+                self.progress
+                    .fail(ActiveAutomarkerCanaryFailureCategory::Transport);
+                ActiveAutomarkerCommitDisposition::AbortWithoutReinject
+            }
         }
     }
 
@@ -607,9 +845,12 @@ impl ActiveAutomarkerCoordinator for ProductionActiveAutomarkerCoordinator {
             > rlogs_game_bpsr::SINGLE_MARKER_XYZ_MAX_CONTEXT_AGE_MILLIS
         {
             self.termination_requested = true;
+            self.progress
+                .fail(ActiveAutomarkerCanaryFailureCategory::Timeout);
         }
         if let Some(adapter) = self.adapter.as_mut() {
             let _ = adapter.observe_timeout();
+            self.progress.sync_adapter(adapter);
         }
         let terminal_without_obligation = self.adapter.as_ref().is_some_and(|adapter| {
             matches!(
@@ -661,6 +902,11 @@ impl ActiveAutomarkerCoordinator for ProductionActiveAutomarkerCoordinator {
             return false;
         };
         let _ = adapter.observe_connection_terminated(proof.connection_epoch);
+        self.progress.sync_adapter(adapter);
+        if !self.progress.terminal() {
+            self.progress
+                .fail(ActiveAutomarkerCanaryFailureCategory::Connection);
+        }
         !adapter.coordinator_state().tcp_rewrite_obligation_active
     }
 }
@@ -786,6 +1032,15 @@ mod tests {
     fn coordinator() -> (
         ProductionActiveAutomarkerCoordinator,
         ActiveAutomarkerControl,
+    ) {
+        let (coordinator, control, _progress) = coordinator_with_progress();
+        (coordinator, control)
+    }
+
+    fn coordinator_with_progress() -> (
+        ProductionActiveAutomarkerCoordinator,
+        ActiveAutomarkerControl,
+        ActiveAutomarkerCanaryProgressSink,
     ) {
         ProductionActiveAutomarkerCoordinator::create(coordinator_config(1, 0), 4).unwrap()
     }
@@ -1054,6 +1309,93 @@ mod tests {
     }
 
     #[test]
+    fn sanitized_progress_tracks_only_active_rewrite_and_three_signal_confirmation() {
+        let (mut coordinator, control, progress) = coordinator_with_progress();
+        assert_eq!(progress.snapshot().phase, ActiveAutomarkerCanaryPhase::Idle);
+        progress.armed();
+        assert_eq!(
+            progress.snapshot().phase,
+            ActiveAutomarkerCanaryPhase::Armed
+        );
+
+        let carrier = packet(FRAME_SEQUENCE, 0x18, &frame(), false);
+        let ActiveAutomarkerDisposition::HoldExactCarrier { preparation_id, .. } = coordinator
+            .classify(
+                &carrier,
+                ActiveAutomarkerClassificationMode::AuthorizeNewCarrier,
+            )
+        else {
+            panic!("exact carrier was not held")
+        };
+        assert_eq!(
+            progress.snapshot().phase,
+            ActiveAutomarkerCanaryPhase::CarrierIntercepted
+        );
+        assert_eq!(
+            coordinator.record_modified_send_may_begin(preparation_id),
+            ActiveAutomarkerCommitDisposition::Committed
+        );
+        assert_eq!(
+            coordinator.commit_send(preparation_id, ActiveAutomarkerSendOutcome::Complete),
+            ActiveAutomarkerCommitDisposition::Committed
+        );
+        assert_eq!(
+            progress.snapshot().phase,
+            ActiveAutomarkerCanaryPhase::AwaitingConfirmation
+        );
+
+        control.parser_snapshot(confirmation_snapshot()).unwrap();
+        assert_eq!(
+            coordinator.observe_timeout(),
+            ActiveAutomarkerTimeoutDisposition::Continue
+        );
+        let awaiting = progress.snapshot();
+        assert_eq!(
+            awaiting.phase,
+            ActiveAutomarkerCanaryPhase::AwaitingConfirmation
+        );
+        assert!(!awaiting.transport_ack_confirmed);
+        assert!(awaiting.rpc_return_confirmed);
+        assert!(awaiting.authoritative_marker_confirmed);
+
+        let ack = packet(FRAME_SEQUENCE + EXACT_CARRIER_BYTES as u32, 0x10, &[], true);
+        assert_eq!(
+            coordinator.classify(&ack, ActiveAutomarkerClassificationMode::DrainExistingOnly),
+            ActiveAutomarkerDisposition::PassThrough
+        );
+        let succeeded = progress.snapshot();
+        assert_eq!(succeeded.phase, ActiveAutomarkerCanaryPhase::Succeeded);
+        assert!(succeeded.transport_ack_confirmed);
+        assert!(succeeded.rpc_return_confirmed);
+        assert!(succeeded.authoritative_marker_confirmed);
+        assert_eq!(succeeded.failure_category, None);
+        progress.fail(ActiveAutomarkerCanaryFailureCategory::Internal);
+        assert_eq!(progress.snapshot(), succeeded);
+    }
+
+    #[test]
+    fn indeterminate_send_is_a_bounded_transport_failure() {
+        let (mut coordinator, _control, progress) = coordinator_with_progress();
+        commit_carrier(
+            &mut coordinator,
+            ActiveAutomarkerSendOutcome::FailedOrIndeterminate,
+        );
+        assert_eq!(
+            progress.snapshot(),
+            ActiveAutomarkerCanaryProgress {
+                phase: ActiveAutomarkerCanaryPhase::Failed,
+                failure_category: Some(ActiveAutomarkerCanaryFailureCategory::Transport),
+                ..ActiveAutomarkerCanaryProgress::default()
+            }
+        );
+        progress.fail(ActiveAutomarkerCanaryFailureCategory::Internal);
+        assert_eq!(
+            progress.snapshot().failure_category,
+            Some(ActiveAutomarkerCanaryFailureCategory::Transport)
+        );
+    }
+
+    #[test]
     fn marker_two_and_already_stale_context_are_rejected_at_construction() {
         assert!(
             ProductionActiveAutomarkerCoordinator::create(coordinator_config(2, 0), 4).is_err()
@@ -1175,7 +1517,7 @@ mod tests {
     #[test]
     fn bounded_control_queue_fails_closed_and_termination_forbids_carrier() {
         let binding = binding();
-        let (mut coordinator, control) = ProductionActiveAutomarkerCoordinator::create(
+        let (mut coordinator, control, _progress) = ProductionActiveAutomarkerCoordinator::create(
             ActiveAutomarkerCoordinatorConfig {
                 pack: pack(),
                 filter_plan: reviewed_automarker_active_filter_plan(binding),
