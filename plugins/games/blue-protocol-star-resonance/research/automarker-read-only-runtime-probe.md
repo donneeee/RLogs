@@ -351,6 +351,14 @@ mapping, and resolved object. The sanitized receipt exposes only the bounded
 gate result documented in `automarker-read-only-marker-skill-proof.v1.json`;
 it never exposes addresses or dictionary contents.
 
+When that gate fails, the receipt identifies only the fixed chain stage: root
+chain, `SkillControlDataMgr`, slot dictionary, control-data dictionary, Marker
+1 slot lookup or mapping, or control-data lookup, class, or skill identity. A
+distinct fixed token reports when the two bounded reads fail at different
+stages. These diagnostics contain no pointers, container counts, dictionary
+keys or values, character identity, process identity, or other live runtime
+values; they still grant no placement or invocation authority.
+
 The party-leader query is also resolved read-only. Exact-build disassembly of
 `PlayerTeamLeaderCondition.Check` proves that leadership is the current
 `PlayerEnt.CharId` at `+0xD8` matching the first member of local attribute

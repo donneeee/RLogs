@@ -401,6 +401,35 @@ mod windows {
     }
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum MarkerSkillResolutionError {
+        RootChain,
+        DataManager,
+        SlotDictionary,
+        ControlDictionary,
+        MarkerSlotLookup,
+        MarkerSlotMapping,
+        ControlDataLookup,
+        ControlDataClass,
+        ControlDataSkillIdentity,
+    }
+
+    impl MarkerSkillResolutionError {
+        fn bounded_reason(self) -> &'static str {
+            match self {
+                Self::RootChain => "unavailable-or-invalid-read-only-marker-skill-root-chain",
+                Self::DataManager => "unavailable-or-invalid-marker-skill-data-manager",
+                Self::SlotDictionary => "unavailable-or-invalid-marker-skill-slot-dictionary",
+                Self::ControlDictionary => "unavailable-or-invalid-marker-skill-control-dictionary",
+                Self::MarkerSlotLookup => "marker-1-slot-missing-or-duplicate",
+                Self::MarkerSlotMapping => "marker-1-slot-mapping-mismatch",
+                Self::ControlDataLookup => "marker-1-control-data-missing-or-duplicate",
+                Self::ControlDataClass => "marker-1-control-data-class-invalid",
+                Self::ControlDataSkillIdentity => "marker-1-control-data-skill-identity-invalid",
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     struct ReviewedDictionary {
         object: usize,
         entries: usize,
@@ -2839,7 +2868,7 @@ mod windows {
         let first_stage = read_dungeon_stage_sample(memory, module_base);
         let first_skill = first
             .as_ref()
-            .map_err(|error| *error)
+            .map_err(|_| MarkerSkillResolutionError::RootChain)
             .and_then(|(roots, _)| read_marker_skill_resolution_sample(memory, roots));
         let first_leader = first
             .as_ref()
@@ -2850,7 +2879,7 @@ mod windows {
         let second_stage = read_dungeon_stage_sample(memory, module_base);
         let second_skill = second
             .as_ref()
-            .map_err(|error| *error)
+            .map_err(|_| MarkerSkillResolutionError::RootChain)
             .and_then(|(roots, _)| read_marker_skill_resolution_sample(memory, roots));
         let second_leader = second
             .as_ref()
@@ -2864,7 +2893,7 @@ mod windows {
         let marker_skill_resolution_gate = if !root_chain_stable {
             BoundedGate {
                 proven: false,
-                reason: "unavailable-or-invalid-read-only-marker-skill-chain",
+                reason: "unavailable-or-invalid-read-only-marker-skill-root-chain",
             }
         } else {
             marker_skill_resolution_gate(&first_skill, &second_skill)
@@ -2980,51 +3009,65 @@ mod windows {
     fn read_marker_skill_resolution_sample(
         memory: &impl Memory,
         roots: &Roots,
-    ) -> Result<MarkerSkillResolutionSample, AcquireError> {
+    ) -> Result<MarkerSkillResolutionSample, MarkerSkillResolutionError> {
         let data_mgr = pointer_at(
             memory,
-            checked_add(roots.skill_input_comp, SKILL_INPUT_COMP_DATA_MGR)?,
+            checked_add(roots.skill_input_comp, SKILL_INPUT_COMP_DATA_MGR)
+                .map_err(|_| MarkerSkillResolutionError::DataManager)?,
             true,
-        )?;
-        validate_object(memory, data_mgr, "SkillControlDataMgr", "Panda.ZGame")?;
+        )
+        .map_err(|_| MarkerSkillResolutionError::DataManager)?;
+        validate_object(memory, data_mgr, "SkillControlDataMgr", "Panda.ZGame")
+            .map_err(|_| MarkerSkillResolutionError::DataManager)?;
 
         let slot_dictionary = read_reviewed_dictionary(
             memory,
             pointer_at(
                 memory,
-                checked_add(data_mgr, SKILL_DATA_MGR_SLOT_DICT)?,
+                checked_add(data_mgr, SKILL_DATA_MGR_SLOT_DICT)
+                    .map_err(|_| MarkerSkillResolutionError::SlotDictionary)?,
                 true,
-            )?,
+            )
+            .map_err(|_| MarkerSkillResolutionError::SlotDictionary)?,
             ZDICTIONARY_INT_INT_ENTRY_STRIDE,
-        )?;
+        )
+        .map_err(|_| MarkerSkillResolutionError::SlotDictionary)?;
         let control_dictionary = read_reviewed_dictionary(
             memory,
             pointer_at(
                 memory,
-                checked_add(data_mgr, SKILL_DATA_MGR_CONTROL_DATAS)?,
+                checked_add(data_mgr, SKILL_DATA_MGR_CONTROL_DATAS)
+                    .map_err(|_| MarkerSkillResolutionError::ControlDictionary)?,
                 true,
-            )?,
+            )
+            .map_err(|_| MarkerSkillResolutionError::ControlDictionary)?,
             ZDICTIONARY_INT_OBJECT_ENTRY_STRIDE,
-        )?;
+        )
+        .map_err(|_| MarkerSkillResolutionError::ControlDictionary)?;
         let resolved_slot_skill_id =
-            unique_int_dictionary_value(memory, &slot_dictionary, MARKER_1_SLOT_ID)?;
+            unique_int_dictionary_value(memory, &slot_dictionary, MARKER_1_SLOT_ID)
+                .map_err(|_| MarkerSkillResolutionError::MarkerSlotLookup)?;
         if resolved_slot_skill_id != MARKER_1_SKILL_ID {
-            return Err(AcquireError::Identity);
+            return Err(MarkerSkillResolutionError::MarkerSlotMapping);
         }
         let resolved_control_data =
-            unique_object_dictionary_value(memory, &control_dictionary, resolved_slot_skill_id)?;
+            unique_object_dictionary_value(memory, &control_dictionary, resolved_slot_skill_id)
+                .map_err(|_| MarkerSkillResolutionError::ControlDataLookup)?;
         validate_object(
             memory,
             resolved_control_data,
             "SkillControlData",
             "Panda.ZGame",
-        )?;
+        )
+        .map_err(|_| MarkerSkillResolutionError::ControlDataClass)?;
         let resolved_control_skill_id = i32_at(
             memory,
-            checked_add(resolved_control_data, SKILL_CONTROL_DATA_SKILL_ID)?,
-        )?;
+            checked_add(resolved_control_data, SKILL_CONTROL_DATA_SKILL_ID)
+                .map_err(|_| MarkerSkillResolutionError::ControlDataSkillIdentity)?,
+        )
+        .map_err(|_| MarkerSkillResolutionError::ControlDataSkillIdentity)?;
         if resolved_control_skill_id != MARKER_1_SKILL_ID {
-            return Err(AcquireError::Identity);
+            return Err(MarkerSkillResolutionError::ControlDataSkillIdentity);
         }
         Ok(MarkerSkillResolutionSample {
             data_mgr,
@@ -3388,8 +3431,8 @@ mod windows {
     }
 
     fn marker_skill_resolution_gate(
-        first: &Result<MarkerSkillResolutionSample, AcquireError>,
-        second: &Result<MarkerSkillResolutionSample, AcquireError>,
+        first: &Result<MarkerSkillResolutionSample, MarkerSkillResolutionError>,
+        second: &Result<MarkerSkillResolutionSample, MarkerSkillResolutionError>,
     ) -> BoundedGate {
         match (first, second) {
             (Ok(first), Ok(second)) if first == second => BoundedGate {
@@ -3400,9 +3443,17 @@ mod windows {
                 proven: false,
                 reason: "unstable-read-only-marker-skill-lifecycle",
             },
-            _ => BoundedGate {
+            (Err(first), Err(second)) if first == second => BoundedGate {
                 proven: false,
-                reason: "unavailable-or-invalid-read-only-marker-skill-chain",
+                reason: first.bounded_reason(),
+            },
+            (Err(error), Ok(_)) | (Ok(_), Err(error)) => BoundedGate {
+                proven: false,
+                reason: error.bounded_reason(),
+            },
+            (Err(_), Err(_)) => BoundedGate {
+                proven: false,
+                reason: "inconsistent-read-only-marker-skill-failure-stage",
             },
         }
     }
@@ -5126,7 +5177,7 @@ mod windows {
             let roots = acquire_roots(&memory, 0x10_0000).unwrap();
             assert_eq!(
                 read_marker_skill_resolution_sample(&memory, &roots),
-                Err(AcquireError::Identity)
+                Err(MarkerSkillResolutionError::MarkerSlotMapping)
             );
         }
 
@@ -5151,7 +5202,7 @@ mod windows {
             let roots = acquire_roots(&memory, 0x10_0000).unwrap();
             assert_eq!(
                 read_marker_skill_resolution_sample(&memory, &roots),
-                Err(AcquireError::Identity)
+                Err(MarkerSkillResolutionError::MarkerSlotLookup)
             );
         }
 
@@ -5165,7 +5216,7 @@ mod windows {
             let roots = acquire_roots(&memory, 0x10_0000).unwrap();
             assert_eq!(
                 read_marker_skill_resolution_sample(&memory, &roots),
-                Err(AcquireError::Identity)
+                Err(MarkerSkillResolutionError::ControlDataSkillIdentity)
             );
         }
 
@@ -5179,7 +5230,7 @@ mod windows {
             let roots = acquire_roots(&memory, 0x10_0000).unwrap();
             assert_eq!(
                 read_marker_skill_resolution_sample(&memory, &roots),
-                Err(AcquireError::Identity)
+                Err(MarkerSkillResolutionError::SlotDictionary)
             );
         }
 
@@ -5193,7 +5244,7 @@ mod windows {
             let roots = acquire_roots(&memory, 0x10_0000).unwrap();
             assert_eq!(
                 read_marker_skill_resolution_sample(&memory, &roots),
-                Err(AcquireError::Identity)
+                Err(MarkerSkillResolutionError::SlotDictionary)
             );
         }
 
@@ -5204,7 +5255,99 @@ mod windows {
             let roots = acquire_roots(&memory, 0x10_0000).unwrap();
             assert_eq!(
                 read_marker_skill_resolution_sample(&memory, &roots),
-                Err(AcquireError::Identity)
+                Err(MarkerSkillResolutionError::SlotDictionary)
+            );
+        }
+
+        #[test]
+        fn marker_skill_diagnostics_identify_fixed_chain_stages_without_values() {
+            let roots = acquire_roots(&valid_memory(), 0x10_0000).unwrap();
+            let cases = [
+                (
+                    MarkerSkillResolutionError::DataManager,
+                    "unavailable-or-invalid-marker-skill-data-manager",
+                ),
+                (
+                    MarkerSkillResolutionError::SlotDictionary,
+                    "unavailable-or-invalid-marker-skill-slot-dictionary",
+                ),
+                (
+                    MarkerSkillResolutionError::ControlDictionary,
+                    "unavailable-or-invalid-marker-skill-control-dictionary",
+                ),
+                (
+                    MarkerSkillResolutionError::MarkerSlotLookup,
+                    "marker-1-slot-missing-or-duplicate",
+                ),
+                (
+                    MarkerSkillResolutionError::MarkerSlotMapping,
+                    "marker-1-slot-mapping-mismatch",
+                ),
+                (
+                    MarkerSkillResolutionError::ControlDataLookup,
+                    "marker-1-control-data-missing-or-duplicate",
+                ),
+                (
+                    MarkerSkillResolutionError::ControlDataClass,
+                    "marker-1-control-data-class-invalid",
+                ),
+                (
+                    MarkerSkillResolutionError::ControlDataSkillIdentity,
+                    "marker-1-control-data-skill-identity-invalid",
+                ),
+            ];
+            for (error, expected) in cases {
+                let gate = marker_skill_resolution_gate(&Err(error), &Err(error));
+                assert!(!gate.proven);
+                assert_eq!(gate.reason, expected);
+                assert!(gate.reason.bytes().all(|byte| byte.is_ascii_lowercase()
+                    || byte.is_ascii_digit()
+                    || byte == b'-'));
+            }
+
+            let valid = read_marker_skill_resolution_sample(&valid_memory(), &roots).unwrap();
+            let gate = marker_skill_resolution_gate(
+                &Err(MarkerSkillResolutionError::DataManager),
+                &Ok(valid),
+            );
+            assert_eq!(
+                gate.reason,
+                "unavailable-or-invalid-marker-skill-data-manager"
+            );
+            let gate = marker_skill_resolution_gate(
+                &Err(MarkerSkillResolutionError::SlotDictionary),
+                &Err(MarkerSkillResolutionError::ControlDictionary),
+            );
+            assert_eq!(
+                gate.reason,
+                "inconsistent-read-only-marker-skill-failure-stage"
+            );
+        }
+
+        #[test]
+        fn marker_skill_diagnostics_distinguish_live_structure_failures() {
+            let mut data_mgr = valid_memory();
+            data_mgr.text(0xA5_0000, "WrongSkillDataMgr");
+            let roots = acquire_roots(&data_mgr, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&data_mgr, &roots),
+                Err(MarkerSkillResolutionError::DataManager)
+            );
+
+            let mut control_dictionary = valid_memory();
+            control_dictionary.put(0x87_0000 + ZDICTIONARY_COUNT, &0i32.to_le_bytes());
+            let roots = acquire_roots(&control_dictionary, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&control_dictionary, &roots),
+                Err(MarkerSkillResolutionError::ControlDictionary)
+            );
+
+            let mut control_data = valid_memory();
+            control_data.text(0xA5_0400, "WrongControlData");
+            let roots = acquire_roots(&control_data, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&control_data, &roots),
+                Err(MarkerSkillResolutionError::ControlDataClass)
             );
         }
 

@@ -687,7 +687,16 @@ function Assert-NativeDispatchPreflight($Value) {
     $markerSkillGate = $Value.marker_skill_resolution_gate
     $markerSkillFalseReasons = @(
         'unstable-read-only-marker-skill-lifecycle',
-        'unavailable-or-invalid-read-only-marker-skill-chain'
+        'unavailable-or-invalid-read-only-marker-skill-root-chain',
+        'unavailable-or-invalid-marker-skill-data-manager',
+        'unavailable-or-invalid-marker-skill-slot-dictionary',
+        'unavailable-or-invalid-marker-skill-control-dictionary',
+        'marker-1-slot-missing-or-duplicate',
+        'marker-1-slot-mapping-mismatch',
+        'marker-1-control-data-missing-or-duplicate',
+        'marker-1-control-data-class-invalid',
+        'marker-1-control-data-skill-identity-invalid',
+        'inconsistent-read-only-marker-skill-failure-stage'
     )
     if (-not (Test-ExactPropertySet $markerSkillGate @('proven', 'reason')) -or
         $markerSkillGate.proven -isnot [bool] -or
@@ -1191,9 +1200,23 @@ function Invoke-LauncherSelfTest {
         try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
         if (-not $rejected) { throw 'Self-test failed: an unknown party-leader gate result was accepted.' }
         $native.canary.native_dispatch_preflight.leader_gate = [ordered]@{ proven = $true; reason = 'proven-read-only-current-player-is-party-leader' }
-        $native.canary.native_dispatch_preflight.marker_skill_resolution_gate = [ordered]@{ proven = $false; reason = 'unavailable-or-invalid-read-only-marker-skill-chain' }
-        [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
-        [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1)))
+        $markerSkillDiagnosticReasons = @(
+            'unavailable-or-invalid-read-only-marker-skill-root-chain',
+            'unavailable-or-invalid-marker-skill-data-manager',
+            'unavailable-or-invalid-marker-skill-slot-dictionary',
+            'unavailable-or-invalid-marker-skill-control-dictionary',
+            'marker-1-slot-missing-or-duplicate',
+            'marker-1-slot-mapping-mismatch',
+            'marker-1-control-data-missing-or-duplicate',
+            'marker-1-control-data-class-invalid',
+            'marker-1-control-data-skill-identity-invalid',
+            'inconsistent-read-only-marker-skill-failure-stage'
+        )
+        foreach ($reason in $markerSkillDiagnosticReasons) {
+            $native.canary.native_dispatch_preflight.marker_skill_resolution_gate = [ordered]@{ proven = $false; reason = $reason }
+            [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+            [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1)))
+        }
         $native.canary.native_dispatch_preflight.marker_skill_resolution_gate.reason = 'unreviewed-marker-skill-result'
         [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
         $rejected = $false
