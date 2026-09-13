@@ -33,21 +33,45 @@ assert.ok(launcher.includes("'RLOGS_WINDIVERT_DRIVER_BOOTSTRAP_V1'"));
 assert.ok(setup.includes("'RLOGS_WINDIVERT_DRIVER_REMOVE_V1'"));
 assert.ok(packaging.includes("setup-bpsr-automarker-windivert-driver.ps1"));
 assert.ok(source.indexOf("if !args.armed") < source.indexOf("load_pinned_api(&dll)"));
-assert.ok(source.includes('"blocked_reflect_arbitration_unimplemented"'));
 assert.ok(source.includes("same_priority_reflect_arbitration: false"));
-const reflectBlock = source.indexOf("if !gates.same_priority_reflect_arbitration");
-assert.ok(reflectBlock > source.indexOf("load_pinned_api(&dll)"));
-assert.ok(reflectBlock < source.indexOf("let bootstrap_handle = if args.bootstrap"));
-assert.ok(reflectBlock < source.indexOf("discover_exact_bpsr_syn_epoch(&loaded"));
+assert.ok(source.includes('"blocked_same_priority_network_handle"'));
+assert.equal(
+  (source.match(/open_network_handle_after_reflect_arbitration\(/g) ?? []).length,
+  3,
+  "the helper definition plus both guarded opens must exist",
+);
+assert.equal(
+  (source.match(/ArbitratedNetworkOpen::Open\(handle\)/g) ?? []).length,
+  2,
+  "both discovery and active NETWORK opens require a fresh REFLECT proof",
+);
+const firstReflectProof = source.indexOf("let discovery_handle = match open_network_handle_after_reflect_arbitration(");
+const discoveryOpen = source.indexOf("let connection = discover_exact_bpsr_syn_epoch(");
+const secondReflectProof = source.indexOf(
+  "let active = match open_network_handle_after_reflect_arbitration(",
+  firstReflectProof + 1,
+);
+const activeOpen = source.indexOf("gates.exact_filter_opened = true");
+assert.ok(firstReflectProof > source.indexOf("load_pinned_api(&dll)"));
+assert.ok(firstReflectProof < discoveryOpen);
+assert.ok(secondReflectProof > discoveryOpen);
+assert.ok(secondReflectProof < activeOpen);
+assert.ok(source.includes("static ARBITRATION_LOCK: std::sync::Mutex<()>"));
+assert.ok(source.indexOf(".lock()") < source.indexOf("reflect_inventory_is_clear(loaded, target_priority)?"));
+assert.ok(source.indexOf("reflect_inventory_is_clear(loaded, target_priority)?") < source.indexOf("Ok(ArbitratedNetworkOpen::Open(open_network_handle("));
+assert.ok(source.includes("WINDIVERT_LAYER_REFLECT"));
+assert.ok(source.includes("REFLECT_SENTINEL_PRIORITY"));
+assert.ok(source.includes("decode_reflect_event(&event.address)"));
+assert.ok(source.includes("identity.priority == self.target_priority"));
 assert.match(source, /WINDIVERT_SHUTDOWN_RECV: i32 = 0x1/);
 assert.match(source, /WINDIVERT_FLAG_NO_INSTALL: u64 = 16/);
 assert.match(
   source,
-  /open_handle\(&loaded, &filter, 0, WINDIVERT_FLAG_NO_INSTALL\)/,
+  /open_network_handle_after_reflect_arbitration\(\s*&loaded,\s*&filter,\s*0,\s*WINDIVERT_FLAG_NO_INSTALL,\s*\)/s,
 );
 assert.match(
   source,
-  /open_handle\(\s*&loaded,\s*"false",\s*0,\s*WINDIVERT_FLAG_SNIFF \| WINDIVERT_FLAG_RECV_ONLY,\s*\)/s,
+  /open_network_handle\(\s*&loaded,\s*"false",\s*BOOTSTRAP_PRIORITY,\s*WINDIVERT_FLAG_SNIFF \| WINDIVERT_FLAG_RECV_ONLY,\s*\)/s,
 );
 assert.equal(
   (source.match(/WINDIVERT_FLAG_SNIFF \| WINDIVERT_FLAG_RECV_ONLY,\s*\)/g) ?? []).length,
@@ -62,7 +86,7 @@ assert.match(source, /send_unchanged\(received\.bytes\.as_slice\(\), &received\.
 assert.match(source, /if sent != received\.bytes\.len\(\)/);
 assert.ok(source.includes('close: export!("WinDivertClose", CloseFn)'));
 assert.ok(source.includes('compile_filter: export!("WinDivertHelperCompileFilter", CompileFilterFn)'));
-assert.ok(source.indexOf("compile_network_filter(&loaded.api, &filter)?") < source.indexOf("open_handle(&loaded, &filter"));
+assert.ok(source.indexOf("compile_network_filter(&loaded.api, &filter)?") < activeOpen);
 assert.ok(source.includes("loaded: Arc<LoadedApi>"));
 assert.ok(source.indexOf("let relay_result = drain_byte_identically(&mut backend)") < source.indexOf("let _ = stop_send.send(())"));
 assert.ok(source.indexOf("let _ = stop_send.send(())") < source.indexOf("let relay = relay_result?"));

@@ -13,8 +13,132 @@ const ARM_TOKEN: &str = "RLOGS_WINDIVERT_BYTE_IDENTICAL_PASSTHROUGH_V1";
 const BOOTSTRAP_TOKEN: &str = "RLOGS_WINDIVERT_DRIVER_BOOTSTRAP_V1";
 const MAX_PACKET_BYTES: usize = 65_535;
 
+#[repr(C)]
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct OpaqueAddress([u64; 10]);
+const _: [(); 80] = [(); std::mem::size_of::<OpaqueAddress>()];
+
+const WINDIVERT_LAYER_NETWORK_VALUE: u32 = 0;
+const WINDIVERT_LAYER_REFLECT_VALUE: u8 = 4;
+const WINDIVERT_EVENT_REFLECT_OPEN_VALUE: u8 = 8;
+const WINDIVERT_EVENT_REFLECT_CLOSE_VALUE: u8 = 9;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReflectEventKind {
+    Open,
+    Close,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ReflectedHandleIdentity {
+    opened_timestamp: i64,
+    process_id: u32,
+    layer: u32,
+    flags: u64,
+    priority: i16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ReflectedHandleEvent {
+    kind: ReflectEventKind,
+    identity: ReflectedHandleIdentity,
+}
+
+/// Decode only the documented WinDivert 2.2.2 REFLECT fields from the exact
+/// 80-byte `WINDIVERT_ADDRESS`. Windows/x64 is little-endian, and the first
+/// two bytes of word 1 are the public Layer/Event bitfields.
+fn decode_reflect_event(address: &OpaqueAddress) -> Result<ReflectedHandleEvent, &'static str> {
+    let header = address.0[1];
+    if header as u8 != WINDIVERT_LAYER_REFLECT_VALUE {
+        return Err("event did not originate at the REFLECT layer");
+    }
+    let kind = match (header >> 8) as u8 {
+        WINDIVERT_EVENT_REFLECT_OPEN_VALUE => ReflectEventKind::Open,
+        WINDIVERT_EVENT_REFLECT_CLOSE_VALUE => ReflectEventKind::Close,
+        _ => return Err("REFLECT event kind was not OPEN or CLOSE"),
+    };
+    let process_and_layer = address.0[3];
+    Ok(ReflectedHandleEvent {
+        kind,
+        identity: ReflectedHandleIdentity {
+            opened_timestamp: address.0[2] as i64,
+            process_id: process_and_layer as u32,
+            layer: (process_and_layer >> 32) as u32,
+            flags: address.0[4],
+            priority: address.0[5] as u16 as i16,
+        },
+    })
+}
+
+#[derive(Debug)]
+struct ReflectArbitrator {
+    sentinel_process_id: u32,
+    sentinel_priority: i16,
+    sentinel_flags: u64,
+    target_priority: i16,
+    open_handles: Vec<ReflectedHandleIdentity>,
+    sentinel_seen: bool,
+}
+
+impl ReflectArbitrator {
+    fn new(
+        sentinel_process_id: u32,
+        sentinel_priority: i16,
+        sentinel_flags: u64,
+        target_priority: i16,
+    ) -> Self {
+        Self {
+            sentinel_process_id,
+            sentinel_priority,
+            sentinel_flags,
+            target_priority,
+            open_handles: Vec::new(),
+            sentinel_seen: false,
+        }
+    }
+
+    fn observe(&mut self, event: ReflectedHandleEvent) -> Result<(), &'static str> {
+        match event.kind {
+            ReflectEventKind::Open => {
+                if self.open_handles.contains(&event.identity) {
+                    return Err("duplicate REFLECT OPEN event");
+                }
+                self.open_handles.push(event.identity);
+                if event.identity.process_id == self.sentinel_process_id
+                    && event.identity.layer == WINDIVERT_LAYER_NETWORK_VALUE
+                    && event.identity.priority == self.sentinel_priority
+                    && event.identity.flags == self.sentinel_flags
+                {
+                    self.sentinel_seen = true;
+                }
+            }
+            ReflectEventKind::Close => {
+                let Some(index) = self
+                    .open_handles
+                    .iter()
+                    .position(|identity| *identity == event.identity)
+                else {
+                    return Err("REFLECT CLOSE did not match an observed OPEN");
+                };
+                self.open_handles.swap_remove(index);
+            }
+        }
+        Ok(())
+    }
+
+    fn affirmative(&self) -> Result<bool, &'static str> {
+        if !self.sentinel_seen {
+            return Err("REFLECT sentinel OPEN was not observed");
+        }
+        // Semantic overlap between arbitrary WinDivert filters cannot be
+        // decided safely here. Treat every same-priority NETWORK handle as
+        // overlapping, which is deliberately stricter than necessary.
+        Ok(!self.open_handles.iter().any(|identity| {
+            identity.layer == WINDIVERT_LAYER_NETWORK_VALUE
+                && identity.priority == self.target_priority
+        }))
+    }
+}
 
 struct ReceivedPacket {
     bytes: Vec<u8>,
@@ -137,6 +261,7 @@ mod windows {
     const DRIVER_NAME: &str = "WinDivert64.sys";
     const EXPECTED_DRIVER_SIGNER_THUMBPRINT: &str = "043589F75FCE2795E7F2CC3E526D46784D5DDAB3";
     const WINDIVERT_LAYER_NETWORK: i32 = 0;
+    const WINDIVERT_LAYER_REFLECT: i32 = 4;
     const WINDIVERT_FLAG_SNIFF: u64 = 1;
     const WINDIVERT_FLAG_RECV_ONLY: u64 = 4;
     const WINDIVERT_FLAG_NO_INSTALL: u64 = 16;
@@ -146,6 +271,10 @@ mod windows {
     const WINDIVERT_PARAM_QUEUE_SIZE: i32 = 2;
     const WINDIVERT_PARAM_VERSION_MAJOR: i32 = 3;
     const WINDIVERT_PARAM_VERSION_MINOR: i32 = 4;
+    const REFLECT_SENTINEL_PRIORITY: i16 = -1000;
+    const BOOTSTRAP_PRIORITY: i16 = -999;
+    const REFLECT_BARRIER_TIMEOUT: Duration = Duration::from_secs(5);
+    static ARBITRATION_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     type OpenFn = unsafe extern "system" fn(*const i8, i32, i16, u64) -> HANDLE;
     type RecvFn =
@@ -209,6 +338,11 @@ mod windows {
     }
 
     struct OwnedKernelHandle(HANDLE);
+
+    enum ArbitratedNetworkOpen {
+        Open(OwnedWinDivertHandle),
+        Conflict,
+    }
 
     impl Drop for OwnedKernelHandle {
         fn drop(&mut self) {
@@ -289,6 +423,7 @@ mod windows {
         syn_observed: bool,
         exact_process_owned_epoch: bool,
         same_priority_reflect_arbitration: bool,
+        reflect_arbitration_checks: u8,
         exact_filter_compiled: bool,
         exact_filter_opened: bool,
         version_2_2: bool,
@@ -395,33 +530,15 @@ mod windows {
 
         // Dynamic loading occurs only after literal consent and all non-driver gates.
         let loaded = Arc::new(unsafe { load_pinned_api(&dll)? });
-        // WinDivert documents same-priority ordering as undefined. Until this
-        // executable owns a REFLECT-layer arbitration gate that proves no
-        // overlapping NETWORK handle exists at priority 0, it must not open
-        // either discovery or active traffic-observing handles.
-        if !gates.same_priority_reflect_arbitration {
-            return write_receipt(
-                &args.output,
-                CanaryReceipt::blocked_armed(
-                    if args.bootstrap {
-                        "explicitly-armed-bootstrap-and-passthrough"
-                    } else {
-                        "explicitly-armed"
-                    },
-                    "blocked_reflect_arbitration_unimplemented",
-                    gates,
-                ),
-            );
-        }
-        // In the separately armed bootstrap-and-pass-through mode, keep this
-        // non-matching handle alive for the entire canary. This is the sole
-        // call site allowed to omit NO_INSTALL. It can install/start the pinned
-        // driver, but its false filter cannot capture, block, or send traffic.
+        // A separately consented bootstrap may install/start the pinned
+        // driver, but its false filter at the lowest priority cannot overlap
+        // traffic. It stays alive so both arbitration passes and the canary
+        // use the same loaded driver instance.
         let bootstrap_handle = if args.bootstrap {
-            let handle = open_handle(
+            let handle = open_network_handle(
                 &loaded,
                 "false",
-                0,
+                BOOTSTRAP_PRIORITY,
                 WINDIVERT_FLAG_SNIFF | WINDIVERT_FLAG_RECV_ONLY,
             )?;
             configure_and_verify(&loaded.api, handle.raw, &mut gates)?;
@@ -429,9 +546,46 @@ mod windows {
         } else {
             None
         };
+
+        // WinDivert documents equal-priority ordering as undefined. A
+        // REFLECT snapshot is serialized with a false-filter NETWORK sentinel;
+        // seeing the sentinel OPEN is the barrier proving all earlier handle
+        // events were consumed. Any priority-0 NETWORK handle is treated as
+        // overlapping, regardless of its filter text.
+        gates.reflect_arbitration_checks = 1;
+        let discovery_handle = match open_network_handle_after_reflect_arbitration(
+            &loaded,
+            "outbound and ip and tcp",
+            1,
+            WINDIVERT_FLAG_SNIFF | WINDIVERT_FLAG_RECV_ONLY | WINDIVERT_FLAG_NO_INSTALL,
+        )? {
+            ArbitratedNetworkOpen::Open(handle) => {
+                gates.same_priority_reflect_arbitration = true;
+                handle
+            }
+            ArbitratedNetworkOpen::Conflict => {
+                return write_receipt(
+                    &args.output,
+                    CanaryReceipt::blocked_armed(
+                        if args.bootstrap {
+                            "explicitly-armed-bootstrap-and-passthrough"
+                        } else {
+                            "explicitly-armed"
+                        },
+                        "blocked_same_priority_network_handle",
+                        gates,
+                    ),
+                );
+            }
+        };
         let owner = WindowsProcessSocketOwner::new(process_id)?;
-        let connection =
-            discover_exact_bpsr_syn_epoch(&loaded, &owner, process_id, args.syn_wait_seconds)?;
+        let connection = discover_exact_bpsr_syn_epoch(
+            &loaded,
+            discovery_handle,
+            &owner,
+            process_id,
+            args.syn_wait_seconds,
+        )?;
         let filter = offline_automarker_windivert_active_filter(connection);
         gates.syn_observed = true;
         gates.exact_ipv4_tuple_discovered = true;
@@ -464,9 +618,38 @@ mod windows {
         }
         gates.exact_process_owned_epoch = true;
 
+        // Discovery can take minutes, so its earlier barrier is not reused.
+        // Compile first, then inventory and open the active handle while still
+        // holding this process's arbitration lock.
+        gates.reflect_arbitration_checks = 2;
         compile_network_filter(&loaded.api, &filter)?;
         gates.exact_filter_compiled = true;
-        let active = open_handle(&loaded, &filter, 0, WINDIVERT_FLAG_NO_INSTALL)?;
+        gates.same_priority_reflect_arbitration = false;
+        let active = match open_network_handle_after_reflect_arbitration(
+            &loaded,
+            &filter,
+            0,
+            WINDIVERT_FLAG_NO_INSTALL,
+        )? {
+            ArbitratedNetworkOpen::Open(handle) => {
+                gates.same_priority_reflect_arbitration = true;
+                handle
+            }
+            ArbitratedNetworkOpen::Conflict => {
+                return write_receipt(
+                    &args.output,
+                    CanaryReceipt::blocked_armed(
+                        if args.bootstrap {
+                            "explicitly-armed-bootstrap-and-passthrough"
+                        } else {
+                            "explicitly-armed"
+                        },
+                        "blocked_same_priority_network_handle",
+                        gates,
+                    ),
+                );
+            }
+        };
         gates.exact_filter_opened = true;
         configure_and_verify(&loaded.api, active.raw, &mut gates)?;
 
@@ -528,18 +711,14 @@ mod windows {
 
     fn discover_exact_bpsr_syn_epoch(
         api_owner: &Arc<LoadedApi>,
+        handle: OwnedWinDivertHandle,
         owner: &WindowsProcessSocketOwner,
         process_id: u32,
         wait_seconds: u64,
     ) -> Result<AutomarkerOwnedTcpConnection, Box<dyn Error>> {
         let loaded = Arc::clone(api_owner);
         let api = loaded.api;
-        let handle = Arc::new(open_handle(
-            &loaded,
-            "outbound and ip and tcp",
-            1,
-            WINDIVERT_FLAG_SNIFF | WINDIVERT_FLAG_RECV_ONLY | WINDIVERT_FLAG_NO_INSTALL,
-        )?);
+        let handle = Arc::new(handle);
         let stop_handle = Arc::clone(&handle);
         let shutdown = api.shutdown;
         let (timer_send, timer_receive) = std::sync::mpsc::channel();
@@ -798,15 +977,117 @@ mod windows {
             .count())
     }
 
-    fn open_handle(
+    fn open_network_handle_after_reflect_arbitration(
+        loaded: &Arc<LoadedApi>,
+        filter: &str,
+        target_priority: i16,
+        flags: u64,
+    ) -> Result<ArbitratedNetworkOpen, Box<dyn Error>> {
+        let _serialization = ARBITRATION_LOCK
+            .lock()
+            .map_err(|_| "REFLECT arbitration lock was poisoned")?;
+        if !reflect_inventory_is_clear(loaded, target_priority)? {
+            return Ok(ArbitratedNetworkOpen::Conflict);
+        }
+        Ok(ArbitratedNetworkOpen::Open(open_network_handle(
+            loaded,
+            filter,
+            target_priority,
+            flags,
+        )?))
+    }
+
+    fn reflect_inventory_is_clear(
+        loaded: &Arc<LoadedApi>,
+        target_priority: i16,
+    ) -> Result<bool, Box<dyn Error>> {
+        let flags = WINDIVERT_FLAG_SNIFF | WINDIVERT_FLAG_RECV_ONLY | WINDIVERT_FLAG_NO_INSTALL;
+        let reflect = Arc::new(open_handle_at_layer(
+            loaded,
+            "true",
+            WINDIVERT_LAYER_REFLECT,
+            0,
+            flags,
+        )?);
+        if get_param(&loaded.api, reflect.raw, WINDIVERT_PARAM_VERSION_MAJOR)? != 2
+            || get_param(&loaded.api, reflect.raw, WINDIVERT_PARAM_VERSION_MINOR)? != 2
+        {
+            return Err("REFLECT arbitration requires loaded WinDivert driver 2.2".into());
+        }
+
+        let stop_handle = Arc::clone(&reflect);
+        let shutdown = loaded.api.shutdown;
+        let (timer_send, timer_receive) = std::sync::mpsc::channel();
+        let timer = thread::spawn(move || {
+            let _ = timer_receive.recv_timeout(REFLECT_BARRIER_TIMEOUT);
+            let ok = unsafe { shutdown(stop_handle.raw, WINDIVERT_SHUTDOWN_RECV) };
+            if ok == 0 {
+                Err(unsafe { GetLastError() })
+            } else {
+                Ok(())
+            }
+        });
+
+        // Opening this non-matching lowest-priority handle creates the ordered
+        // REFLECT event used as an inventory barrier. It cannot divert traffic.
+        let sentinel = open_network_handle(loaded, "false", REFLECT_SENTINEL_PRIORITY, flags);
+        let arbitration_result = (|| -> Result<bool, Box<dyn Error>> {
+            let _sentinel = sentinel?;
+            let process_id = std::process::id();
+            let mut arbitrator = ReflectArbitrator::new(
+                process_id,
+                REFLECT_SENTINEL_PRIORITY,
+                flags,
+                target_priority,
+            );
+            let mut backend = LiveBackend {
+                handle: Arc::clone(&reflect),
+                api: loaded.api,
+            };
+            loop {
+                let event = backend
+                    .receive()?
+                    .ok_or("REFLECT inventory ended before its sentinel barrier")?;
+                let decoded = decode_reflect_event(&event.address)
+                    .map_err(|error| format!("invalid REFLECT address: {error}"))?;
+                arbitrator
+                    .observe(decoded)
+                    .map_err(|error| format!("ambiguous REFLECT inventory: {error}"))?;
+                if arbitrator.sentinel_seen {
+                    return arbitrator
+                        .affirmative()
+                        .map_err(|error| format!("incomplete REFLECT inventory: {error}").into());
+                }
+            }
+        })();
+        let _ = timer_send.send(());
+        timer
+            .join()
+            .map_err(|_| "REFLECT arbitration timer panicked")?
+            .map_err(|error| {
+                format!("WinDivertShutdown for REFLECT failed with Windows error {error}")
+            })?;
+        arbitration_result
+    }
+
+    fn open_network_handle(
         loaded: &Arc<LoadedApi>,
         filter: &str,
         priority: i16,
         flags: u64,
     ) -> Result<OwnedWinDivertHandle, Box<dyn Error>> {
+        open_handle_at_layer(loaded, filter, WINDIVERT_LAYER_NETWORK, priority, flags)
+    }
+
+    fn open_handle_at_layer(
+        loaded: &Arc<LoadedApi>,
+        filter: &str,
+        layer: i32,
+        priority: i16,
+        flags: u64,
+    ) -> Result<OwnedWinDivertHandle, Box<dyn Error>> {
         let filter = CString::new(filter)?;
-        let handle =
-            unsafe { (loaded.api.open)(filter.as_ptr(), WINDIVERT_LAYER_NETWORK, priority, flags) };
+        let handle = unsafe { (loaded.api.open)(filter.as_ptr(), layer, priority, flags) };
         if handle == INVALID_HANDLE_VALUE || handle.is_null() {
             return Err(
                 format!("WinDivertOpen failed with Windows error {}", unsafe {
@@ -1030,6 +1311,7 @@ mod windows {
                 syn_observed: false,
                 exact_process_owned_epoch: false,
                 same_priority_reflect_arbitration: false,
+                reflect_arbitration_checks: 0,
                 exact_filter_compiled: false,
                 exact_filter_opened: false,
                 version_2_2: false,
@@ -1071,6 +1353,7 @@ mod windows {
                     syn_observed: false,
                     exact_process_owned_epoch: false,
                     same_priority_reflect_arbitration: false,
+                    reflect_arbitration_checks: 0,
                     exact_filter_compiled: false,
                     exact_filter_opened: false,
                     version_2_2: false,
@@ -1207,7 +1490,7 @@ mod windows {
         }
 
         #[test]
-        fn armed_mode_is_fail_closed_until_reflect_arbitration_exists() {
+        fn armed_mode_starts_with_reflect_gate_closed() {
             assert!(!GateReceipt::new_armed().same_priority_reflect_arbitration);
         }
     }
@@ -1222,6 +1505,160 @@ fn main() {
 mod tests {
     use super::*;
     use std::collections::VecDeque;
+
+    fn reflect_address(kind: ReflectEventKind, identity: ReflectedHandleIdentity) -> OpaqueAddress {
+        let mut address = OpaqueAddress::default();
+        let event = match kind {
+            ReflectEventKind::Open => WINDIVERT_EVENT_REFLECT_OPEN_VALUE,
+            ReflectEventKind::Close => WINDIVERT_EVENT_REFLECT_CLOSE_VALUE,
+        };
+        address.0[1] = u64::from(WINDIVERT_LAYER_REFLECT_VALUE) | (u64::from(event) << 8);
+        address.0[2] = identity.opened_timestamp as u64;
+        address.0[3] = u64::from(identity.process_id) | (u64::from(identity.layer) << 32);
+        address.0[4] = identity.flags;
+        address.0[5] = u64::from(identity.priority as u16);
+        address
+    }
+
+    #[test]
+    fn decodes_the_exact_public_reflect_address_fields() {
+        let identity = ReflectedHandleIdentity {
+            opened_timestamp: -91,
+            process_id: 4242,
+            layer: WINDIVERT_LAYER_NETWORK_VALUE,
+            flags: 21,
+            priority: -1000,
+        };
+        assert_eq!(
+            decode_reflect_event(&reflect_address(ReflectEventKind::Open, identity)),
+            Ok(ReflectedHandleEvent {
+                kind: ReflectEventKind::Open,
+                identity,
+            })
+        );
+        assert!(decode_reflect_event(&OpaqueAddress::default()).is_err());
+        let mut unknown_event = reflect_address(ReflectEventKind::Open, identity);
+        unknown_event.0[1] = u64::from(WINDIVERT_LAYER_REFLECT_VALUE) | (99u64 << 8);
+        assert!(decode_reflect_event(&unknown_event).is_err());
+    }
+
+    #[test]
+    fn sentinel_barrier_affirms_only_without_same_priority_network_handle() {
+        let sentinel = ReflectedHandleIdentity {
+            opened_timestamp: 100,
+            process_id: 42,
+            layer: WINDIVERT_LAYER_NETWORK_VALUE,
+            flags: 21,
+            priority: -1000,
+        };
+        let mut clear = ReflectArbitrator::new(42, -1000, 21, 0);
+        clear
+            .observe(ReflectedHandleEvent {
+                kind: ReflectEventKind::Open,
+                identity: sentinel,
+            })
+            .unwrap();
+        assert_eq!(clear.affirmative(), Ok(true));
+
+        let mut blocked = ReflectArbitrator::new(42, -1000, 21, 0);
+        blocked
+            .observe(ReflectedHandleEvent {
+                kind: ReflectEventKind::Open,
+                identity: ReflectedHandleIdentity {
+                    opened_timestamp: 99,
+                    process_id: 7,
+                    layer: WINDIVERT_LAYER_NETWORK_VALUE,
+                    flags: 0,
+                    priority: 0,
+                },
+            })
+            .unwrap();
+        blocked
+            .observe(ReflectedHandleEvent {
+                kind: ReflectEventKind::Open,
+                identity: sentinel,
+            })
+            .unwrap();
+        assert_eq!(blocked.affirmative(), Ok(false));
+
+        let mut discovery_blocked = ReflectArbitrator::new(42, -1000, 21, 1);
+        discovery_blocked
+            .observe(ReflectedHandleEvent {
+                kind: ReflectEventKind::Open,
+                identity: ReflectedHandleIdentity {
+                    opened_timestamp: 101,
+                    process_id: 9,
+                    layer: WINDIVERT_LAYER_NETWORK_VALUE,
+                    flags: 5,
+                    priority: 1,
+                },
+            })
+            .unwrap();
+        discovery_blocked
+            .observe(ReflectedHandleEvent {
+                kind: ReflectEventKind::Open,
+                identity: sentinel,
+            })
+            .unwrap();
+        assert_eq!(discovery_blocked.affirmative(), Ok(false));
+    }
+
+    #[test]
+    fn close_removes_only_its_exact_open_identity() {
+        let other = ReflectedHandleIdentity {
+            opened_timestamp: 77,
+            process_id: 8,
+            layer: WINDIVERT_LAYER_NETWORK_VALUE,
+            flags: 0,
+            priority: 0,
+        };
+        let sentinel = ReflectedHandleIdentity {
+            opened_timestamp: 78,
+            process_id: 42,
+            layer: WINDIVERT_LAYER_NETWORK_VALUE,
+            flags: 21,
+            priority: -1000,
+        };
+        let mut arbitrator = ReflectArbitrator::new(42, -1000, 21, 0);
+        for event in [
+            ReflectedHandleEvent {
+                kind: ReflectEventKind::Open,
+                identity: other,
+            },
+            ReflectedHandleEvent {
+                kind: ReflectEventKind::Close,
+                identity: other,
+            },
+            ReflectedHandleEvent {
+                kind: ReflectEventKind::Open,
+                identity: sentinel,
+            },
+        ] {
+            arbitrator.observe(event).unwrap();
+        }
+        assert_eq!(arbitrator.affirmative(), Ok(true));
+    }
+
+    #[test]
+    fn missing_sentinel_and_ambiguous_lifecycle_fail_closed() {
+        let identity = ReflectedHandleIdentity {
+            opened_timestamp: 5,
+            process_id: 8,
+            layer: 2,
+            flags: 5,
+            priority: 1,
+        };
+        let mut arbitrator = ReflectArbitrator::new(42, -1000, 21, 0);
+        assert!(arbitrator.affirmative().is_err());
+        assert!(
+            arbitrator
+                .observe(ReflectedHandleEvent {
+                    kind: ReflectEventKind::Close,
+                    identity,
+                })
+                .is_err()
+        );
+    }
 
     #[derive(Default)]
     struct MockBackend {
