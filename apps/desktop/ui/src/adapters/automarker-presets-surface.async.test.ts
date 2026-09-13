@@ -26,7 +26,7 @@ interface Deferred<T> {
 
 function unavailableObserved(build = "25247556"): ObservedMarkerSnapshot {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     revision: 1,
     captureActive: true,
     protocolSupported: false,
@@ -35,6 +35,7 @@ function unavailableObserved(build = "25247556"): ObservedMarkerSnapshot {
     lastVerifiedRequestMarkerNumber: null,
     lastVerifiedRequestObservedMicros: null,
     verifiedRequests: [],
+    latestLocalPlayerPosition: null,
     reason: "marker_protocol_not_verified_for_build_pack",
     sessionId: "capture-test-session",
     deploymentId: "global",
@@ -57,7 +58,7 @@ function capturable(sceneId = 6_525): { catalog: AutomarkerPresetView; snapshot:
   return {
     catalog,
     snapshot: {
-      schemaVersion: 3,
+      schemaVersion: 4,
       revision: 9,
       captureActive: true,
       protocolSupported: true,
@@ -69,6 +70,7 @@ function capturable(sceneId = 6_525): { catalog: AutomarkerPresetView; snapshot:
         { markerNumber: 1, observedMicros: 123_445 },
         { markerNumber: 2, observedMicros: 123_455 },
       ],
+      latestLocalPlayerPosition: null,
       reason: "observed_markers_available",
       sessionId: catalog.captureSessionId,
       deploymentId: catalog.deploymentId,

@@ -275,7 +275,7 @@ function developmentAutomarkerPresetView(): AutomarkerPresetView {
 
 function developmentObservedMarkers(): ObservedMarkerSnapshot {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     revision: 0,
     captureActive: false,
     protocolSupported: false,
@@ -284,6 +284,7 @@ function developmentObservedMarkers(): ObservedMarkerSnapshot {
     lastVerifiedRequestMarkerNumber: null,
     lastVerifiedRequestObservedMicros: null,
     verifiedRequests: [],
+    latestLocalPlayerPosition: null,
     reason: "live_capture_not_running",
     sessionId: null,
     deploymentId: null,

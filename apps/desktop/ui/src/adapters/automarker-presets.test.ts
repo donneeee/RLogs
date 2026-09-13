@@ -99,7 +99,7 @@ describe("automarker preset catalog", () => {
       protocolPackDigest: `sha256:${"a".repeat(64)}`,
     };
     const snapshot = parseObservedMarkerSnapshot({
-      schemaVersion: 3,
+      schemaVersion: 4,
       revision: 7,
       captureActive: true,
       protocolSupported: true,
@@ -108,6 +108,7 @@ describe("automarker preset catalog", () => {
       lastVerifiedRequestMarkerNumber: 1,
       lastVerifiedRequestObservedMicros: 98,
       verifiedRequests: [{ markerNumber: 1, observedMicros: 98 }],
+      latestLocalPlayerPosition: null,
       reason: "observed_markers_available",
       sessionId: value.captureSessionId,
       deploymentId: value.deploymentId,
@@ -119,6 +120,18 @@ describe("automarker preset catalog", () => {
       markers: [{ markerNumber: 1, x: 1, y: 2, z: 3, observedMicros: 99 }],
     });
     expect(observedMarkersMatchPresetView(snapshot, parseAutomarkerPresetView(value))).toBe(true);
+    const withDiagnosticPosition = parseObservedMarkerSnapshot({
+      ...snapshot,
+      latestLocalPlayerPosition: {
+        x: 999_999,
+        y: -999_999,
+        z: 500_000,
+        sessionSequence: 123,
+        observedMicros: 97,
+        hostReceivedUnixMillis: 1_789_305_988_247,
+      },
+    });
+    expect(observedMarkersMatchPresetView(withDiagnosticPosition, parseAutomarkerPresetView(value))).toBe(true);
     expect(observedMarkersMatchPresetView(
       { ...snapshot, sessionId: "stale-session" },
       parseAutomarkerPresetView(value),
@@ -127,7 +140,7 @@ describe("automarker preset catalog", () => {
 
   it("rejects partial identities, duplicate markers, and capability contradictions", () => {
     const base = {
-      schemaVersion: 3,
+      schemaVersion: 4,
       revision: 7,
       captureActive: true,
       protocolSupported: true,
@@ -136,6 +149,7 @@ describe("automarker preset catalog", () => {
       lastVerifiedRequestMarkerNumber: 1,
       lastVerifiedRequestObservedMicros: 98,
       verifiedRequests: [{ markerNumber: 1, observedMicros: 98 }],
+      latestLocalPlayerPosition: null,
       reason: "observed_markers_available",
       sessionId: "capture-session-1",
       deploymentId: "global",
@@ -160,6 +174,18 @@ describe("automarker preset catalog", () => {
     expect(() => parseObservedMarkerSnapshot({
       ...base,
       markers: [{ markerNumber: 1, x: 1, y: 2, z: 3 }],
+    })).toThrow(/invalid/i);
+    expect(() => parseObservedMarkerSnapshot({ ...base, schemaVersion: 3 })).toThrow(/invalid/i);
+    expect(() => parseObservedMarkerSnapshot({
+      ...base,
+      latestLocalPlayerPosition: {
+        x: Number.NaN,
+        y: 0,
+        z: 0,
+        sessionSequence: 1,
+        observedMicros: 1,
+        hostReceivedUnixMillis: 1,
+      },
     })).toThrow(/invalid/i);
 
     const inconsistentView = view();

@@ -86,7 +86,7 @@ export interface AutomarkerLocalLoadResult {
 }
 
 export interface ObservedMarkerSnapshot {
-  schemaVersion: 3;
+  schemaVersion: 4;
   revision: number;
   captureActive: boolean;
   protocolSupported: boolean;
@@ -95,6 +95,10 @@ export interface ObservedMarkerSnapshot {
   lastVerifiedRequestMarkerNumber: number | null;
   lastVerifiedRequestObservedMicros: number | null;
   verifiedRequests: readonly ObservedMarkerRequest[];
+  // Diagnostic-only evidence for the separate native-placement research
+  // boundary. Preset capture, storage, loading, and preview never depend on
+  // the player's position.
+  latestLocalPlayerPosition: ObservedLocalPlayerPosition | null;
   reason: "live_capture_not_running" | "marker_protocol_not_verified_for_build_pack" |
     "waiting_for_packet_observed_scene_and_map" | "no_fully_positioned_markers_observed" |
     "observed_marker_snapshot_invalid" | "observed_markers_available";
@@ -106,6 +110,15 @@ export interface ObservedMarkerSnapshot {
   mapId: number | null;
   observedMicros: number | null;
   markers: readonly ObservedMarkerPoint[];
+}
+
+export interface ObservedLocalPlayerPosition {
+  x: number;
+  y: number;
+  z: number;
+  sessionSequence: number;
+  observedMicros: number;
+  hostReceivedUnixMillis: number;
 }
 
 export interface ObservedMarkerPoint extends AutomarkerPoint {
@@ -343,13 +356,14 @@ export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView 
 }
 
 export function parseObservedMarkerSnapshot(value: unknown): ObservedMarkerSnapshot {
-  if (!record(value) || value.schemaVersion !== 3 || !integer(value.revision) ||
+  if (!record(value) || value.schemaVersion !== 4 || !integer(value.revision) ||
       typeof value.captureActive !== "boolean" || typeof value.protocolSupported !== "boolean" ||
       typeof value.requestObserverSupported !== "boolean" || !integer(value.verifiedRequestCount) ||
       !optionalMarkerNumber(value.lastVerifiedRequestMarkerNumber) ||
       !optionalInteger(value.lastVerifiedRequestObservedMicros) ||
       !Array.isArray(value.verifiedRequests) || !value.verifiedRequests.every(validObservedRequest) ||
       new Set(value.verifiedRequests.map((request) => (request as ObservedMarkerRequest).markerNumber)).size !== value.verifiedRequests.length ||
+      !(value.latestLocalPlayerPosition === null || validObservedLocalPlayerPosition(value.latestLocalPlayerPosition)) ||
       !observedReason(value.reason) || !optionalIdentity(value.sessionId, 128) ||
       !optionalIdentity(value.deploymentId, 64) || !optionalBuild(value.clientBuild) ||
       !optionalDigest(value.protocolPackDigest) || !optionalInteger(value.sceneId) ||
@@ -362,6 +376,9 @@ export function parseObservedMarkerSnapshot(value: unknown): ObservedMarkerSnaps
   const fullStamp = snapshot.sessionId !== null && snapshot.deploymentId !== null &&
     snapshot.clientBuild !== null && snapshot.protocolPackDigest !== null;
   const hasContext = snapshot.sceneId !== null && snapshot.mapId !== null;
+  const validPositionState = snapshot.latestLocalPlayerPosition === null ||
+    (snapshot.captureActive && snapshot.protocolSupported && snapshot.requestObserverSupported &&
+      fullStamp && hasContext);
   const hasRequestDiagnostic = snapshot.lastVerifiedRequestMarkerNumber !== null &&
     snapshot.lastVerifiedRequestObservedMicros !== null;
   const lastRequestIsRepresented = !hasRequestDiagnostic || snapshot.verifiedRequests.some((request) =>
@@ -386,7 +403,7 @@ export function parseObservedMarkerSnapshot(value: unknown): ObservedMarkerSnaps
           ? snapshot.captureActive && snapshot.protocolSupported && fullStamp && hasContext &&
             snapshot.observedMicros !== null && snapshot.markers.length > 0
           : snapshot.captureActive && snapshot.protocolSupported && fullStamp && hasContext && snapshot.markers.length === 0;
-  if (!validState || !validRequestDiagnostic ||
+  if (!validState || !validRequestDiagnostic || !validPositionState ||
       (snapshot.lastVerifiedRequestMarkerNumber === null) !== (snapshot.lastVerifiedRequestObservedMicros === null) ||
       (snapshot.sceneId === null) !== (snapshot.mapId === null) ||
       (!snapshot.captureActive && snapshot.observedMicros !== null)) {
@@ -463,6 +480,15 @@ function validObservedRequest(value: unknown): value is ObservedMarkerRequest {
   return record(value) && exactKeys(value, ["markerNumber", "observedMicros"]) &&
     integer(value.markerNumber) && value.markerNumber >= 1 && value.markerNumber <= 6 &&
     integer(value.observedMicros) && value.observedMicros >= 0;
+}
+
+function validObservedLocalPlayerPosition(value: unknown): value is ObservedLocalPlayerPosition {
+  return record(value) && exactKeys(value, [
+    "x", "y", "z", "sessionSequence", "observedMicros", "hostReceivedUnixMillis",
+  ]) && finite(value.x) && finite(value.y) && finite(value.z) &&
+    integer(value.sessionSequence) && value.sessionSequence >= 0 &&
+    integer(value.observedMicros) && value.observedMicros >= 0 &&
+    integer(value.hostReceivedUnixMillis) && value.hostReceivedUnixMillis >= 0;
 }
 
 function validBuild(value: unknown): value is string {
