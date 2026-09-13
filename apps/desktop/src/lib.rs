@@ -7365,9 +7365,10 @@ impl RuntimeController {
             .live_automarker_native_bridge
             .sanitized_operator_status();
         view.native_status = AutomarkerNativeStatusView {
-            waiting_for_new_syn: native.waiting_for_new_syn,
-            native_readiness_proven: native.native_readiness_proven,
-            waiting_for_marker_carrier: native.waiting_for_marker_carrier,
+            observer_ready: native.observer_ready,
+            syn_candidate_observed: native.syn_candidate_observed,
+            bpsr_tuple_confirmed: native.bpsr_tuple_confirmed,
+            marker_carrier_observed: native.marker_carrier_observed,
             return_confirmed: native.return_confirmed,
             active_placement_enabled: native.active_placement_enabled,
             failure_category: native.failure_category,

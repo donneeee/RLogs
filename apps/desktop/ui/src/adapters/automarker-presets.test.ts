@@ -24,7 +24,7 @@ import { automarkerPresetContextKey } from "./automarker-presets-surface";
 
 function view() {
   return {
-    schemaVersion: 4 as const,
+    schemaVersion: 5 as const,
     context: { clientBuild: "24687926", sceneId: 1633, mapId: 1633, activityFamilyId: "dungeon.1633", sceneName: "Tina M1" },
     presets: [{
       presetId: "preset-000000000001-0000", name: "Opener",
@@ -38,15 +38,19 @@ function view() {
     protocolPackDigest: null,
     nativeLoadSupported: false,
     nativeLoadReason: "native_waymark_transport_unavailable",
-    nativeStatus: { waitingForNewSyn: false, nativeReadinessProven: false, waitingForMarkerCarrier: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null },
+    nativeStatus: { observerReady: false, synCandidateObserved: false, bpsrTupleConfirmed: false, markerCarrierObserved: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null },
     previewSessionId: "preview-test-session",
   };
 }
 
 describe("automarker preset catalog", () => {
   it("accepts only coherent sanitized native readiness milestones", () => {
+    const candidate = view();
+    candidate.nativeStatus = { observerReady: true, synCandidateObserved: true, bpsrTupleConfirmed: false, markerCarrierObserved: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null };
+    expect(parseAutomarkerPresetView(candidate).nativeStatus).toEqual(candidate.nativeStatus);
+
     const ready = view();
-    ready.nativeStatus = { waitingForNewSyn: false, nativeReadinessProven: true, waitingForMarkerCarrier: true, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null };
+    ready.nativeStatus = { observerReady: true, synCandidateObserved: true, bpsrTupleConfirmed: true, markerCarrierObserved: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null };
     expect(parseAutomarkerPresetView(ready).nativeStatus).toEqual(ready.nativeStatus);
 
     const active = view();
@@ -58,8 +62,19 @@ describe("automarker preset catalog", () => {
     expect(() => parseAutomarkerPresetView(unknown)).toThrow(/invalid automarker preset catalog/i);
 
     const inconsistent = view();
-    inconsistent.nativeStatus.waitingForMarkerCarrier = true;
+    inconsistent.nativeStatus.bpsrTupleConfirmed = true;
     expect(() => parseAutomarkerPresetView(inconsistent)).toThrow(/invalid automarker preset catalog/i);
+
+    const impossibleReturn = view();
+    impossibleReturn.nativeStatus.returnConfirmed = true;
+    expect(() => parseAutomarkerPresetView(impossibleReturn)).toThrow(/invalid automarker preset catalog/i);
+
+    const leaking = JSON.stringify(parseAutomarkerPresetView(ready).nativeStatus);
+    expect(Object.keys(JSON.parse(leaking) as Record<string, unknown>).sort()).toEqual([
+      "activePlacementEnabled", "bpsrTupleConfirmed", "failureCategory", "markerCarrierObserved",
+      "observerReady", "returnConfirmed", "synCandidateObserved",
+    ]);
+    expect(leaking).not.toMatch(/pid|processId|address|port|epoch|packet|bytes|callId|session/i);
   });
 
   it("builds the exact bounded native activation request and rejects response expansion", () => {

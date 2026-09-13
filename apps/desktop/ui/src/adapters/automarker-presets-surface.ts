@@ -474,18 +474,25 @@ export function mountAutomarkerPresetsSurface(
     }
     if (view !== null) {
       const milestones = el("ul", "automarker-native-status");
-      if (view.nativeStatus.waitingForNewSyn) {
-        milestones.append(text("li", localizer.t("ui.automarkers.native_status.waiting_for_new_syn")));
-      }
-      if (view.nativeStatus.nativeReadinessProven) {
-        milestones.append(text("li", localizer.t("ui.automarkers.native_status.readiness_proven")));
-      }
-      if (view.nativeStatus.waitingForMarkerCarrier) {
-        milestones.append(text("li", localizer.t("ui.automarkers.native_status.waiting_for_marker_carrier")));
-      }
-      if (view.nativeStatus.returnConfirmed) {
-        milestones.append(text("li", localizer.t("ui.automarkers.native_status.return_confirmed")));
-      }
+      milestones.append(text("li", localizer.t(view.nativeStatus.observerReady
+        ? "ui.automarkers.native_status.observer_ready"
+        : "ui.automarkers.native_status.observer_pending")));
+      milestones.append(text("li", localizer.t(view.nativeStatus.synCandidateObserved
+        ? "ui.automarkers.native_status.syn_observed"
+        : "ui.automarkers.native_status.syn_pending")));
+      milestones.append(text("li", localizer.t(view.nativeStatus.bpsrTupleConfirmed
+        ? "ui.automarkers.native_status.tuple_confirmed"
+        : view.nativeStatus.synCandidateObserved
+          ? "ui.automarkers.native_status.tuple_waiting"
+          : "ui.automarkers.native_status.tuple_pending")));
+      milestones.append(text("li", localizer.t(view.nativeStatus.markerCarrierObserved
+        ? "ui.automarkers.native_status.carrier_observed"
+        : "ui.automarkers.native_status.carrier_pending")));
+      milestones.append(text("li", localizer.t(view.nativeStatus.returnConfirmed
+        ? "ui.automarkers.native_status.return_confirmed"
+        : view.nativeStatus.markerCarrierObserved
+          ? "ui.automarkers.native_status.return_waiting"
+          : "ui.automarkers.native_status.return_pending")));
       if (view.nativeStatus.failureCategory !== null) {
         milestones.append(text("li", nativeFailureLabel(view.nativeStatus.failureCategory, localizer)));
       }
@@ -640,9 +647,10 @@ function automarkerNativeStatusKey(view: AutomarkerPresetView | null): string {
   if (view === null) return "none";
   const status = view.nativeStatus;
   return [
-    status.waitingForNewSyn,
-    status.nativeReadinessProven,
-    status.waitingForMarkerCarrier,
+    status.observerReady,
+    status.synCandidateObserved,
+    status.bpsrTupleConfirmed,
+    status.markerCarrierObserved,
     status.returnConfirmed,
     status.activePlacementEnabled,
     status.failureCategory ?? "",

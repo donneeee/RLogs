@@ -5,7 +5,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-const SCHEMA_VERSION: u16 = 4;
+const PRESET_FILE_SCHEMA_VERSION: u16 = 4;
+const PRESET_VIEW_SCHEMA_VERSION: u16 = 5;
 const MAX_PRESETS: usize = 128;
 const MAX_STORE_BYTES: u64 = 512 * 1024;
 const MAX_NAME_CHARS: usize = 80;
@@ -114,9 +115,10 @@ pub struct AutomarkerPresetView {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AutomarkerNativeStatusView {
-    pub waiting_for_new_syn: bool,
-    pub native_readiness_proven: bool,
-    pub waiting_for_marker_carrier: bool,
+    pub observer_ready: bool,
+    pub syn_candidate_observed: bool,
+    pub bpsr_tuple_confirmed: bool,
+    pub marker_carrier_observed: bool,
     pub return_confirmed: bool,
     pub active_placement_enabled: bool,
     pub failure_category: Option<&'static str>,
@@ -357,7 +359,7 @@ fn view(
     presets: Vec<AutomarkerPreset>,
 ) -> AutomarkerPresetView {
     AutomarkerPresetView {
-        schema_version: SCHEMA_VERSION,
+        schema_version: PRESET_VIEW_SCHEMA_VERSION,
         context,
         presets,
         capture_supported: false,
@@ -543,7 +545,8 @@ fn load(
         4 => {
             let file: AutomarkerPresetFile = serde_json::from_slice(&bytes)
                 .map_err(|error| format!("automarker preset file is invalid: {error}"))?;
-            if file.schema_version != SCHEMA_VERSION || file.presets.len() > MAX_PRESETS {
+            if file.schema_version != PRESET_FILE_SCHEMA_VERSION || file.presets.len() > MAX_PRESETS
+            {
                 return Err("automarker preset file has an unsupported schema or size".into());
             }
             (file.presets, false)
@@ -572,7 +575,7 @@ fn write(path: &Path, presets: &[AutomarkerPreset]) -> Result<(), String> {
     std::fs::create_dir_all(parent)
         .map_err(|error| format!("could not create automarker preset folder: {error}"))?;
     let file = AutomarkerPresetFile {
-        schema_version: SCHEMA_VERSION,
+        schema_version: PRESET_FILE_SCHEMA_VERSION,
         presets: presets.to_vec(),
     };
     let mut bytes = serde_json::to_vec_pretty(&file)

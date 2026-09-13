@@ -96,7 +96,7 @@ function deferred<T>(): Deferred<T> {
 
 function view(sceneId: number, familyId: string, name: string, x: number): AutomarkerPresetView {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     context: {
       clientBuild: "24687926",
       sceneId,
@@ -118,7 +118,7 @@ function view(sceneId: number, familyId: string, name: string, x: number): Autom
     protocolPackDigest: null,
     nativeLoadSupported: false,
     nativeLoadReason: "native_waymark_transport_unavailable",
-    nativeStatus: { waitingForNewSyn: false, nativeReadinessProven: false, waitingForMarkerCarrier: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null },
+    nativeStatus: { observerReady: false, synCandidateObserved: false, bpsrTupleConfirmed: false, markerCarrierObserved: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null },
     previewSessionId: "preview-test-session",
   };
 }
@@ -145,6 +145,39 @@ afterEach(() => {
 });
 
 describe("mounted automarker preset editor request ordering", () => {
+  it("renders every sanitized native readiness checkpoint without conflating the SYN and BPSR match", async () => {
+    const catalog = view(6_525, "mech-facility", "Opener", 1);
+    catalog.nativeStatus = {
+      observerReady: true,
+      synCandidateObserved: true,
+      bpsrTupleConfirmed: false,
+      markerCarrierObserved: true,
+      returnConfirmed: true,
+      activePlacementEnabled: false,
+      failureCategory: null,
+    };
+    const container = document.createElement("div");
+    document.body.append(container);
+    const mounted = mountAutomarkerPresetsSurface(container, {
+      loadPresets: async () => catalog,
+      loadObservedMarkers: async () => unavailableObserved(),
+      saveCurrent: async () => { throw new Error("not used"); },
+      loadPreset: async () => { throw new Error("not used"); },
+      openOverlay: async () => undefined,
+    });
+    await flushPromises();
+
+    const milestones = container.querySelector(".automarker-native-status")?.textContent ?? "";
+    expect(milestones).toContain("Native driver verified; passive connection observer ready");
+    expect(milestones).toContain("Process-owned connection candidate observed");
+    expect(milestones).toContain("Checking whether the connection candidate is the captured BPSR connection");
+    expect(milestones).toContain("Verified marker request observed from the game");
+    expect(milestones).toContain("Server confirmed the observed marker request");
+    expect(milestones).toContain("Active placement is still disabled");
+    expect(milestones).not.toMatch(/pid|address|port|epoch|packet bytes|call id/i);
+    mounted.dispose();
+  });
+
   it("copies a gated name-based operator placement evidence test without IDs, coordinates, clicks, or activation", async () => {
     const catalog = view(1_633, "dungeon.1633", "Boss's opener", 91.25);
     catalog.context!.clientBuild = "25247556";

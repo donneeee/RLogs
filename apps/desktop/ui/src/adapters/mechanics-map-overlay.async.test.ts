@@ -111,7 +111,7 @@ function populatedSnapshot(revision: number, currentHp: number): MechanicsMapUpd
 
 function catalog(sceneId: number, familyId: string, name: string): AutomarkerPresetView {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     context: {
       clientBuild: "24687926",
       sceneId,
@@ -133,7 +133,7 @@ function catalog(sceneId: number, familyId: string, name: string): AutomarkerPre
     protocolPackDigest: null,
     nativeLoadSupported: false,
     nativeLoadReason: "native_waymark_transport_unavailable",
-    nativeStatus: { waitingForNewSyn: false, nativeReadinessProven: false, waitingForMarkerCarrier: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null },
+    nativeStatus: { observerReady: false, synCandidateObserved: false, bpsrTupleConfirmed: false, markerCarrierObserved: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null },
     previewSessionId: "preview-test-session",
   };
 }

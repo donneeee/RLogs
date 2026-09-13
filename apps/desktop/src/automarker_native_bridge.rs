@@ -59,9 +59,10 @@ struct NativeFlowEvidence {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct AutomarkerNativeOperatorStatus {
-    pub waiting_for_new_syn: bool,
-    pub native_readiness_proven: bool,
-    pub waiting_for_marker_carrier: bool,
+    pub observer_ready: bool,
+    pub syn_candidate_observed: bool,
+    pub bpsr_tuple_confirmed: bool,
+    pub marker_carrier_observed: bool,
     pub return_confirmed: bool,
     pub active_placement_enabled: bool,
     pub failure_category: Option<&'static str>,
@@ -343,18 +344,20 @@ impl AutomarkerNativeBridgeLifecycle {
             .as_ref()
             .and_then(|evidence| evidence.outbound_carrier.as_ref())
             .map(|carrier| carrier.tcp_connection);
-        if state.native_flow.as_ref().is_some_and(|flow| {
-            capture_connection.is_none_or(|capture| {
-                capture != flow.capture_connection
-                    || !binding_matches_capture(flow.binding, capture)
-            })
-        }) {
-            return Self::invalidate_and_release(state);
-        }
-        if capture_connection.is_none() {
-            state.native_flow = None;
-            state.gates.exact_local_process = false;
-            state.gates.exact_syn_owned_tuple_epoch = false;
+        if let (Some(mut flow), Some(capture)) = (state.native_flow, capture_connection) {
+            if !binding_matches_capture(flow.binding, capture)
+                || (flow.capture_connection.capture_connection_id != 0
+                    && flow.capture_connection.capture_connection_id
+                        != capture.capture_connection_id)
+            {
+                return Self::invalidate_and_release(state);
+            }
+            // SignatureFlowCapture proves the tuple before the framed parser
+            // knows its connection id. Bind that id only when the exact later
+            // carrier arrives; the absence of a carrier must not erase the
+            // already-proven process-owned connection epoch.
+            flow.capture_connection = capture;
+            state.native_flow = Some(flow);
         }
         state.phase = LifecyclePhase::Observing;
         // Parser continuity is necessary but insufficient. It cannot assert
@@ -369,8 +372,9 @@ impl AutomarkerNativeBridgeLifecycle {
         true
     }
 
-    /// Retain only an opaque SYN/process-owned binding whose exact IPv4 tuple
-    /// matches the passive parser carrier. This method opens no native handle.
+    /// Retain only an opaque SYN/process-owned binding. If a parser carrier is
+    /// already present its IPv4 tuple must match; otherwise the later carrier
+    /// performs that independent correlation. This method opens no handle.
     #[allow(dead_code)] // Consumed by the future reviewed passive WinDivert loop.
     pub(crate) fn accept_native_flow_binding(
         &self,
@@ -430,22 +434,27 @@ impl AutomarkerNativeBridgeLifecycle {
         syn_capture_sequence: u64,
         syn_observed_micros: u64,
     ) -> bool {
-        let Some(capture) = state
+        let parser_capture = state
             .parser_evidence
             .as_ref()
             .and_then(|evidence| evidence.outbound_carrier.as_ref())
-            .map(|carrier| carrier.tcp_connection)
-        else {
-            return false;
-        };
+            .map(|carrier| carrier.tcp_connection);
         if state.phase != LifecyclePhase::Observing
-            || state.continuity.is_none()
+            || state.session.is_none()
             || binding.connection_epoch() == 0
             || syn_capture_sequence == 0
-            || !binding_matches_capture(binding, capture)
+            || parser_capture.is_some_and(|capture| !binding_matches_capture(binding, capture))
         {
             return false;
         }
+        let connection = binding.connection();
+        let capture = parser_capture.unwrap_or(AutomarkerBridgeCaptureTcpConnection {
+            capture_connection_id: 0,
+            client_address: connection.local.address,
+            client_port: connection.local.port,
+            server_address: connection.remote.address,
+            server_port: connection.remote.port,
+        });
         state.native_flow = Some(NativeFlowEvidence {
             binding,
             capture_connection: capture,
@@ -535,8 +544,9 @@ impl AutomarkerNativeBridgeLifecycle {
             && state.native_failure.is_none()
     }
 
-    /// Consume at most one packet-free readiness result. Exact parser
-    /// continuity and the observed carrier tuple must already be present.
+    /// Consume at most one packet-free readiness result. It remains a bounded
+    /// candidate until SignatureFlowCapture independently confirms its tuple;
+    /// no marker carrier is required for that connection-level promotion.
     #[cfg(windows)]
     #[allow(dead_code)] // Polled by the future private game-PC host wiring.
     pub(crate) fn poll_passive_readiness_worker(&self) -> bool {
@@ -649,25 +659,42 @@ impl AutomarkerNativeBridgeLifecycle {
             Some(AutomarkerPassiveReadinessStatus::Failed(category)) => Some(category),
             _ => None,
         });
-        #[cfg(not(windows))]
-        let failure_present = false;
         #[cfg(windows)]
         let failure_present = failure.is_some();
         #[cfg(not(windows))]
         let failure_category = None;
         #[cfg(windows)]
         let failure_category = failure.map(AutomarkerNativeFailureCategory::as_str);
-        AutomarkerNativeOperatorStatus {
-            waiting_for_new_syn: state.phase == LifecyclePhase::Observing
-                && !native_readiness_proven
-                && !worker_readiness_proven
-                && state.pending_passive_readiness.is_none()
-                && !failure_present,
-            native_readiness_proven,
-            waiting_for_marker_carrier: (worker_readiness_proven
+        #[cfg(windows)]
+        let observer_ready = !failure_present
+            && (state.passive_readiness_worker.is_some()
                 || state.pending_passive_readiness.is_some()
-                || native_readiness_proven)
-                && !marker_carrier_present,
+                || native_readiness_proven);
+        #[cfg(not(windows))]
+        let observer_ready = false;
+        #[cfg(windows)]
+        let syn_candidate_observed = worker_readiness_proven
+            || state.pending_passive_readiness.is_some()
+            || native_readiness_proven;
+        #[cfg(not(windows))]
+        let syn_candidate_observed = native_readiness_proven;
+        #[cfg(windows)]
+        let bpsr_tuple_confirmed = state
+            .pending_passive_readiness
+            .as_ref()
+            .is_some_and(|pending| pending.capture_tuple_confirmed)
+            || native_readiness_proven;
+        #[cfg(not(windows))]
+        let bpsr_tuple_confirmed = native_readiness_proven;
+        AutomarkerNativeOperatorStatus {
+            // These are independent, sanitized milestones rather than an
+            // overloaded state label. The UI can therefore show precisely
+            // how far the passive proof progressed without exposing a PID,
+            // socket tuple, connection epoch, packet bytes, or call identity.
+            observer_ready,
+            syn_candidate_observed,
+            bpsr_tuple_confirmed,
+            marker_carrier_observed: marker_carrier_present,
             return_confirmed: state
                 .parser_evidence
                 .as_ref()
@@ -1015,12 +1042,22 @@ impl AutomarkerNativeBridgeLifecycle {
     ) -> DetachedNativeResources {
         let worker = state.passive_readiness_worker.take();
         let pending = state.pending_passive_readiness.take();
+        let native_flow = state.native_flow.take();
+        let native_connection_gates = NativeGateState {
+            exact_local_process: state.gates.exact_local_process,
+            exact_syn_owned_tuple_epoch: state.gates.exact_syn_owned_tuple_epoch,
+            pinned_backend: state.gates.pinned_backend,
+            checksum_helper_ready: state.gates.checksum_helper_ready,
+            ..NativeGateState::default()
+        };
         let mut detached = Self::detach_owned_state(state, LifecyclePhase::Observing, false);
         state.passive_readiness_worker = worker;
         state.pending_passive_readiness = pending.map(|mut pending| {
             pending.generation = state.generation;
             pending
         });
+        state.native_flow = native_flow;
+        state.gates = native_connection_gates;
         detached.passive_readiness_worker = None;
         detached
     }
@@ -1046,11 +1083,6 @@ impl AutomarkerNativeBridgeLifecycle {
             || pending.process_id != pending.observation.readiness.binding.process_id()
             || pending.connection_epoch != pending.observation.readiness.binding.connection_epoch()
             || !pending.capture_tuple_confirmed
-            || state
-                .parser_evidence
-                .as_ref()
-                .and_then(|evidence| evidence.outbound_carrier.as_ref())
-                .is_none()
         {
             return false;
         }
@@ -1504,8 +1536,14 @@ mod tests {
         let joined = install_completed_worker(&bridge, Ok(passive_observation()));
         assert!(bridge.poll_passive_readiness_worker());
         assert!(joined.load(Ordering::SeqCst));
-        assert!(!bridge.sanitized_operator_status().native_readiness_proven);
+        let candidate_status = bridge.sanitized_operator_status();
+        assert!(candidate_status.observer_ready);
+        assert!(candidate_status.syn_candidate_observed);
+        assert!(!candidate_status.bpsr_tuple_confirmed);
+        assert!(!candidate_status.marker_carrier_observed);
         assert!(!bridge.confirmed_connections_require_restart(&[confirmed_connection()]));
+        assert!(bridge.sanitized_operator_status().bpsr_tuple_confirmed);
+        assert!(state(&bridge).parser_evidence.is_none());
         assert!(bridge.accept_parser_evidence(Some(&scene("mech-facility")), parser_evidence()));
         let snapshot = state(&bridge);
         assert!(snapshot.passive_readiness_worker.is_none());
@@ -1516,6 +1554,44 @@ mod tests {
         assert!(!snapshot.gates.reflect_arbitrated);
         drop(snapshot);
         assert!(!bridge.placement_enabled());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn tuple_promoted_readiness_survives_scene_discovery_until_later_carrier() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        let joined = install_completed_worker(&bridge, Ok(passive_observation()));
+        assert!(bridge.poll_passive_readiness_worker());
+        assert!(joined.load(Ordering::SeqCst));
+        assert!(!bridge.confirmed_connections_require_restart(&[confirmed_connection()]));
+        assert!(bridge.sanitized_operator_status().bpsr_tuple_confirmed);
+
+        // Scene presentation and carrier framing are independent and may be
+        // delayed arbitrarily relative to the connection SYN.
+        assert!(bridge.reconcile_context(Some(&scene("mech-facility"))));
+        assert!(bridge.sanitized_operator_status().bpsr_tuple_confirmed);
+        assert!(bridge.accept_parser_evidence(
+            Some(&scene("mech-facility")),
+            AutomarkerBridgeEvidenceSnapshot::default(),
+        ));
+        let before_carrier = bridge.sanitized_operator_status();
+        assert!(before_carrier.bpsr_tuple_confirmed);
+        assert!(!before_carrier.marker_carrier_observed);
+
+        assert!(bridge.accept_parser_evidence(Some(&scene("mech-facility")), parser_evidence()));
+        let snapshot = state(&bridge);
+        assert_eq!(
+            snapshot
+                .native_flow
+                .as_ref()
+                .unwrap()
+                .capture_connection
+                .capture_connection_id,
+            50
+        );
+        assert!(snapshot.gates.exact_syn_owned_tuple_epoch);
+        assert!(!snapshot.gates.fresh_world_use_slot_carrier);
     }
 
     #[cfg(windows)]
@@ -1554,9 +1630,10 @@ mod tests {
         ));
         let joined = install_completed_worker(&bridge, Ok(passive_observation()));
         let status = bridge.sanitized_operator_status();
-        assert!(!status.native_readiness_proven);
-        assert!(status.waiting_for_marker_carrier);
-        assert!(!status.waiting_for_new_syn);
+        assert!(status.observer_ready);
+        assert!(status.syn_candidate_observed);
+        assert!(!status.bpsr_tuple_confirmed);
+        assert!(!status.marker_carrier_observed);
         assert!(!status.return_confirmed);
         assert!(!status.active_placement_enabled);
         assert_eq!(status.failure_category, None);

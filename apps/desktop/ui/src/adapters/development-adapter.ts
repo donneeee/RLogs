@@ -259,7 +259,7 @@ function mountDevelopmentAutomarkers(container: HTMLElement, localizer: UiLocali
 
 function developmentAutomarkerPresetView(): AutomarkerPresetView {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     context: null,
     presets: [],
     captureSupported: false,
@@ -269,7 +269,7 @@ function developmentAutomarkerPresetView(): AutomarkerPresetView {
     protocolPackDigest: null,
     nativeLoadSupported: false,
     nativeLoadReason: "native_waymark_transport_unavailable",
-    nativeStatus: { waitingForNewSyn: false, nativeReadinessProven: false, waitingForMarkerCarrier: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null },
+    nativeStatus: { observerReady: false, synCandidateObserved: false, bpsrTupleConfirmed: false, markerCarrierObserved: false, returnConfirmed: false, activePlacementEnabled: false, failureCategory: null },
     previewSessionId: "development-preview",
   };
 }

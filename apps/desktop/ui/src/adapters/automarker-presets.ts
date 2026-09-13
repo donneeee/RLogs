@@ -32,7 +32,7 @@ export interface AutomarkerSceneContext {
 }
 
 export interface AutomarkerPresetView {
-  schemaVersion: 4;
+  schemaVersion: 5;
   context: AutomarkerSceneContext | null;
   presets: readonly AutomarkerPreset[];
   captureSupported: boolean;
@@ -51,9 +51,10 @@ export type AutomarkerNativeFailureCategory = "not_elevated" | "dependency_hash_
   "process_or_socket" | "internal";
 
 export interface AutomarkerNativeStatus {
-  waitingForNewSyn: boolean;
-  nativeReadinessProven: boolean;
-  waitingForMarkerCarrier: boolean;
+  observerReady: boolean;
+  synCandidateObserved: boolean;
+  bpsrTupleConfirmed: boolean;
+  markerCarrierObserved: boolean;
   returnConfirmed: boolean;
   activePlacementEnabled: false;
   failureCategory: AutomarkerNativeFailureCategory | null;
@@ -338,7 +339,7 @@ export function newlyCreatedPresetId(
 }
 
 export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView {
-  if (!record(value) || value.schemaVersion !== 4 ||
+  if (!record(value) || value.schemaVersion !== 5 ||
       !(value.context === null || validContext(value.context)) ||
       !Array.isArray(value.presets) || !value.presets.every(validPreset) ||
       typeof value.captureSupported !== "boolean" ||
@@ -371,14 +372,17 @@ export function parseAutomarkerPresetView(value: unknown): AutomarkerPresetView 
 }
 
 function validNativeStatus(value: unknown): value is AutomarkerNativeStatus {
-  if (!record(value) || typeof value.waitingForNewSyn !== "boolean" ||
-      typeof value.nativeReadinessProven !== "boolean" ||
-      typeof value.waitingForMarkerCarrier !== "boolean" ||
+  if (!record(value) || typeof value.observerReady !== "boolean" ||
+      typeof value.synCandidateObserved !== "boolean" ||
+      typeof value.bpsrTupleConfirmed !== "boolean" ||
+      typeof value.markerCarrierObserved !== "boolean" ||
       typeof value.returnConfirmed !== "boolean" || value.activePlacementEnabled !== false ||
       !(value.failureCategory === null || nativeFailureCategory(value.failureCategory))) return false;
-  return !(value.waitingForNewSyn && value.nativeReadinessProven) &&
-    (!value.waitingForMarkerCarrier || value.nativeReadinessProven) &&
-    (value.failureCategory === null || (!value.waitingForNewSyn && !value.nativeReadinessProven));
+  return (!value.synCandidateObserved || value.observerReady) &&
+    (!value.bpsrTupleConfirmed || value.synCandidateObserved) &&
+    (!value.returnConfirmed || value.markerCarrierObserved) &&
+    (value.failureCategory === null ||
+      (!value.observerReady && !value.synCandidateObserved && !value.bpsrTupleConfirmed));
 }
 
 function nativeFailureCategory(value: unknown): value is AutomarkerNativeFailureCategory {
