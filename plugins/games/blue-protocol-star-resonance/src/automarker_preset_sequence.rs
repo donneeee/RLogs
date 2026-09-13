@@ -82,7 +82,7 @@ pub enum AutomarkerPresetSequenceError {
     WrongAuthoritativeMarker,
     AuthoritativePositionMismatch,
     NegativeRpcReturn,
-    SceneOrLeadershipChanged,
+    SceneChanged,
     TimedOut,
 }
 
@@ -267,7 +267,7 @@ impl AutomarkerPresetSequence {
     }
 
     pub fn abort_for_context_change(&mut self) -> Result<(), AutomarkerPresetSequenceError> {
-        self.abort(AutomarkerPresetSequenceError::SceneOrLeadershipChanged)
+        self.abort(AutomarkerPresetSequenceError::SceneChanged)
     }
 
     pub fn abort_for_timeout(&mut self) -> Result<(), AutomarkerPresetSequenceError> {

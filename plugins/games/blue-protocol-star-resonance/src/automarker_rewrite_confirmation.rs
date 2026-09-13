@@ -6,7 +6,8 @@
 
 use crate::AutomarkerRequestXyz;
 
-pub const AUTOMARKER_CONFIRMATION_METHOD_ID: u32 = 46;
+pub const AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID: u32 = 249_858;
+pub const AUTOMARKER_AUTHORITATIVE_MARKER_ADD_METHOD_ID: u32 = 46;
 pub const AUTOMARKER_CONFIRMATION_TIMEOUT_MILLIS: u64 = 2_000;
 pub const AUTOMARKER_CONFIRMATION_TIMEOUT_MICROS: u64 =
     AUTOMARKER_CONFIRMATION_TIMEOUT_MILLIS * 1_000;
@@ -46,10 +47,6 @@ pub struct AutomarkerConfirmationContext {
     pub client_to_server_tuple: AutomarkerConfirmationTcpTuple,
     pub runtime_revision: u64,
     pub observed_micros: u64,
-    /// This is deliberately named as a caller assertion. It is checked for
-    /// continuity but is not independent leadership evidence and can never
-    /// authorize a send.
-    pub asserted_local_player_is_party_leader: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -142,7 +139,6 @@ pub enum AutomarkerConfirmationError {
     BuildChanged,
     SceneChanged,
     LocalActorChanged,
-    LeaderAssertionChanged,
     SocketChanged,
     ConnectionEpochChanged,
     RuntimeRevisionRegressed,
@@ -203,7 +199,6 @@ impl SingleMarkerRewriteConfirmation {
             || baseline.context.observed_micros == 0
             || baseline.observation_ordinal == 0
             || !baseline.context.client_to_server_tuple.is_valid()
-            || !baseline.context.asserted_local_player_is_party_leader
         {
             return Err(AutomarkerConfirmationError::InvalidBaseline);
         }
@@ -214,7 +209,7 @@ impl SingleMarkerRewriteConfirmation {
         {
             return Err(AutomarkerConfirmationError::AmbiguousBaselineMarker);
         }
-        if rewrite.method_id != AUTOMARKER_CONFIRMATION_METHOD_ID {
+        if rewrite.method_id != AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID {
             return Err(AutomarkerConfirmationError::WrongRewriteMethod);
         }
         if rewrite.original_rpc_call_id == 0
@@ -337,7 +332,7 @@ impl SingleMarkerRewriteConfirmation {
         if !observation.asserted_decoded_from_authoritative_server_stream {
             return self.abort(AutomarkerConfirmationError::MarkerAddNotAuthoritative);
         }
-        if observation.method_id != AUTOMARKER_CONFIRMATION_METHOD_ID {
+        if observation.method_id != AUTOMARKER_AUTHORITATIVE_MARKER_ADD_METHOD_ID {
             return self.abort(AutomarkerConfirmationError::WrongMarkerMethod);
         }
         if observation.marker_number != self.config.marker_number {
@@ -448,11 +443,6 @@ impl SingleMarkerRewriteConfirmation {
         if context.local_actor_id != baseline.local_actor_id {
             return Err(AutomarkerConfirmationError::LocalActorChanged);
         }
-        if context.asserted_local_player_is_party_leader
-            != baseline.asserted_local_player_is_party_leader
-        {
-            return Err(AutomarkerConfirmationError::LeaderAssertionChanged);
-        }
         if context.client_to_server_tuple != baseline.client_to_server_tuple {
             return Err(AutomarkerConfirmationError::SocketChanged);
         }
@@ -539,7 +529,6 @@ mod tests {
             client_to_server_tuple: tuple(),
             runtime_revision: revision,
             observed_micros: micros,
-            asserted_local_player_is_party_leader: true,
         }
     }
 
@@ -565,7 +554,7 @@ mod tests {
                 same_number_passive_instance_identities: vec![700],
             },
             AutomarkerConfirmationRewrite {
-                method_id: AUTOMARKER_CONFIRMATION_METHOD_ID,
+                method_id: AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID,
                 original_rpc_call_id: 55,
                 mapped_tcp_sequence_start: 1_000,
                 mapped_tcp_length: 16,
@@ -694,7 +683,7 @@ mod tests {
                 same_number_passive_instance_identities: vec![],
             },
             AutomarkerConfirmationRewrite {
-                method_id: AUTOMARKER_CONFIRMATION_METHOD_ID,
+                method_id: AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID,
                 original_rpc_call_id: 55,
                 mapped_tcp_sequence_start: u32::MAX - 7,
                 mapped_tcp_length: 16,
@@ -893,10 +882,6 @@ mod tests {
                 AutomarkerConfirmationError::LocalActorChanged,
             ),
             (
-                Box::new(|value| value.asserted_local_player_is_party_leader = false),
-                AutomarkerConfirmationError::LeaderAssertionChanged,
-            ),
-            (
                 Box::new(|value| value.connection_epoch = 10),
                 AutomarkerConfirmationError::ConnectionEpochChanged,
             ),
@@ -996,7 +981,7 @@ mod tests {
             same_number_passive_instance_identities: vec![700, 701],
         };
         let rewrite = AutomarkerConfirmationRewrite {
-            method_id: AUTOMARKER_CONFIRMATION_METHOD_ID,
+            method_id: AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID,
             original_rpc_call_id: 55,
             mapped_tcp_sequence_start: 1_000,
             mapped_tcp_length: 16,
@@ -1025,7 +1010,7 @@ mod tests {
         ));
 
         rewrite.mapped_tcp_length = 16;
-        rewrite.method_id = 45;
+        rewrite.method_id = AUTOMARKER_AUTHORITATIVE_MARKER_ADD_METHOD_ID;
         assert!(matches!(
             SingleMarkerRewriteConfirmation::begin(
                 config(),

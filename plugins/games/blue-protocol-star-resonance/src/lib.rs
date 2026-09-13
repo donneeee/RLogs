@@ -124,7 +124,8 @@ pub use automarker_request::{
     supports_observed_automarker_requests, verify_offline_automarker_substitution,
 };
 pub use automarker_rewrite_confirmation::{
-    AUTOMARKER_CONFIRMATION_METHOD_ID, AUTOMARKER_CONFIRMATION_TIMEOUT_MILLIS,
+    AUTOMARKER_AUTHORITATIVE_MARKER_ADD_METHOD_ID, AUTOMARKER_CONFIRMATION_TIMEOUT_MILLIS,
+    AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID,
     AutomarkerConfirmationBaseline, AutomarkerConfirmationConfig, AutomarkerConfirmationContext,
     AutomarkerConfirmationError, AutomarkerConfirmationMarkerAdd,
     AutomarkerConfirmationObservationStamp, AutomarkerConfirmationRewrite,

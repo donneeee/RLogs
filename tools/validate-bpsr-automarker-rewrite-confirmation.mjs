@@ -12,10 +12,11 @@ const docs = await readFile(fileURLToPath(new URL(
 )), "utf8");
 
 for (const required of [
-  "AUTOMARKER_CONFIRMATION_METHOD_ID: u32 = 46",
+  "AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID: u32 = 249_858",
+  "AUTOMARKER_AUTHORITATIVE_MARKER_ADD_METHOD_ID: u32 = 46",
   "AUTOMARKER_CONFIRMATION_TIMEOUT_MILLIS",
   "AUTOMARKER_CONFIRMATION_TIMEOUT_MICROS",
-  "rewrite.method_id != AUTOMARKER_CONFIRMATION_METHOD_ID",
+  "rewrite.method_id != AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID",
   "mapped_tcp_sequence_start",
   "mapped_tcp_length",
   "NotReverseExactTupleAck",
@@ -51,7 +52,8 @@ for (const required of [
   "exact reverse four-tuple",
   "cumulative ACK",
   "exact original call ID",
-  "explicitly method 46",
+  "outbound `World.UseSlot`",
+  "Method 46 is reserved",
   "empty body",
   "method-46",
   "bit-exact target XYZ",

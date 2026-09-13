@@ -35,7 +35,6 @@ for (const required of [
   "successful_rpc_return_observed",
   "authoritative_self_add_observed",
   "observed_age_millis",
-  "asserted_local_player_is_party_leader",
   "new_instance_assertion",
   "AUTOMARKER_REQUEST_PACK_DIGEST",
 ]) assert.ok(source.includes(required), `missing activation guard: ${required}`);
@@ -46,8 +45,8 @@ assert.equal(source.includes("SINGLE_MARKER_XYZ_MAX_DISTANCE"), false);
 assert.equal(source.includes("TargetOutsideNearbyCanaryRadius"), false);
 assert.match(docs, /not\s+constrained by the player's current position/);
 assert.ok(docs.includes("loaded from very far away"));
-assert.ok(docs.includes("assertion is not itself evidence"));
-assert.ok(docs.includes("boolean is explicitly an assertion"));
+assert.ok(docs.includes("There is no separate leader pre-gate"));
+assert.ok(docs.includes("never synthesizes a request"));
 assert.ok(source.includes("proof.allowed_mutable_bytes == 16"));
 assert.ok(source.includes("proof.all_other_bytes_identical"));
 assert.ok(source.includes("proof.game_owned_values_identical"));

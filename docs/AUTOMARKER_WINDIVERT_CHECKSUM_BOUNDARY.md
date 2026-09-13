@@ -24,7 +24,7 @@ IPv4 and TCP checksums. Any discrepancy fails closed and returns no packet
 authorized as modified.
 
 This closes only the checksum/ABI prerequisite for the one-marker canary. A
-future separate bridge still must supply exact connection/scene/leadership
-gates, hold the approved carrier, manage retransmission and ACK state, obtain
+future separate bridge still must supply exact connection/scene gates, hold a
+fresh game-authorized `World.UseSlot` carrier, manage retransmission and ACK state, obtain
 post-rewrite RPC and authoritative marker confirmation, and recover safely on
 every interception/send failure before any live test is allowed.

@@ -19,8 +19,10 @@ observed clock, and every passive instance identity already present for the
 same marker number. Zero or one pre-existing instance is accepted; multiple
 same-number instances are ambiguous and rejected.
 
-The rewrite is rejected unless it is explicitly method 46, and it fixes the
-original RPC call ID and the mapped TCP sequence range.
+The rewrite is rejected unless it is explicitly the outbound `World.UseSlot`
+method 249858 carrier, and it fixes the original RPC call ID and mapped TCP
+sequence range. Method 46 is reserved for the later authoritative inbound
+`SyncToMeDeltaInfo` marker-add confirmation.
 Every subsequent observation must have a strictly newer bridge observation
 ordinal and observed-microsecond clock. Runtime revisions may remain equal for
 transport ACK and RPC-return observations, but may never regress. The marker
@@ -48,7 +50,7 @@ authorize a sender.
 
 ## Fail-closed outcomes
 
-FIN or RST, timeout, build/scene/local-actor/leader assertion/socket/epoch
+FIN or RST, timeout, build/scene/local-actor/socket/epoch
 change, runtime regression, stale or reordered evidence, a wrong or duplicate
 RPC candidate, a non-authoritative or nonempty return, an incorrect method,
 marker number, owner, or XYZ, a reused passive instance identity, and ambiguous

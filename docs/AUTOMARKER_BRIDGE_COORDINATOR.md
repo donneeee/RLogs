@@ -15,9 +15,13 @@ already-held full packet and delegates its TCP payload to the canary. An exact
 pass-through decision returns the full original packet and address unchanged.
 A rewrite preparation also requires the complete confirmation context at that
 same boundary. Build, scene family, local actor, connection epoch, exact tuple,
-leader assertion, and runtime revision must remain coherent with both the
+and runtime revision must remain coherent with both the
 immutable baseline and the canary context. Its observed-microsecond clock is
 the rewrite anchor; no unrelated scalar timestamp is accepted.
+
+There is no separate leadership input. A fresh authenticated same-number
+`World.UseSlot` method 249858 carrier from the bound game connection is the
+game-authority evidence; without one, no request is synthesized or sent.
 
 A rewrite decision returns `AutomarkerBridgeChecksumInput`: the exact original
 packet, the proposed same-length changed packet, the original 80-byte address,

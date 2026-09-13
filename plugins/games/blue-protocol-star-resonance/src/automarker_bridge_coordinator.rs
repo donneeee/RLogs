@@ -6,7 +6,7 @@
 //! the retrospective three-signal confirmation contract.
 
 use crate::{
-    AUTOMARKER_CONFIRMATION_METHOD_ID, AutomarkerConfirmationBaseline,
+    AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID, AutomarkerConfirmationBaseline,
     AutomarkerConfirmationConfig, AutomarkerConfirmationContext, AutomarkerConfirmationError,
     AutomarkerConfirmationMarkerAdd, AutomarkerConfirmationRewrite,
     AutomarkerConfirmationRpcReturn, AutomarkerConfirmationState,
@@ -87,7 +87,6 @@ mod tests {
             runtime_revision: revision,
             observation_monotonic_millis: 1_100,
             observation_age_millis: 0,
-            asserted_local_player_is_party_leader: true,
         }
     }
 
@@ -105,7 +104,6 @@ mod tests {
             },
             runtime_revision: revision,
             observed_micros: micros,
-            asserted_local_player_is_party_leader: true,
         }
     }
 
@@ -289,7 +287,7 @@ mod tests {
             .observe(AutomarkerBridgeObservation::AuthoritativeMarkerAdd {
                 context: &context,
                 observation: AutomarkerConfirmationMarkerAdd {
-                    method_id: AUTOMARKER_CONFIRMATION_METHOD_ID,
+                    method_id: crate::AUTOMARKER_AUTHORITATIVE_MARKER_ADD_METHOD_ID,
                     marker_number: 1,
                     marker_owner_actor_id: 77,
                     position: coordinator.config.target_position,
@@ -550,8 +548,6 @@ impl AutomarkerBridgeCoordinator {
                 .same_number_passive_instance_identities
                 .contains(&0)
             || baseline.context.runtime_revision != canary_context.runtime_revision
-            || baseline.context.asserted_local_player_is_party_leader
-                != canary_context.asserted_local_player_is_party_leader
             || tuple.client_address != binding_connection.local.address.octets()
             || tuple.client_port != binding_connection.local.port
             || tuple.server_address != binding_connection.remote.address.octets()
@@ -654,15 +650,11 @@ impl AutomarkerBridgeCoordinator {
             || rewrite_context.local_actor_id != baseline.local_actor_id
             || rewrite_context.connection_epoch != baseline.connection_epoch
             || rewrite_context.client_to_server_tuple != baseline.client_to_server_tuple
-            || rewrite_context.asserted_local_player_is_party_leader
-                != baseline.asserted_local_player_is_party_leader
             || rewrite_context.runtime_revision < baseline.runtime_revision
             || rewrite_context.game_build != context.game_build
             || rewrite_context.scene_family != context.current_scene_family
             || rewrite_context.connection_epoch != connection_epoch
             || rewrite_context.runtime_revision != context.runtime_revision
-            || rewrite_context.asserted_local_player_is_party_leader
-                != context.asserted_local_player_is_party_leader
         {
             return AutomarkerBridgePrepareDisposition::SendOriginal(
                 AutomarkerBridgeOriginalPacket {
@@ -817,7 +809,7 @@ impl AutomarkerBridgeCoordinator {
                 if pending.first_modified_emission && self.confirmation.is_none() {
                     let carrier = self.carrier.expect("committed rewrite has a carrier");
                     let rewrite = AutomarkerConfirmationRewrite {
-                        method_id: AUTOMARKER_CONFIRMATION_METHOD_ID,
+                        method_id: AUTOMARKER_OUTBOUND_CARRIER_METHOD_ID,
                         original_rpc_call_id: carrier.rpc_call_id,
                         mapped_tcp_sequence_start: pending.frame_sequence_start,
                         mapped_tcp_length: EXACT_CARRIER_BYTES,

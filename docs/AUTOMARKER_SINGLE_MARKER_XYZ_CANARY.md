@@ -12,10 +12,10 @@ a request and it has no process-memory or input-automation path.
 
 The default state is `DryRun`. Arming requires the exact literal token, reviewed
 Steam build and pack digest, an opaque process-owned four-tuple binding whose
-epoch began with an observed SYN, a fresh trusted runtime scene revision, exact
-scene-family equality, and a caller-supplied party-leader assertion. That
-assertion is not itself evidence: the live bridge remains blocked until it can
-derive it from a fresh, trusted local roster. Target XYZ must be
+epoch began with an observed SYN, a fresh trusted runtime scene revision, and
+exact scene-family equality. There is no separate leader pre-gate: the fresh,
+authenticated, same-number `World.UseSlot` request is evidence that the game
+allowed this placement. The canary never synthesizes a request. Target XYZ must be
 finite and inside the supported numeric domain, but it is deliberately not
 constrained by the player's current position. Saved markers may therefore be
 loaded from very far away anywhere in the exact same map/scene family.

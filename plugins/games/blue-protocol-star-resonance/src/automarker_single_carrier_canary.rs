@@ -37,9 +37,6 @@ pub struct SingleMarkerXyzCanaryContext<'a> {
     /// only when the first complete modified packet send is committed.
     pub observation_monotonic_millis: u64,
     pub observation_age_millis: u64,
-    /// Caller assertion only. The core cannot verify roster provenance; the
-    /// future live bridge must derive this from a fresh trusted local roster.
-    pub asserted_local_player_is_party_leader: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,7 +62,6 @@ pub enum SingleMarkerXyzCanaryError {
     StaleRuntimeContext,
     MissingSceneFamily,
     SceneFamilyMismatch,
-    NotPartyLeader,
     InvalidMarkerNumber,
     InvalidTargetCoordinate,
     CarrierTooOld,
@@ -87,7 +83,7 @@ pub enum SingleMarkerXyzCanaryError {
     StaleConfirmation,
     AuthoritativeAddNotNew,
     ConnectionEpochChanged,
-    SceneOrLeadershipChanged,
+    SceneChanged,
     TimedOut,
     ConnectionTerminated,
 }
@@ -368,7 +364,7 @@ impl SingleMarkerXyzCanary {
         // Matching retransmissions must still receive identical bytes until
         // the operation is ACKed or the connection terminates.
         if validate_context(&self.config, context).is_err() {
-            self.abort_in_place(SingleMarkerXyzCanaryError::SceneOrLeadershipChanged);
+            self.abort_in_place(SingleMarkerXyzCanaryError::SceneChanged);
             if !self.rewrite_obligation_active {
                 return SingleMarkerXyzSegmentDisposition::SendOriginal(payload.to_vec());
             }
@@ -566,7 +562,7 @@ impl SingleMarkerXyzCanary {
             };
         }
         if validate_context(&self.config, context).is_err() {
-            self.abort_in_place(SingleMarkerXyzCanaryError::SceneOrLeadershipChanged);
+            self.abort_in_place(SingleMarkerXyzCanaryError::SceneChanged);
             if !self.rewrite_obligation_active {
                 return OfflineAutomarkerTcpAckResult {
                     retired_operations: 0,
@@ -694,7 +690,7 @@ impl SingleMarkerXyzCanary {
             return self.abort(SingleMarkerXyzCanaryError::ConnectionEpochChanged);
         }
         if validate_context(&self.config, context).is_err() {
-            return self.abort(SingleMarkerXyzCanaryError::SceneOrLeadershipChanged);
+            return self.abort(SingleMarkerXyzCanaryError::SceneChanged);
         }
         Ok(())
     }
@@ -777,9 +773,6 @@ fn validate_context(
     if config.expected_scene_family != context.current_scene_family {
         return Err(SingleMarkerXyzCanaryError::SceneFamilyMismatch);
     }
-    if !context.asserted_local_player_is_party_leader {
-        return Err(SingleMarkerXyzCanaryError::NotPartyLeader);
-    }
     Ok(())
 }
 
@@ -816,13 +809,12 @@ mod tests {
         }
     }
 
-    fn context<'a>(family: &'a str, leader: bool) -> SingleMarkerXyzCanaryContext<'a> {
-        context_at(family, leader, 100, 1_000)
+    fn context(family: &str) -> SingleMarkerXyzCanaryContext<'_> {
+        context_at(family, 100, 1_000)
     }
 
     fn context_at<'a>(
         family: &'a str,
-        leader: bool,
         runtime_revision: u64,
         observation_monotonic_millis: u64,
     ) -> SingleMarkerXyzCanaryContext<'a> {
@@ -832,7 +824,6 @@ mod tests {
             runtime_revision,
             observation_monotonic_millis,
             observation_age_millis: 0,
-            asserted_local_player_is_party_leader: leader,
         }
     }
 
@@ -878,7 +869,7 @@ mod tests {
             SINGLE_MARKER_XYZ_CANARY_ARM_TOKEN,
             &current_pack(),
             binding(),
-            context("mech-facility", true),
+            context("mech-facility"),
         )
         .unwrap()
     }
@@ -894,7 +885,7 @@ mod tests {
                 sequence_start,
                 0,
                 &frame,
-                context("mech-facility", true),
+                context("mech-facility"),
             )
             .unwrap();
         (canary, frame)
@@ -943,14 +934,14 @@ mod tests {
     }
 
     #[test]
-    fn arm_requires_literal_exact_pack_scene_and_leadership() {
+    fn arm_requires_literal_exact_pack_and_scene() {
         assert_eq!(
             SingleMarkerXyzCanary::arm(
                 config(),
                 "almost",
                 &current_pack(),
                 binding(),
-                context("mech-facility", true),
+                context("mech-facility"),
             )
             .err(),
             Some(SingleMarkerXyzCanaryError::InvalidConsent)
@@ -961,28 +952,17 @@ mod tests {
                 SINGLE_MARKER_XYZ_CANARY_ARM_TOKEN,
                 &current_pack(),
                 binding(),
-                context("tina", true),
+                context("tina"),
             )
             .err(),
             Some(SingleMarkerXyzCanaryError::SceneFamilyMismatch)
-        );
-        assert_eq!(
-            SingleMarkerXyzCanary::arm(
-                config(),
-                SINGLE_MARKER_XYZ_CANARY_ARM_TOKEN,
-                &current_pack(),
-                binding(),
-                context("mech-facility", false),
-            )
-            .err(),
-            Some(SingleMarkerXyzCanaryError::NotPartyLeader)
         );
         assert_eq!(
             armed().state(),
             SingleMarkerXyzCanaryState::AwaitingFreshCarrier
         );
 
-        let mut stale = context("mech-facility", true);
+        let mut stale = context("mech-facility");
         stale.observation_age_millis = SINGLE_MARKER_XYZ_MAX_CONTEXT_AGE_MILLIS + 1;
         assert_eq!(
             SingleMarkerXyzCanary::arm(
@@ -1039,8 +1019,8 @@ mod tests {
 
         let mut scene_change = armed();
         assert_eq!(
-            scene_change.revalidate_context(9, context("tina", true)),
-            Err(SingleMarkerXyzCanaryError::SceneOrLeadershipChanged)
+            scene_change.revalidate_context(9, context("tina")),
+            Err(SingleMarkerXyzCanaryError::SceneChanged)
         );
 
         let mut stale_confirmation = awaiting_confirmation();
@@ -1079,7 +1059,7 @@ mod tests {
                 held_packet_len: 40 + payload.len(),
                 payload: &payload,
             },
-            context("mech-facility", true),
+            context("mech-facility"),
         );
         assert_eq!(result, Err(SingleMarkerXyzCanaryError::CarrierTooOld));
         assert_eq!(
@@ -1101,7 +1081,7 @@ mod tests {
             SingleMarkerXyzCanaryState::Aborted(SingleMarkerXyzCanaryError::TimedOut)
         );
 
-        let result = canary.observe_cumulative_ack(9, u32::MAX, context("mech-facility", true));
+        let result = canary.observe_cumulative_ack(9, u32::MAX, context("mech-facility"));
         assert_eq!(result.retired_operations, 0);
         assert_eq!(
             canary.state(),
@@ -1117,7 +1097,7 @@ mod tests {
             &mut canary,
             sequence,
             &frame,
-            context_at("mech-facility", true, 101, 1_100),
+            context_at("mech-facility", 101, 1_100),
         );
         assert_eq!(
             canary.state(),
@@ -1143,7 +1123,7 @@ mod tests {
     fn only_a_full_successful_send_commits_and_pins_the_first_stamp() {
         let sequence = 2_000;
         let (mut canary, frame) = armed_with_carrier(sequence);
-        let first_context = context_at("mech-facility", true, 101, 1_100);
+        let first_context = context_at("mech-facility", 101, 1_100);
         let prepared = prepare_full(&mut canary, sequence, &frame, first_context);
         assert_eq!(
             canary.commit_prepared_rewrite(
@@ -1164,7 +1144,7 @@ mod tests {
             &mut canary,
             sequence,
             &frame,
-            context_at("mech-facility", true, 222, 9_999),
+            context_at("mech-facility", 222, 9_999),
         );
         assert!(!retransmission.first_modified_emission);
         assert_eq!(
@@ -1192,7 +1172,7 @@ mod tests {
                 &mut canary,
                 sequence,
                 &frame,
-                context_at("mech-facility", true, 101, 1_100),
+                context_at("mech-facility", 101, 1_100),
             );
             assert_eq!(
                 canary.commit_prepared_rewrite(prepared.preparation_id, outcome),
@@ -1206,7 +1186,7 @@ mod tests {
                 sequence,
                 &frame,
                 40 + frame.len(),
-                context("mech-facility", true),
+                context("mech-facility"),
             ) {
                 SingleMarkerXyzSegmentDisposition::PreparedRewriteNeedsPacketChecksumRepair(
                     prepared,
@@ -1232,7 +1212,7 @@ mod tests {
                 sequence,
                 &frame[..1],
                 41,
-                context("mech-facility", true),
+                context("mech-facility"),
             ),
             SingleMarkerXyzSegmentDisposition::SendOriginal(frame[..1].to_vec())
         );
@@ -1248,7 +1228,7 @@ mod tests {
             &mut canary,
             sequence,
             &frame,
-            context_at("mech-facility", true, 101, 1_100),
+            context_at("mech-facility", 101, 1_100),
         );
         assert_eq!(
             canary.commit_prepared_rewrite(
@@ -1268,7 +1248,7 @@ mod tests {
             &mut canary,
             sequence,
             &frame,
-            context_at("wrong-family", false, 999, 99_999),
+            context_at("wrong-family", 999, 99_999),
         );
         assert_eq!(retransmission.rewritten_payload, prepared.rewritten_payload);
         assert_eq!(
@@ -1290,7 +1270,7 @@ mod tests {
                 sequence.wrapping_add(1_000),
                 b"ordinary",
                 48,
-                context("mech-facility", true),
+                context("mech-facility"),
             ),
             SingleMarkerXyzSegmentDisposition::SendOriginal(b"ordinary".to_vec())
         );
@@ -1298,7 +1278,7 @@ mod tests {
         let ack = canary.observe_cumulative_ack(
             9,
             sequence.wrapping_add(EXACT_FRAME_BYTES as u32),
-            context("mech-facility", true),
+            context("mech-facility"),
         );
         assert_eq!(ack.retired_operations, 1);
         assert_eq!(ack.active_operations, 0);
@@ -1308,7 +1288,7 @@ mod tests {
                 sequence,
                 &frame,
                 40 + frame.len(),
-                context("mech-facility", true),
+                context("mech-facility"),
             ),
             SingleMarkerXyzSegmentDisposition::SendOriginal(frame)
         );
@@ -1322,7 +1302,7 @@ mod tests {
             &mut canary,
             sequence,
             &frame,
-            context_at("mech-facility", true, 101, 1_100),
+            context_at("mech-facility", 101, 1_100),
         );
         assert_eq!(
             canary.commit_prepared_rewrite(
@@ -1345,7 +1325,7 @@ mod tests {
                 sequence,
                 &frame,
                 40 + frame.len(),
-                context("mech-facility", true),
+                context("mech-facility"),
             ),
             SingleMarkerXyzSegmentDisposition::SendOriginal(frame)
         );

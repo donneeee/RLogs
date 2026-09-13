@@ -42,7 +42,7 @@ for (const token of [
   "observe_rpc_return",
   "observe_authoritative_add",
   "ReusedGameOwnedIdentity",
-  "SceneOrLeadershipChanged",
+  "SceneChanged",
 ]) {
   assert.ok(source.includes(token), `planner source lost required fail-closed token: ${token}`);
 }
