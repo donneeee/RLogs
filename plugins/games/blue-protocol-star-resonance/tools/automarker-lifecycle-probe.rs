@@ -5488,10 +5488,7 @@ mod windows {
                 &(ZDICTIONARY_INT_OBJECT_ENTRY_STRIDE as i32).to_le_bytes(),
             );
             let control_entry = control_entries + MANAGED_ARRAY_VECTOR;
-            m.put(
-                control_entry,
-                &vec![0u8; ZDICTIONARY_INT_OBJECT_ENTRY_STRIDE],
-            );
+            m.put(control_entry, &[0u8; ZDICTIONARY_INT_OBJECT_ENTRY_STRIDE]);
             m.put(
                 control_entry + ZDICTIONARY_ENTRY_HASH_CODE,
                 &MARKER_1_SKILL_ID.to_le_bytes(),
@@ -6086,7 +6083,7 @@ mod windows {
             let continuous_entry = 0x88_0000 + MANAGED_ARRAY_VECTOR;
             memory.put(
                 continuous_entry,
-                &vec![0u8; DICTIONARY_INT_CONTINUOUS_ENTRY_STRIDE],
+                &[0u8; DICTIONARY_INT_CONTINUOUS_ENTRY_STRIDE],
             );
             memory.put(0x86_0000 + DICTIONARY_COUNT, &1i32.to_le_bytes());
             memory.put(continuous_entry, &1101i32.to_le_bytes());

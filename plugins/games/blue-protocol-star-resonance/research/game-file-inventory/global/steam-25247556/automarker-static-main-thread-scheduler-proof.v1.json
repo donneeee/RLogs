@@ -225,7 +225,7 @@
     ],
     "callback_contract": [
       "Reacquire current PlayerEnt, PlayerSkillInputComp, and ZSkillInputMgr inside the callback; do not use queue-time object pointers.",
-      "Recheck exact image identity, lifecycle generation, dungeon stage, scene/family/map, party leadership, marker slot-to-skill mapping, loading/transition/input blocking, idle marker lifecycle, and finite nonzero target inside the callback.",
+      "Recheck exact image identity, lifecycle generation, dungeon stage, scene/family/map, party leadership, the native-equivalent Marker 1 continuous-skill remap and control-data bucket lookup, loading/transition/input blocking, idle marker lifecycle, and finite nonzero target inside the callback.",
       "Call the reviewed SetIndicatorPos route, verify the staged indicator state and unchanged lifecycle, then call FirePlaySkillByIndicator for exactly one marker.",
       "Publish the boolean dispatch result, but do not classify it as party-visible success without the matching passive inbound marker notification."
     ],
@@ -239,7 +239,7 @@
   "read_only_scheduler_preflight": {
     "possible": true,
     "implemented": true,
-    "receipt_schema_version": 9,
+    "receipt_schema_version": 11,
     "receipt_gate": "main_thread_scheduler_gate",
     "double_read_interval_milliseconds": 50,
     "system_action_array_type_info_pointer_slot_rva_hex": "0x95997C8",

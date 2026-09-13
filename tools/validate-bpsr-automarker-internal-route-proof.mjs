@@ -307,7 +307,7 @@ assert.deepEqual(
 assert.equal(schedulerProof.safe_adapter_contract.status, "design-contract-only-not-implemented");
 assert.equal(schedulerProof.read_only_scheduler_preflight.possible, true);
 assert.equal(schedulerProof.read_only_scheduler_preflight.implemented, true);
-assert.equal(schedulerProof.read_only_scheduler_preflight.receipt_schema_version, 9);
+assert.equal(schedulerProof.read_only_scheduler_preflight.receipt_schema_version, 11);
 assert.equal(schedulerProof.read_only_scheduler_preflight.receipt_gate, "main_thread_scheduler_gate");
 assert.equal(schedulerProof.read_only_scheduler_preflight.double_read_interval_milliseconds, 50);
 assert.equal(schedulerProof.read_only_scheduler_preflight.system_action_array_type_info_pointer_slot_rva_hex, "0x95997C8");
