@@ -1,0 +1,189 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "captured_build": "25247556",
+  "evidence_kind": "sanitized-live-world-ntf-route-dual-decode",
+  "route": {
+    "direction": "server_to_client",
+    "fragment": "notify",
+    "service_id": 1664308034,
+    "method_id": 22
+  },
+  "private_evidence_identities": {
+    "capture": {
+      "capture_id": "live-scene-transition-snapshot-20260913",
+      "sha256": "f77ceb194b2cd12c64a7c19baa4889918e8b313388852e1f2feb33a765547a0b",
+      "bytes": 1553360,
+      "published": false
+    },
+    "protocol_journal": {
+      "sha256": "8101060b9f7b3dfc25026cc9e5cabc7e7099a7ce8d232b80c22fdda61805f513",
+      "bytes": 6864035,
+      "lines": 10695,
+      "published": false
+    },
+    "connections_manifest": {
+      "sha256": "5f0fa8131229a6e1204e12b9f259d557b5816efe1ff5fd399178b54819467d4d",
+      "bytes": 233,
+      "endpoint_values_published": false
+    }
+  },
+  "journal_protocol_identity": {
+    "pack_semantic_digest": "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
+    "authority": {
+      "kind": "unverified-carry-forward-decoder-hypothesis",
+      "source_build": "24687926",
+      "captured_build": "25247556",
+      "exact_for_captured_build": false,
+      "runtime_authority": false
+    }
+  },
+  "route_conflict": {
+    "source_build_exact_native_dispatch": {
+      "build": "24687926",
+      "proof": "../steam-24687926/world-ntf-route-proof.v2.json",
+      "method_21": "SyncContainerDirtyData",
+      "method_22": "SyncDungeonData",
+      "method_23": "SyncDungeonDirtyData",
+      "authority_limit": "The proof is exact-build-only and requires exact-build packet replay."
+    },
+    "carry_forward_pack": {
+      "build": "24687926",
+      "pack": "../../../../protocol-packs/global/steam-24687926/pack.json",
+      "method_22": "SyncContainerDirtyData",
+      "method_23": "SyncDungeonData",
+      "method_24": "SyncDungeonDirtyData",
+      "confidence": "candidate"
+    }
+  },
+  "capture_route_census": {
+    "server_to_client_world_ntf_notify_counts": {
+      "6": 13,
+      "22": 8,
+      "43": 75,
+      "45": 741
+    },
+    "method_23_count": 0,
+    "method_24_count": 0
+  },
+  "schema_contracts": {
+    "SyncContainerDirtyData": "field 1 is BufferStream; BufferStream field 1 is bytes and field 2 is int32 stream_type",
+    "SyncDungeonData": "field 1 is DungeonSyncData; DungeonSyncData field 1 is int64 scene_uuid, field 2 is DungeonFlowInfo, field 4 is DungeonTarget, and field 21 is DungeonSceneInfo"
+  },
+  "dual_decode": {
+    "packet_count": 8,
+    "SyncContainerDirtyData": {
+      "decode_successes": 8,
+      "decode_failures": 0,
+      "data_present": 8,
+      "buffer_present": 8,
+      "stream_type_values": [1]
+    },
+    "SyncDungeonData": {
+      "decode_successes": 0,
+      "decode_failures": 8,
+      "scene_uuid_observations": 0,
+      "scene_info_observations": 0,
+      "family_observations": 0,
+      "failure_basis": "The nested BufferStream field 1 is length-delimited bytes, but DungeonSyncData field 1 requires a varint scene_uuid. The known-field wire-type mismatch is rejected; it is not a semantically empty successful dungeon decode."
+    }
+  },
+  "observations": [
+    {
+      "sequence": 275,
+      "observed_micros": 8559396,
+      "wall_clock_unix_micros": 1789297741356121,
+      "application_bytes": 42,
+      "buffer_bytes": 36,
+      "stream_type": 1,
+      "application_sha256": "9af6feb397f97e40b3860e80cd53d8e16e2b2f77eaea5458821f0d9dbaea38fd",
+      "buffer_sha256": "3928a37aa95eef00bd5da3275b1dc6b4fea5346f8c4504d8f396b6ec93e72afb"
+    },
+    {
+      "sequence": 1438,
+      "observed_micros": 41549252,
+      "wall_clock_unix_micros": 1789297774345977,
+      "application_bytes": 70,
+      "buffer_bytes": 64,
+      "stream_type": 1,
+      "application_sha256": "ee857ae4777eeb0e54bea23d2798b6a876937bac1b28ea22bc41b4d9fbb7e451",
+      "buffer_sha256": "4f68702d07895094f861ec955a1ecab4ab785c2732a6956aaee2dfafd5a62dd6"
+    },
+    {
+      "sequence": 3333,
+      "observed_micros": 101582375,
+      "wall_clock_unix_micros": 1789297834379100,
+      "application_bytes": 70,
+      "buffer_bytes": 64,
+      "stream_type": 1,
+      "application_sha256": "5d53f2a427a3c39fc0398470b83d961193ed394aef8794690608bb01b6d72498",
+      "buffer_sha256": "2577023f56f97481b19706a3e61046dbe89a26409ddf6f169022479bf2ca207c"
+    },
+    {
+      "sequence": 4958,
+      "observed_micros": 161593344,
+      "wall_clock_unix_micros": 1789297894390069,
+      "application_bytes": 70,
+      "buffer_bytes": 64,
+      "stream_type": 1,
+      "application_sha256": "82da41e2fa5e3cfb71d8c2183edba2f6112aa3dc374b1849c6f8eb9d085badb1",
+      "buffer_sha256": "85e11fa94b7114387a03d4371a0a62e8e6d6e8588d66790d2dd012bb154676c5"
+    },
+    {
+      "sequence": 6569,
+      "observed_micros": 221573842,
+      "wall_clock_unix_micros": 1789297954370567,
+      "application_bytes": 90,
+      "buffer_bytes": 84,
+      "stream_type": 1,
+      "application_sha256": "a68e6d884b6f2dc9759b8a59e50357156c248b1ab6742ad9820fdc75c481a9d9",
+      "buffer_sha256": "fdd371204474092db63cc3c97079e9265e9f5914c68f42fe216efc1294b7815a"
+    },
+    {
+      "sequence": 8166,
+      "observed_micros": 281566491,
+      "wall_clock_unix_micros": 1789298014363216,
+      "application_bytes": 70,
+      "buffer_bytes": 64,
+      "stream_type": 1,
+      "application_sha256": "3ea6c1c9a8514ad99917375dedef19920bf051496f96907be36f1a88a3e62992",
+      "buffer_sha256": "4e3206a5620328efae17515ce6f1f16d35ae4895348ec8b5f467a11b41ef50f3"
+    },
+    {
+      "sequence": 8885,
+      "observed_micros": 308588418,
+      "wall_clock_unix_micros": 1789298041385143,
+      "application_bytes": 42,
+      "buffer_bytes": 36,
+      "stream_type": 1,
+      "application_sha256": "e0f3b52661e03168e826ed405a43e3d35a42bbec2154ad131f40c9b04e81e6af",
+      "buffer_sha256": "162f06d78adb8f063fb64a72baf63201ff805d362cfd70db439c7190e62723b5"
+    },
+    {
+      "sequence": 9779,
+      "observed_micros": 341586965,
+      "wall_clock_unix_micros": 1789298074383690,
+      "application_bytes": 70,
+      "buffer_bytes": 64,
+      "stream_type": 1,
+      "application_sha256": "d1f266eefda11413e9628ea92a01ac5716cdb41092233fd0d7d0ce5d1b55876c",
+      "buffer_sha256": "0944bb54a84daba69471032e08491b3e87c124122905a8955742f202d67ca1cc"
+    }
+  ],
+  "conclusion": {
+    "method_22_buffer_stream_envelope_observed_for_build_25247556": true,
+    "carry_forward_method_22_decoder_supported_by_capture": true,
+    "method_22_dungeon_schema_supported_by_capture": false,
+    "safe_scene_or_family_evidence_recovered": false,
+    "runtime_route_change_authorized": false,
+    "decision": "Retain the candidate carry-forward method 22 SyncContainerDirtyData decoder. Do not rebind method 22 to SyncDungeonData, do not infer a dungeon scene or family from these packets, and do not weaken exact-build promotion gates. The 24687926 native dispatcher proof remains authoritative only for 24687926."
+  },
+  "privacy": {
+    "raw_capture_committed": false,
+    "protocol_journal_committed": false,
+    "raw_payload_bytes_committed": false,
+    "endpoint_values_committed": false
+  }
+}
