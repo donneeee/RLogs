@@ -116,6 +116,8 @@ jobs:
         run: ./tools/windows/test-capture-client-host.ps1
       - name: Verify Automarker WinDivert backend decision
         run: node tools/validate-bpsr-automarker-windivert-decision.mjs
+      - name: Verify Automarker WinDivert pass-through boundary
+        run: node tools/validate-bpsr-automarker-windivert-passthrough.mjs
       - name: Build desktop UI
         working-directory: apps/desktop/ui
         run: |
