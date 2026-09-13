@@ -765,8 +765,14 @@ struct DungeonObjectiveState {
 struct ProfileTracker {
     local_character: Option<CharacterIdentity>,
     local_entity_uuid: Option<i64>,
+    /// Latest catalog-backed scene carried by each exact team-member identity.
+    /// A mirrored capture can receive the roster before `SyncToMeDeltaInfo`
+    /// proves which member is local, so retain the narrow world evidence until
+    /// that identity arrives instead of silently discarding it.
+    team_member_worlds: BTreeMap<i64, WorldContext>,
     /// Last canonical world context accepted by the runtime. Team-member
-    /// scenes are recovery-only and may populate this only while it is empty.
+    /// scenes may recover an absent context or advance it after a missed
+    /// one-shot world transition.
     current_world: Option<WorldContext>,
     /// Latest complete local profile projection. Dirty slot updates patch this
     /// snapshot so every live consumer receives the same loadout projection as
@@ -2025,13 +2031,25 @@ fn decode_team_members(
         let Some(character_id) = team_member_character_id(&member) else {
             continue;
         };
+        let member_world = team_member_world(&member);
+        if let Some(world) = member_world.as_ref() {
+            if tracker.team_member_worlds.len() >= 64
+                && !tracker.team_member_worlds.contains_key(&character_id)
+                && let Some(oldest) = tracker.team_member_worlds.keys().next().copied()
+            {
+                tracker.team_member_worlds.remove(&oldest);
+            }
+            tracker
+                .team_member_worlds
+                .insert(character_id, world.clone());
+        }
         // Fail closed until a packet-derived owner snapshot has established
         // which roster member is local; a party member must never guess it.
         let is_local_character = tracker
             .local_character
             .as_ref()
             .is_some_and(|local| local.character_id == character_id.to_string());
-        if is_local_character && let Some(world) = team_member_world(&member) {
+        if is_local_character && let Some(world) = member_world {
             // The authenticated local roster row is an exact scene source in
             // the Global client and continues to arrive when a mirrored or
             // late-attached capture misses the one-shot world handoff. Use it
@@ -4831,6 +4849,28 @@ fn decode_sync_to_me_delta(
         .uuid
         .or_else(|| delta.base_delta.as_ref().and_then(|base| base.uuid));
     let mut drafts = Vec::new();
+    if let Some(uuid) = local_uuid
+        && profile.local_character.is_none()
+        && let Some(character_id) = character_id_from_entity_uuid(uuid)
+    {
+        let recovered_world = character_id
+            .parse::<i64>()
+            .ok()
+            .and_then(|character_id| profile.team_member_worlds.get(&character_id))
+            .filter(|world| profile.current_world.as_ref() != Some(*world))
+            .cloned();
+        profile.local_character = Some(CharacterIdentity {
+            region: metadata.region.clone(),
+            character_id,
+        });
+        if let Some(world) = recovered_world {
+            drafts.push(draft(
+                metadata,
+                EventSensitivity::PublicGameplay,
+                CanonicalEventDraftKind::WorldChanged(world),
+            ));
+        }
+    }
     if let Some(base_delta) = delta.base_delta {
         decode_aoi_delta(
             base_delta,
@@ -4844,14 +4884,6 @@ fn decode_sync_to_me_delta(
     }
     if let Some(uuid) = local_uuid {
         profile.local_entity_uuid = Some(uuid);
-        if profile.local_character.is_none()
-            && let Some(character_id) = character_id_from_entity_uuid(uuid)
-        {
-            profile.local_character = Some(CharacterIdentity {
-                region: metadata.region.clone(),
-                character_id,
-            });
-        }
         let actor = entities.resolve(uuid, Some(ENTITY_PLAYER))?.identity;
         if !delta.fight_resource_cooldowns.is_empty() {
             drafts.push(timeline_draft(
@@ -11199,6 +11231,20 @@ mod tests {
                 .map(|identity| identity.character_id.as_str()),
             Some("3296036")
         );
+        let recovered_world = self_delta
+            .events
+            .iter()
+            .find_map(|event| match &event.event {
+                rlogs_events::CanonicalEvent::WorldChanged(world) => Some(world),
+                _ => None,
+            })
+            .expect("self identity must recover its earlier catalog-backed roster scene");
+        assert_eq!(recovered_world.scene_id, Some(SceneId(6_565)));
+        assert_eq!(recovered_world.map_id, Some(6_565));
+        assert_eq!(
+            live_runtime.profile.current_world,
+            Some(recovered_world.clone())
+        );
 
         let initial_payload = update(vec![
             member(3_296_036, Some(6_565), None),
@@ -11207,20 +11253,12 @@ mod tests {
         let initial = live_runtime
             .process(&record_for(TEAM_SERVICE, 3, 2, initial_payload.clone()))
             .unwrap();
-        let initial_worlds = initial
-            .events
-            .iter()
-            .filter_map(|event| match &event.event {
-                rlogs_events::CanonicalEvent::WorldChanged(world) => Some(world),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(initial_worlds.len(), 1);
-        assert_eq!(initial_worlds[0].scene_id, Some(SceneId(6_565)));
-        assert_eq!(initial_worlds[0].map_id, Some(6_565));
-        assert_eq!(
-            live_runtime.profile.current_world,
-            Some(initial_worlds[0].clone())
+        assert!(
+            !initial
+                .events
+                .iter()
+                .any(|event| matches!(event.event, rlogs_events::CanonicalEvent::WorldChanged(_))),
+            "the same roster scene must not be emitted twice"
         );
 
         let duplicate = live_runtime
@@ -11341,6 +11379,82 @@ mod tests {
                 .any(|event| matches!(event.event, rlogs_events::CanonicalEvent::WorldChanged(_)))
         );
         assert_eq!(invalid_runtime.profile.current_world, None);
+    }
+
+    #[test]
+    fn delayed_self_identity_replaces_stale_world_with_cached_team_scene() {
+        let pack = pack();
+        let mut live_runtime = runtime(&pack);
+        live_runtime
+            .process(&record(
+                1,
+                3,
+                encode(schema::EnterScene {
+                    enter_scene_info: Some(schema::EnterSceneInfo {
+                        scene_attrs: Some(schema::AttrCollection {
+                            uuid: None,
+                            attributes: vec![int_attr(ATTR_SCENE_ID, 6_515)],
+                            map_attributes: Vec::new(),
+                        }),
+                        player_entity: None,
+                        scene_instance_id: Some("stale-mech".into()),
+                    }),
+                }),
+            ))
+            .unwrap();
+
+        let roster = live_runtime
+            .process(&record_for(
+                TEAM_SERVICE,
+                2,
+                2,
+                encode(schema::NoticeUpdateTeamMemberInfo {
+                    request: Some(schema::NoticeUpdateTeamMemberInfoRequest {
+                        members: vec![schema::TeamMemberData {
+                            character_id: Some(3_296_036),
+                            scene_id: Some(6_561),
+                            ..schema::TeamMemberData::default()
+                        }],
+                    }),
+                }),
+            ))
+            .unwrap();
+        assert!(
+            !roster
+                .events
+                .iter()
+                .any(|event| matches!(event.event, rlogs_events::CanonicalEvent::WorldChanged(_))),
+            "an unidentified team member must not replace world context"
+        );
+
+        let self_delta = live_runtime
+            .process(&record(
+                3,
+                0x2e,
+                encode(schema::SyncToMeDeltaInfo {
+                    delta: Some(schema::AoiSyncToMeDelta {
+                        base_delta: None,
+                        hate_ids: Vec::new(),
+                        cooldowns: Vec::new(),
+                        fight_resource_cooldowns: Vec::new(),
+                        uuid: Some(216_009_015_936),
+                    }),
+                }),
+            ))
+            .unwrap();
+        let repaired = self_delta
+            .events
+            .iter()
+            .find_map(|event| match &event.event {
+                rlogs_events::CanonicalEvent::WorldChanged(world) => Some(world),
+                _ => None,
+            })
+            .expect("exact self identity must select its cached team scene");
+        assert_eq!(repaired.scene_id, Some(SceneId(6_561)));
+        assert_eq!(repaired.map_id, Some(6_561));
+        assert_eq!(repaired.line_id, None);
+        assert_eq!(repaired.scene_instance_id, None);
+        assert_eq!(live_runtime.profile.current_world, Some(repaired.clone()));
     }
 
     #[test]
