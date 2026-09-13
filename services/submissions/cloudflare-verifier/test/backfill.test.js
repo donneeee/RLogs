@@ -6,7 +6,7 @@ import test from "node:test";
 import {
   PROJECTION_BACKFILL_PAUSE_CODE, PROJECTION_BACKFILL_PAUSE_DETAIL,
   committedProjection, parseRetainedManifest, persistReplay, rollbackPublishedReplay,
-  runProjectionBackfillBatch, runProjectionBackfillRollback,
+  isSupportedProjectionBackfillBatch, runProjectionBackfillBatch, runProjectionBackfillRollback,
 } from "../src/backfill.js";
 
 async function digest(bytes) {
@@ -131,10 +131,11 @@ async function migrationPauseFixture(dryRun) {
   const reportId = `rpt_${artifact.slice(0, 32)}`;
   const uploadId = `up_${artifact.slice(0, 32)}`;
   const report = {
-    schema_version: 12, report_id: reportId, visibility: "public",
+    schema_version: 12, projection_revision: 1, report_id: reportId, visibility: "public",
     deployment_id: "global", region_id: "north-america", created_unix_millis: 42,
     verification: { artifact_sha256: artifact, tier: "replayed" },
-    submission_provenance: { submitter_id: "usr_owner" }, runs: [],
+    submission_provenance: { submitter_id: "usr_owner" },
+    runs: [{ run_index: 0, run_group_id: "old-group" }],
   };
   const bytes = new TextEncoder().encode(JSON.stringify(report));
   const projection = await digest(bytes);
@@ -215,6 +216,22 @@ test("a bounded dry-run records eligibility while current-tuple publication rema
   assert.equal(writes.some(({ sql }) => sql.includes("eligible_count=eligible_count+?3")), true);
 });
 
+test("batch validation admits only reviewed source schemas and keeps all rollout bounds exact", () => {
+  const valid = { target_schema_version: 17, maximum_reports: 25, dry_run: 1 };
+  for (const source_schema_version of [12, 15, 17]) {
+    assert.equal(isSupportedProjectionBackfillBatch({ ...valid, source_schema_version }), true);
+  }
+  for (const source_schema_version of [11, 13, 16, 18, "12junk", null]) {
+    assert.equal(isSupportedProjectionBackfillBatch({ ...valid, source_schema_version }), false);
+  }
+  assert.equal(isSupportedProjectionBackfillBatch({ ...valid, source_schema_version: 12,
+    target_schema_version: 16 }), false);
+  assert.equal(isSupportedProjectionBackfillBatch({ ...valid, source_schema_version: 12,
+    maximum_reports: 26 }), false);
+  assert.equal(isSupportedProjectionBackfillBatch({ ...valid, source_schema_version: 12,
+    dry_run: 2 }), false);
+});
+
 test("projection transport failures remain retryable while immutable evidence failures are permanent", async () => {
   const artifact = "a".repeat(64);
   const reportId = `rpt_${artifact.slice(0, 32)}`;
@@ -253,6 +270,7 @@ test("operator workflow removes enqueue controls while manual deploy and the pau
   const migration = await readFile(new URL("../../cloudflare-backend/migrations/0008_projection_backfills.sql", import.meta.url), "utf8");
   const schema17Migration = await readFile(new URL("../../cloudflare-backend/migrations/0009_projection_backfill_schema17.sql", import.meta.url), "utf8");
   const rollbackMigration = await readFile(new URL("../../cloudflare-backend/migrations/0010_projection_backfill_rollbacks.sql", import.meta.url), "utf8");
+  const sourceTupleMigration = await readFile(new URL("../../cloudflare-backend/migrations/0011_projection_backfill_source_tuples.sql", import.meta.url), "utf8");
   const indexWorker = await readFile(new URL("../src/index.js", import.meta.url), "utf8");
   const workflow = await readFile(new URL("../../../../.github/workflows/deploy-cloudflare.yml", import.meta.url), "utf8");
   const worker = await readFile(new URL("../src/backfill.js", import.meta.url), "utf8");
@@ -266,6 +284,9 @@ test("operator workflow removes enqueue controls while manual deploy and the pau
   assert.match(rollbackMigration, /CREATE TABLE projection_backfill_rollbacks/u);
   assert.match(rollbackMigration, /job_id TEXT NOT NULL UNIQUE/u);
   assert.match(rollbackMigration, /attempt_count BETWEEN 0 AND 3/u);
+  assert.match(sourceTupleMigration, /source_schema_version IN \(12, 15, 17\)/u);
+  assert.match(sourceTupleMigration, /ALTER TABLE projection_backfill_rollbacks RENAME/u);
+  assert.match(sourceTupleMigration, /INSERT INTO projection_backfill_rollbacks[\s\S]+SELECT \* FROM projection_backfill_rollbacks_schema12_only/u);
   assert.match(indexWorker, /runProjectionBackfillRollback\(env, context, reconcileRunGroup\)/u);
   assert.doesNotMatch(indexWorker, /\/v1\/projection-backfill-rollbacks/u);
   assert.match(workflow, /github\.event_name == 'workflow_dispatch'/u);
@@ -370,6 +391,80 @@ test("rollback migration preserves published jobs and requires exact operator po
     `bfr_${"e".repeat(32)}`, "operator", "https://example.invalid/duplicate", "bfj_current",
     "c".repeat(64), "wrong", "b".repeat(64), "wrong", "pending", 3, 3,
   ));
+  assert.deepEqual(database.prepare("PRAGMA foreign_key_check").all(), []);
+});
+
+test("source-tuple migration preserves the complete deferred-FK audit chain", async () => {
+  const paths = [
+    "../../cloudflare-backend/migrations/0008_projection_backfills.sql",
+    "../../cloudflare-backend/migrations/0009_projection_backfill_schema17.sql",
+    "../../cloudflare-backend/migrations/0010_projection_backfill_rollbacks.sql",
+    "../../cloudflare-backend/migrations/0011_projection_backfill_source_tuples.sql",
+  ];
+  const [initial, schema17, rollbacks, sourceTuples] = await Promise.all(paths.map((path) =>
+    readFile(new URL(path, import.meta.url), "utf8")));
+  const database = new DatabaseSync(":memory:");
+  database.exec("PRAGMA foreign_keys=ON");
+  database.exec("CREATE TABLE reports (report_id TEXT PRIMARY KEY)");
+  database.exec(initial);
+  database.exec(schema17);
+  database.exec(rollbacks);
+  const reportId = `rpt_${"a".repeat(32)}`;
+  database.prepare("INSERT INTO reports VALUES (?)").run(reportId);
+  database.prepare(`INSERT INTO projection_backfill_batches
+    (batch_id,requested_by,workflow_run_url,target_verifier_release,source_schema_version,
+     target_schema_version,maximum_reports,dry_run,state,created_unix_millis,updated_unix_millis)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+    "bf_preserved", "operator", "https://example.invalid/run", "release-17",
+    12, 17, 1, 0, "completed", 1, 1,
+  );
+  database.prepare(`INSERT INTO projection_backfill_jobs
+    (job_id,batch_id,report_id,upload_id,artifact_sha256,source_projection_sha256,
+     source_projection_object_key,target_verifier_release,state,candidate_projection_sha256,
+     candidate_projection_object_key,source_indexes_sha256,source_indexes_object_key,
+     created_unix_millis,updated_unix_millis)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    "bfj_preserved", "bf_preserved", reportId, `up_${"a".repeat(32)}`, "a".repeat(64),
+    "b".repeat(64), `reports/${reportId}/projection-${"b".repeat(64)}.json`,
+    "release-17", "published", "c".repeat(64),
+    `reports/${reportId}/projection-${"c".repeat(64)}.json`, "d".repeat(64),
+    `private/reports/${reportId}/backfill-index-${"d".repeat(64)}.json`, 1, 1,
+  );
+  database.prepare(`INSERT INTO report_projection_versions
+    (report_id,projection_sha256,projection_object_key,schema_version,verifier_release,
+     artifact_sha256,backfill_job_id,created_unix_millis) VALUES (?,?,?,?,?,?,?,?)`).run(
+    reportId, "c".repeat(64), `reports/${reportId}/projection-${"c".repeat(64)}.json`,
+    17, "release-17", "a".repeat(64), "bfj_preserved", 1,
+  );
+  database.prepare(`INSERT INTO projection_backfill_rollbacks
+    (rollback_id,requested_by,workflow_run_url,job_id,expected_candidate_projection_sha256,
+     expected_candidate_projection_object_key,target_source_projection_sha256,
+     target_source_projection_object_key,state,created_unix_millis,updated_unix_millis)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+    `bfr_${"e".repeat(32)}`, "operator", "https://example.invalid/rollback", "bfj_preserved",
+    "c".repeat(64), `reports/${reportId}/projection-${"c".repeat(64)}.json`,
+    "b".repeat(64), `reports/${reportId}/projection-${"b".repeat(64)}.json`, "pending", 2, 2,
+  );
+
+  database.exec(sourceTuples);
+
+  assert.equal(database.prepare("SELECT source_schema_version FROM projection_backfill_batches").get().source_schema_version, 12);
+  assert.equal(database.prepare("SELECT source_indexes_sha256 FROM projection_backfill_jobs").get().source_indexes_sha256, "d".repeat(64));
+  assert.equal(database.prepare("SELECT backfill_job_id FROM report_projection_versions").get().backfill_job_id, "bfj_preserved");
+  assert.equal(database.prepare("SELECT job_id FROM projection_backfill_rollbacks").get().job_id, "bfj_preserved");
+  const insert = database.prepare(`INSERT INTO projection_backfill_batches
+    (batch_id,requested_by,workflow_run_url,target_verifier_release,source_schema_version,
+     target_schema_version,maximum_reports,dry_run,state,created_unix_millis,updated_unix_millis)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
+  for (const sourceSchema of [15, 17]) {
+    insert.run(`bf_${sourceSchema}`, "operator", "https://example.invalid/new", "release-17",
+      sourceSchema, 17, 25, 1, "pending", sourceSchema, sourceSchema);
+  }
+  for (const sourceSchema of [11, 13, 16, 18]) {
+    assert.throws(() => insert.run(`bf_bad_${sourceSchema}`, "operator",
+      "https://example.invalid/bad", "release-17", sourceSchema, 17, 1, 1,
+      "pending", sourceSchema, sourceSchema));
+  }
   assert.deepEqual(database.prepare("PRAGMA foreign_key_check").all(), []);
 });
 

@@ -143,6 +143,50 @@ The command is idempotent, reports inspected/refreshed/current counts, and
 rebuilds the catalog only when at least one projection changed. Run it against
 an isolated copy while another receiver process owns the live data directory.
 
+### Hosted historical projection backfill
+
+The Cloudflare verifier contains an operator-only, bounded replay path for
+historical public reports. Publication is deliberately disabled in source by
+`PROJECTION_BACKFILL_MIGRATION_PAUSED = true`; while that gate is set, only
+dry-run batches can inspect eligibility and a publishing batch is rejected
+before artifact replay or pointer mutation. No public HTTP route can enqueue a
+batch or rollback, and the deployment workflow does not create either one.
+
+A batch names one source schema. Eligibility is intentionally narrower than a
+schema number: every source projection must match one reviewed tuple exactly:
+
+| Report schema | Projection revision | Timeline schema |
+| --- | --- | --- |
+| 12 | 1 | absent on every run |
+| 15 | 6 | 3 on every run |
+| 17 | 10 | 6 on every run |
+
+Near-miss revisions are skipped rather than guessed into compatibility. The
+source projection must also remain the content-addressed D1 pointer for the
+same report and artifact, be public, and carry replayed verification. A replay
+may add newer derived fields but must preserve report identity, deployment,
+region/world/build/protocol identity, creation time, submitter, visibility,
+artifact and canonical-content digests, event count, privacy-policy digest,
+and replayed tier. Publishing, when separately reviewed and enabled in a later
+change, remains capped at 25 reports per resumable batch and writes an exact
+rollback snapshot before advancing a pointer.
+
+Migration `0011_projection_backfill_source_tuples.sql` rebuilds the complete
+batch/job/version/rollback foreign-key chain while preserving its audit rows.
+Apply all migrations only through the guarded Cloudflare deployment workflow.
+Before any future enablement, run the verifier tests and the isolated rehearsal:
+
+```powershell
+Set-Location services/submissions/cloudflare-verifier
+npm test
+npm run test:backfill-rehearsal
+```
+
+The rehearsal uses temporary local D1/R2 bindings, asserts that no production
+binding is present, exercises forward publication plus inverse rollback, and
+deletes only its system-temporary storage afterward. It does not authorize or
+perform a production rollout.
+
 ## Run correlation
 
 Reports from different observers are grouped only when their canonical run

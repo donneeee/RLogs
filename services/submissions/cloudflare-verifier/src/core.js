@@ -3,6 +3,7 @@ const DIGEST = /^[a-f0-9]{64}$/;
 const REPORT_ID = /^rpt_[a-f0-9]{32}$/;
 const RECONCILIATION_ID = /^rec_[a-f0-9]{32}$/;
 export const BACKFILL_SOURCE_SCHEMA_VERSION = 12;
+export const SUPPORTED_BACKFILL_SOURCE_SCHEMA_VERSIONS = Object.freeze([12, 15, 17]);
 export const LEGACY_REPORT_SCHEMA_VERSION = 15;
 export const LEGACY_REPORT_PROJECTION_REVISION = 7;
 export const LEGACY_TIMELINE_SCHEMA_VERSION = 3;
@@ -266,11 +267,28 @@ export function validateOutput(value, wakeup) {
     Array.isArray(value.membership?.runs);
 }
 
-export function isSchema12BackfillCandidate(report, row) {
-  return report?.schema_version === BACKFILL_SOURCE_SCHEMA_VERSION &&
+export function isProjectionBackfillCandidate(report, row, sourceSchemaVersion) {
+  const schemaVersion = Number(sourceSchemaVersion);
+  const runs = report?.runs;
+  const exactSourceTuple = Array.isArray(runs) && runs.length > 0 && (
+    (schemaVersion === 12 && report?.schema_version === 12 &&
+      report?.projection_revision === 1 && runs.every((run) => run?.timeline == null)) ||
+    (schemaVersion === 15 && report?.schema_version === 15 &&
+      report?.projection_revision === 6 &&
+      runs.every((run) => run?.timeline?.schema_version === 3)) ||
+    (schemaVersion === 17 && report?.schema_version === 17 &&
+      report?.projection_revision === 10 &&
+      runs.every((run) => run?.timeline?.schema_version === 6))
+  );
+  return exactSourceTuple &&
     report?.report_id === row?.report_id && report?.visibility === "public" &&
     report?.verification?.artifact_sha256 === row?.artifact_sha256 &&
     row?.visibility === "public" && row?.verification_tier === "replayed";
+}
+
+// Retained for callers that explicitly audit the oldest supported source.
+export function isSchema12BackfillCandidate(report, row) {
+  return isProjectionBackfillCandidate(report, row, BACKFILL_SOURCE_SCHEMA_VERSION);
 }
 
 // A backfill may add fields derived by a newer trusted replay, but it may not

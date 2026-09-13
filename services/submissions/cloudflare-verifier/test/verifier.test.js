@@ -17,7 +17,7 @@ import {
   UPCOMING_RECONCILIATION_SCHEMA_VERSION, UPCOMING_REPORT_PROJECTION_REVISION,
   UPCOMING_REPORT_SCHEMA_VERSION, UPCOMING_TIMELINE_SCHEMA_VERSION,
   catalogEntry, compatibleProfileName, expectedReportId, reconcileCatalogEntry,
-  isSchema12BackfillCandidate,
+  isProjectionBackfillCandidate,
   sameChunkCommitments, runOneShotVerifier, validateOutput, validateReconciliationOutput,
   validateBackfillOutput, validateTrainingOutput, validateWakeup,
 } from "../src/core.js";
@@ -291,19 +291,40 @@ test("report v17 revision 12 strictly validates complete exact status spans", ()
   }
 });
 
-test("backfill eligibility is limited to current public schema-12 replay evidence", () => {
+test("backfill eligibility accepts only exact batch-scoped historical source tuples", () => {
   const row = {
     report_id: wakeup.expected_report_id, artifact_sha256: digest,
     visibility: "public", verification_tier: "replayed",
   };
   const report = {
-    schema_version: BACKFILL_SOURCE_SCHEMA_VERSION, report_id: wakeup.expected_report_id,
-    visibility: "public", verification: { artifact_sha256: digest },
+    schema_version: BACKFILL_SOURCE_SCHEMA_VERSION, projection_revision: 1,
+    report_id: wakeup.expected_report_id, visibility: "public",
+    verification: { artifact_sha256: digest }, runs: [{ run_index: 0 }],
   };
-  assert.equal(isSchema12BackfillCandidate(report, row), true);
-  assert.equal(isSchema12BackfillCandidate({ ...report, schema_version: 13 }, row), false);
-  assert.equal(isSchema12BackfillCandidate({ ...report, visibility: "unlisted" }, row), false);
-  assert.equal(isSchema12BackfillCandidate(report, { ...row, verification_tier: "ranked" }), false);
+  const schema15 = { ...report, schema_version: 15, projection_revision: 6,
+    runs: [{ run_index: 0, timeline: { schema_version: 3 } }] };
+  const schema17 = { ...report, schema_version: 17, projection_revision: 10,
+    runs: [{ run_index: 0, timeline: { schema_version: 6 } }] };
+  assert.equal(isProjectionBackfillCandidate(report, row, 12), true);
+  assert.equal(isProjectionBackfillCandidate(schema15, row, 15), true);
+  assert.equal(isProjectionBackfillCandidate(schema17, row, 17), true);
+  const nearMisses = [
+    [report, row, 15],
+    [{ ...report, projection_revision: 2 }, row, 12],
+    [{ ...report, runs: [{ timeline: { schema_version: 1 } }] }, row, 12],
+    [{ ...schema15, projection_revision: 7 }, row, 15],
+    [{ ...schema15, runs: [{ timeline: { schema_version: 4 } }] }, row, 15],
+    [{ ...schema17, projection_revision: 11 }, row, 17],
+    [{ ...schema17, runs: [{ timeline: { schema_version: 7 } }] }, row, 17],
+    [{ ...report, visibility: "unlisted" }, row, 12],
+    [report, { ...row, visibility: "unlisted" }, 12],
+    [report, { ...row, verification_tier: "ranked" }, 12],
+    [report, { ...row, artifact_sha256: "b".repeat(64) }, 12],
+    [{ ...report, report_id: `rpt_${"b".repeat(32)}` }, row, 12],
+  ];
+  for (const [candidate, candidateRow, sourceSchema] of nearMisses) {
+    assert.equal(isProjectionBackfillCandidate(candidate, candidateRow, sourceSchema), false);
+  }
 });
 
 test("historical backfill is pinned to the exact current public timeline tuple", () => {

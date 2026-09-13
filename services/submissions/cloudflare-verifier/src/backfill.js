@@ -1,7 +1,8 @@
 import {
-  BACKFILL_SOURCE_SCHEMA_VERSION, BACKFILL_TARGET_PROJECTION_REVISION,
+  BACKFILL_TARGET_PROJECTION_REVISION,
   BACKFILL_TARGET_SCHEMA_VERSION, BACKFILL_TARGET_TIMELINE_SCHEMA_VERSION,
-  catalogEntry, compatibleProfileName, isSchema12BackfillCandidate,
+  SUPPORTED_BACKFILL_SOURCE_SCHEMA_VERSIONS,
+  catalogEntry, compatibleProfileName, isProjectionBackfillCandidate,
   runOneShotVerifier, sameChunkCommitments, validateBackfillOutput,
 } from "./core.js";
 
@@ -590,13 +591,17 @@ async function retryBatch(env, batch, code, cause) {
   return exhausted;
 }
 
+export function isSupportedProjectionBackfillBatch(batch) {
+  return SUPPORTED_BACKFILL_SOURCE_SCHEMA_VERSIONS.includes(Number(batch?.source_schema_version)) &&
+    Number(batch?.target_schema_version) === BACKFILL_TARGET_SCHEMA_VERSION &&
+    Number(batch?.maximum_reports) >= 1 && Number(batch?.maximum_reports) <= 25 &&
+    [0, 1].includes(Number(batch?.dry_run));
+}
+
 export async function runProjectionBackfillBatch(env, context, reconcileRunGroup) {
   const batch = await claimBatch(env);
   if (!batch) return { claimed: false };
-  if (Number(batch.source_schema_version) !== BACKFILL_SOURCE_SCHEMA_VERSION ||
-      Number(batch.target_schema_version) !== BACKFILL_TARGET_SCHEMA_VERSION ||
-      Number(batch.maximum_reports) < 1 || Number(batch.maximum_reports) > 25 ||
-      ![0, 1].includes(Number(batch.dry_run))) {
+  if (!isSupportedProjectionBackfillBatch(batch)) {
     await env.RLOGS_DB.prepare(`UPDATE projection_backfill_batches SET state='rejected',
       failure_code='invalid_request',failure_detail='backfill request violates fixed schema or batch bounds',
       completed_unix_millis=?2,updated_unix_millis=?2 WHERE batch_id=?1 AND lease_token=?3`)
@@ -650,7 +655,7 @@ export async function runProjectionBackfillBatch(env, context, reconcileRunGroup
       const exhausted = await retryBatch(env, batch, "projection_unavailable", cause);
       return { claimed: true, retryable: !exhausted, rejected: exhausted };
     }
-    if (!isSchema12BackfillCandidate(original, row)) {
+    if (!isProjectionBackfillCandidate(original, row, batch.source_schema_version)) {
       await updateBatchProgress(env, batch, row, { eligible: 0, published: 0, skipped: 1 });
       continue;
     }
