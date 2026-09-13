@@ -7,18 +7,29 @@ use std::collections::BTreeMap;
 use prost::Message;
 
 use crate::{
-    CaptureRecord, CaptureRecordKind, DecoderKind, FragmentKind, PacketDirection, ProtocolPack,
-    game_schema_v1 as schema,
+    AllowedDataDomain, BpsrFrameUpLayout, CaptureRecord, CaptureRecordKind, DecoderKind,
+    FragmentKind, PacketDirection, ProtocolPack, ProtocolPackRouteDisposition, RouteKey,
+    bpsr_runtime_authority, game_schema_v1 as schema,
 };
 
-const REVIEWED_MARKER_OBSERVER_SOURCE_BUILD: &str = "24687926";
-const REVIEWED_MARKER_OBSERVER_SOURCE_PACK_DIGEST: &str =
-    "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
-const VERIFIED_MARKER_OBSERVER_COMPATIBILITY_BUILD: &str = "25247556";
-const VERIFIED_MARKER_OBSERVER_COMPATIBILITY_PACK_DIGEST: &str =
-    "sha256:480f928cca6baf19c1ebaf85e8c52f2f1852096167043260503cca6d46133a60";
 const WORLD_NTF: u64 = 1_664_308_034;
 const MAX_MARKERS: usize = 64;
+
+const MARKER_OBSERVER_ROUTE_CONTRACTS: &[(u32, AllowedDataDomain, DecoderKind)] = &[
+    (3, AllowedDataDomain::WorldState, DecoderKind::EnterSceneV1),
+    (
+        4,
+        AllowedDataDomain::WorldState,
+        DecoderKind::NotifyLoadSceneEndV1,
+    ),
+    (
+        6,
+        AllowedDataDomain::ActorState,
+        DecoderKind::SyncNearEntitiesV1,
+    ),
+    (45, AllowedDataDomain::Combat, DecoderKind::SyncNearDeltaV1),
+    (46, AllowedDataDomain::Combat, DecoderKind::SyncToMeDeltaV1),
+];
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LocalMapMarker {
@@ -54,22 +65,18 @@ pub struct LocalMapMarkerProjection {
 }
 
 impl LocalMapMarkerProjection {
-    /// Whether this exact build/pack identity has authority for passive marker
-    /// observation. The one compatibility identity admitted here is locked to
-    /// a triangulated live-server observation, local build registry, and
-    /// deterministic derived-pack digest; it grants no authority to send,
-    /// replay, or infer an outbound marker request.
+    /// Whether this pack has compatibility-epoch authority for passive marker
+    /// observation and retains the exact framing and route semantics consumed
+    /// by this projection. The scoped capability contract deliberately ignores
+    /// pack identity/provenance metadata changed by reviewed retargeting while
+    /// failing closed if any scene or marker decoder dependency changes. It
+    /// grants no authority to send, replay, or infer an outbound marker request.
     pub fn protocol_supported(pack: &ProtocolPack) -> bool {
+        let target = &pack.definition().target;
         matches!(
-            (pack.definition().target.build_id.as_str(), pack.digest()),
-            (
-                REVIEWED_MARKER_OBSERVER_SOURCE_BUILD,
-                REVIEWED_MARKER_OBSERVER_SOURCE_PACK_DIGEST
-            ) | (
-                VERIFIED_MARKER_OBSERVER_COMPATIBILITY_BUILD,
-                VERIFIED_MARKER_OBSERVER_COMPATIBILITY_PACK_DIGEST
-            )
-        )
+            bpsr_runtime_authority(&target.deployment_id, &target.build_id, pack.digest(),),
+            Ok(Some(_))
+        ) && marker_observer_capability_matches(pack)
     }
 
     pub fn markers(&self) -> impl Iterator<Item = LocalMapMarker> + '_ {
@@ -235,12 +242,46 @@ impl LocalMapMarkerProjection {
     }
 }
 
+fn marker_observer_capability_matches(pack: &ProtocolPack) -> bool {
+    if pack.definition().acquisition.frame_up_layout != BpsrFrameUpLayout::NestedAfterFourBytes {
+        return false;
+    }
+
+    MARKER_OBSERVER_ROUTE_CONTRACTS
+        .iter()
+        .all(|(method_id, expected_domain, expected_decoder)| {
+            let key = RouteKey::new(
+                PacketDirection::ServerToClient,
+                FragmentKind::Notify,
+                WORLD_NTF,
+                *method_id,
+            );
+            pack.definition()
+                .routes
+                .iter()
+                .find(|route| route.route == key)
+                .is_some_and(|route| {
+                    route.disposition
+                        == ProtocolPackRouteDisposition::Allowed {
+                            domain: *expected_domain,
+                            decoder: *expected_decoder,
+                        }
+                })
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
         CaptureRecordKind, CompressionState, PacketEnvelope, PacketPayload, RouteKey, RoutedMessage,
     };
+
+    const REVIEWED_MARKER_OBSERVER_SOURCE_PACK_DIGEST: &str =
+        crate::BPSR_COMPATIBILITY_EPOCH_SOURCE_DIGEST;
+    const VERIFIED_MARKER_OBSERVER_COMPATIBILITY_BUILD: &str = "25247556";
+    const VERIFIED_MARKER_OBSERVER_COMPATIBILITY_PACK_DIGEST: &str =
+        "sha256:480f928cca6baf19c1ebaf85e8c52f2f1852096167043260503cca6d46133a60";
 
     fn source_observer_pack() -> ProtocolPack {
         ProtocolPack::from_json(include_bytes!(
@@ -256,6 +297,17 @@ mod tests {
             "global",
             "steam",
             build,
+        )
+        .unwrap()
+    }
+
+    fn bootstrap_observer_pack(channel: &str) -> ProtocolPack {
+        crate::compatibility_epoch::retarget_protocol_pack(
+            &source_observer_pack(),
+            "client-bootstrap",
+            "unknown",
+            channel,
+            crate::BPSR_COMPATIBILITY_EPOCH_SOURCE_BUILD,
         )
         .unwrap()
     }
@@ -293,7 +345,10 @@ mod tests {
 
     #[test]
     fn lifecycle_and_scene_clear_remain_local() {
-        let pack = source_observer_pack();
+        // This is the exact unresolved-region bootstrap identity observed by
+        // live capture; its pack metadata differs from the reviewed source,
+        // while its scoped marker capability is identical.
+        let pack = bootstrap_observer_pack("unknown");
         let passive = schema::SeqPassiveSkillInfo {
             actor_uuid: Some(10),
             passive_infos: vec![schema::PassiveSkillInfo {
@@ -427,17 +482,42 @@ mod tests {
     }
 
     #[test]
-    fn marker_observation_is_locked_to_verified_build_and_digest_pairs() {
+    fn marker_observation_accepts_exact_and_authorized_compatibility_epoch_packs() {
         let source = source_observer_pack();
         assert!(LocalMapMarkerProjection::protocol_supported(&source));
 
-        let current = current_observer_pack(VERIFIED_MARKER_OBSERVER_COMPATIBILITY_BUILD);
+        let unresolved_region_bootstrap = bootstrap_observer_pack("unknown");
+        assert_eq!(
+            unresolved_region_bootstrap.digest(),
+            "sha256:52b0d954ed3d1179f9fd75dd2edd312cbea66d0d84168f957a47cf81ef3e86ee"
+        );
+        assert!(LocalMapMarkerProjection::protocol_supported(
+            &unresolved_region_bootstrap
+        ));
+        for channel in crate::compatibility_epoch::BPSR_COMPATIBILITY_BOOTSTRAP_CHANNELS {
+            assert!(LocalMapMarkerProjection::protocol_supported(
+                &bootstrap_observer_pack(channel)
+            ));
+        }
+
+        let current = current_observer_pack("25247556");
         assert_eq!(
             current.digest(),
-            VERIFIED_MARKER_OBSERVER_COMPATIBILITY_PACK_DIGEST
+            "sha256:480f928cca6baf19c1ebaf85e8c52f2f1852096167043260503cca6d46133a60"
         );
         assert!(LocalMapMarkerProjection::protocol_supported(&current));
+        let later_same_epoch = current_observer_pack("26000000");
+        assert!(matches!(
+            crate::bpsr_runtime_authority("global", "26000000", later_same_epoch.digest()).unwrap(),
+            Some(crate::BpsrRuntimeAuthority::CompatibilityEpoch { .. })
+        ));
+        assert!(LocalMapMarkerProjection::protocol_supported(
+            &later_same_epoch
+        ));
+
         for (method, expected) in [
+            (3, DecoderKind::EnterSceneV1),
+            (4, DecoderKind::NotifyLoadSceneEndV1),
             (6, DecoderKind::SyncNearEntitiesV1),
             (45, DecoderKind::SyncNearDeltaV1),
             (46, DecoderKind::SyncToMeDeltaV1),
@@ -463,27 +543,81 @@ mod tests {
             }
         }
 
-        for unsupported in ["25247555", "25247557", "99999999"] {
-            let generally_compatible = current_observer_pack(unsupported);
-            assert!(matches!(
-                crate::bpsr_runtime_authority("global", unsupported, generally_compatible.digest())
-                    .unwrap(),
-                Some(crate::BpsrRuntimeAuthority::CompatibilityEpoch { .. })
-            ));
-            assert!(!LocalMapMarkerProjection::protocol_supported(
-                &generally_compatible
-            ));
-        }
-
         let mut wrong_definition = current.definition().clone();
         wrong_definition.pack_id.push_str("-wrong-digest");
         let wrong_digest = ProtocolPack::build(wrong_definition).unwrap();
-        assert_eq!(
-            wrong_digest.definition().target.build_id,
-            VERIFIED_MARKER_OBSERVER_COMPATIBILITY_BUILD
-        );
         assert_ne!(wrong_digest.digest(), current.digest());
+        assert!(marker_observer_capability_matches(&wrong_digest));
         assert!(!LocalMapMarkerProjection::protocol_supported(&wrong_digest));
+    }
+
+    #[test]
+    fn marker_observer_capability_fails_closed_on_framing_or_route_drift() {
+        let source = source_observer_pack();
+        assert!(marker_observer_capability_matches(&source));
+
+        let mut wrong_framing = source.definition().clone();
+        wrong_framing.acquisition.frame_up_layout = BpsrFrameUpLayout::Opaque;
+        assert!(!marker_observer_capability_matches(
+            &ProtocolPack::build(wrong_framing).unwrap()
+        ));
+
+        for (method_id, _, _) in MARKER_OBSERVER_ROUTE_CONTRACTS {
+            let key = RouteKey::new(
+                PacketDirection::ServerToClient,
+                FragmentKind::Notify,
+                WORLD_NTF,
+                *method_id,
+            );
+            let mut missing_route = source.definition().clone();
+            let route = missing_route
+                .routes
+                .iter_mut()
+                .find(|route| route.route == key)
+                .unwrap();
+            route.route.service_id += 1;
+            assert!(!marker_observer_capability_matches(
+                &ProtocolPack::build(missing_route).unwrap()
+            ));
+
+            let mut opaque_route = source.definition().clone();
+            opaque_route
+                .routes
+                .iter_mut()
+                .find(|route| route.route == key)
+                .unwrap()
+                .disposition = ProtocolPackRouteDisposition::Opaque;
+            assert!(!marker_observer_capability_matches(
+                &ProtocolPack::build(opaque_route).unwrap()
+            ));
+        }
+
+        for (method_id, replacement) in [
+            (3, DecoderKind::NotifyLoadSceneEndV1),
+            (4, DecoderKind::EnterSceneV1),
+            (45, DecoderKind::SyncToMeDeltaV1),
+            (46, DecoderKind::SyncNearDeltaV1),
+        ] {
+            let key = RouteKey::new(
+                PacketDirection::ServerToClient,
+                FragmentKind::Notify,
+                WORLD_NTF,
+                method_id,
+            );
+            let mut wrong_decoder = source.definition().clone();
+            let route = wrong_decoder
+                .routes
+                .iter_mut()
+                .find(|route| route.route == key)
+                .unwrap();
+            route.disposition = ProtocolPackRouteDisposition::Allowed {
+                domain: replacement.domain(),
+                decoder: replacement,
+            };
+            assert!(!marker_observer_capability_matches(
+                &ProtocolPack::build(wrong_decoder).unwrap()
+            ));
+        }
     }
 
     #[test]
