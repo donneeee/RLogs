@@ -377,6 +377,30 @@ impl PrivateAutomarkerConfirmationAdapter {
         self.state
     }
 
+    pub(crate) fn bind_source_carrier(
+        &mut self,
+        capture_sequence: u64,
+        rpc_call_id: u32,
+    ) -> Result<(), PrivateAutomarkerConfirmationAdapterError> {
+        if capture_sequence <= self.binding.carrier_capture_sequence
+            || rpc_call_id == 0
+            || rpc_call_id != self.binding.carrier_rpc_call_id
+            || matches!(
+                self.state,
+                PrivateAutomarkerConfirmationAdapterState::Complete
+                    | PrivateAutomarkerConfirmationAdapterState::Failed
+                    | PrivateAutomarkerConfirmationAdapterState::ConfirmationFailedAwaitingTransportRetirement
+            )
+        {
+            return self.fail(PrivateAutomarkerConfirmationAdapterError::SessionOrContextChanged);
+        }
+        self.router
+            .rebind_carrier_capture_sequence(capture_sequence)
+            .map_err(PrivateAutomarkerConfirmationAdapterError::Router)?;
+        self.binding.carrier_capture_sequence = capture_sequence;
+        Ok(())
+    }
+
     pub(crate) fn coordinator_state(&self) -> AutomarkerBridgeState {
         self.coordinator.state()
     }

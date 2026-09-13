@@ -319,6 +319,23 @@ impl AutomarkerConfirmationRouter {
         self.route_snapshot_at(snapshot, Instant::now())
     }
 
+    /// Rebind the post-carrier frontier once the ordinary capture observes
+    /// the exact carrier that the active transport has just reinjected. This
+    /// is permitted only before any confirmation provenance was consumed.
+    pub(crate) fn rebind_carrier_capture_sequence(
+        &mut self,
+        capture_sequence: u64,
+    ) -> Result<(), ConfirmationRouterError> {
+        if capture_sequence <= self.minimum_capture_sequence_exclusive
+            || self.capture_frontier.is_some()
+            || !self.seen_events.is_empty()
+        {
+            return Err(ConfirmationRouterError::EvidenceAtOrBeforeCarrier);
+        }
+        self.minimum_capture_sequence_exclusive = capture_sequence;
+        Ok(())
+    }
+
     fn route_snapshot_at(
         &mut self,
         mut snapshot: PrivateParserConfirmationSnapshot,

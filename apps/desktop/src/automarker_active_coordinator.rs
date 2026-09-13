@@ -38,6 +38,10 @@ const APPLICATION_OFFSET: usize = 36;
 const COMMAND_CAPACITY_MAX: usize = 256;
 
 enum ActiveAutomarkerCommand {
+    ParserCarrier {
+        capture_sequence: u64,
+        rpc_call_id: u32,
+    },
     ParserSnapshot(PrivateParserConfirmationSnapshot),
     ContextInvalidated,
     Timeout,
@@ -50,6 +54,17 @@ pub(crate) struct ActiveAutomarkerControl {
 }
 
 impl ActiveAutomarkerControl {
+    pub(crate) fn parser_carrier(
+        &self,
+        capture_sequence: u64,
+        rpc_call_id: u32,
+    ) -> Result<(), &'static str> {
+        self.send(ActiveAutomarkerCommand::ParserCarrier {
+            capture_sequence,
+            rpc_call_id,
+        })
+    }
+
     pub(crate) fn parser_snapshot(
         &self,
         snapshot: PrivateParserConfirmationSnapshot,
@@ -110,6 +125,7 @@ pub(crate) struct ProductionActiveAutomarkerCoordinator {
     commands: Receiver<ActiveAutomarkerCommand>,
     adapter: Option<PrivateAutomarkerConfirmationAdapter>,
     pending_packet_len: Option<usize>,
+    pending_parser_carrier: Option<(u64, u32)>,
     context_invalidated: bool,
     termination_requested: bool,
 }
@@ -162,6 +178,7 @@ impl ProductionActiveAutomarkerCoordinator {
                 commands,
                 adapter: None,
                 pending_packet_len: None,
+                pending_parser_carrier: None,
                 context_invalidated: false,
                 termination_requested: false,
             },
@@ -172,6 +189,28 @@ impl ProductionActiveAutomarkerCoordinator {
     fn drain_commands(&mut self) {
         loop {
             match self.commands.try_recv() {
+                Ok(ActiveAutomarkerCommand::ParserCarrier {
+                    capture_sequence,
+                    rpc_call_id,
+                }) => {
+                    if let Some(adapter) = self.adapter.as_mut() {
+                        if adapter
+                            .bind_source_carrier(capture_sequence, rpc_call_id)
+                            .is_err()
+                        {
+                            self.context_invalidated = true;
+                        } else {
+                            self.carrier_capture_sequence = capture_sequence;
+                        }
+                    } else if capture_sequence > self.carrier_capture_sequence
+                        && rpc_call_id != 0
+                        && self.pending_parser_carrier.is_none()
+                    {
+                        self.pending_parser_carrier = Some((capture_sequence, rpc_call_id));
+                    } else {
+                        self.context_invalidated = true;
+                    }
+                }
                 Ok(ActiveAutomarkerCommand::ParserSnapshot(snapshot)) => {
                     self.runtime_revision =
                         self.runtime_revision.max(snapshot.context.runtime_revision);
@@ -275,6 +314,17 @@ impl ProductionActiveAutomarkerCoordinator {
         if carrier_rpc_call_id == 0 {
             return ActiveAutomarkerDisposition::PassThrough;
         }
+        let carrier_capture_sequence = match self.pending_parser_carrier.take() {
+            Some((capture_sequence, rpc_call_id)) if rpc_call_id == carrier_rpc_call_id => {
+                self.carrier_capture_sequence = capture_sequence;
+                capture_sequence
+            }
+            Some(_) => {
+                self.context_invalidated = true;
+                return ActiveAutomarkerDisposition::PassThrough;
+            }
+            None => self.carrier_capture_sequence,
+        };
         let frame_sequence_start = tcp_sequence_start;
         let binding = self.connection_binding.connection();
         let private_binding = PrivateAutomarkerConfirmationBinding {
@@ -289,7 +339,7 @@ impl ProductionActiveAutomarkerCoordinator {
             server_port: binding.remote.port,
             marker_number: self.marker_number,
             target_position: self.target_position,
-            carrier_capture_sequence: self.carrier_capture_sequence,
+            carrier_capture_sequence,
             carrier_rpc_call_id,
             mapped_tcp_sequence_start: frame_sequence_start,
             mapped_tcp_length: EXACT_CARRIER_BYTES as u32,
@@ -596,6 +646,8 @@ fn tcp_syn(packet: &[u8], payload_offset: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use std::net::Ipv4Addr;
+    use std::sync::{Arc, Condvar, Mutex};
+    use std::time::{Duration, Instant};
 
     use rlogs_game_bpsr::{
         AutomarkerIpv4Endpoint, AutomarkerOwnedTcpConnection, AutomarkerWinDivertAddress,
@@ -604,6 +656,10 @@ mod tests {
     };
 
     use super::*;
+    use crate::automarker_active_worker::{
+        ActiveAutomarkerBackend, ActiveAutomarkerWake, ActiveAutomarkerWorkerBundle,
+        ActiveAutomarkerWorkerExit,
+    };
     use crate::automarker_confirmation_router::{
         PrivateConfirmationContext, PrivateConfirmationProvenance, PrivateCorrelatedReturn,
         PrivateFragmentKind, PrivateMarkerAdd, PrivatePacketDirection,
@@ -828,6 +884,133 @@ mod tests {
             ActiveAutomarkerCommitDisposition::Committed
         );
         let _ = coordinator.commit_send(preparation_id, outcome);
+    }
+
+    #[derive(Default)]
+    struct WorkerHarnessState {
+        wakes: std::collections::VecDeque<ActiveAutomarkerWake>,
+        prepared_modified: Option<Vec<u8>>,
+        modified_sent: usize,
+        closed: bool,
+    }
+
+    #[derive(Clone, Default)]
+    struct WorkerHarness(Arc<(Mutex<WorkerHarnessState>, Condvar)>);
+
+    impl WorkerHarness {
+        fn push(&self, wake: ActiveAutomarkerWake) {
+            let (lock, ready) = &*self.0;
+            lock.lock().unwrap().wakes.push_back(wake);
+            ready.notify_all();
+        }
+
+        fn wait_until(&self, predicate: impl Fn(&WorkerHarnessState) -> bool) {
+            let (lock, ready) = &*self.0;
+            let deadline = Instant::now() + Duration::from_secs(2);
+            let mut state = lock.lock().unwrap();
+            while !predicate(&state) {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                assert!(!remaining.is_zero(), "active worker test timed out");
+                state = ready.wait_timeout(state, remaining).unwrap().0;
+            }
+        }
+    }
+
+    struct WorkerBackend(WorkerHarness);
+
+    impl ActiveAutomarkerBackend for WorkerBackend {
+        fn receive(&mut self) -> Result<ActiveAutomarkerWake, String> {
+            let (lock, ready) = &*self.0.0;
+            let mut state = lock.lock().unwrap();
+            if state.wakes.is_empty() {
+                state = ready
+                    .wait_timeout(state, Duration::from_millis(20))
+                    .unwrap()
+                    .0;
+            }
+            Ok(state
+                .wakes
+                .pop_front()
+                .unwrap_or(ActiveAutomarkerWake::Timeout))
+        }
+
+        fn prepare_modified_send(
+            &mut self,
+            original: &ActiveAutomarkerPacket,
+            approved_changed_bytes: &[u8],
+        ) -> Result<rlogs_game_bpsr::AutomarkerPacketSendPreparation, String> {
+            let mut address = original.address.into_opaque_bytes();
+            let mut flags = u32::from_ne_bytes(address[8..12].try_into().unwrap());
+            flags |= (1 << 21) | (1 << 22);
+            address[8..12].copy_from_slice(&flags.to_ne_bytes());
+            self.0.0.0.lock().unwrap().prepared_modified = Some(approved_changed_bytes.to_vec());
+            Ok(
+                rlogs_game_bpsr::AutomarkerPacketSendPreparation::ModifiedAuthorized {
+                    packet: approved_changed_bytes.to_vec(),
+                    address: rlogs_game_bpsr::AutomarkerWinDivertAddress::from_opaque_bytes(
+                        address,
+                    ),
+                },
+            )
+        }
+
+        fn send(&mut self, packet: &ActiveAutomarkerPacket) -> Result<usize, String> {
+            let (lock, ready) = &*self.0.0;
+            let mut state = lock.lock().unwrap();
+            if state.prepared_modified.as_deref() == Some(packet.bytes.as_slice()) {
+                state.modified_sent += 1;
+            }
+            ready.notify_all();
+            Ok(packet.bytes.len())
+        }
+
+        fn close_interception(&mut self) -> Result<(), String> {
+            let (lock, ready) = &*self.0.0;
+            lock.lock().unwrap().closed = true;
+            ready.notify_all();
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn worker_runs_one_marker_confirmation_lifecycle_and_closes_on_completion() {
+        let harness = WorkerHarness::default();
+        let (coordinator, control) = coordinator();
+        let bundle =
+            ActiveAutomarkerWorkerBundle::spawn(WorkerBackend(harness.clone()), coordinator)
+                .unwrap();
+
+        harness.push(ActiveAutomarkerWake::Packet(packet(
+            FRAME_SEQUENCE,
+            0x18,
+            &frame(),
+            false,
+        )));
+        harness.wait_until(|state| state.modified_sent == 1);
+        control.parser_carrier(11, 0x1234_5678).unwrap();
+        let mut confirmation = confirmation_snapshot();
+        if let PrivateParserConfirmationEvent::CorrelatedReturn(returned) =
+            &mut confirmation.events[0]
+        {
+            returned.provenance.capture_sequence = 12;
+            returned.carrier_capture_sequence = 11;
+        }
+        if let PrivateParserConfirmationEvent::MarkerAdd(marker) = &mut confirmation.events[1] {
+            marker.provenance.capture_sequence = 13;
+        }
+        control.parser_snapshot(confirmation).unwrap();
+        harness.push(ActiveAutomarkerWake::Packet(packet(
+            FRAME_SEQUENCE + EXACT_CARRIER_BYTES as u32,
+            0x10,
+            &[],
+            true,
+        )));
+
+        let completion = bundle.join().unwrap();
+        assert_eq!(completion.exit, ActiveAutomarkerWorkerExit::Timeout);
+        assert_eq!(completion.modified_sent, 1);
+        assert!(completion.fatal_ownership.is_none());
+        harness.wait_until(|state| state.closed);
     }
 
     #[test]

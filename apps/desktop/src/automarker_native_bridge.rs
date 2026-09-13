@@ -14,8 +14,11 @@ use rlogs_game_bpsr::{
     AutomarkerConfirmationTcpTuple, AutomarkerOwnedTcpConnection, AutomarkerRequestXyz,
     OfflineAutomarkerConnectionEpochBinding, ProtocolPack, SINGLE_MARKER_XYZ_CANARY_ARM_TOKEN,
     SingleMarkerXyzCanaryConfig, SingleMarkerXyzCanaryContext,
+    reviewed_automarker_active_filter_plan,
 };
 
+#[cfg(windows)]
+use crate::automarker_active_worker::ActiveAutomarkerBackend;
 #[cfg(windows)]
 use crate::automarker_native_readiness::{
     AutomarkerNativeFailureCategory, AutomarkerNativeReadinessEvidence,
@@ -25,15 +28,20 @@ use crate::automarker_native_readiness::{
 #[cfg(windows)]
 use crate::automarker_windivert_backend::WinDivertHandle;
 use crate::{
+    automarker_active_coordinator::{
+        ActiveAutomarkerControl, ActiveAutomarkerCoordinatorConfig,
+        ProductionActiveAutomarkerCoordinator,
+    },
     automarker_active_worker::{
         ActiveAutomarkerBoundProcess, ActiveAutomarkerFatalOwnership,
         ActiveAutomarkerFatalRecovery, ActiveAutomarkerFatalRecoveryStatus,
-        ActiveAutomarkerStopDisposition, ActiveAutomarkerWorkerBundle,
+        ActiveAutomarkerWorkerBundle,
     },
     automarker_bridge_evidence::{
         AutomarkerBridgeCaptureTcpConnection, AutomarkerBridgeEvidenceSnapshot,
         AutomarkerBridgeSessionIdentity,
     },
+    automarker_confirmation_router::PrivateParserConfirmationSnapshot,
     automarker_presets::{AutomarkerPoint, AutomarkerSceneContext},
 };
 
@@ -75,12 +83,13 @@ pub(crate) struct AutomarkerNativeOperatorStatus {
 
 const LIVE_PACKET_MUTATION_WIRED: bool = false;
 const STOP_DRAIN_JOIN_RESOURCE_BUNDLE_WIRED: bool = false;
+const ACTIVE_COMMAND_CAPACITY: usize = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AutomarkerActiveLifetimeArbitration {
-    /// No continuously owned REFLECT/lifetime monitor exists yet. A one-time
-    /// preflight cannot satisfy the active-handle lifetime requirement.
-    Unresolved,
+    /// The exact active handle owns a continuously sampled REFLECT monitor;
+    /// loss is latched by the backend and forces the worker into drain-only.
+    Maintained,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -182,6 +191,10 @@ struct NativeBridgeState {
     native_flow: Option<NativeFlowEvidence>,
     gates: NativeGateState,
     active_worker: Option<ActiveAutomarkerWorkerBundle>,
+    active_control: Option<ActiveAutomarkerControl>,
+    #[cfg(windows)]
+    active_receive_control:
+        Option<crate::automarker_active_windivert::ActiveAutomarkerReceiveControl>,
     fatal_ownership: Option<ActiveAutomarkerFatalOwnership>,
     shutdown_requested_while_active: bool,
     #[cfg(windows)]
@@ -241,7 +254,7 @@ pub(crate) struct AutomarkerNativeBridgeLifecycle {
 
 impl AutomarkerNativeBridgeLifecycle {
     pub(crate) fn active_lifetime_arbitration(&self) -> AutomarkerActiveLifetimeArbitration {
-        AutomarkerActiveLifetimeArbitration::Unresolved
+        AutomarkerActiveLifetimeArbitration::Maintained
     }
     /// Transfer the sole active worker owner into the bridge lifecycle. This
     /// is private until the activation review deliberately wires construction.
@@ -263,6 +276,169 @@ impl AutomarkerNativeBridgeLifecycle {
         Ok(())
     }
 
+    /// Deliver one already source-ordered parser snapshot to the active
+    /// coordinator. The bounded channel is process-private; saturation is a
+    /// lifecycle failure rather than permission to drop confirmation proof.
+    pub(crate) fn accept_confirmation_snapshot(
+        &self,
+        snapshot: PrivateParserConfirmationSnapshot,
+    ) -> bool {
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            return false;
+        };
+        Self::collect_finished_worker_locked(&mut state);
+        let Some(control) = state.active_control.as_ref() else {
+            return false;
+        };
+        if control.parser_snapshot(snapshot).is_err() {
+            let _ = control.context_invalidated();
+            Self::request_active_stop_locked(&mut state, false);
+            return false;
+        }
+        #[cfg(windows)]
+        if let Some(receive_control) = state.active_receive_control.as_ref() {
+            let _ = receive_control.wake();
+        }
+        true
+    }
+
+    /// Construct the reviewed production coordinator and active Windows
+    /// backend for exactly one retained session/scene/pack/tuple. This is a
+    /// private developer-canary seam and is intentionally not called by the
+    /// public activation route.
+    #[cfg(windows)]
+    #[allow(dead_code)]
+    pub(crate) fn arm_private_one_marker_canary(
+        &self,
+        point: AutomarkerPoint,
+        dependency_directory: &std::path::Path,
+    ) -> Result<bool, String> {
+        if self.active_lifetime_arbitration() != AutomarkerActiveLifetimeArbitration::Maintained {
+            return Ok(false);
+        }
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            return Ok(false);
+        };
+        Self::collect_finished_worker_locked(&mut state);
+        let Some(config) = Self::active_coordinator_config_locked(&state, &point) else {
+            return Ok(false);
+        };
+        if state.active_worker.is_some() || state.fatal_ownership.is_some() {
+            return Ok(false);
+        }
+        let generation = state.generation;
+        let session_key = config.session_key.clone();
+        let binding = config.connection_binding;
+        let passive = state.passive_readiness_worker.take();
+        drop(state);
+        if let Some(passive) = passive {
+            passive.stop_drain_join();
+        }
+
+        let (coordinator, control) =
+            ProductionActiveAutomarkerCoordinator::create(config, ACTIVE_COMMAND_CAPACITY)
+                .map_err(str::to_owned)?;
+        let (mut backend, receive_control) =
+            crate::automarker_active_windivert::WindowsActiveAutomarkerBackend::open(
+                dependency_directory,
+                binding,
+            )?;
+        if !backend.active_lifetime_arbitration_healthy() {
+            backend.close_interception()?;
+            return Ok(false);
+        }
+        let mut worker = ActiveAutomarkerWorkerBundle::spawn(backend, coordinator)?;
+
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            let _ = receive_control.wake();
+            let _ = worker.stop_drain_join();
+            return Ok(false);
+        };
+        let still_exact = state.generation == generation
+            && state.phase == LifecyclePhase::Observing
+            && state
+                .session
+                .as_ref()
+                .is_some_and(|session| session.capture_session_id == session_key)
+            && state
+                .native_flow
+                .as_ref()
+                .is_some_and(|flow| flow.binding == binding)
+            && state.active_worker.is_none()
+            && state.fatal_ownership.is_none();
+        if !still_exact {
+            drop(state);
+            let _ = receive_control.wake();
+            let _ = worker.stop_drain_join();
+            return Ok(false);
+        }
+        drop(state.coordinator.take());
+        state.active_control = Some(control);
+        state.active_receive_control = Some(receive_control);
+        state.active_worker = Some(worker);
+        state.gates.reflect_arbitrated = true;
+        state.gates.authoritative_inbound_decoder_ready = true;
+        Ok(true)
+    }
+
+    fn active_coordinator_config_locked(
+        state: &NativeBridgeState,
+        point: &AutomarkerPoint,
+    ) -> Option<ActiveAutomarkerCoordinatorConfig> {
+        let continuity = state.continuity.as_ref()?;
+        let evidence = state.parser_evidence.as_ref()?;
+        let received_at = state.parser_carrier_received_at?;
+        let flow = state.native_flow.as_ref()?;
+        let pack = state.protocol_pack.as_ref()?;
+        let carrier = evidence.outbound_carrier.as_ref()?;
+        let local_actor_id = i64::try_from(carrier.local_actor_id).ok()?;
+        let observation_age_millis =
+            received_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+        if state.phase != LifecyclePhase::Observing
+            || !state.gates.exact_local_process
+            || !state.gates.exact_syn_owned_tuple_epoch
+            || !state.gates.pinned_backend
+            || !state.gates.checksum_helper_ready
+            || carrier.marker_number != point.marker_number
+            || carrier.mechanics_runtime_revision == 0
+            || carrier.provenance.capture_sequence == 0
+            || carrier.tcp_connection.capture_connection_id == 0
+            || observation_age_millis > rlogs_game_bpsr::SINGLE_MARKER_XYZ_MAX_CONTEXT_AGE_MILLIS
+            || ![point.x, point.y, point.z]
+                .iter()
+                .all(|axis| axis.is_finite() && axis.abs() <= 1_000_000.0)
+            || pack.definition().target.build_id != continuity.client_build
+            || pack.digest() != continuity.protocol_pack_digest
+            || !binding_matches_capture(flow.binding, carrier.tcp_connection)
+        {
+            return None;
+        }
+        Some(ActiveAutomarkerCoordinatorConfig {
+            pack: pack.clone(),
+            filter_plan: reviewed_automarker_active_filter_plan(flow.binding),
+            connection_binding: flow.binding,
+            session_key: continuity.capture_session_id.clone(),
+            carrier_capture_sequence: carrier.provenance.capture_sequence,
+            scene_family: continuity.activity_family_id.clone(),
+            local_actor_id,
+            marker_number: point.marker_number,
+            target_position: AutomarkerRequestXyz {
+                x: point.x,
+                y: point.y,
+                z: point.z,
+            },
+            baseline_runtime_revision: carrier.mechanics_runtime_revision,
+            runtime_revision: carrier.mechanics_runtime_revision,
+            observation_age_millis,
+            baseline_same_number_passive_instance_identities: evidence
+                .markers
+                .iter()
+                .filter(|marker| marker.marker_number == point.marker_number)
+                .map(|marker| marker.passive_instance_identity)
+                .collect(),
+        })
+    }
+
     /// Poll a terminal worker without blocking. Every fatal completion is
     /// moved into persistent lifecycle ownership before this method returns.
     #[allow(dead_code)]
@@ -279,6 +455,14 @@ impl AutomarkerNativeBridgeLifecycle {
         {
             state.shutdown_requested_while_active = false;
             let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Shutdown, true);
+            drop(state);
+            detached.drop_in_shutdown_order();
+            AutomarkerActiveOwnershipStatus::Idle
+        } else if state.active_worker.is_none()
+            && state.fatal_ownership.is_none()
+            && state.phase == LifecyclePhase::OwnershipRecoveryRequired
+        {
+            let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Invalidated, false);
             drop(state);
             detached.drop_in_shutdown_order();
             AutomarkerActiveOwnershipStatus::Idle
@@ -330,8 +514,51 @@ impl AutomarkerNativeBridgeLifecycle {
             }
         };
         state.active_worker = None;
+        state.active_control = None;
+        #[cfg(windows)]
+        {
+            state.active_receive_control = None;
+        }
         if let Some(fatal) = completion.fatal_ownership {
             state.fatal_ownership = Some(fatal);
+            state.phase = LifecyclePhase::OwnershipRecoveryRequired;
+        }
+    }
+
+    fn request_active_stop_locked(state: &mut NativeBridgeState, process_terminated: bool) {
+        Self::collect_finished_worker_locked(state);
+        if let Some(control) = state.active_control.as_ref() {
+            let _ = if process_terminated {
+                control.process_terminated()
+            } else {
+                control.context_invalidated()
+            };
+        }
+        #[cfg(windows)]
+        if let Some(receive_control) = state.active_receive_control.as_ref() {
+            let _ = receive_control.wake();
+        }
+        if let Some(mut worker) = state.active_worker.take() {
+            match worker.stop_drain_join() {
+                Ok(completion) => {
+                    state.active_control = None;
+                    #[cfg(windows)]
+                    {
+                        state.active_receive_control = None;
+                    }
+                    if let Some(fatal) = completion.fatal_ownership {
+                        state.fatal_ownership = Some(fatal);
+                    }
+                }
+                Err(_) if worker.is_finished() => {
+                    state.active_worker = Some(worker);
+                    Self::collect_finished_worker_locked(state);
+                }
+                Err(_) => state.active_worker = Some(worker),
+            }
+        }
+        Self::collect_finished_worker_locked(state);
+        if state.active_worker.is_some() || state.fatal_ownership.is_some() {
             state.phase = LifecyclePhase::OwnershipRecoveryRequired;
         }
     }
@@ -376,8 +603,11 @@ impl AutomarkerNativeBridgeLifecycle {
         }
         Self::collect_finished_worker_locked(&mut state);
         if state.active_worker.is_some() || state.fatal_ownership.is_some() {
-            state.phase = LifecyclePhase::OwnershipRecoveryRequired;
-            return;
+            Self::request_active_stop_locked(&mut state, false);
+            if state.active_worker.is_some() || state.fatal_ownership.is_some() {
+                state.phase = LifecyclePhase::OwnershipRecoveryRequired;
+                return;
+            }
         }
         let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Observing, true);
         state.session = Some(session);
@@ -511,6 +741,30 @@ impl AutomarkerNativeBridgeLifecycle {
         state.gates.fresh_world_use_slot_carrier = false;
         #[cfg(windows)]
         Self::try_promote_pending_readiness_locked(&mut state);
+        if carrier_changed
+            && let Some((capture_sequence, Some(rpc_call_id))) = state
+                .parser_evidence
+                .as_ref()
+                .and_then(|evidence| evidence.outbound_carrier.as_ref())
+                .map(|carrier| {
+                    (
+                        carrier.provenance.capture_sequence,
+                        carrier.provenance.call_id,
+                    )
+                })
+            && state.active_control.as_ref().is_some_and(|control| {
+                control
+                    .parser_carrier(capture_sequence, rpc_call_id)
+                    .is_err()
+            })
+        {
+            Self::request_active_stop_locked(&mut state, false);
+            return false;
+        }
+        #[cfg(windows)]
+        if carrier_changed && let Some(receive_control) = state.active_receive_control.as_ref() {
+            let _ = receive_control.wake();
+        }
         true
     }
 
@@ -680,6 +934,8 @@ impl AutomarkerNativeBridgeLifecycle {
             state.phase,
             LifecyclePhase::Observing | LifecyclePhase::Invalidated
         ) && state.session.is_some()
+            && state.active_worker.is_none()
+            && state.fatal_ownership.is_none()
             && state.passive_readiness_worker.is_none()
             && state.pending_passive_readiness.is_none()
             && state.native_flow.is_none()
@@ -1028,6 +1284,10 @@ impl AutomarkerNativeBridgeLifecycle {
         if state.continuity == next {
             return false;
         }
+        Self::request_active_stop_locked(&mut state, false);
+        if state.active_worker.is_some() || state.fatal_ownership.is_some() {
+            return true;
+        }
         let detached = Self::clear_scene_bound_preserving_passive(&mut state);
         drop(state);
         detached.drop_in_shutdown_order();
@@ -1044,6 +1304,10 @@ impl AutomarkerNativeBridgeLifecycle {
             state.phase,
             LifecyclePhase::Observing | LifecyclePhase::Invalidated
         ) {
+            return;
+        }
+        Self::request_active_stop_locked(&mut state, false);
+        if state.active_worker.is_some() || state.fatal_ownership.is_some() {
             return;
         }
         let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Invalidated, false);
@@ -1111,17 +1375,9 @@ impl AutomarkerNativeBridgeLifecycle {
             Self::collect_finished_worker_locked(&mut state);
             if state.active_worker.is_some() {
                 state.shutdown_requested_while_active = true;
-                let worker = state
-                    .active_worker
-                    .as_ref()
-                    .expect("active worker checked above");
-                let stop = worker.request_stop();
-                Self::collect_finished_worker_locked(&mut state);
+                Self::request_active_stop_locked(&mut state, false);
                 if state.active_worker.is_some() || state.fatal_ownership.is_some() {
                     state.phase = LifecyclePhase::OwnershipRecoveryRequired;
-                    if !matches!(stop, Ok(ActiveAutomarkerStopDisposition::StopRequested)) {
-                        return;
-                    }
                     return;
                 }
             }
@@ -1143,7 +1399,7 @@ impl AutomarkerNativeBridgeLifecycle {
         let Some(state) = self.lock_or_poison_shutdown() else {
             return false;
         };
-        if self.active_lifetime_arbitration() == AutomarkerActiveLifetimeArbitration::Unresolved {
+        if self.active_lifetime_arbitration() != AutomarkerActiveLifetimeArbitration::Maintained {
             return false;
         }
         Self::placement_enabled_locked(&state)
@@ -1194,6 +1450,11 @@ impl AutomarkerNativeBridgeLifecycle {
         }
         state.native_flow = None;
         state.gates = NativeGateState::default();
+        state.active_control = None;
+        #[cfg(windows)]
+        {
+            state.active_receive_control = None;
+        }
         #[cfg(windows)]
         {
             state.native_failure = None;
@@ -1741,6 +2002,30 @@ mod tests {
         assert!(snapshot.fatal_ownership.is_none());
     }
 
+    #[test]
+    fn session_finish_stops_drains_and_joins_clean_active_worker() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        let worker = ActiveAutomarkerWorkerBundle::spawn(
+            ActiveLifecycleBackend(ActiveLifecycleHarness::default()),
+            ActiveLifecycleCoordinator { obligation: false },
+        )
+        .unwrap();
+        bridge
+            .retain_active_worker(worker)
+            .unwrap_or_else(|worker| {
+                std::mem::forget(worker);
+                panic!("test lifecycle rejected its clean worker")
+            });
+
+        bridge.finish_session("capture-a");
+        let snapshot = state(&bridge);
+        assert_eq!(snapshot.phase, LifecyclePhase::Shutdown);
+        assert!(snapshot.session.is_none());
+        assert!(snapshot.active_worker.is_none());
+        assert!(snapshot.fatal_ownership.is_none());
+    }
+
     #[cfg(windows)]
     #[test]
     fn session_shutdown_stops_and_joins_passive_worker() {
@@ -1792,7 +2077,7 @@ mod tests {
         let bridge = AutomarkerNativeBridgeLifecycle::default();
         assert_eq!(
             bridge.active_lifetime_arbitration(),
-            AutomarkerActiveLifetimeArbitration::Unresolved
+            AutomarkerActiveLifetimeArbitration::Maintained
         );
         bridge.begin_session(session());
         assert!(bridge.accept_parser_evidence(
@@ -1906,6 +2191,20 @@ mod tests {
             y: -22.5,
             z: 303.75,
         };
+        {
+            let mut snapshot = state(&bridge);
+            snapshot.gates.pinned_backend = true;
+            snapshot.gates.checksum_helper_ready = true;
+            let config = AutomarkerNativeBridgeLifecycle::active_coordinator_config_locked(
+                &snapshot, &point,
+            )
+            .expect("exact private canary configuration");
+            assert_eq!(config.session_key, "capture-a");
+            assert_eq!(config.connection_binding, binding(443));
+            assert_eq!(config.carrier_capture_sequence, 30);
+            assert_eq!(config.marker_number, 1);
+            assert_eq!(config.target_position.x.to_bits(), point.x.to_bits());
+        }
         assert!(bridge.arm_one_marker_coordinator(point.clone()));
         assert!(state(&bridge).coordinator.is_some());
         assert!(!bridge.placement_enabled());

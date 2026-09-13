@@ -53,9 +53,15 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use automarker_bridge_evidence::{
-    AutomarkerBridgeEvidenceFeed, AutomarkerBridgeRecordProvenance, AutomarkerBridgeSessionIdentity,
+    AutomarkerBridgeEvidenceFeed, AutomarkerBridgeEvidenceSnapshot,
+    AutomarkerBridgeRecordProvenance, AutomarkerBridgeSessionIdentity,
 };
-use automarker_confirmation_router::PrivateParserConfirmationSnapshot;
+use automarker_confirmation_ingress::{
+    PrivateConfirmationIngressIdentity, extract_private_return_candidate,
+};
+use automarker_confirmation_router::{
+    PrivateConfirmationContext, PrivateParserConfirmationSnapshot,
+};
 use automarker_marker_confirmation_ingress::{
     PrivateMarkerConfirmationBinding, PrivatePreparedMarkerConfirmation,
     complete_marker_confirmation, prepare_marker_confirmation,
@@ -5041,8 +5047,6 @@ fn automarker_passive_start_key(
     })
 }
 
-const PRIVATE_LIVE_MARKER_CONFIRMATION_CAPACITY: usize = 256;
-
 struct PrivateLiveMarkerRecordPending {
     prepared: Option<PrivatePreparedMarkerConfirmation>,
     provenance: AutomarkerBridgeRecordProvenance,
@@ -5051,22 +5055,82 @@ struct PrivateLiveMarkerRecordPending {
     record_mechanics: mechanics_map::MechanicsMapSnapshot,
 }
 
-#[derive(Default)]
 struct PrivateLiveMarkerConfirmationSink {
-    snapshots: VecDeque<PrivateParserConfirmationSnapshot>,
+    bridge: Arc<AutomarkerNativeBridgeLifecycle>,
 }
 
 impl PrivateLiveMarkerConfirmationSink {
+    fn new(bridge: Arc<AutomarkerNativeBridgeLifecycle>) -> Self {
+        Self { bridge }
+    }
+
     fn retain(&mut self, snapshot: PrivateParserConfirmationSnapshot) {
-        if self.snapshots.len() == PRIVATE_LIVE_MARKER_CONFIRMATION_CAPACITY {
-            self.snapshots.pop_front();
-        }
-        self.snapshots.push_back(snapshot);
+        let _ = self.bridge.accept_confirmation_snapshot(snapshot);
     }
 
     fn clear(&mut self) {
-        self.snapshots.clear();
+        // Session/context invalidation is delivered by the lifecycle itself.
+        // This sink intentionally retains no replayable confirmation history.
     }
+}
+
+struct PrivateLiveReturnContext<'a> {
+    mechanics: &'a mechanics_map::MechanicsMapSnapshot,
+    scene: Option<&'a AutomarkerSceneContext>,
+    session: &'a AutomarkerBridgeSessionIdentity,
+    connection_epoch: u64,
+    evidence: &'a AutomarkerBridgeEvidenceSnapshot,
+}
+
+fn prepare_live_return_confirmation(
+    pack: &ProtocolPack,
+    record: &CaptureRecord,
+    status: ProtocolDecodeStatus,
+    context: PrivateLiveReturnContext<'_>,
+) -> Option<PrivateParserConfirmationSnapshot> {
+    let scene = context.scene?;
+    let carrier = context.evidence.outbound_carrier.as_ref()?;
+    let local_actor_id = context
+        .mechanics
+        .local_actor_id
+        .and_then(|actor_id| i64::try_from(actor_id).ok())?;
+    if context.mechanics.session_id.as_deref() != Some(context.session.capture_session_id.as_str())
+        || context.mechanics.client_build.as_deref() != Some(context.session.client_build.as_str())
+        || context.mechanics.scene_id != Some(scene.scene_id)
+        || context.mechanics.map_id != Some(scene.map_id)
+        || context.mechanics.revision == 0
+        || local_actor_id <= 0
+        || context.connection_epoch == 0
+    {
+        return None;
+    }
+    let event = extract_private_return_candidate(
+        &PrivateConfirmationIngressIdentity {
+            capture_session_id: context.session.capture_session_id.clone(),
+            deployment_id: context.session.deployment_id.clone(),
+            client_build: context.session.client_build.clone(),
+            protocol_pack_digest: context.session.protocol_pack_digest.clone(),
+        },
+        pack,
+        record,
+        status,
+        carrier,
+    )?;
+    Some(PrivateParserConfirmationSnapshot {
+        session_key: context.session.capture_session_id.clone(),
+        context: PrivateConfirmationContext {
+            game_build: context.session.client_build.clone(),
+            scene_family: scene.activity_family_id.clone(),
+            local_actor_id,
+            connection_epoch: context.connection_epoch,
+            client_address: carrier.tcp_connection.client_address.octets(),
+            client_port: carrier.tcp_connection.client_port,
+            server_address: carrier.tcp_connection.server_address.octets(),
+            server_port: carrier.tcp_connection.server_port,
+            runtime_revision: context.mechanics.revision,
+        },
+        events: vec![event],
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -9914,6 +9978,7 @@ impl RuntimeController {
         let live_automarker_scene_context = Arc::clone(&self.live_automarker_scene_context);
         let live_automarker_bridge_evidence = Arc::clone(&self.live_automarker_bridge_evidence);
         let live_automarker_native_bridge = Arc::clone(&self.live_automarker_native_bridge);
+        let live_automarker_bridge_session = automarker_bridge_session.clone();
         let automarker_native_process_id = request.process_id;
         let automarker_native_dependency_directory =
             automarker_native_dependency_directory(&self.install_root);
@@ -10045,7 +10110,9 @@ impl RuntimeController {
                     let mut live_local_markers =
                         rlogs_game_bpsr::LocalMapMarkerProjection::default();
                     let private_marker_confirmations = std::cell::RefCell::new(
-                        PrivateLiveMarkerConfirmationSink::default(),
+                        PrivateLiveMarkerConfirmationSink::new(Arc::clone(
+                            &live_automarker_native_bridge,
+                        )),
                     );
                     let mut last_local_marker_observed_micros = None;
                     let mut automarker_request_decode_scratch = Vec::with_capacity(64);
@@ -10257,6 +10324,7 @@ impl RuntimeController {
                         // matched by SignatureFlowCapture in the same turn.
                         let _ = live_automarker_native_bridge
                             .poll_passive_readiness_worker();
+                        let _ = live_automarker_native_bridge.poll_active_ownership();
                         if live_automarker_native_bridge.passive_readiness_worker_needed() {
                             automarker_native_connection_epoch =
                                 automarker_native_connection_epoch.checked_add(1).ok_or(
@@ -10873,6 +10941,20 @@ impl RuntimeController {
                                             live_automarker_bridge_evidence.current(),
                                         );
                                     }
+                                }
+                                if let Some(snapshot) = prepare_live_return_confirmation(
+                                    &pack,
+                                    record,
+                                    status,
+                                    PrivateLiveReturnContext {
+                                        mechanics: &bridge_mechanics,
+                                        scene: bridge_scene.as_ref(),
+                                        session: &live_automarker_bridge_session,
+                                        connection_epoch: automarker_native_connection_epoch,
+                                        evidence: &live_automarker_bridge_evidence.current(),
+                                    },
+                                ) {
+                                    private_marker_confirmations.borrow_mut().retain(snapshot);
                                 }
                                 if live_automarker_bridge_evidence.observe_correlated_empty_return(
                                     &pack,
