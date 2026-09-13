@@ -184,6 +184,33 @@ impl AutomarkerNativeBridgeLifecycle {
         }) {
             return Self::invalidate_and_release(state);
         }
+        if evidence.outbound_carrier.as_ref().is_some_and(|carrier| {
+            carrier.capture_session_id != continuity.capture_session_id
+                || carrier.deployment_id != continuity.deployment_id
+                || carrier.client_build != continuity.client_build
+                || carrier.protocol_pack_digest != continuity.protocol_pack_digest
+                || carrier.scene_id != continuity.scene_id
+                || carrier.map_id != continuity.map_id
+                || carrier.activity_family_id != continuity.activity_family_id
+        }) {
+            return Self::invalidate_and_release(state);
+        }
+        if evidence.correlated_return.as_ref().is_some_and(|returned| {
+            returned.capture_session_id != continuity.capture_session_id
+                || returned.deployment_id != continuity.deployment_id
+                || returned.client_build != continuity.client_build
+                || returned.protocol_pack_digest != continuity.protocol_pack_digest
+                || returned.scene_id != continuity.scene_id
+                || returned.map_id != continuity.map_id
+                || returned.activity_family_id != continuity.activity_family_id
+                || evidence.outbound_carrier.as_ref().is_none_or(|carrier| {
+                    returned.carrier_capture_sequence != carrier.provenance.capture_sequence
+                        || returned.provenance.call_id != carrier.provenance.call_id
+                        || returned.provenance.connection_id != carrier.provenance.connection_id
+                })
+        }) {
+            return Self::invalidate_and_release(state);
+        }
         if state
             .parser_evidence
             .as_ref()
@@ -204,6 +231,10 @@ impl AutomarkerNativeBridgeLifecycle {
         // Parser continuity is necessary but insufficient. It cannot assert
         // process ownership, REFLECT arbitration, or packet-send readiness.
         state.gates.exact_build_pack_scene = true;
+        state.gates.fresh_world_use_slot_carrier = state
+            .parser_evidence
+            .as_ref()
+            .is_some_and(|evidence| evidence.outbound_carrier.is_some());
         true
     }
 

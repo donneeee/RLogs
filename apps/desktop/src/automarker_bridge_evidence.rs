@@ -9,13 +9,19 @@ use std::{
 };
 
 use rlogs_game_bpsr::{
-    CaptureRecord, CaptureRecordKind, DecoderKind, FragmentKind, LocalMapMarker, PacketDirection,
-    ProtocolPack,
+    CaptureRecord, CaptureRecordKind, CompressionState, DecoderKind, FragmentKind, LocalMapMarker,
+    ObservedAutomarkerRequest, PacketDirection, ProtocolPack,
+    SINGLE_MARKER_XYZ_MAX_CARRIER_AGE_MILLIS,
 };
 
 use crate::{automarker_presets::AutomarkerSceneContext, mechanics_map::MechanicsMapSnapshot};
 
 const WORLD_NOTIFICATION_SERVICE_ID: u64 = 1_664_308_034;
+const WORLD_SERVICE_ID: u64 = 103_198_054;
+const WORLD_USE_SLOT_METHOD_ID: u32 = 249_858;
+const EXACT_CARRIER_APPLICATION_BYTES: usize = 161;
+const EXACT_EMPTY_RETURN_FRAME_BYTES: usize = 18;
+const RETURN_CORRELATION_MAX_MICROS: u64 = 2_000_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AutomarkerBridgeSessionIdentity {
@@ -88,6 +94,55 @@ impl AutomarkerBridgeRecordProvenance {
             decoder,
         })
     }
+
+    fn from_world_use_slot_record(
+        pack: &ProtocolPack,
+        record: &CaptureRecord,
+        direction: PacketDirection,
+        fragment: FragmentKind,
+    ) -> Option<Self> {
+        let CaptureRecordKind::Packet(packet) = &record.kind else {
+            return None;
+        };
+        let routed = packet.route?;
+        let key = routed.key;
+        let decoder_key = if fragment == FragmentKind::Return {
+            rlogs_game_bpsr::RouteKey::new(
+                PacketDirection::ClientToServer,
+                FragmentKind::Call,
+                key.service_id,
+                key.method_id,
+            )
+        } else {
+            key
+        };
+        if key.direction != direction
+            || key.fragment != fragment
+            || key.service_id != WORLD_SERVICE_ID
+            || key.method_id != WORLD_USE_SLOT_METHOD_ID
+            || pack.decoder(&decoder_key) != Some(DecoderKind::WorldUseSlotV1)
+            || routed.call_id == Some(0)
+            || routed.call_id.is_none()
+            || packet.connection_id == 0
+            || packet.stream_id == 0
+        {
+            return None;
+        }
+        Some(Self {
+            capture_sequence: record.sequence,
+            observed_micros: record.observed_micros,
+            wall_clock_unix_micros: record.wall_clock_unix_micros,
+            connection_id: packet.connection_id,
+            stream_id: packet.stream_id,
+            direction: key.direction,
+            fragment: key.fragment,
+            service_id: key.service_id,
+            method_id: key.method_id,
+            stub_id: routed.stub_id,
+            call_id: routed.call_id,
+            decoder: DecoderKind::WorldUseSlotV1,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -116,6 +171,38 @@ pub(crate) struct AutomarkerBridgeMarkerEvidence {
 pub(crate) struct AutomarkerBridgeEvidenceSnapshot {
     pub feed_revision: u64,
     pub markers: Vec<AutomarkerBridgeMarkerEvidence>,
+    pub outbound_carrier: Option<AutomarkerBridgeOutboundCarrierEvidence>,
+    pub correlated_return: Option<AutomarkerBridgeCorrelatedReturnEvidence>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AutomarkerBridgeOutboundCarrierEvidence {
+    pub capture_session_id: String,
+    pub deployment_id: String,
+    pub client_build: String,
+    pub protocol_pack_digest: String,
+    pub scene_id: i32,
+    pub map_id: u32,
+    pub activity_family_id: String,
+    pub mechanics_runtime_revision: u64,
+    pub marker_number: u8,
+    pub session_sequence: u32,
+    pub application_bytes: Vec<u8>,
+    pub provenance: AutomarkerBridgeRecordProvenance,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AutomarkerBridgeCorrelatedReturnEvidence {
+    pub capture_session_id: String,
+    pub deployment_id: String,
+    pub client_build: String,
+    pub protocol_pack_digest: String,
+    pub scene_id: i32,
+    pub map_id: u32,
+    pub activity_family_id: String,
+    pub mechanics_runtime_revision: u64,
+    pub carrier_capture_sequence: u64,
+    pub provenance: AutomarkerBridgeRecordProvenance,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -148,6 +235,8 @@ struct AutomarkerBridgeEvidenceState {
     feed_revision: u64,
     context: Option<AutomarkerBridgeContextIdentity>,
     markers: BTreeMap<u8, AutomarkerBridgeMarkerEvidence>,
+    outbound_carrier: Option<AutomarkerBridgeOutboundCarrierEvidence>,
+    correlated_return: Option<AutomarkerBridgeCorrelatedReturnEvidence>,
 }
 
 impl AutomarkerBridgeEvidenceFeed {
@@ -160,6 +249,8 @@ impl AutomarkerBridgeEvidenceFeed {
         state.feed_revision = state.feed_revision.wrapping_add(1);
         state.context = None;
         state.markers.clear();
+        state.outbound_carrier = None;
+        state.correlated_return = None;
     }
 
     pub(crate) fn finish_session(&self, session_id: &str) {
@@ -176,6 +267,8 @@ impl AutomarkerBridgeEvidenceFeed {
             state.feed_revision = state.feed_revision.wrapping_add(1);
             state.context = None;
             state.markers.clear();
+            state.outbound_carrier = None;
+            state.correlated_return = None;
         }
     }
 
@@ -206,6 +299,222 @@ impl AutomarkerBridgeEvidenceFeed {
     fn invalidate_locked(state: &mut AutomarkerBridgeEvidenceState) {
         state.feed_revision = state.feed_revision.wrapping_add(1);
         state.markers.clear();
+        state.outbound_carrier = None;
+        state.correlated_return = None;
+    }
+
+    pub(crate) fn expire_stale_carrier(&self, current_observed_micros: u64) -> bool {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let stale = state.outbound_carrier.as_ref().is_some_and(|carrier| {
+            current_observed_micros.saturating_sub(carrier.provenance.observed_micros)
+                > SINGLE_MARKER_XYZ_MAX_CARRIER_AGE_MILLIS.saturating_mul(1_000)
+        });
+        if !stale {
+            return false;
+        }
+        state.feed_revision = state.feed_revision.wrapping_add(1);
+        state.outbound_carrier = None;
+        state.correlated_return = None;
+        true
+    }
+
+    pub(crate) fn observe_outbound_carrier(
+        &self,
+        pack: &ProtocolPack,
+        record: &CaptureRecord,
+        scene: Option<&AutomarkerSceneContext>,
+        mechanics: &MechanicsMapSnapshot,
+        scratch: &mut Vec<u8>,
+    ) -> Option<ObservedAutomarkerRequest> {
+        let provenance = AutomarkerBridgeRecordProvenance::from_world_use_slot_record(
+            pack,
+            record,
+            PacketDirection::ClientToServer,
+            FragmentKind::Call,
+        )?;
+        let CaptureRecordKind::Packet(packet) = &record.kind else {
+            return None;
+        };
+        if packet.compression != CompressionState::NotCompressed {
+            self.invalidate();
+            return None;
+        }
+        let Some(application) = packet.payload.decode_input() else {
+            self.invalidate();
+            return None;
+        };
+        if application.len() != EXACT_CARRIER_APPLICATION_BYTES {
+            self.invalidate();
+            return None;
+        }
+        let Ok(request) =
+            rlogs_game_bpsr::decode_observed_automarker_request_into(pack, application, scratch)
+        else {
+            self.invalidate();
+            return None;
+        };
+        self.retain_decoded_outbound_carrier(
+            scene,
+            mechanics,
+            provenance,
+            request,
+            application,
+            (&pack.definition().target.build_id, pack.digest()),
+        )
+        .then_some(request)
+    }
+
+    fn retain_decoded_outbound_carrier(
+        &self,
+        scene: Option<&AutomarkerSceneContext>,
+        mechanics: &MechanicsMapSnapshot,
+        provenance: AutomarkerBridgeRecordProvenance,
+        request: ObservedAutomarkerRequest,
+        application: &[u8],
+        observed_pack: (&str, &str),
+    ) -> bool {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(session) = state
+            .session
+            .clone()
+            .filter(|session| session.protocol_supported)
+        else {
+            Self::invalidate_locked(&mut state);
+            return false;
+        };
+        let Some(scene) = scene else {
+            Self::invalidate_locked(&mut state);
+            return false;
+        };
+        let context = AutomarkerBridgeContextIdentity::from(scene);
+        if state.context.as_ref() != Some(&context)
+            || mechanics.session_id.as_deref() != Some(session.capture_session_id.as_str())
+            || mechanics.client_build.as_deref() != Some(session.client_build.as_str())
+            || mechanics.scene_id != Some(scene.scene_id)
+            || mechanics.map_id != Some(scene.map_id)
+            || scene.client_build != session.client_build
+            || observed_pack.0 != session.client_build
+            || observed_pack.1 != session.protocol_pack_digest
+            || application.len() != EXACT_CARRIER_APPLICATION_BYTES
+            || provenance.direction != PacketDirection::ClientToServer
+            || provenance.fragment != FragmentKind::Call
+            || provenance.service_id != WORLD_SERVICE_ID
+            || provenance.method_id != WORLD_USE_SLOT_METHOD_ID
+            || provenance.decoder != DecoderKind::WorldUseSlotV1
+        {
+            Self::invalidate_locked(&mut state);
+            return false;
+        }
+        state.feed_revision = state.feed_revision.wrapping_add(1);
+        state.correlated_return = None;
+        state.outbound_carrier = Some(AutomarkerBridgeOutboundCarrierEvidence {
+            capture_session_id: session.capture_session_id,
+            deployment_id: session.deployment_id,
+            client_build: session.client_build,
+            protocol_pack_digest: session.protocol_pack_digest,
+            scene_id: scene.scene_id,
+            map_id: scene.map_id,
+            activity_family_id: scene.activity_family_id.clone(),
+            mechanics_runtime_revision: mechanics.revision,
+            marker_number: request.marker_number,
+            session_sequence: request.session_sequence,
+            application_bytes: application.to_vec(),
+            provenance,
+        });
+        true
+    }
+
+    pub(crate) fn observe_correlated_empty_return(
+        &self,
+        pack: &ProtocolPack,
+        record: &CaptureRecord,
+        scene: Option<&AutomarkerSceneContext>,
+        mechanics: &MechanicsMapSnapshot,
+    ) -> bool {
+        let Some(provenance) = AutomarkerBridgeRecordProvenance::from_world_use_slot_record(
+            pack,
+            record,
+            PacketDirection::ServerToClient,
+            FragmentKind::Return,
+        ) else {
+            return false;
+        };
+        let CaptureRecordKind::Packet(packet) = &record.kind else {
+            return false;
+        };
+        let wire = &packet.payload.wire_bytes;
+        if packet.compression != CompressionState::NotCompressed
+            || packet.payload.decode_input() != Some(&[])
+            || wire.len() != EXACT_EMPTY_RETURN_FRAME_BYTES
+            || u32::from_be_bytes(wire[0..4].try_into().expect("checked exact frame length"))
+                as usize
+                != wire.len()
+            || u16::from_be_bytes(wire[4..6].try_into().expect("checked exact frame length")) != 3
+            || u32::from_be_bytes(wire[14..18].try_into().expect("checked exact frame length")) != 0
+        {
+            self.invalidate();
+            return false;
+        }
+
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(session) = state
+            .session
+            .clone()
+            .filter(|session| session.protocol_supported)
+        else {
+            Self::invalidate_locked(&mut state);
+            return false;
+        };
+        let (Some(scene), Some(carrier)) = (scene, state.outbound_carrier.clone()) else {
+            Self::invalidate_locked(&mut state);
+            return false;
+        };
+        let context = AutomarkerBridgeContextIdentity::from(scene);
+        if state.context.as_ref() != Some(&context)
+            || mechanics.session_id.as_deref() != Some(session.capture_session_id.as_str())
+            || mechanics.client_build.as_deref() != Some(session.client_build.as_str())
+            || mechanics.scene_id != Some(scene.scene_id)
+            || mechanics.map_id != Some(scene.map_id)
+            || pack.definition().target.build_id != session.client_build
+            || pack.digest() != session.protocol_pack_digest
+            || carrier.capture_session_id != session.capture_session_id
+            || carrier.scene_id != scene.scene_id
+            || carrier.map_id != scene.map_id
+            || carrier.activity_family_id != scene.activity_family_id
+            || provenance.connection_id != carrier.provenance.connection_id
+            || provenance.call_id != carrier.provenance.call_id
+            || provenance.observed_micros < carrier.provenance.observed_micros
+            || provenance
+                .observed_micros
+                .saturating_sub(carrier.provenance.observed_micros)
+                > RETURN_CORRELATION_MAX_MICROS
+        {
+            Self::invalidate_locked(&mut state);
+            return false;
+        }
+        state.feed_revision = state.feed_revision.wrapping_add(1);
+        state.correlated_return = Some(AutomarkerBridgeCorrelatedReturnEvidence {
+            capture_session_id: session.capture_session_id,
+            deployment_id: session.deployment_id,
+            client_build: session.client_build,
+            protocol_pack_digest: session.protocol_pack_digest,
+            scene_id: scene.scene_id,
+            map_id: scene.map_id,
+            activity_family_id: scene.activity_family_id.clone(),
+            mechanics_runtime_revision: mechanics.revision,
+            carrier_capture_sequence: carrier.provenance.capture_sequence,
+            provenance,
+        });
+        true
     }
 
     /// Replace the private baseline after the public decoder changed its
@@ -330,6 +639,8 @@ impl AutomarkerBridgeEvidenceFeed {
         AutomarkerBridgeEvidenceSnapshot {
             feed_revision: state.feed_revision,
             markers: state.markers.values().cloned().collect(),
+            outbound_carrier: state.outbound_carrier.clone(),
+            correlated_return: state.correlated_return.clone(),
         }
     }
 }
@@ -339,8 +650,137 @@ mod tests {
     use super::*;
     use crate::mechanics_map::MechanicsMapEntity;
     use rlogs_game_bpsr::{
-        CompressionState, PacketEnvelope, PacketPayload, RouteKey, RoutedMessage,
+        AutomarkerRequestAttributes, AutomarkerRequestPosition, CompressionState, PacketEnvelope,
+        PacketPayload, RouteKey, RoutedMessage,
     };
+
+    fn observed_request() -> ObservedAutomarkerRequest {
+        ObservedAutomarkerRequest {
+            marker_number: 1,
+            slot_id: 201,
+            skill_uuid: 1,
+            skill_id: 1101,
+            skill_level: 1,
+            begin_time: 1,
+            target_position: AutomarkerRequestPosition {
+                x: 1.0,
+                y: 2.0,
+                z: 3.0,
+                heading_degrees: 4.0,
+            },
+            current_position: AutomarkerRequestPosition {
+                x: 5.0,
+                y: 6.0,
+                z: 7.0,
+                heading_degrees: 8.0,
+            },
+            session_sequence: 9,
+            attributes: AutomarkerRequestAttributes {
+                timestamp: 10,
+                velocity: 0.0,
+                attack_speed_pct: 0,
+                cast_speed_pct: 0,
+                charge_speed_pct: None,
+                opaque_current_build_scalar: 0.0,
+            },
+        }
+    }
+
+    fn carrier_provenance(call_id: u32, observed_micros: u64) -> AutomarkerBridgeRecordProvenance {
+        AutomarkerBridgeRecordProvenance {
+            capture_sequence: 30,
+            observed_micros,
+            wall_clock_unix_micros: Some(40),
+            connection_id: 50,
+            stream_id: 60,
+            direction: PacketDirection::ClientToServer,
+            fragment: FragmentKind::Call,
+            service_id: WORLD_SERVICE_ID,
+            method_id: WORLD_USE_SLOT_METHOD_ID,
+            stub_id: 1,
+            call_id: Some(call_id),
+            decoder: DecoderKind::WorldUseSlotV1,
+        }
+    }
+
+    fn source_pack() -> ProtocolPack {
+        ProtocolPack::from_json(include_bytes!(
+            "../../../plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24687926/pack.json"
+        ))
+        .unwrap()
+    }
+
+    fn return_record(call_id: u32, observed_micros: u64) -> CaptureRecord {
+        let mut wire = Vec::new();
+        wire.extend_from_slice(&(EXACT_EMPTY_RETURN_FRAME_BYTES as u32).to_be_bytes());
+        wire.extend_from_slice(&3_u16.to_be_bytes());
+        wire.extend_from_slice(&1_u32.to_be_bytes());
+        wire.extend_from_slice(&call_id.to_be_bytes());
+        wire.extend_from_slice(&0_u32.to_be_bytes());
+        CaptureRecord {
+            sequence: 31,
+            observed_micros,
+            wall_clock_unix_micros: Some(41),
+            kind: CaptureRecordKind::Packet(PacketEnvelope {
+                connection_id: 50,
+                stream_id: 61,
+                source: None,
+                destination: None,
+                direction: PacketDirection::ServerToClient,
+                fragment: Some(FragmentKind::Return),
+                route: Some(RoutedMessage {
+                    key: RouteKey::new(
+                        PacketDirection::ServerToClient,
+                        FragmentKind::Return,
+                        WORLD_SERVICE_ID,
+                        WORLD_USE_SLOT_METHOD_ID,
+                    ),
+                    stub_id: 1,
+                    call_id: Some(call_id),
+                }),
+                compression: CompressionState::NotCompressed,
+                payload: PacketPayload {
+                    wire_bytes: wire,
+                    application_bytes: Some(Vec::new()),
+                },
+            }),
+        }
+    }
+
+    fn transport_context(
+        pack: &ProtocolPack,
+    ) -> (
+        AutomarkerBridgeEvidenceFeed,
+        AutomarkerSceneContext,
+        MechanicsMapSnapshot,
+    ) {
+        let feed = AutomarkerBridgeEvidenceFeed::default();
+        let build = pack.definition().target.build_id.clone();
+        feed.begin_session(AutomarkerBridgeSessionIdentity {
+            capture_session_id: "capture-transport".into(),
+            deployment_id: pack.definition().target.deployment_id.clone(),
+            client_build: build.clone(),
+            protocol_pack_digest: pack.digest().into(),
+            protocol_supported: true,
+        });
+        let scene = AutomarkerSceneContext {
+            client_build: build.clone(),
+            scene_id: 1,
+            map_id: 2,
+            activity_family_id: "mech-facility".into(),
+            scene_name: None,
+        };
+        feed.reconcile_context(Some(&scene));
+        let mechanics = MechanicsMapSnapshot {
+            revision: 70,
+            session_id: Some("capture-transport".into()),
+            client_build: Some(build),
+            scene_id: Some(1),
+            map_id: Some(2),
+            ..MechanicsMapSnapshot::default()
+        };
+        (feed, scene, mechanics)
+    }
 
     fn matching_mechanics() -> MechanicsMapSnapshot {
         let mut mechanics = MechanicsMapSnapshot {
@@ -693,5 +1133,85 @@ mod tests {
             &BTreeSet::from([1]),
         ));
         assert!(feed.current().markers.is_empty());
+    }
+
+    #[test]
+    fn carrier_bytes_are_exactly_bounded_and_expire() {
+        let pack = source_pack();
+        let (feed, scene, mechanics) = transport_context(&pack);
+        assert!(!feed.retain_decoded_outbound_carrier(
+            Some(&scene),
+            &mechanics,
+            carrier_provenance(77, 100),
+            observed_request(),
+            &[0; EXACT_CARRIER_APPLICATION_BYTES + 1],
+            (&pack.definition().target.build_id, pack.digest()),
+        ));
+        assert!(feed.current().outbound_carrier.is_none());
+
+        feed.reconcile_context(Some(&scene));
+        assert!(feed.retain_decoded_outbound_carrier(
+            Some(&scene),
+            &mechanics,
+            carrier_provenance(77, 100),
+            observed_request(),
+            &[0; EXACT_CARRIER_APPLICATION_BYTES],
+            (&pack.definition().target.build_id, pack.digest()),
+        ));
+        assert_eq!(
+            feed.current()
+                .outbound_carrier
+                .as_ref()
+                .unwrap()
+                .application_bytes
+                .len(),
+            EXACT_CARRIER_APPLICATION_BYTES
+        );
+        assert!(
+            feed.expire_stale_carrier(100 + SINGLE_MARKER_XYZ_MAX_CARRIER_AGE_MILLIS * 1_000 + 1)
+        );
+        assert!(feed.current().outbound_carrier.is_none());
+    }
+
+    #[test]
+    fn only_exact_correlated_successful_empty_return_is_retained() {
+        let pack = source_pack();
+        let (feed, scene, mechanics) = transport_context(&pack);
+        assert!(feed.retain_decoded_outbound_carrier(
+            Some(&scene),
+            &mechanics,
+            carrier_provenance(77, 100),
+            observed_request(),
+            &[0; EXACT_CARRIER_APPLICATION_BYTES],
+            (&pack.definition().target.build_id, pack.digest()),
+        ));
+        assert!(!feed.observe_correlated_empty_return(
+            &pack,
+            &return_record(78, 200),
+            Some(&scene),
+            &mechanics,
+        ));
+        assert!(feed.current().outbound_carrier.is_none());
+
+        feed.reconcile_context(Some(&scene));
+        assert!(feed.retain_decoded_outbound_carrier(
+            Some(&scene),
+            &mechanics,
+            carrier_provenance(77, 100),
+            observed_request(),
+            &[0; EXACT_CARRIER_APPLICATION_BYTES],
+            (&pack.definition().target.build_id, pack.digest()),
+        ));
+        assert!(feed.observe_correlated_empty_return(
+            &pack,
+            &return_record(77, 200),
+            Some(&scene),
+            &mechanics,
+        ));
+        let snapshot = feed.current();
+        assert_eq!(
+            snapshot.correlated_return.unwrap().carrier_capture_sequence,
+            30
+        );
     }
 }

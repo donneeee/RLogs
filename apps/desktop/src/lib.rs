@@ -10308,6 +10308,17 @@ impl RuntimeController {
                             }, |photo| {
                                 local_photo_assets.push(photo.clone());
                             }, |record, status| {
+                                let bridge_scene = live_automarker_scene_context.current();
+                                let bridge_mechanics =
+                                    automarker_bridge_mechanics_snapshot.borrow().clone();
+                                if live_automarker_bridge_evidence
+                                    .expire_stale_carrier(record.observed_micros)
+                                {
+                                    live_automarker_native_bridge.accept_parser_evidence(
+                                        bridge_scene.as_ref(),
+                                        live_automarker_bridge_evidence.current(),
+                                    );
+                                }
                                 let bridge_provenance =
                                     AutomarkerBridgeRecordProvenance::from_decoded_marker_record(
                                         &pack, record,
@@ -10388,10 +10399,12 @@ impl RuntimeController {
                                             },
                                         );
                                     }
-                                    if let Ok(request) =
-                                        rlogs_game_bpsr::decode_observed_automarker_request_into(
+                                    if let Some(request) =
+                                        live_automarker_bridge_evidence.observe_outbound_carrier(
                                             &pack,
-                                            payload,
+                                            record,
+                                            bridge_scene.as_ref(),
+                                            &bridge_mechanics,
                                             &mut automarker_request_decode_scratch,
                                         )
                                     {
@@ -10400,7 +10413,22 @@ impl RuntimeController {
                                             request.marker_number,
                                             record.observed_micros,
                                         );
+                                        live_automarker_native_bridge.accept_parser_evidence(
+                                            bridge_scene.as_ref(),
+                                            live_automarker_bridge_evidence.current(),
+                                        );
                                     }
+                                }
+                                if live_automarker_bridge_evidence.observe_correlated_empty_return(
+                                    &pack,
+                                    record,
+                                    bridge_scene.as_ref(),
+                                    &bridge_mechanics,
+                                ) {
+                                    live_automarker_native_bridge.accept_parser_evidence(
+                                        bridge_scene.as_ref(),
+                                        live_automarker_bridge_evidence.current(),
+                                    );
                                 }
                                 frame_protocol_observability
                                     .observe_protocol(&pack, record, status);
