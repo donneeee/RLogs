@@ -14,6 +14,7 @@ use rlogs_game_bpsr::{
     AutomarkerConfirmationObservationStamp, AutomarkerConfirmationRpcReturn,
     AutomarkerConfirmationState, AutomarkerConfirmationTcpObservation,
     AutomarkerConfirmationTcpTuple, AutomarkerRequestXyz, SingleMarkerXyzCanaryContext,
+    SingleMarkerXyzCanaryState, SingleMarkerXyzExternalSendOutcome,
 };
 
 use crate::automarker_confirmation_router::{
@@ -111,6 +112,8 @@ pub(crate) struct PrivateAutomarkerTcpObservation {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PrivateAutomarkerConfirmationAdapterState {
+    PreparedAwaitingModifiedSend,
+    ModifiedSendMayHaveBegun,
     Active,
     ConfirmationFailedAwaitingTransportRetirement,
     Complete,
@@ -137,6 +140,7 @@ pub(crate) struct PrivateAutomarkerConfirmationAdapter {
     binding: PrivateAutomarkerConfirmationBinding,
     rewrite_stamp: OwnedConfirmationStamp,
     last_stamp: OwnedConfirmationStamp,
+    pending_preparation_id: Option<u64>,
     state: PrivateAutomarkerConfirmationAdapterState,
 }
 
@@ -215,8 +219,158 @@ impl PrivateAutomarkerConfirmationAdapter {
             binding,
             rewrite_stamp,
             last_stamp: rewrite_stamp,
+            pending_preparation_id: None,
             state: PrivateAutomarkerConfirmationAdapterState::Active,
         })
+    }
+
+    /// Begins the same private clock/coordinator ownership before the worker
+    /// is allowed to attempt the modified send. Unlike [`Self::begin`], the
+    /// supplied builder must stop at `AwaitingExternalSend`; claiming a
+    /// successful send inside the builder is rejected.
+    pub(crate) fn begin_prepared(
+        binding: PrivateAutomarkerConfirmationBinding,
+        prepare: impl FnOnce(
+            &PrivateAutomarkerCoordinatorClockInputs,
+        ) -> Result<
+            (AutomarkerBridgeCoordinator, u64),
+            AutomarkerBridgeCoordinatorError,
+        >,
+    ) -> Result<Self, PrivateAutomarkerConfirmationAdapterError> {
+        if !binding.valid() {
+            return Err(PrivateAutomarkerConfirmationAdapterError::InvalidBinding);
+        }
+        let mut router = AutomarkerConfirmationRouter::begin_after_carrier(
+            binding.session_key.clone(),
+            binding.marker_number,
+            binding.carrier_capture_sequence,
+        )
+        .ok_or(PrivateAutomarkerConfirmationAdapterError::InvalidBinding)?;
+        let baseline_stamp = router
+            .stamp_now()
+            .map_err(PrivateAutomarkerConfirmationAdapterError::Router)?;
+        let rewrite_stamp = router
+            .stamp_now()
+            .map_err(PrivateAutomarkerConfirmationAdapterError::Router)?;
+        let inputs = PrivateAutomarkerCoordinatorClockInputs {
+            baseline_context: binding.context(
+                binding.baseline_runtime_revision,
+                baseline_stamp.observed_micros,
+            ),
+            baseline_stamp,
+            rewrite_context: binding.context(
+                binding.rewrite_runtime_revision,
+                rewrite_stamp.observed_micros,
+            ),
+            rewrite_stamp,
+        };
+        let (coordinator, preparation_id) =
+            prepare(&inputs).map_err(PrivateAutomarkerConfirmationAdapterError::Coordinator)?;
+        let state = coordinator.state();
+        if preparation_id == 0
+            || state.canary != SingleMarkerXyzCanaryState::AwaitingExternalSend
+            || state.confirmation.is_some()
+            || state.tcp_rewrite_obligation_active
+            || state.coordinator_error.is_some()
+            || coordinator.confirmation_binding().is_some()
+        {
+            return Err(
+                PrivateAutomarkerConfirmationAdapterError::CoordinatorNotAwaitingConfirmation,
+            );
+        }
+        Ok(Self {
+            router,
+            coordinator,
+            binding,
+            rewrite_stamp,
+            last_stamp: rewrite_stamp,
+            pending_preparation_id: Some(preparation_id),
+            state: PrivateAutomarkerConfirmationAdapterState::PreparedAwaitingModifiedSend,
+        })
+    }
+
+    pub(crate) fn cancel_prepared_send(
+        &mut self,
+        preparation_id: u64,
+    ) -> Result<
+        rlogs_game_bpsr::AutomarkerBridgePrepareDisposition,
+        PrivateAutomarkerConfirmationAdapterError,
+    > {
+        if self.state != PrivateAutomarkerConfirmationAdapterState::PreparedAwaitingModifiedSend
+            || self.pending_preparation_id != Some(preparation_id)
+        {
+            return self.fail(PrivateAutomarkerConfirmationAdapterError::EventAfterTerminal);
+        }
+        let disposition = self.coordinator.cancel(preparation_id);
+        self.pending_preparation_id = None;
+        self.state = PrivateAutomarkerConfirmationAdapterState::Failed;
+        Ok(disposition)
+    }
+
+    pub(crate) fn record_modified_send_may_begin(
+        &mut self,
+        preparation_id: u64,
+    ) -> Result<
+        rlogs_game_bpsr::AutomarkerBridgeCommitDisposition,
+        PrivateAutomarkerConfirmationAdapterError,
+    > {
+        if self.state != PrivateAutomarkerConfirmationAdapterState::PreparedAwaitingModifiedSend
+            || self.pending_preparation_id != Some(preparation_id)
+        {
+            return self.fail(PrivateAutomarkerConfirmationAdapterError::EventAfterTerminal);
+        }
+        let disposition = self
+            .coordinator
+            .record_modified_send_may_begin(preparation_id);
+        if disposition == rlogs_game_bpsr::AutomarkerBridgeCommitDisposition::Committed {
+            self.state = PrivateAutomarkerConfirmationAdapterState::ModifiedSendMayHaveBegun;
+        } else {
+            self.state = PrivateAutomarkerConfirmationAdapterState::Failed;
+        }
+        Ok(disposition)
+    }
+
+    pub(crate) fn commit_modified_send(
+        &mut self,
+        preparation_id: u64,
+        outcome: SingleMarkerXyzExternalSendOutcome,
+    ) -> Result<
+        rlogs_game_bpsr::AutomarkerBridgeCommitDisposition,
+        PrivateAutomarkerConfirmationAdapterError,
+    > {
+        if self.state != PrivateAutomarkerConfirmationAdapterState::ModifiedSendMayHaveBegun
+            || self.pending_preparation_id != Some(preparation_id)
+        {
+            return self.fail(PrivateAutomarkerConfirmationAdapterError::EventAfterTerminal);
+        }
+        let disposition = self.coordinator.commit(preparation_id, outcome);
+        self.pending_preparation_id = None;
+        if disposition != rlogs_game_bpsr::AutomarkerBridgeCommitDisposition::Committed {
+            self.state = PrivateAutomarkerConfirmationAdapterState::
+                ConfirmationFailedAwaitingTransportRetirement;
+            return Ok(disposition);
+        }
+        let Some(coordinator_binding) = self.coordinator.confirmation_binding() else {
+            return self
+                .fail(PrivateAutomarkerConfirmationAdapterError::CoordinatorBindingMismatch);
+        };
+        if coordinator_binding.marker_number != self.binding.marker_number
+            || !same_position_bits(
+                coordinator_binding.target_position,
+                self.binding.target_position,
+            )
+            || coordinator_binding.baseline_context.game_build != self.binding.game_build
+            || coordinator_binding.baseline_context.scene_family != self.binding.scene_family
+            || coordinator_binding.original_rpc_call_id != self.binding.carrier_rpc_call_id
+            || coordinator_binding.mapped_tcp_sequence_start
+                != self.binding.mapped_tcp_sequence_start
+            || coordinator_binding.mapped_tcp_length != self.binding.mapped_tcp_length
+        {
+            return self
+                .fail(PrivateAutomarkerConfirmationAdapterError::CoordinatorBindingMismatch);
+        }
+        self.state = PrivateAutomarkerConfirmationAdapterState::Active;
+        Ok(disposition)
     }
 
     pub(crate) fn state(&self) -> PrivateAutomarkerConfirmationAdapterState {
@@ -225,6 +379,64 @@ impl PrivateAutomarkerConfirmationAdapter {
 
     pub(crate) fn coordinator_state(&self) -> AutomarkerBridgeState {
         self.coordinator.state()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn prepare_outbound_packet(
+        &mut self,
+        connection_epoch: u64,
+        tcp_sequence_start: u32,
+        tcp_payload_offset: usize,
+        original_packet: &[u8],
+        address: rlogs_game_bpsr::AutomarkerWinDivertAddress,
+        runtime_revision: u64,
+        observation_age_millis: u64,
+    ) -> Result<
+        rlogs_game_bpsr::AutomarkerBridgePrepareDisposition,
+        PrivateAutomarkerConfirmationAdapterError,
+    > {
+        self.require_lifecycle_open()?;
+        let stamp = self
+            .router
+            .stamp_now()
+            .map_err(PrivateAutomarkerConfirmationAdapterError::Router)?;
+        self.validate_stamp(stamp)?;
+        let rewrite_context = self
+            .binding
+            .context(runtime_revision, stamp.observed_micros);
+        let canary_context = SingleMarkerXyzCanaryContext {
+            game_build: &self.binding.game_build,
+            current_scene_family: &self.binding.scene_family,
+            runtime_revision,
+            observation_monotonic_millis: stamp.observed_micros.saturating_add(999) / 1_000,
+            observation_age_millis,
+        };
+        Ok(self.coordinator.prepare(
+            connection_epoch,
+            tcp_sequence_start,
+            tcp_payload_offset,
+            original_packet,
+            address,
+            canary_context,
+            &rewrite_context,
+            stamp.observation_ordinal,
+        ))
+    }
+
+    pub(crate) fn invalidate_context(&mut self) {
+        if matches!(
+            self.state,
+            PrivateAutomarkerConfirmationAdapterState::PreparedAwaitingModifiedSend
+                | PrivateAutomarkerConfirmationAdapterState::ModifiedSendMayHaveBegun
+                | PrivateAutomarkerConfirmationAdapterState::Active
+        ) {
+            self.state = if self.coordinator.state().tcp_rewrite_obligation_active {
+                PrivateAutomarkerConfirmationAdapterState::
+                    ConfirmationFailedAwaitingTransportRetirement
+            } else {
+                PrivateAutomarkerConfirmationAdapterState::Failed
+            };
+        }
     }
 
     pub(crate) fn route_parser_snapshot(

@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 pub mod automarker_activation;
+mod automarker_active_coordinator;
 #[cfg(windows)]
 mod automarker_active_windivert;
 mod automarker_active_worker;
