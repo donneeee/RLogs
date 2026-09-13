@@ -2,6 +2,7 @@
 
 mod action_correlation;
 mod actor_presentation;
+mod automarker_bridge_coordinator;
 mod automarker_inline_transport;
 mod automarker_preset_sequence;
 mod automarker_request;
@@ -88,6 +89,11 @@ pub use action_correlation::{
 pub use actor_presentation::{
     ActorCombatIdentity, ActorCombatPresentation, resolve_actor_combat_identity,
     resolve_actor_combat_presentation, resolve_actor_profile_identity,
+};
+pub use automarker_bridge_coordinator::{
+    AutomarkerBridgeChecksumInput, AutomarkerBridgeCommitDisposition, AutomarkerBridgeCoordinator,
+    AutomarkerBridgeCoordinatorError, AutomarkerBridgeObservation, AutomarkerBridgeOriginalPacket,
+    AutomarkerBridgePrepareDisposition, AutomarkerBridgeState,
 };
 pub use automarker_inline_transport::{
     AUTOMARKER_WINDIVERT_ACTIVE_NETWORK_POLICY, AUTOMARKER_WINDIVERT_DISCOVERY_FLOW_POLICY,
