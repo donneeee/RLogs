@@ -12,6 +12,7 @@ const required = [
   "AUTOMARKER_WINDIVERT_X64_DRIVER_SHA256",
   'const OFFICIAL_VERSION: &str = "2.2.2"',
   "AUTOMARKER_WINDIVERT_VERSION != OFFICIAL_VERSION",
+  "AUTOMARKER_WINDIVERT_RELEASE_TAG_COMMIT != OFFICIAL_RELEASE_TAG_COMMIT",
   "DRIVER_SIGNER_THUMBPRINT",
   "approved_changed_packet: Option<&[u8]>",
   "HelperChangedUnexpectedPacketBytes",

@@ -258,8 +258,8 @@ fn tcp_checksum_valid(packet: &[u8]) -> Result<bool, AutomarkerWinDivertChecksum
 mod windows_helper {
     use super::*;
     use crate::{
-        AUTOMARKER_WINDIVERT_VERSION, AUTOMARKER_WINDIVERT_X64_DLL_SHA256,
-        AUTOMARKER_WINDIVERT_X64_DRIVER_SHA256,
+        AUTOMARKER_WINDIVERT_RELEASE_TAG_COMMIT, AUTOMARKER_WINDIVERT_VERSION,
+        AUTOMARKER_WINDIVERT_X64_DLL_SHA256, AUTOMARKER_WINDIVERT_X64_DRIVER_SHA256,
     };
     use sha2::{Digest, Sha256};
     use std::{ffi::c_void, fs, os::windows::ffi::OsStrExt, path::Path, process::Command};
@@ -270,6 +270,7 @@ mod windows_helper {
 
     const DLL_NAME: &str = "WinDivert.dll";
     const OFFICIAL_VERSION: &str = "2.2.2";
+    const OFFICIAL_RELEASE_TAG_COMMIT: &str = "1789526ecfb9ff5397c94f9f54c1a3dc2fb60440";
     const DRIVER_SIGNER_THUMBPRINT: &str = "043589F75FCE2795E7F2CC3E526D46784D5DDAB3";
     type CalcChecksumsFn =
         unsafe extern "system" fn(*mut c_void, u32, *mut AutomarkerWinDivertAddress, u64) -> u32;
@@ -295,7 +296,9 @@ mod windows_helper {
             // Its exact hash plus the reviewed release identity is the patch
             // version gate; a future live bridge must retain the existing
             // handle major/minor gate before capture is enabled.
-            if AUTOMARKER_WINDIVERT_VERSION != OFFICIAL_VERSION {
+            if AUTOMARKER_WINDIVERT_VERSION != OFFICIAL_VERSION
+                || AUTOMARKER_WINDIVERT_RELEASE_TAG_COMMIT != OFFICIAL_RELEASE_TAG_COMMIT
+            {
                 return Err("reviewed WinDivert release identity is not 2.2.2".into());
             }
             let signer = powershell_scalar(
