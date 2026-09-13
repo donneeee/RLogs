@@ -27,6 +27,18 @@ const MAC_LENGTH: usize = 32;
 const ENVELOPE_PREFIX_LENGTH: usize = IV_LENGTH + MAC_LENGTH;
 const AES_BLOCK_LENGTH: usize = 16;
 const MAX_ABS_MARKER_COORDINATE: f32 = 1_000_000.0;
+const OBSERVED_APPLICATION_LENGTH: usize = 161;
+const OBSERVED_NESTED_CALL_LENGTH: usize = 187;
+const OBSERVED_FRAME_UP_LENGTH: usize = 197;
+const FRAME_HEADER_LENGTH: usize = 6;
+const FRAME_UP_PREFIX_LENGTH: usize = 4;
+const CALL_ROUTE_HEADER_LENGTH: usize = 20;
+const COMPRESSION_FLAG: u16 = 0x8000;
+const FRAME_UP_FRAGMENT: u16 = 5;
+const CALL_FRAGMENT: u16 = 1;
+const WORLD_SERVICE_ID: u64 = 103_198_054;
+const WORLD_STUB_ID: u32 = 1;
+const USE_SLOT_METHOD_ID: u32 = 249_858;
 
 // Current observations prove continuity of these gameplay-envelope keys from
 // the reviewed source build. They authenticate only the captured marker
@@ -120,6 +132,35 @@ pub struct OfflineAutomarkerSubstitutionProof {
     pub packet_transmission_performed: bool,
 }
 
+/// Result of attempting an exact-layout substitution on a copied BPSR frame.
+///
+/// A rejected input always returns the original bytes byte-for-byte. This
+/// type is deliberately transport-agnostic: it has no packet, socket,
+/// interception, suppression, or process handle.
+#[derive(Debug, Clone, PartialEq)]
+pub enum OfflineAutomarkerFrameSubstitution {
+    Substituted {
+        frame: Vec<u8>,
+        proof: OfflineAutomarkerSubstitutionProof,
+    },
+    OriginalUnchanged {
+        frame: Vec<u8>,
+        reason: OfflineAutomarkerSubstitutionError,
+    },
+}
+
+impl OfflineAutomarkerFrameSubstitution {
+    pub fn frame(&self) -> &[u8] {
+        match self {
+            Self::Substituted { frame, .. } | Self::OriginalUnchanged { frame, .. } => frame,
+        }
+    }
+
+    pub fn was_substituted(&self) -> bool {
+        matches!(self, Self::Substituted { .. })
+    }
+}
+
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum OfflineAutomarkerSubstitutionError {
     #[error(transparent)]
@@ -134,6 +175,34 @@ pub enum OfflineAutomarkerSubstitutionError {
     UnexpectedByteChange,
     #[error("offline substitution did not decode to the requested marker and positions")]
     SubstitutedDecodeMismatch,
+    #[error("{layer} frame requires exactly {expected} bytes, got {actual}")]
+    UnexpectedFrameLength {
+        layer: &'static str,
+        expected: usize,
+        actual: usize,
+    },
+    #[error("{layer} frame declares {declared} bytes but contains {actual}")]
+    DeclaredFrameLengthMismatch {
+        layer: &'static str,
+        declared: usize,
+        actual: usize,
+    },
+    #[error("{layer} frame is compressed; only the retained uncompressed layout is supported")]
+    CompressedFrame { layer: &'static str },
+    #[error("{layer} has fragment {actual}, expected {expected}")]
+    UnexpectedFragment {
+        layer: &'static str,
+        expected: u16,
+        actual: u16,
+    },
+    #[error(
+        "nested call route is not exact World.UseSlot (service {service_id}, stub {stub_id}, method {method_id})"
+    )]
+    UnexpectedRoute {
+        service_id: u64,
+        stub_id: u32,
+        method_id: u32,
+    },
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -234,7 +303,134 @@ pub fn verify_offline_automarker_substitution(
     replacement_marker: u8,
     target_position: AutomarkerRequestXyz,
 ) -> Result<OfflineAutomarkerSubstitutionProof, OfflineAutomarkerSubstitutionError> {
-    if original.len() != 161 {
+    substitute_application(pack, original, replacement_marker, target_position)
+        .map(|(_, proof)| proof)
+}
+
+/// Purely substitutes one retained-layout, uncompressed BPSR `FrameUp` copy.
+///
+/// The accepted byte layout is exactly:
+/// `[FrameUp header][sequence:u32][Call header][World route][UseSlot body]`.
+/// Both frame lengths, both compression flags, both fragment kinds, the exact
+/// World service/stub/method route, the strict protobuf schema, and the HMAC +
+/// AES-CBC attribute envelope are validated before any copied output is
+/// returned as substituted. Any mismatch returns `OriginalUnchanged` with a
+/// byte-for-byte copy of the input.
+pub fn substitute_offline_automarker_frame(
+    pack: &ProtocolPack,
+    original: &[u8],
+    replacement_marker: u8,
+    target_position: AutomarkerRequestXyz,
+) -> OfflineAutomarkerFrameSubstitution {
+    match try_substitute_offline_automarker_frame(
+        pack,
+        original,
+        replacement_marker,
+        target_position,
+    ) {
+        Ok((frame, proof)) => OfflineAutomarkerFrameSubstitution::Substituted { frame, proof },
+        Err(reason) => OfflineAutomarkerFrameSubstitution::OriginalUnchanged {
+            frame: original.to_vec(),
+            reason,
+        },
+    }
+}
+
+fn try_substitute_offline_automarker_frame(
+    pack: &ProtocolPack,
+    original: &[u8],
+    replacement_marker: u8,
+    target_position: AutomarkerRequestXyz,
+) -> Result<(Vec<u8>, OfflineAutomarkerSubstitutionProof), OfflineAutomarkerSubstitutionError> {
+    validate_exact_frame(
+        original,
+        "outer FrameUp",
+        OBSERVED_FRAME_UP_LENGTH,
+        FRAME_UP_FRAGMENT,
+    )?;
+
+    let nested_start = FRAME_HEADER_LENGTH + FRAME_UP_PREFIX_LENGTH;
+    let nested = &original[nested_start..];
+    validate_exact_frame(
+        nested,
+        "nested Call",
+        OBSERVED_NESTED_CALL_LENGTH,
+        CALL_FRAGMENT,
+    )?;
+
+    let route = &nested[FRAME_HEADER_LENGTH..FRAME_HEADER_LENGTH + CALL_ROUTE_HEADER_LENGTH];
+    let service_id = u64::from_be_bytes(route[0..8].try_into().unwrap());
+    let stub_id = u32::from_be_bytes(route[8..12].try_into().unwrap());
+    // route[12..16] is the game-owned call ID. It is intentionally accepted
+    // as opaque session state and remains outside the mutable allowlist.
+    let method_id = u32::from_be_bytes(route[16..20].try_into().unwrap());
+    if (service_id, stub_id, method_id) != (WORLD_SERVICE_ID, WORLD_STUB_ID, USE_SLOT_METHOD_ID) {
+        return Err(OfflineAutomarkerSubstitutionError::UnexpectedRoute {
+            service_id,
+            stub_id,
+            method_id,
+        });
+    }
+
+    let application_start = nested_start + FRAME_HEADER_LENGTH + CALL_ROUTE_HEADER_LENGTH;
+    let application = &original[application_start..];
+    let (substituted_application, proof) =
+        substitute_application(pack, application, replacement_marker, target_position)?;
+
+    let mut substituted = original.to_vec();
+    substituted[application_start..].copy_from_slice(&substituted_application);
+    if substituted.len() != original.len()
+        || original[..application_start] != substituted[..application_start]
+    {
+        return Err(OfflineAutomarkerSubstitutionError::UnexpectedByteChange);
+    }
+    Ok((substituted, proof))
+}
+
+fn validate_exact_frame(
+    raw: &[u8],
+    layer: &'static str,
+    expected_length: usize,
+    expected_fragment: u16,
+) -> Result<(), OfflineAutomarkerSubstitutionError> {
+    if raw.len() != expected_length {
+        return Err(OfflineAutomarkerSubstitutionError::UnexpectedFrameLength {
+            layer,
+            expected: expected_length,
+            actual: raw.len(),
+        });
+    }
+    let declared = u32::from_be_bytes(raw[0..4].try_into().unwrap()) as usize;
+    if declared != raw.len() {
+        return Err(
+            OfflineAutomarkerSubstitutionError::DeclaredFrameLengthMismatch {
+                layer,
+                declared,
+                actual: raw.len(),
+            },
+        );
+    }
+    let raw_fragment = u16::from_be_bytes(raw[4..6].try_into().unwrap());
+    if raw_fragment & COMPRESSION_FLAG != 0 {
+        return Err(OfflineAutomarkerSubstitutionError::CompressedFrame { layer });
+    }
+    if raw_fragment != expected_fragment {
+        return Err(OfflineAutomarkerSubstitutionError::UnexpectedFragment {
+            layer,
+            expected: expected_fragment,
+            actual: raw_fragment,
+        });
+    }
+    Ok(())
+}
+
+fn substitute_application(
+    pack: &ProtocolPack,
+    original: &[u8],
+    replacement_marker: u8,
+    target_position: AutomarkerRequestXyz,
+) -> Result<(Vec<u8>, OfflineAutomarkerSubstitutionProof), OfflineAutomarkerSubstitutionError> {
+    if original.len() != OBSERVED_APPLICATION_LENGTH {
         return Err(
             OfflineAutomarkerSubstitutionError::UnexpectedApplicationLength {
                 actual: original.len(),
@@ -311,7 +507,7 @@ pub fn verify_offline_automarker_substitution(
 
     let (nested_call_length_bytes, outer_frame_up_length_bytes) =
         synthetic_uncompressed_observed_lengths(&substituted);
-    Ok(OfflineAutomarkerSubstitutionProof {
+    let proof = OfflineAutomarkerSubstitutionProof {
         original_application_length_bytes: original.len(),
         substituted_application_length_bytes: substituted.len(),
         nested_call_length_bytes,
@@ -324,7 +520,8 @@ pub fn verify_offline_automarker_substitution(
         current_position_bytes_identical,
         exact_build_decode_succeeded: true,
         packet_transmission_performed: false,
-    })
+    };
+    Ok((substituted, proof))
 }
 
 #[derive(Debug)]
@@ -1285,6 +1482,42 @@ mod tests {
         outer
     }
 
+    fn observed_frame(application: &[u8]) -> Vec<u8> {
+        let mut nested = Vec::with_capacity(OBSERVED_NESTED_CALL_LENGTH);
+        nested.extend_from_slice(&(OBSERVED_NESTED_CALL_LENGTH as u32).to_be_bytes());
+        nested.extend_from_slice(&CALL_FRAGMENT.to_be_bytes());
+        nested.extend_from_slice(&WORLD_SERVICE_ID.to_be_bytes());
+        nested.extend_from_slice(&WORLD_STUB_ID.to_be_bytes());
+        nested.extend_from_slice(&0x1234_5678_u32.to_be_bytes());
+        nested.extend_from_slice(&USE_SLOT_METHOD_ID.to_be_bytes());
+        nested.extend_from_slice(application);
+        assert_eq!(nested.len(), OBSERVED_NESTED_CALL_LENGTH);
+
+        let mut outer = Vec::with_capacity(OBSERVED_FRAME_UP_LENGTH);
+        outer.extend_from_slice(&(OBSERVED_FRAME_UP_LENGTH as u32).to_be_bytes());
+        outer.extend_from_slice(&FRAME_UP_FRAGMENT.to_be_bytes());
+        outer.extend_from_slice(&0x9abc_def0_u32.to_be_bytes());
+        outer.extend_from_slice(&nested);
+        assert_eq!(outer.len(), OBSERVED_FRAME_UP_LENGTH);
+        outer
+    }
+
+    fn assert_original_unchanged(
+        outcome: OfflineAutomarkerFrameSubstitution,
+        original: &[u8],
+        expected: impl FnOnce(&OfflineAutomarkerSubstitutionError) -> bool,
+    ) {
+        match outcome {
+            OfflineAutomarkerFrameSubstitution::OriginalUnchanged { frame, reason } => {
+                assert_eq!(frame, original);
+                assert!(expected(&reason), "unexpected rejection: {reason:?}");
+            }
+            OfflineAutomarkerFrameSubstitution::Substituted { .. } => {
+                panic!("invalid frame was substituted")
+            }
+        }
+    }
+
     #[test]
     fn exact_gate_rejects_neighbor_build_and_wrong_digest() {
         let current = current_pack(AUTOMARKER_REQUEST_BUILD);
@@ -1574,6 +1807,269 @@ mod tests {
             verify_offline_automarker_substitution(&current, &original, 7, target),
             Err(OfflineAutomarkerSubstitutionError::InvalidReplacementMarker)
         ));
+    }
+
+    #[test]
+    fn offline_frame_core_substitutes_all_six_markers_with_exact_byte_allowlist() {
+        let pack = current_pack(AUTOMARKER_REQUEST_BUILD);
+        let application_start = FRAME_HEADER_LENGTH
+            + FRAME_UP_PREFIX_LENGTH
+            + FRAME_HEADER_LENGTH
+            + CALL_ROUTE_HEADER_LENGTH;
+        let target = AutomarkerRequestXyz {
+            x: -321.25,
+            y: 42.5,
+            z: 765.125,
+        };
+
+        for replacement_marker in 1..=6 {
+            let carrier_marker = replacement_marker % 6 + 1;
+            let application = request(
+                carrier_marker,
+                [250.35721, 118.0, -64.2384, 250.49268],
+                [250.44351, 118.02, -61.48509, 250.49268],
+                1_789_176_498_286 + u64::from(replacement_marker),
+                607 + u64::from(replacement_marker),
+            );
+            let original = observed_frame(&application);
+            let local_spans = substitution_spans(&application).unwrap();
+            let allowed: Vec<usize> = local_spans
+                .mutable_ranges()
+                .flat_map(|range| {
+                    (application_start + range.start)..(application_start + range.end)
+                })
+                .collect();
+
+            let outcome =
+                substitute_offline_automarker_frame(&pack, &original, replacement_marker, target);
+            let (substituted, proof) = match outcome {
+                OfflineAutomarkerFrameSubstitution::Substituted { frame, proof } => (frame, proof),
+                OfflineAutomarkerFrameSubstitution::OriginalUnchanged { reason, .. } => {
+                    panic!("valid marker {replacement_marker} was rejected: {reason:?}")
+                }
+            };
+            assert_eq!(substituted.len(), original.len());
+            assert_eq!(
+                &substituted[..application_start],
+                &original[..application_start]
+            );
+            assert_eq!(proof.allowed_mutable_bytes, 16);
+            assert!(!proof.packet_transmission_performed);
+
+            let changed: Vec<usize> = original
+                .iter()
+                .zip(&substituted)
+                .enumerate()
+                .filter_map(|(index, (before, after))| (before != after).then_some(index))
+                .collect();
+            assert!(!changed.is_empty());
+            assert!(changed.iter().all(|index| allowed.contains(index)));
+            assert!(allowed.iter().all(|index| {
+                let local = index - application_start;
+                local_spans.slot_id.contains(&local)
+                    || local_spans.skill_id.contains(&local)
+                    || local_spans
+                        .target_position
+                        .iter()
+                        .take(3)
+                        .any(|range| range.contains(&local))
+            }));
+
+            let decoded = decode_observed_automarker_request_into(
+                &pack,
+                &substituted[application_start..],
+                &mut Vec::new(),
+            )
+            .unwrap();
+            assert_eq!(decoded.marker_number, replacement_marker);
+            assert_eq!(position_xyz(decoded.target_position), target);
+            assert_eq!(
+                position_xyz(decoded.current_position),
+                AutomarkerRequestXyz {
+                    x: 250.44351,
+                    y: 118.02,
+                    z: -61.48509,
+                }
+            );
+            assert_eq!(decoded.target_position.heading_degrees, 250.49268);
+        }
+    }
+
+    #[test]
+    fn offline_frame_core_rejects_malformed_compressed_wrong_route_and_wrong_auth_unchanged() {
+        let pack = current_pack(AUTOMARKER_REQUEST_BUILD);
+        let application = request(
+            1,
+            [1.0, 2.0, 3.0, 4.0],
+            [5.0, 6.0, 7.0, 8.0],
+            1_789_176_498_286,
+            607,
+        );
+        let original = observed_frame(&application);
+        let target = AutomarkerRequestXyz {
+            x: 9.0,
+            y: 10.0,
+            z: 11.0,
+        };
+
+        let truncated = &original[..original.len() - 1];
+        assert_original_unchanged(
+            substitute_offline_automarker_frame(&pack, truncated, 2, target),
+            truncated,
+            |reason| {
+                matches!(
+                    reason,
+                    OfflineAutomarkerSubstitutionError::UnexpectedFrameLength {
+                        layer: "outer FrameUp",
+                        ..
+                    }
+                )
+            },
+        );
+
+        let mut wrong_declared_length = original.clone();
+        wrong_declared_length[..4].copy_from_slice(&196_u32.to_be_bytes());
+        assert_original_unchanged(
+            substitute_offline_automarker_frame(&pack, &wrong_declared_length, 2, target),
+            &wrong_declared_length,
+            |reason| {
+                matches!(
+                    reason,
+                    OfflineAutomarkerSubstitutionError::DeclaredFrameLengthMismatch {
+                        layer: "outer FrameUp",
+                        ..
+                    }
+                )
+            },
+        );
+
+        for (offset, layer) in [(4, "outer FrameUp"), (10 + 4, "nested Call")] {
+            let mut compressed = original.clone();
+            let fragment = u16::from_be_bytes(compressed[offset..offset + 2].try_into().unwrap());
+            compressed[offset..offset + 2]
+                .copy_from_slice(&(fragment | COMPRESSION_FLAG).to_be_bytes());
+            assert_original_unchanged(
+                substitute_offline_automarker_frame(&pack, &compressed, 2, target),
+                &compressed,
+                |reason| {
+                    matches!(
+                        reason,
+                        OfflineAutomarkerSubstitutionError::CompressedFrame { layer: actual }
+                            if *actual == layer
+                    )
+                },
+            );
+        }
+
+        let mut wrong_fragment = original.clone();
+        wrong_fragment[14..16].copy_from_slice(&2_u16.to_be_bytes());
+        assert_original_unchanged(
+            substitute_offline_automarker_frame(&pack, &wrong_fragment, 2, target),
+            &wrong_fragment,
+            |reason| {
+                matches!(
+                    reason,
+                    OfflineAutomarkerSubstitutionError::UnexpectedFragment {
+                        layer: "nested Call",
+                        ..
+                    }
+                )
+            },
+        );
+
+        let mut wrong_route = original.clone();
+        let route_start = 10 + FRAME_HEADER_LENGTH;
+        wrong_route[route_start..route_start + 8]
+            .copy_from_slice(&(WORLD_SERVICE_ID + 1).to_be_bytes());
+        assert_original_unchanged(
+            substitute_offline_automarker_frame(&pack, &wrong_route, 2, target),
+            &wrong_route,
+            |reason| {
+                matches!(
+                    reason,
+                    OfflineAutomarkerSubstitutionError::UnexpectedRoute { .. }
+                )
+            },
+        );
+
+        let application_start = 10 + FRAME_HEADER_LENGTH + CALL_ROUTE_HEADER_LENGTH;
+        let spans = substitution_spans(&application).unwrap();
+        let mut wrong_auth = original.clone();
+        wrong_auth[application_start + spans.authenticated_envelope.start + IV_LENGTH] ^= 1;
+        assert_original_unchanged(
+            substitute_offline_automarker_frame(&pack, &wrong_auth, 2, target),
+            &wrong_auth,
+            |reason| {
+                matches!(
+                    reason,
+                    OfflineAutomarkerSubstitutionError::Decode(
+                        AutomarkerRequestDecodeError::MacMismatch
+                    )
+                )
+            },
+        );
+    }
+
+    #[test]
+    fn offline_frame_core_keeps_protocol_identity_and_replacement_domain_fail_closed() {
+        let current = current_pack(AUTOMARKER_REQUEST_BUILD);
+        let neighbor = current_pack("25247557");
+        let original = observed_frame(&request(
+            1,
+            [1.0, 2.0, 3.0, 4.0],
+            [5.0, 6.0, 7.0, 8.0],
+            1_789_176_498_286,
+            607,
+        ));
+        let target = AutomarkerRequestXyz {
+            x: 9.0,
+            y: 10.0,
+            z: 11.0,
+        };
+
+        assert_original_unchanged(
+            substitute_offline_automarker_frame(&neighbor, &original, 2, target),
+            &original,
+            |reason| {
+                matches!(
+                    reason,
+                    OfflineAutomarkerSubstitutionError::Decode(
+                        AutomarkerRequestDecodeError::UnsupportedProtocolIdentity
+                    )
+                )
+            },
+        );
+        assert_original_unchanged(
+            substitute_offline_automarker_frame(&current, &original, 0, target),
+            &original,
+            |reason| {
+                matches!(
+                    reason,
+                    OfflineAutomarkerSubstitutionError::InvalidReplacementMarker
+                )
+            },
+        );
+        assert_original_unchanged(
+            substitute_offline_automarker_frame(
+                &current,
+                &original,
+                2,
+                AutomarkerRequestXyz {
+                    x: f32::NAN,
+                    y: 10.0,
+                    z: 11.0,
+                },
+            ),
+            &original,
+            |reason| {
+                matches!(
+                    reason,
+                    OfflineAutomarkerSubstitutionError::Decode(
+                        AutomarkerRequestDecodeError::InvalidPosition { field: 1 }
+                    )
+                )
+            },
+        );
     }
 
     #[test]

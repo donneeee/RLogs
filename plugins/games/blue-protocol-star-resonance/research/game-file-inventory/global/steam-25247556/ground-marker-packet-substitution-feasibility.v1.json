@@ -192,8 +192,19 @@
   },
   "offline_substitution_verifier": {
     "implemented": true,
-    "input_fixture": "synthetic exact-schema 161-byte request",
-    "returns_substituted_bytes": false,
+    "complete_bpsr_frame_substitution_core_implemented": true,
+    "input_fixture": "synthetic exact retained-v3 uncompressed 197-byte FrameUp layout containing the exact-schema 161-byte request",
+    "returns_substituted_bytes": true,
+    "rejected_input_disposition": "returns an owned byte-for-byte copy of the original input with a typed failure reason",
+    "validated_before_substitution": [
+      "exact build and reviewed protocol-pack digest",
+      "outer FrameUp total length, compression flag, and fragment",
+      "single nested Call total length, compression flag, and fragment",
+      "World service 103198054, stub 1, and UseSlot method 249858",
+      "strict World.Types.UseSlot and UseSlotRequest protobuf layouts",
+      "paired marker slot and skill identity",
+      "authenticated attribute envelope HMAC, AES-CBC padding, plaintext schema, and timestamp binding"
+    ],
     "mutable_fields": [
       "UseSlotRequest.slot_id value bytes",
       "UseSkillParam.skill_id value bytes",
@@ -207,9 +218,13 @@
     "all_other_application_bytes_identical": true,
     "exact_build_decode_after_substitution": true,
     "verified_length_stack_bytes": [161, 187, 197],
+    "all_six_marker_substitutions_tested": true,
+    "malformed_truncated_compressed_wrong_route_wrong_auth_fail_closed_tested": true,
+    "complete_frame_byte_diff_allowlist_tested": true,
     "network_capture_dependency": false,
     "packet_api_dependency": false,
-    "transport_or_sender_available": false
+    "transport_or_sender_available": false,
+    "live_interception_suppression_retransmission_or_checksum_behavior_available": false
   },
   "next_non_invasive_evidence": {
     "source": "already-retained private current-build capture only",

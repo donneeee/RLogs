@@ -87,9 +87,10 @@ pub use actor_presentation::{
 pub use automarker_request::{
     AUTOMARKER_REQUEST_BUILD, AUTOMARKER_REQUEST_PACK_DIGEST, AutomarkerRequestAttributes,
     AutomarkerRequestDecodeError, AutomarkerRequestPosition, AutomarkerRequestXyz,
-    ObservedAutomarkerRequest, ObservedUseSlotCurrentPosition, OfflineAutomarkerSubstitutionError,
-    OfflineAutomarkerSubstitutionProof, decode_observed_automarker_request_into,
-    decode_observed_use_slot_current_position_into, supports_observed_automarker_requests,
+    ObservedAutomarkerRequest, ObservedUseSlotCurrentPosition, OfflineAutomarkerFrameSubstitution,
+    OfflineAutomarkerSubstitutionError, OfflineAutomarkerSubstitutionProof,
+    decode_observed_automarker_request_into, decode_observed_use_slot_current_position_into,
+    substitute_offline_automarker_frame, supports_observed_automarker_requests,
     verify_offline_automarker_substitution,
 };
 pub use auxiliary_action_presentation::{
