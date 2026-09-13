@@ -326,6 +326,7 @@ struct MechanicsMapFeedState {
     native_scene_active: bool,
     native_scene: Option<(i32, u32, Option<String>)>,
     reconciled_scene: Option<(i32, u32, Option<String>)>,
+    reconciled_scene_observed: bool,
 }
 
 impl MechanicsMapFeed {
@@ -340,10 +341,11 @@ impl MechanicsMapFeed {
         if snapshot.revision <= current.snapshot.revision {
             snapshot.revision = current.snapshot.revision.saturating_add(1);
         }
-        if current.reconciled_scene.is_none()
+        if !current.reconciled_scene_observed
             && let (Some(scene_id), Some(map_id)) = (snapshot.scene_id, snapshot.map_id)
         {
             current.reconciled_scene = Some((scene_id, map_id, snapshot.scene_name.clone()));
+            current.reconciled_scene_observed = true;
         }
         current.snapshot = snapshot;
         self.changed.notify_all();
@@ -369,8 +371,10 @@ impl MechanicsMapFeed {
         if active {
             if let Some(native) = state.native_scene.clone() {
                 state.reconciled_scene = Some(native);
+                state.reconciled_scene_observed = true;
             } else if state.reconciled_scene == previous_native {
                 state.reconciled_scene = None;
+                state.reconciled_scene_observed = true;
             }
         } else if state.reconciled_scene == previous_native {
             state.reconciled_scene = state
@@ -378,6 +382,7 @@ impl MechanicsMapFeed {
                 .scene_id
                 .zip(state.snapshot.map_id)
                 .map(|(scene_id, map_id)| (scene_id, map_id, state.snapshot.scene_name.clone()));
+            state.reconciled_scene_observed = state.reconciled_scene.is_some();
         }
         state.snapshot.revision = state.snapshot.revision.saturating_add(1);
         self.changed.notify_all();
@@ -388,10 +393,11 @@ impl MechanicsMapFeed {
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if state.reconciled_scene == scene {
+        if state.reconciled_scene_observed && state.reconciled_scene == scene {
             return;
         }
         state.reconciled_scene = scene;
+        state.reconciled_scene_observed = true;
         state.snapshot.revision = state.snapshot.revision.saturating_add(1);
         self.changed.notify_all();
     }
@@ -407,6 +413,7 @@ impl MechanicsMapFeed {
             ..MechanicsMapSnapshot::default()
         };
         state.reconciled_scene = None;
+        state.reconciled_scene_observed = false;
         state.native_scene_active = false;
         state.native_scene = None;
         self.changed.notify_all();
@@ -452,7 +459,7 @@ impl MechanicsMapFeed {
 
 fn effective_snapshot(state: &MechanicsMapFeedState) -> MechanicsMapSnapshot {
     let mut snapshot = state.snapshot.clone();
-    if let Some(scene) = state.reconciled_scene.as_ref() {
+    if state.reconciled_scene_observed && let Some(scene) = state.reconciled_scene.as_ref() {
         let identity_changed =
             snapshot.scene_id != Some(scene.0) || snapshot.map_id != Some(scene.1);
         snapshot.scene_id = Some(scene.0);
@@ -477,7 +484,9 @@ fn effective_snapshot(state: &MechanicsMapFeedState) -> MechanicsMapSnapshot {
             snapshot.mechanics.clear();
             snapshot.markers.clear();
         }
-    } else if state.native_scene_active && state.native_scene.is_none() {
+    } else if state.reconciled_scene_observed
+        || (state.native_scene_active && state.native_scene.is_none())
+    {
         snapshot.scene_id = None;
         snapshot.map_id = None;
         snapshot.scene_name = None;
@@ -633,6 +642,25 @@ impl MechanicsMapProjector {
         }
         self.scene_id = Some(scene_id);
         self.map_id = Some(map_id);
+        self.entities.clear();
+        self.attack_targets.clear();
+        self.target_statuses.clear();
+        self.resource_values.clear();
+        self.signals.clear();
+        self.markers.clear();
+        self.local_markers.clear();
+        self.dungeon = None;
+        self.data_gap = None;
+        self.revision = self.revision.saturating_add(1);
+        true
+    }
+
+    pub fn clear_scene(&mut self) -> bool {
+        if self.scene_id.is_none() && self.map_id.is_none() {
+            return false;
+        }
+        self.scene_id = None;
+        self.map_id = None;
         self.entities.clear();
         self.attack_targets.clear();
         self.target_statuses.clear();

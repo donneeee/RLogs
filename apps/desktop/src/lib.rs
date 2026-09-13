@@ -111,6 +111,12 @@ use rlogs_events::{
     EventEnvelope, EventTopic, EvidenceSource, RegionContext, RegionEvidence, RegionEvidenceKind,
     RegionIdentity, RunState, TimelineEventKind,
 };
+#[cfg(test)]
+use rlogs_game_bpsr::{
+    AUTOMARKER_REQUEST_BUILD, AUTOMARKER_REQUEST_PACK_DIGEST, BUNDLED_RUN_RULE_CLIENT_BUILD,
+    BUNDLED_RUN_RULE_DEPLOYMENT_ID, BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+    bundled_run_reducer_config,
+};
 use rlogs_game_bpsr::{
     AllowedDataDomain, BPSR_GAME_PLUGIN_ID, BpsrRemoteFactorLearner, BpsrRemoteFactorTimeline,
     BpsrSceneRunIdentity, BpsrStateDamageContributionProjector, CaptureRecord, CaptureRecordKind,
@@ -140,11 +146,6 @@ use rlogs_game_bpsr::{
     state_damage_contribution_target_matches, status_effect_display_presentation_for_identity,
     status_effect_presentation, stimen_floor_encounter_kind, weapon_level_presentation,
     weapon_presentation,
-};
-#[cfg(test)]
-use rlogs_game_bpsr::{
-    BUNDLED_RUN_RULE_CLIENT_BUILD, BUNDLED_RUN_RULE_DEPLOYMENT_ID,
-    BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST, bundled_run_reducer_config,
 };
 use rlogs_log_format::{RlogHeader, RlogLimits, RlogReader, RlogReplaySummary};
 use rlogs_plugin_api::{PluginCapability, PluginDependency, PluginRuntime, PluginWorkspaceTabKind};
@@ -1982,6 +1983,10 @@ struct LiveCombatFeedState {
     /// observer. Snapshot publication must not let an older packet scene mask
     /// a later exact transition.
     reconciled_scene_id: Option<i32>,
+    /// Distinguishes an explicitly observed unknown scene from the absence of
+    /// any scene override. Without this bit, a scene-less world transition
+    /// leaves the previous snapshot's scene visible indefinitely.
+    reconciled_scene_observed: bool,
 }
 
 #[cfg(windows)]
@@ -2023,10 +2028,12 @@ impl LiveCombatFeed {
         if active {
             if let Some(scene) = scene {
                 state.reconciled_scene_id = Some(scene.scene_id);
+                state.reconciled_scene_observed = true;
             } else if previous_native
                 .is_some_and(|scene| state.reconciled_scene_id == Some(scene.scene_id))
             {
                 state.reconciled_scene_id = None;
+                state.reconciled_scene_observed = true;
             }
         }
         state.revision = state.revision.saturating_add(1);
@@ -2034,15 +2041,16 @@ impl LiveCombatFeed {
         self.changed.notify_all();
     }
 
-    fn reconcile_scene(&self, scene_id: i32) {
+    fn reconcile_scene(&self, scene_id: Option<i32>) {
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if state.reconciled_scene_id == Some(scene_id) {
+        if state.reconciled_scene_observed && state.reconciled_scene_id == scene_id {
             return;
         }
-        state.reconciled_scene_id = Some(scene_id);
+        state.reconciled_scene_id = scene_id;
+        state.reconciled_scene_observed = true;
         state.revision = state.revision.saturating_add(1);
         state.activity_revision = state.activity_revision.saturating_add(1);
         self.changed.notify_all();
@@ -2098,6 +2106,7 @@ impl LiveCombatFeed {
             state.ambient_active_micros = 0;
             state.ambient_last_damage_micros = None;
             state.reconciled_scene_id = None;
+            state.reconciled_scene_observed = false;
         }
         state.snapshot = snapshot;
         state.run_projection = run_projection;
@@ -2197,8 +2206,8 @@ impl LiveCombatFeed {
     fn update(state: &LiveCombatFeedState) -> LiveCombatUpdate {
         let mut snapshot = state.snapshot.clone();
         if let Some(snapshot) = snapshot.as_mut() {
-            if let Some(scene_id) = state.reconciled_scene_id {
-                snapshot.scene_id = Some(scene_id);
+            if state.reconciled_scene_observed {
+                snapshot.scene_id = state.reconciled_scene_id;
             } else {
                 #[cfg(windows)]
                 if state.native_scene_active && state.native_scene.is_none() {
@@ -6038,6 +6047,15 @@ impl AutomarkerSceneContextFeed {
         state.current = next;
     }
 
+    fn clear_scene(&self) {
+        let mut state = self
+            .context
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.packet = None;
+        state.current = None;
+    }
+
     fn observe(
         &self,
         event: &CanonicalEvent,
@@ -6046,20 +6064,22 @@ impl AutomarkerSceneContextFeed {
         protocol_pack_digest: &str,
         scene_families: &BTreeMap<i32, String>,
     ) {
-        let (scene_id, map_id) = match event {
-            CanonicalEvent::WorldChanged(world) => (world.scene_id, world.map_id),
+        let identity = match event {
+            CanonicalEvent::WorldChanged(world) => live_world_scene_identity(world),
             CanonicalEvent::Timeline(timeline) => match &timeline.kind {
                 TimelineEventKind::RunBoundary {
                     scene_id: Some(scene_id),
                     ..
-                } => (Some(*scene_id), u32::try_from(scene_id.0).ok()),
+                } => u32::try_from(scene_id.0)
+                    .ok()
+                    .map(|map_id| (scene_id.0, map_id)),
                 _ => return,
             },
             _ => return,
         };
-        let next = scene_id.zip(map_id).and_then(|(scene_id, map_id)| {
+        let next = identity.and_then(|(scene_id, map_id)| {
             automarker_scene_context(
-                scene_id.0,
+                scene_id,
                 map_id,
                 deployment_id,
                 client_build,
@@ -6122,7 +6142,7 @@ fn reconcile_live_scene(
     runtime: LiveSceneRuntimeContext<'_>,
     consumers: LiveSceneConsumers<'_>,
 ) -> bool {
-    consumers.combat_feed.reconcile_scene(scene_id);
+    consumers.combat_feed.reconcile_scene(Some(scene_id));
     consumers.automarker_feed.reconcile_scene(
         scene_id,
         map_id,
@@ -6148,6 +6168,41 @@ fn reconcile_live_scene(
         .mechanics_feed
         .reconcile_scene_presentation(Some((scene_id, map_id, scene_name)));
     mechanics_dirty
+}
+
+fn live_world_scene_identity(world: &rlogs_events::WorldContext) -> Option<(i32, u32)> {
+    let scene_id = world
+        .scene_id
+        .map(|scene_id| scene_id.0)
+        .or_else(|| world.map_id.and_then(|map_id| i32::try_from(map_id).ok()))?;
+    if scene_id <= 0 {
+        return None;
+    }
+    let map_id = world
+        .map_id
+        .or_else(|| u32::try_from(scene_id).ok())
+        .filter(|map_id| *map_id > 0)?;
+    Some((scene_id, map_id))
+}
+
+fn clear_live_scene(consumers: LiveSceneConsumers<'_>) -> bool {
+    consumers.combat_feed.reconcile_scene(None);
+    consumers.automarker_feed.clear_scene();
+    let mechanics_dirty = consumers.mechanics_projector.clear_scene();
+    consumers.mechanics_feed.reconcile_scene_presentation(None);
+    mechanics_dirty
+}
+
+fn reconcile_live_world(
+    world: &rlogs_events::WorldContext,
+    runtime: LiveSceneRuntimeContext<'_>,
+    consumers: LiveSceneConsumers<'_>,
+) -> bool {
+    if let Some((scene_id, map_id)) = live_world_scene_identity(world) {
+        reconcile_live_scene(scene_id, map_id, runtime, consumers)
+    } else {
+        clear_live_scene(consumers)
+    }
 }
 
 fn automarker_scene_family_id(scene_id: i32, identity: &BpsrSceneRunIdentity) -> Option<String> {
@@ -10231,27 +10286,22 @@ impl RuntimeController {
                                         .reconcile_context(current_context.as_ref());
                                 }
                                 if event.event.topic() == EventTopic::World {
-                                    if let CanonicalEvent::WorldChanged(world) = &event.event
-                                        && let Some(scene_id) = world.scene_id
-                                        && let Some(map_id) = world.map_id
-                                    {
-                                        mechanics_map_dirty |= reconcile_live_scene(
-                                            scene_id.0,
-                                            map_id,
-                                            LiveSceneRuntimeContext {
-                                                deployment_id: &automarker_deployment_id,
-                                                client_build: &automarker_client_build,
-                                                protocol_pack_digest:
-                                                    &automarker_protocol_pack_digest,
-                                                scene_families: &automarker_scene_families,
-                                            },
-                                            LiveSceneConsumers {
-                                                combat_feed: &live_combat_feed,
-                                                automarker_feed: &live_automarker_scene_context,
-                                                mechanics_projector: &mut live_mechanics_map,
-                                                mechanics_feed: &live_mechanics_map_feed,
-                                            },
-                                        );
+                                    if let CanonicalEvent::WorldChanged(world) = &event.event {
+                                        let runtime = LiveSceneRuntimeContext {
+                                            deployment_id: &automarker_deployment_id,
+                                            client_build: &automarker_client_build,
+                                            protocol_pack_digest:
+                                                &automarker_protocol_pack_digest,
+                                            scene_families: &automarker_scene_families,
+                                        };
+                                        let consumers = LiveSceneConsumers {
+                                            combat_feed: &live_combat_feed,
+                                            automarker_feed: &live_automarker_scene_context,
+                                            mechanics_projector: &mut live_mechanics_map,
+                                            mechanics_feed: &live_mechanics_map_feed,
+                                        };
+                                        mechanics_map_dirty |=
+                                            reconcile_live_world(world, runtime, consumers);
                                     }
                                     last_world_context_event = Some(event.clone());
                                     live_scene_changed |=
@@ -18429,12 +18479,12 @@ mod tests {
             deployment_id: "global".into(),
             region_id: "global".into(),
             world_id: None,
-            client_build: "25247556".into(),
-            protocol_pack_digest: BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into(),
+            client_build: AUTOMARKER_REQUEST_BUILD.into(),
+            protocol_pack_digest: AUTOMARKER_REQUEST_PACK_DIGEST.into(),
             rdps_status: "unavailable".into(),
             encounter_id: None,
             encounter_state: None,
-            scene_id: Some(6_515),
+            scene_id: Some(6_525),
             event_count: 0,
             data_gap_count: 0,
             combat_window_count: 0,
@@ -18462,19 +18512,28 @@ mod tests {
         let automarker = AutomarkerSceneContextFeed::default();
         let mechanics_feed = MechanicsMapFeed::default();
         let mut mechanics = MechanicsMapProjector::default();
-        mechanics.reset("live", "25247556");
-        let families = BTreeMap::from([
-            (6_515, "mech-facility".to_owned()),
-            (6_565, "sea-ringed-reef".to_owned()),
-        ]);
+        mechanics.reset("live", AUTOMARKER_REQUEST_BUILD);
+        let families = bundled_scene_run_identities()
+            .unwrap()
+            .into_iter()
+            .filter_map(|(scene_id, identity)| {
+                automarker_scene_family_id(scene_id, &identity)
+                    .map(|family_id| (scene_id, family_id))
+            })
+            .collect::<BTreeMap<_, _>>();
 
-        assert!(reconcile_live_scene(
-            6_515,
-            6_515,
+        assert!(reconcile_live_world(
+            &WorldContext {
+                scene_id: Some(SceneId(6_525)),
+                map_id: Some(6_525),
+                line_id: Some(1),
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            },
             LiveSceneRuntimeContext {
                 deployment_id: "global",
-                client_build: "25247556",
-                protocol_pack_digest: BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+                client_build: AUTOMARKER_REQUEST_BUILD,
+                protocol_pack_digest: AUTOMARKER_REQUEST_PACK_DIGEST,
                 scene_families: &families,
             },
             LiveSceneConsumers {
@@ -18484,18 +18543,31 @@ mod tests {
                 mechanics_feed: &mechanics_feed,
             },
         ));
-        assert_eq!(combat.current().snapshot.unwrap().scene_id, Some(6_515));
-        assert_eq!(automarker.current().unwrap().scene_id, 6_515);
-        assert_eq!(mechanics.snapshot().scene_id, Some(6_515));
-        assert_eq!(mechanics_feed.current().snapshot.scene_id, Some(6_515));
+        let initial = present_live_combat_update(combat.current());
+        assert_eq!(initial.encounter_presentation.scene_id, Some(6_525));
+        assert_eq!(
+            initial.encounter_presentation.scene_name.as_deref(),
+            Some("Chaotic - Mech Facility")
+        );
+        assert_eq!(
+            automarker.current().unwrap().activity_family_id,
+            "mech-facility"
+        );
+        assert_eq!(mechanics.snapshot().scene_id, Some(6_525));
+        assert_eq!(mechanics_feed.current().snapshot.scene_id, Some(6_525));
 
-        assert!(reconcile_live_scene(
-            6_565,
-            6_565,
+        assert!(reconcile_live_world(
+            &WorldContext {
+                scene_id: Some(SceneId(6_565)),
+                map_id: Some(6_565),
+                line_id: Some(2),
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            },
             LiveSceneRuntimeContext {
                 deployment_id: "global",
-                client_build: "25247556",
-                protocol_pack_digest: BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+                client_build: AUTOMARKER_REQUEST_BUILD,
+                protocol_pack_digest: AUTOMARKER_REQUEST_PACK_DIGEST,
                 scene_families: &families,
             },
             LiveSceneConsumers {
@@ -18506,10 +18578,75 @@ mod tests {
             },
         ));
 
-        assert_eq!(combat.current().snapshot.unwrap().scene_id, Some(6_565));
-        assert_eq!(automarker.current().unwrap().scene_id, 6_565);
+        let reef = present_live_combat_update(combat.current());
+        assert_eq!(reef.encounter_presentation.scene_id, Some(6_565));
+        assert_eq!(
+            reef.encounter_presentation.scene_name.as_deref(),
+            Some("Chaotic - Sea-Ringed Reef")
+        );
+        let reef_automarker = automarker.current().unwrap();
+        assert_eq!(reef_automarker.scene_id, 6_565);
+        assert_eq!(reef_automarker.activity_family_id, "sea-ringed-reef");
         assert_eq!(mechanics.snapshot().scene_id, Some(6_565));
         assert_eq!(mechanics_feed.current().snapshot.scene_id, Some(6_565));
+
+        assert!(reconcile_live_world(
+            &WorldContext {
+                scene_id: None,
+                map_id: None,
+                line_id: Some(3),
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            },
+            LiveSceneRuntimeContext {
+                deployment_id: "global",
+                client_build: AUTOMARKER_REQUEST_BUILD,
+                protocol_pack_digest: AUTOMARKER_REQUEST_PACK_DIGEST,
+                scene_families: &families,
+            },
+            LiveSceneConsumers {
+                combat_feed: &combat,
+                automarker_feed: &automarker,
+                mechanics_projector: &mut mechanics,
+                mechanics_feed: &mechanics_feed,
+            },
+        ));
+        let unknown = present_live_combat_update(combat.current());
+        assert_eq!(unknown.encounter_presentation.scene_id, None);
+        assert_eq!(unknown.encounter_presentation.scene_name, None);
+        assert_eq!(automarker.current(), None);
+        assert_eq!(mechanics.snapshot().scene_id, None);
+        assert_eq!(mechanics_feed.current().snapshot.scene_id, None);
+    }
+
+    #[test]
+    fn scene_only_world_evidence_advances_and_unknown_world_clears_every_consumer() {
+        let scene_only = WorldContext {
+            scene_id: Some(SceneId(6_565)),
+            map_id: None,
+            line_id: Some(1),
+            scene_instance_id: None,
+            dungeon_instance_id: None,
+        };
+        assert_eq!(live_world_scene_identity(&scene_only), Some((6_565, 6_565)));
+        let map_only = WorldContext {
+            scene_id: None,
+            map_id: Some(6_565),
+            line_id: Some(1),
+            scene_instance_id: None,
+            dungeon_instance_id: None,
+        };
+        assert_eq!(live_world_scene_identity(&map_only), Some((6_565, 6_565)));
+        assert_eq!(
+            live_world_scene_identity(&WorldContext {
+                scene_id: None,
+                map_id: None,
+                line_id: Some(2),
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            }),
+            None
+        );
     }
 
     #[cfg(windows)]
@@ -18768,7 +18905,7 @@ mod tests {
         );
         packet_snapshot = feed.current().snapshot.unwrap();
         packet_snapshot.scene_id = Some(6_561);
-        feed.reconcile_scene(6_561);
+        feed.reconcile_scene(Some(6_561));
         feed.publish(Some(packet_snapshot));
         assert_eq!(feed.current().snapshot.unwrap().scene_id, Some(6_561));
         feed.set_native_scene_presentation(true, None);
