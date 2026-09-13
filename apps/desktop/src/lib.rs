@@ -18029,11 +18029,71 @@ mod tests {
     #[test]
     fn exact_scene_reconciliation_converges_live_consumers() {
         let combat = LiveCombatFeed::default();
+        combat.publish(Some(CombatTimelineSnapshot {
+            schema_version: 1,
+            session_id: "live".into(),
+            deployment_id: "global".into(),
+            region_id: "global".into(),
+            world_id: None,
+            client_build: "25247556".into(),
+            protocol_pack_digest: BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST.into(),
+            rdps_status: "unavailable".into(),
+            encounter_id: None,
+            encounter_state: None,
+            scene_id: Some(6_515),
+            event_count: 0,
+            data_gap_count: 0,
+            combat_window_count: 0,
+            combat_active: false,
+            last_hostile_micros: None,
+            latest_event_micros: None,
+            combat_inactivity_timeout_micros: 0,
+            combat_started_micros: None,
+            combat_ended_micros: None,
+            active_combat_micros: 0,
+            attempt_elapsed_micros: None,
+            attempt_damage_elapsed_micros: None,
+            encounter_elapsed_micros: None,
+            encounter_terminal_micros: None,
+            run_terminal_micros: None,
+            run_elapsed_micros: None,
+            game_time_micros: None,
+            true_time_micros: None,
+            closed_at_log_end: false,
+            rdps_damage_influences: Vec::new(),
+            rdps_damage_influences_truncated: false,
+            rdps_effect_presentations: Vec::new(),
+            actors: Vec::new(),
+        }));
         let automarker = AutomarkerSceneContextFeed::default();
         let mechanics_feed = MechanicsMapFeed::default();
         let mut mechanics = MechanicsMapProjector::default();
         mechanics.reset("live", "25247556");
-        let families = BTreeMap::from([(6_565, "sea-ringed-reef".to_owned())]);
+        let families = BTreeMap::from([
+            (6_515, "mech-facility".to_owned()),
+            (6_565, "sea-ringed-reef".to_owned()),
+        ]);
+
+        assert!(reconcile_live_scene(
+            6_515,
+            6_515,
+            LiveSceneRuntimeContext {
+                deployment_id: "global",
+                client_build: "25247556",
+                protocol_pack_digest: BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+                scene_families: &families,
+            },
+            LiveSceneConsumers {
+                combat_feed: &combat,
+                automarker_feed: &automarker,
+                mechanics_projector: &mut mechanics,
+                mechanics_feed: &mechanics_feed,
+            },
+        ));
+        assert_eq!(combat.current().snapshot.unwrap().scene_id, Some(6_515));
+        assert_eq!(automarker.current().unwrap().scene_id, 6_515);
+        assert_eq!(mechanics.snapshot().scene_id, Some(6_515));
+        assert_eq!(mechanics_feed.current().snapshot.scene_id, Some(6_515));
 
         assert!(reconcile_live_scene(
             6_565,
@@ -18052,14 +18112,7 @@ mod tests {
             },
         ));
 
-        assert_eq!(
-            combat
-                .state
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .reconciled_scene_id,
-            Some(6_565)
-        );
+        assert_eq!(combat.current().snapshot.unwrap().scene_id, Some(6_565));
         assert_eq!(automarker.current().unwrap().scene_id, 6_565);
         assert_eq!(mechanics.snapshot().scene_id, Some(6_565));
         assert_eq!(mechanics_feed.current().snapshot.scene_id, Some(6_565));

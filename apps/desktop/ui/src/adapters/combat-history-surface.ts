@@ -5011,10 +5011,14 @@ function normalizedLabel(value: string): string {
 }
 
 function difficultyLabel(family: string | null, tier: number | null): string {
-    if (family === "master") {
-      return tier === null ? "Master (tier unresolved)" : `Master ${tier}`;
-    }
-  return family ? formatIdentifier(family) : "Difficulty unresolved";
+  if (family === "master") {
+    return tier === null ? "Master (tier unresolved)" : `Master ${tier}`;
+  }
+  if (family) {
+    const label = formatIdentifier(family);
+    return tier === null ? label : `${label} ${tier}`;
+  }
+  return tier === null ? "Difficulty unresolved" : `Tier ${tier}`;
 }
 
 function actorLabel(actor: HistoryActorSummary): string {

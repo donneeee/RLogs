@@ -724,6 +724,25 @@ describe("Combat History scene labels", () => {
     })).toBe("Hard");
   });
 
+  it("preserves a known tier for every difficulty family", () => {
+    expect(supplementalDifficultyLabel({
+      activity_id: "scene.12023",
+      activity_family_id: "guild-hunt",
+      scene_id: 12023,
+      presentation_scene_name: "Guild Hunt",
+      difficulty_family: "hard",
+      difficulty_tier: 7,
+    })).toBe("Hard 7");
+    expect(supplementalDifficultyLabel({
+      activity_id: "scene.12023",
+      activity_family_id: "guild-hunt",
+      scene_id: 12023,
+      presentation_scene_name: "Guild Hunt",
+      difficulty_family: null,
+      difficulty_tier: 7,
+    })).toBe("Tier 7");
+  });
+
   it("never presents a bare Master label when the packet tier is absent", () => {
     expect(supplementalDifficultyLabel({
       activity_id: "scene.6515",
