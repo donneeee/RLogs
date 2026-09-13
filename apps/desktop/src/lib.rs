@@ -5788,7 +5788,7 @@ impl AutomarkerSceneContextFeed {
             .clone()
     }
 
-    fn observe_world(
+    fn observe(
         &self,
         event: &CanonicalEvent,
         deployment_id: &str,
@@ -5796,31 +5796,36 @@ impl AutomarkerSceneContextFeed {
         protocol_pack_digest: &str,
         scene_families: &BTreeMap<i32, String>,
     ) {
-        let CanonicalEvent::WorldChanged(world) = event else {
-            return;
+        let (scene_id, map_id) = match event {
+            CanonicalEvent::WorldChanged(world) => (world.scene_id, world.map_id),
+            CanonicalEvent::Timeline(timeline) => match &timeline.kind {
+                TimelineEventKind::RunBoundary {
+                    scene_id: Some(scene_id),
+                    ..
+                } => (Some(*scene_id), u32::try_from(scene_id.0).ok()),
+                _ => return,
+            },
+            _ => return,
         };
-        let next = world
-            .scene_id
-            .zip(world.map_id)
-            .and_then(|(scene_id, map_id)| {
-                let scene_id = scene_id.0;
-                Some(AutomarkerSceneContext {
-                    client_build: client_build.to_owned(),
-                    scene_id,
-                    map_id,
-                    activity_family_id: scene_families.get(&scene_id)?.clone(),
-                    scene_name: localized_scene_name_for_identity(
-                        deployment_id,
-                        client_build,
-                        protocol_pack_digest,
-                        i64::from(scene_id),
-                        "en-US",
-                    )
-                    .ok()
-                    .flatten()
-                    .map(str::to_owned),
-                })
-            });
+        let next = scene_id.zip(map_id).and_then(|(scene_id, map_id)| {
+            let scene_id = scene_id.0;
+            Some(AutomarkerSceneContext {
+                client_build: client_build.to_owned(),
+                scene_id,
+                map_id,
+                activity_family_id: scene_families.get(&scene_id)?.clone(),
+                scene_name: localized_scene_name_for_identity(
+                    deployment_id,
+                    client_build,
+                    protocol_pack_digest,
+                    i64::from(scene_id),
+                    "en-US",
+                )
+                .ok()
+                .flatten()
+                .map(str::to_owned),
+            })
+        });
         *self
             .context
             .lock()
@@ -9651,14 +9656,14 @@ impl RuntimeController {
                                     &mut live_dungeon_scene_id,
                                     next_world_scene_id,
                                 );
+                                live_automarker_scene_context.observe(
+                                    &event.event,
+                                    &automarker_deployment_id,
+                                    &automarker_client_build,
+                                    &automarker_protocol_pack_digest,
+                                    &automarker_scene_families,
+                                );
                                 if event.event.topic() == EventTopic::World {
-                                    live_automarker_scene_context.observe_world(
-                                        &event.event,
-                                        &automarker_deployment_id,
-                                        &automarker_client_build,
-                                        &automarker_protocol_pack_digest,
-                                        &automarker_scene_families,
-                                    );
                                     last_world_context_event = Some(event.clone());
                                 }
                                 let opening = matches!(
@@ -17544,7 +17549,7 @@ mod tests {
             })
         };
 
-        feed.observe_world(
+        feed.observe(
             &world(6_515, 8),
             "global",
             "24687926",
@@ -17557,7 +17562,7 @@ mod tests {
         assert_eq!(current.map_id, 8);
         assert_eq!(current.activity_family_id, "mech-facility");
 
-        feed.observe_world(
+        feed.observe(
             &world(99_999, 9),
             "global",
             "24687926",
@@ -17565,6 +17570,36 @@ mod tests {
             &families,
         );
         assert_eq!(feed.current(), None);
+    }
+
+    #[test]
+    fn automarker_scene_context_feed_accepts_scene_bearing_run_boundaries() {
+        let feed = AutomarkerSceneContextFeed::default();
+        let families = BTreeMap::from([(6_561, "sea-ringed-reef".to_owned())]);
+        feed.observe(
+            &CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 1,
+                time: EventTime {
+                    observed_micros: 10,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance::wire(1, 1, 1),
+                kind: TimelineEventKind::RunBoundary {
+                    state: RunState::Entered,
+                    scene_id: Some(SceneId(6_561)),
+                    reason: BoundaryReason::AuthoritativePacket,
+                },
+            }),
+            "global",
+            "25247556",
+            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+            &families,
+        );
+
+        let current = feed.current().expect("run-boundary scene context");
+        assert_eq!(current.scene_id, 6_561);
+        assert_eq!(current.map_id, 6_561);
+        assert_eq!(current.activity_family_id, "sea-ringed-reef");
     }
 
     #[test]
