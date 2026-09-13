@@ -2020,7 +2020,7 @@ fn decode_team_members(
     tracker: &mut ProfileTracker,
 ) -> Result<Vec<CanonicalEventDraft>, ProtocolMessageError> {
     let mut drafts = Vec::with_capacity(members.len().saturating_mul(2));
-    let mut has_current_world = tracker.current_world.is_some();
+    let mut current_world = tracker.current_world.clone();
     for member in members {
         let Some(character_id) = team_member_character_id(&member) else {
             continue;
@@ -2031,16 +2031,25 @@ fn decode_team_members(
             .local_character
             .as_ref()
             .is_some_and(|local| local.character_id == character_id.to_string());
-        if !has_current_world
-            && is_local_character
-            && let Some(world) = team_member_world(&member)
-        {
-            drafts.push(draft(
-                metadata,
-                EventSensitivity::PublicGameplay,
-                CanonicalEventDraftKind::WorldChanged(world),
-            ));
-            has_current_world = true;
+        if is_local_character && let Some(world) = team_member_world(&member) {
+            // The authenticated local roster row is an exact scene source in
+            // the Global client and continues to arrive when a mirrored or
+            // late-attached capture misses the one-shot world handoff. Use it
+            // to recover an absent scene and to advance to a different known
+            // scene. For the same scene, retain the richer authoritative
+            // world context (line and instance identifiers) instead of
+            // replacing it with the roster's deliberately narrow projection.
+            let scene_changed = current_world
+                .as_ref()
+                .is_none_or(|current| current.scene_id != world.scene_id);
+            if scene_changed {
+                current_world = Some(world.clone());
+                drafts.push(draft(
+                    metadata,
+                    EventSensitivity::PublicGameplay,
+                    CanonicalEventDraftKind::WorldChanged(world),
+                ));
+            }
         }
         let Some(social) = member.social else {
             continue;
@@ -11114,7 +11123,7 @@ mod tests {
     }
 
     #[test]
-    fn team_member_scene_is_recovery_only_and_cannot_overwrite_authoritative_world() {
+    fn local_team_scene_recovers_missed_transitions_without_erasing_same_scene_context() {
         let pack = pack();
         let mut live_runtime = runtime(&pack);
         let member = |character_id: i64, scene_id: Option<i32>, basic_scene_id: Option<u32>| {
@@ -11264,16 +11273,16 @@ mod tests {
             Some(authoritative_world.clone())
         );
 
-        let delayed_team = live_runtime
+        let same_scene_team = live_runtime
             .process(&record_for(
                 TEAM_SERVICE,
                 6,
                 2,
-                update(vec![member(3_296_036, None, Some(6_561))]),
+                update(vec![member(3_296_036, None, Some(6_515))]),
             ))
             .unwrap();
         assert!(
-            !delayed_team
+            !same_scene_team
                 .events
                 .iter()
                 .any(|event| matches!(event.event, rlogs_events::CanonicalEvent::WorldChanged(_)))
@@ -11282,6 +11291,31 @@ mod tests {
             live_runtime.profile.current_world,
             Some(authoritative_world.clone()),
             "delayed team evidence must not erase richer authoritative context"
+        );
+
+        let changed_team = live_runtime
+            .process(&record_for(
+                TEAM_SERVICE,
+                7,
+                2,
+                update(vec![member(3_296_036, None, Some(6_561))]),
+            ))
+            .unwrap();
+        let changed_world = changed_team
+            .events
+            .iter()
+            .find_map(|event| match &event.event {
+                rlogs_events::CanonicalEvent::WorldChanged(world) => Some(world),
+                _ => None,
+            })
+            .expect("changed local team scene must recover a missed transition");
+        assert_eq!(changed_world.scene_id, Some(SceneId(6_561)));
+        assert_eq!(changed_world.map_id, Some(6_561));
+        assert_eq!(changed_world.line_id, None);
+        assert_eq!(changed_world.scene_instance_id, None);
+        assert_eq!(
+            live_runtime.profile.current_world,
+            Some(changed_world.clone())
         );
 
         let mut invalid_runtime = runtime(&pack);
