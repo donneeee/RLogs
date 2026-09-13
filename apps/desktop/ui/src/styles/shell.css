@@ -8379,28 +8379,33 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
 
 .combat-history-death-marker-skull {
   fill: var(--death-marker-color, #d8cfb4);
-  stroke: none;
-  filter: drop-shadow(0 0 2px rgb(3 16 20 / 88%));
+  stroke: var(--surface, #071117);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  paint-order: stroke fill;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 2px rgb(3 16 20 / 96%));
 }
 
 .combat-history-death-marker-bones {
   fill: none;
   stroke: var(--death-marker-color, #d8cfb4);
-  stroke-width: 2.4;
+  stroke-width: 3.2;
   stroke-linecap: round;
+  stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
-  filter: drop-shadow(0 0 2px rgb(3 16 20 / 88%));
+  filter: drop-shadow(0 0 2px rgb(3 16 20 / 96%));
 }
 
 .combat-history-death-marker:focus-visible .combat-history-death-marker-skull,
 .combat-history-death-marker:focus-visible .combat-history-death-marker-bones {
-  stroke: var(--death-marker-color, #d8cfb4);
-  stroke-width: 0.8;
-  paint-order: stroke fill;
+  filter:
+    drop-shadow(0 0 3px var(--death-marker-color, #d8cfb4))
+    drop-shadow(0 0 2px rgb(3 16 20 / 100%));
 }
 
 .combat-history-death-marker:focus-visible .combat-history-death-marker-bones {
-  stroke-width: 3;
+  stroke-width: 3.8;
 }
 
 .combat-history-death-summary {
