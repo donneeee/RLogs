@@ -4817,6 +4817,14 @@ fn decode_sync_to_me_delta(
     }
     if let Some(uuid) = local_uuid {
         profile.local_entity_uuid = Some(uuid);
+        if profile.local_character.is_none()
+            && let Some(character_id) = character_id_from_entity_uuid(uuid)
+        {
+            profile.local_character = Some(CharacterIdentity {
+                region: metadata.region.clone(),
+                character_id,
+            });
+        }
         let actor = entities.resolve(uuid, Some(ENTITY_PLAYER))?.identity;
         if !delta.fight_resource_cooldowns.is_empty() {
             drafts.push(timeline_draft(
@@ -11028,10 +11036,6 @@ mod tests {
     fn team_member_scene_is_recovery_only_and_cannot_overwrite_authoritative_world() {
         let pack = pack();
         let mut live_runtime = runtime(&pack);
-        live_runtime.profile.local_character = Some(CharacterIdentity {
-            region: live_runtime.envelopes.region().identity.clone(),
-            character_id: "3296036".into(),
-        });
         let member = |character_id: i64, scene_id: Option<i32>, basic_scene_id: Option<u32>| {
             schema::TeamMemberData {
                 character_id: Some(character_id),
@@ -11064,12 +11068,54 @@ mod tests {
             })
         };
 
+        let roster_only = live_runtime
+            .process(&record_for(
+                TEAM_SERVICE,
+                1,
+                2,
+                update(vec![member(3_296_036, Some(6_565), None)]),
+            ))
+            .unwrap();
+        assert!(
+            !roster_only
+                .events
+                .iter()
+                .any(|event| matches!(event.event, rlogs_events::CanonicalEvent::WorldChanged(_)))
+        );
+        assert_eq!(live_runtime.profile.local_character, None);
+        assert_eq!(live_runtime.profile.current_world, None);
+
+        let self_delta = live_runtime
+            .process(&record(
+                2,
+                0x2e,
+                encode(schema::SyncToMeDeltaInfo {
+                    delta: Some(schema::AoiSyncToMeDelta {
+                        base_delta: None,
+                        hate_ids: Vec::new(),
+                        cooldowns: Vec::new(),
+                        fight_resource_cooldowns: Vec::new(),
+                        uuid: Some(216_009_015_936),
+                    }),
+                }),
+            ))
+            .unwrap();
+        assert_eq!(self_delta.status, ProtocolDecodeStatus::Decoded);
+        assert_eq!(
+            live_runtime
+                .profile
+                .local_character
+                .as_ref()
+                .map(|identity| identity.character_id.as_str()),
+            Some("3296036")
+        );
+
         let initial_payload = update(vec![
             member(3_296_036, Some(6_565), None),
             member(9_876_543, Some(6_515), None),
         ]);
         let initial = live_runtime
-            .process(&record_for(TEAM_SERVICE, 1, 2, initial_payload.clone()))
+            .process(&record_for(TEAM_SERVICE, 3, 2, initial_payload.clone()))
             .unwrap();
         let initial_worlds = initial
             .events
@@ -11088,7 +11134,7 @@ mod tests {
         );
 
         let duplicate = live_runtime
-            .process(&record_for(TEAM_SERVICE, 2, 2, initial_payload))
+            .process(&record_for(TEAM_SERVICE, 4, 2, initial_payload))
             .unwrap();
         assert!(
             !duplicate
@@ -11099,7 +11145,7 @@ mod tests {
 
         let authoritative = live_runtime
             .process(&record(
-                3,
+                5,
                 3,
                 encode(schema::EnterScene {
                     enter_scene_info: Some(schema::EnterSceneInfo {
@@ -11140,7 +11186,7 @@ mod tests {
         let delayed_team = live_runtime
             .process(&record_for(
                 TEAM_SERVICE,
-                4,
+                6,
                 2,
                 update(vec![member(3_296_036, None, Some(6_561))]),
             ))
