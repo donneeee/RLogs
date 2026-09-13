@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 pub mod automarker_activation;
 mod automarker_active_worker;
 mod automarker_bridge_evidence;
+mod automarker_confirmation_adapter;
 mod automarker_confirmation_ingress;
 mod automarker_confirmation_router;
 pub mod automarker_coordinate_planner;
