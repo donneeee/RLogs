@@ -22,6 +22,11 @@ const markerSkillProofUrl = new URL(
   import.meta.url,
 );
 const markerSkillProof = JSON.parse(await readFile(fileURLToPath(markerSkillProofUrl), "utf8"));
+const schedulerProofUrl = new URL(
+  "../plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-25247556/automarker-static-main-thread-scheduler-proof.v1.json",
+  import.meta.url,
+);
+const schedulerProof = JSON.parse(await readFile(fileURLToPath(schedulerProofUrl), "utf8"));
 
 assert.equal(proof.schema_version, 1);
 assert.equal(proof.build_id, "25247556");
@@ -183,6 +188,120 @@ assert.doesNotMatch(
   JSON.stringify(markerSkillProof),
   /[A-Z]:\\|\\\\[A-Za-z0-9._-]+\\/i,
   "marker-skill proof must not contain private absolute paths",
+);
+
+assert.equal(schedulerProof.schema_version, 1);
+assert.equal(schedulerProof.build_id, "25247556");
+assert.equal(schedulerProof.proof_kind, "exact-build-static-main-thread-scheduler-audit");
+assert.equal(schedulerProof.inputs.game_assembly.sha256, proof.build_identity.game_assembly.sha256);
+assert.equal(schedulerProof.inputs.recovered_metadata.sha256, proof.build_identity.global_metadata.sha256);
+assert.deepEqual(schedulerProof.selected_scheduler, {
+  identity: "Cysharp.Threading.Tasks.UniTask.Post(System.Action, PlayerLoopTiming)",
+  rva_hex: "0x670EB30",
+  byte_length: 16,
+  sha256: "01311db2ce75535a228e3edd96331773c56b27e08392ed317af9ae05366fcb49",
+  generated_c_signature: "void Cysharp_Threading_Tasks_UniTask__Post(System_Action_o* action, int32_t timing, const MethodInfo* method)",
+  selected_timing: { name: "Update", value: 8 },
+  entry_contract: {
+    rcx: "class-valid managed System.Action object",
+    edx: "PlayerLoopTiming value 8",
+    r8: "hidden MethodInfo slot; this exact method clears it before forwarding",
+    native_flow: "Moves timing to ECX and Action to RDX, clears R8, then tail-jumps to PlayerLoopHelper.AddContinuation.",
+  },
+  classification: "best reviewed one-shot game-main-player-loop queue surface",
+  classification_limit: "This selection proves queue mechanics only. It does not supply an external process bridge or construct the required managed callback.",
+});
+assert.deepEqual(
+  schedulerProof.queue_chain.map(({ rva_hex, byte_length, sha256 }) => ({ rva_hex, byte_length, sha256 })),
+  [
+    { rva_hex: "0x670AFE0", byte_length: 128, sha256: "120e184efe897e07e7ac4f2a10307a1cf115544208ec6f95fd0353822234e0a2" },
+    { rva_hex: "0x676A0B0", byte_length: 1392, sha256: "25888277bd929d97b136cdb9bcc99b57e523e933e644588b70af27b51d9c52fa" },
+    { rva_hex: "0x676A620", byte_length: 16, sha256: "7142a15a89818528d3373816863921c29555c736474721e04257bb196275c50c" },
+    { rva_hex: "0x676A630", byte_length: 960, sha256: "5dca8245396e0fa60f0f7f74ad34ca76d511e269c3cbfae71fda909440e9a9cd" },
+  ],
+);
+assert.equal(schedulerProof.player_loop_layout.type_info_pointer_slot_rva_hex, "0x9591498");
+assert.equal(schedulerProof.player_loop_layout.static_fields.yielders_offset_hex, "0x18");
+assert.equal(schedulerProof.player_loop_layout.continuation_queue_instance_fields.timing_offset_hex, "0x10");
+assert.equal(schedulerProof.managed_callback_boundary.system_action_constructor.shared_rva_hex, "0xB38650");
+assert.match(
+  schedulerProof.managed_callback_boundary.system_action_constructor.native_observations.join(" "),
+  /arbitrary native code pointer is not a valid constructor argument/,
+);
+assert.equal(schedulerProof.managed_callback_boundary.supported_external_ipc_or_plugin_entry_found, false);
+assert.equal(schedulerProof.managed_callback_boundary.precompiled_automarker_managed_callback_found, false);
+assert.equal(schedulerProof.candidate_comparison.length, 7);
+assert.deepEqual(
+  schedulerProof.candidate_comparison.map(({ identity, status, one_shot }) => ({ identity, status, one_shot })),
+  [
+    {
+      identity: "Cysharp.Threading.Tasks.UniTask.Post(System.Action, PlayerLoopTiming)",
+      status: "selected-static-candidate",
+      one_shot: true,
+    },
+    {
+      identity: "Panda.Utility.ZTaskUtils.NextFrameForLua(PlayerLoopTiming, uint, Action, Action<Exception>)",
+      status: "rejected-more-stateful-wrapper",
+      one_shot: true,
+    },
+    {
+      identity: "UnityEngine.UnitySynchronizationContext.Post(SendOrPostCallback, object)",
+      status: "rejected-no-bridge-advantage",
+      one_shot: true,
+    },
+    {
+      identity: "ZenFulcrum.EmbeddedBrowser.Browser.RunOnMainThread(Action)",
+      status: "rejected-component-owned",
+      one_shot: true,
+    },
+    {
+      identity: "DreamMaker.Event.EPFlowCommonEventMgr dispatch queue",
+      status: "rejected-domain-event-queue",
+      one_shot: true,
+    },
+    {
+      identity: "UpdateManager.AddUpdate(MonoBehaviour, int, UpdateManager.OnUpdate)",
+      status: "rejected-recurring-registration",
+      one_shot: false,
+    },
+    {
+      identity: "VContainer.Unity.PlayerLoopHelper.Dispatch(PlayerLoopTiming, IPlayerLoopItem)",
+      status: "rejected-interface-item-registration",
+      one_shot: false,
+    },
+  ],
+);
+assert.equal(schedulerProof.safe_adapter_contract.status, "design-contract-only-not-implemented");
+assert.equal(schedulerProof.read_only_scheduler_preflight.possible, true);
+assert.equal(schedulerProof.read_only_scheduler_preflight.activation_permitted_by_preflight, false);
+assert.ok(schedulerProof.unresolved_blockers.length >= 9, "scheduler proof must retain every exact unresolved blocker");
+assert.equal(schedulerProof.scope.offline_static_analysis_only, true);
+for (const denied of [
+  "process_access",
+  "game_method_invocation",
+  "managed_delegate_allocation",
+  "process_memory_write",
+  "code_injection",
+  "packet_synthesis_or_transmission",
+  "runtime_activation_enabled",
+]) {
+  assert.equal(schedulerProof.scope[denied], false, `scheduler proof ${denied} must stay disabled`);
+}
+assert.equal(schedulerProof.decision.one_shot_queue_semantics_statically_proven, true);
+assert.equal(schedulerProof.decision.stronger_reviewed_candidate_that_removes_ingress_or_delegate_requirement_found, false);
+assert.equal(schedulerProof.decision.safe_managed_callback_construction_proven, false);
+assert.equal(schedulerProof.decision.supported_in_process_entry_proven, false);
+assert.equal(schedulerProof.decision.safe_main_thread_invocation_proven, false);
+assert.equal(schedulerProof.decision.runtime_activation_enabled, false);
+assert.equal(schedulerProof.decision.native_placement_must_remain_disabled, true);
+assert.equal(schedulerProof.privacy.contains_private_paths, false);
+assert.equal(schedulerProof.privacy.contains_absolute_native_addresses, false);
+assert.equal(schedulerProof.privacy.contains_process_addresses, false);
+assert.equal(schedulerProof.privacy.contains_personal_identity, false);
+assert.doesNotMatch(
+  JSON.stringify(schedulerProof),
+  /[A-Z]:\\|\\\\[A-Za-z0-9._-]+\\/i,
+  "scheduler proof must not contain private absolute paths",
 );
 
 console.log("validated exact-build automarker internal-route proof");

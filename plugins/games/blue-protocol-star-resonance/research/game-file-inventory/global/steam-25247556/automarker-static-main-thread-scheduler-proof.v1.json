@@ -1,0 +1,284 @@
+{
+  "schema_version": 1,
+  "proof_kind": "exact-build-static-main-thread-scheduler-audit",
+  "generated_by": "bounded-read-only-il2cpp-scheduler-audit",
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "build_id": "25247556",
+  "scope": {
+    "offline_static_analysis_only": true,
+    "process_access": false,
+    "game_method_invocation": false,
+    "managed_delegate_allocation": false,
+    "process_memory_write": false,
+    "code_injection": false,
+    "packet_synthesis_or_transmission": false,
+    "runtime_activation_enabled": false
+  },
+  "inputs": {
+    "game_assembly": {
+      "byte_length": 218074672,
+      "sha256": "4a079aec0a3e51a8023aa86bbd152e12068907b65b9aafb355d20bb6d6c41fe3"
+    },
+    "recovered_metadata": {
+      "metadata_version": 31,
+      "byte_length": 28697724,
+      "sha256": "2f8213cf2a253d7a99a37b81f796e3a0162d0cf2d1ca6a2d0e0719f8f9a57779"
+    },
+    "dump_cs_sha256": "3bbc01c125dc160be85730986ebb40740dc2a078cb4bb4c5a0add00349b47a32",
+    "script_json_sha256": "84fc7707e91f1eabc4c17ea3735f387da6b9e7a26ee70a34a0c768994e1cbcd4",
+    "il2cpp_h_sha256": "75ce0d79c2995449f7200a9df03bb47e85e39494e6b6098aac64f36a62ed7f91",
+    "method_byte_extent_basis": "Each retained byte extent begins at the named ScriptMethod RVA and ends at the next distinct ScriptMethod RVA in the exact recovered method table."
+  },
+  "selected_scheduler": {
+    "identity": "Cysharp.Threading.Tasks.UniTask.Post(System.Action, PlayerLoopTiming)",
+    "rva_hex": "0x670EB30",
+    "byte_length": 16,
+    "sha256": "01311db2ce75535a228e3edd96331773c56b27e08392ed317af9ae05366fcb49",
+    "generated_c_signature": "void Cysharp_Threading_Tasks_UniTask__Post(System_Action_o* action, int32_t timing, const MethodInfo* method)",
+    "selected_timing": {
+      "name": "Update",
+      "value": 8
+    },
+    "entry_contract": {
+      "rcx": "class-valid managed System.Action object",
+      "edx": "PlayerLoopTiming value 8",
+      "r8": "hidden MethodInfo slot; this exact method clears it before forwarding",
+      "native_flow": "Moves timing to ECX and Action to RDX, clears R8, then tail-jumps to PlayerLoopHelper.AddContinuation."
+    },
+    "classification": "best reviewed one-shot game-main-player-loop queue surface",
+    "classification_limit": "This selection proves queue mechanics only. It does not supply an external process bridge or construct the required managed callback."
+  },
+  "queue_chain": [
+    {
+      "identity": "Cysharp.Threading.Tasks.PlayerLoopHelper.AddContinuation(PlayerLoopTiming, System.Action)",
+      "rva_hex": "0x670AFE0",
+      "byte_length": 128,
+      "sha256": "120e184efe897e07e7ac4f2a10307a1cf115544208ec6f95fd0353822234e0a2",
+      "observations": [
+        "Reads PlayerLoopHelper TypeInfo through module-relative pointer slot 0x9591498.",
+        "Reads class static fields at +0xB8 and the yielders managed array at static-field offset +0x18.",
+        "Bounds-checks the signed timing index against the managed array length, resolves the indexed ContinuationQueue, null-checks it, and tail-jumps to Enqueue."
+      ]
+    },
+    {
+      "identity": "Cysharp.Threading.Tasks.Internal.ContinuationQueue.Enqueue(System.Action)",
+      "rva_hex": "0x676A0B0",
+      "byte_length": 1392,
+      "sha256": "25888277bd929d97b136cdb9bcc99b57e523e933e644588b70af27b51d9c52fa",
+      "observations": [
+        "Uses the queue SpinLock before changing queue state.",
+        "Stores the Action in actionList while idle or waitingList while RunCore is dequeuing.",
+        "Managed array stores use the IL2CPP write barrier, so the queue supplies a managed GC reference to an accepted Action."
+      ]
+    },
+    {
+      "identity": "Cysharp.Threading.Tasks.Internal.ContinuationQueue.Run()",
+      "rva_hex": "0x676A620",
+      "byte_length": 16,
+      "sha256": "7142a15a89818528d3373816863921c29555c736474721e04257bb196275c50c",
+      "observations": [
+        "Clears the hidden MethodInfo slot and tail-jumps to RunCore."
+      ]
+    },
+    {
+      "identity": "Cysharp.Threading.Tasks.Internal.ContinuationQueue.RunCore()",
+      "rva_hex": "0x676A630",
+      "byte_length": 960,
+      "sha256": "5dca8245396e0fa60f0f7f74ad34ca76d511e269c3cbfae71fda909440e9a9cd",
+      "observations": [
+        "Invokes each Action through the managed delegate invoke fields.",
+        "Clears consumed actionList entries and swaps waitingList into actionList for a later pass, preventing recursive same-pass execution.",
+        "Catches a managed exception escaping an Action, sends it to UnityEngine.Debug.LogException, and continues the queue."
+      ]
+    }
+  ],
+  "player_loop_layout": {
+    "type_info_pointer_slot_rva_hex": "0x9591498",
+    "il2cpp_class_static_fields_offset_hex": "0xB8",
+    "static_fields": {
+      "main_thread_id_offset_hex": "0x0",
+      "application_data_path_offset_hex": "0x8",
+      "unity_synchronization_context_offset_hex": "0x10",
+      "yielders_offset_hex": "0x18",
+      "runners_offset_hex": "0x20"
+    },
+    "continuation_queue_instance_fields": {
+      "timing_offset_hex": "0x10",
+      "spin_lock_offset_hex": "0x14",
+      "dequeuing_offset_hex": "0x18",
+      "action_list_count_offset_hex": "0x1C",
+      "action_list_offset_hex": "0x20",
+      "waiting_list_count_offset_hex": "0x28",
+      "waiting_list_offset_hex": "0x30"
+    },
+    "managed_array_data_offset_hex": "0x20"
+  },
+  "managed_callback_boundary": {
+    "system_action_type_info_pointer_slot_rva_hex": "0x961A5F0",
+    "system_action_constructor": {
+      "identity": "System.Action..ctor(System.Object, System.IntPtr)",
+      "shared_rva_hex": "0xB38650",
+      "generated_c_signature": "void System_Action___ctor(System_Action_o* self, Il2CppObject* target, intptr_t method, const MethodInfo* hidden_method)",
+      "native_observations": [
+        "The exact shared constructor dereferences the supplied method value at +0x8, +0x4C, and +0x52 while deriving the delegate invoke fields.",
+        "The supplied method value must therefore describe an IL2CPP-generated managed method; an arbitrary native code pointer is not a valid constructor argument.",
+        "The constructor installs target, method, invoke, and delegate-self fields according to the generated method descriptor."
+      ]
+    },
+    "available_il2cpp_exports": [
+      "il2cpp_domain_get",
+      "il2cpp_thread_attach",
+      "il2cpp_thread_detach",
+      "il2cpp_object_new",
+      "il2cpp_gchandle_new",
+      "il2cpp_gchandle_free",
+      "il2cpp_runtime_invoke"
+    ],
+    "boundary_conclusion": "The exports can support an adapter only after code is already executing inside the game process. They do not expose external IPC and do not create an arbitrary native function as a managed System.Action.",
+    "supported_external_ipc_or_plugin_entry_found": false,
+    "precompiled_automarker_managed_callback_found": false,
+    "safe_arbitrary_native_trampoline_action_construction_proven": false
+  },
+  "candidate_comparison": [
+    {
+      "identity": "Cysharp.Threading.Tasks.UniTask.Post(System.Action, PlayerLoopTiming)",
+      "rva_hex": "0x670EB30",
+      "status": "selected-static-candidate",
+      "one_shot": true,
+      "limitations": "Requires a supported in-process entry and valid managed Action; queued items have no removal API."
+    },
+    {
+      "identity": "Panda.Utility.ZTaskUtils.NextFrameForLua(PlayerLoopTiming, uint, Action, Action<Exception>)",
+      "rva_hex": "0x3F7A9F0",
+      "byte_length": 304,
+      "sha256": "79a5f5645d675c6d7e45c8af3bc9a05284af17bebc2bdccbae2c30f0cbb90d6a",
+      "status": "rejected-more-stateful-wrapper",
+      "one_shot": true,
+      "limitations": "Builds a NextFrame async state machine, chains ContinueWith(callback), then Forget(exceptionHandler). ForceToLua is metadata, not an external IPC entry; it also requires callback and exception delegates plus valid Lua cancellation context."
+    },
+    {
+      "identity": "UnityEngine.UnitySynchronizationContext.Post(SendOrPostCallback, object)",
+      "rva_hex": "0x6D16F20",
+      "byte_length": 448,
+      "sha256": "1dcc085fdc9e3a50409c6328e962e8041cb10d6adc8ba254858c24d6eee7c4db",
+      "status": "rejected-no-bridge-advantage",
+      "one_shot": true,
+      "limitations": "Requires a live context, a valid managed SendOrPostCallback and state object, and has no per-item removal API."
+    },
+    {
+      "identity": "ZenFulcrum.EmbeddedBrowser.Browser.RunOnMainThread(Action)",
+      "rva_hex": "0x7105440",
+      "byte_length": 336,
+      "sha256": "6b2347c00a2c9e75627983c15f5ccac7deafc7e71a65c0a772b5e429706bf1bd",
+      "status": "rejected-component-owned",
+      "one_shot": true,
+      "limitations": "Requires discovery and ownership of a live Browser MonoBehaviour and appends to that component's Action list; the component can be disabled or destroyed and supplies no external IPC."
+    },
+    {
+      "identity": "DreamMaker.Event.EPFlowCommonEventMgr dispatch queue",
+      "consumer_rva_hex": "0x4DA8390",
+      "consumer_byte_length": 320,
+      "consumer_sha256": "fe014a6196fe561eea573a8109dcdf9fc0276620b0f192656da4ecb1f7209d4c",
+      "status": "rejected-domain-event-queue",
+      "one_shot": true,
+      "limitations": "The reviewed public surface queues domain-event closures rather than an arbitrary Action, depends on a live singleton/update consumer, and does not remove the managed callback or ingress requirement."
+    },
+    {
+      "identity": "UpdateManager.AddUpdate(MonoBehaviour, int, UpdateManager.OnUpdate)",
+      "rva_hex": "0x4097270",
+      "byte_length": 160,
+      "sha256": "510f5209a82e29158dab3b426a5cf817f57c45a0703f2f2303dcf865f72a5480",
+      "status": "rejected-recurring-registration",
+      "one_shot": false,
+      "limitations": "Requires a live MonoBehaviour, a typed callback, registration ownership, and guaranteed DelUpdate cleanup on every terminal path."
+    },
+    {
+      "identity": "VContainer.Unity.PlayerLoopHelper.Dispatch(PlayerLoopTiming, IPlayerLoopItem)",
+      "rva_hex": "0x70F64D0",
+      "status": "rejected-interface-item-registration",
+      "one_shot": false,
+      "limitations": "Requires a class-valid IPlayerLoopItem implementation and vtable whose MoveNext lifetime and cleanup are owned by the adapter."
+    }
+  ],
+  "safe_adapter_contract": {
+    "status": "design-contract-only-not-implemented",
+    "required_ingress": [
+      "A documented, user-authorized, lifecycle-owned in-process adapter entry must exist; remote thread creation, DLL injection, code patching, and fabricated delegate fields do not satisfy this contract.",
+      "The adapter must expose bounded authenticated local IPC and accept only a reviewed preset request, never raw RVAs, arbitrary method names, or executable payloads.",
+      "Any non-main adapter thread must attach to the current IL2CPP domain before using managed objects and must detach only after it releases its managed references."
+    ],
+    "required_callback": [
+      "A precompiled IL2CPP-managed callback with a valid exact-build method descriptor must own the request state.",
+      "The callback target, Action, request, and receipt state must remain rooted until a terminal callback receipt; queue insertion alone is not a cancellation or shutdown lifetime protocol.",
+      "Cancellation is a callback-time fail-closed state transition because the selected queue has no removal API.",
+      "The callback must contain managed exceptions and must not permit native faults or exceptions to cross an unsupported ABI boundary."
+    ],
+    "queue_contract": [
+      "Before queueing, verify the exact build, initialized PlayerLoopHelper class, nonzero mainThreadId, nonnull synchronization context, yielders index 8, class-valid Update queue, queue timing 8, and bounded consistent array counts.",
+      "Queue exactly one Action using UniTask.Post(action, Update=8, hidden MethodInfo null).",
+      "Use atomic queued, executing, canceled, succeeded, and failed request states; a canceled callback must execute as a no-op and publish a terminal receipt."
+    ],
+    "callback_contract": [
+      "Reacquire current PlayerEnt, PlayerSkillInputComp, and ZSkillInputMgr inside the callback; do not use queue-time object pointers.",
+      "Recheck exact image identity, lifecycle generation, dungeon stage, scene/family/map, party leadership, marker slot-to-skill mapping, loading/transition/input blocking, idle marker lifecycle, and finite nonzero target inside the callback.",
+      "Call the reviewed SetIndicatorPos route, verify the staged indicator state and unchanged lifecycle, then call FirePlaySkillByIndicator for exactly one marker.",
+      "Publish the boolean dispatch result, but do not classify it as party-visible success without the matching passive inbound marker notification."
+    ],
+    "acknowledgement_contract": [
+      "Permit only one marker in flight.",
+      "Require both game-owned dispatch success and a matching self inbound marker-add for the same scene, session, marker skill, and XYZ.",
+      "Abort on timeout, mismatch, leader loss, lifecycle change, scene change, replacement ambiguity, clear ambiguity, reconnect, or shutdown.",
+      "Do not advance markers 2 through 6 or reduce pacing until the preceding marker reaches the matched terminal state."
+    ]
+  },
+  "read_only_scheduler_preflight": {
+    "possible": true,
+    "can_prove_without_scheduling": [
+      "exact process image and reviewed method bytes",
+      "initialized PlayerLoopHelper TypeInfo and static fields",
+      "nonzero recorded mainThreadId and nonnull Unity synchronization context",
+      "yielders array contains index 8",
+      "index 8 contains a class-valid ContinuationQueue whose timing field is 8",
+      "queue list pointers, lengths, and counts are internally bounded and stable across two reads"
+    ],
+    "cannot_prove_without_a_supported_adapter_and_callback": [
+      "ABI-valid construction and invocation of the automarker Action",
+      "callback lifetime, exception containment, and exactly-once terminal receipt",
+      "cancellation winning every race after enqueue",
+      "atomicity of SetIndicatorPos followed by FirePlaySkillByIndicator",
+      "server acceptance of a saved target beyond the normal reticle range"
+    ],
+    "activation_permitted_by_preflight": false
+  },
+  "unresolved_blockers": [
+    "No documented supported in-process adapter load or IPC entry has been found.",
+    "No precompiled exact-build managed automarker callback exists from which a valid System.Action can be constructed.",
+    "Callback and request rooting, cancellation, shutdown, and terminal-receipt ownership are not implemented or runtime-proven.",
+    "The lifecycle generation shared between queue-time validation and callback-time validation is not implemented.",
+    "Complete callback-time loading, scene-transition, cutscene, input-blocked, cooldown, replacement, and clear-state gates are not all resolved.",
+    "Atomicity between SetIndicatorPos and FirePlaySkillByIndicator against other indicator writers is not proven.",
+    "No supported-adapter runtime observation proves that the selected Action executes exactly once on the recorded game main thread.",
+    "Server acceptance, rejection behavior, and safe pacing for a saved coordinate beyond the normal reticle range remain unproven.",
+    "Every seasonal build requires renewed hashes, RVAs, layouts, class validation, and behavior evidence."
+  ],
+  "decision": {
+    "one_shot_queue_semantics_statically_proven": true,
+    "selected_scheduler_is_best_reviewed_candidate": true,
+    "stronger_reviewed_candidate_that_removes_ingress_or_delegate_requirement_found": false,
+    "safe_managed_callback_construction_proven": false,
+    "supported_in_process_entry_proven": false,
+    "safe_main_thread_invocation_proven": false,
+    "runtime_activation_enabled": false,
+    "native_placement_must_remain_disabled": true
+  },
+  "privacy": {
+    "contains_absolute_native_addresses": false,
+    "contains_build_relative_rvas": true,
+    "contains_private_paths": false,
+    "contains_process_addresses": false,
+    "contains_raw_payloads": false,
+    "contains_personal_identity": false
+  }
+}
