@@ -155,28 +155,25 @@ assert.deepEqual(
   markerSkillProof.field_layouts.map(({ instance_offset_hex }) => instance_offset_hex),
   ["0x20", "0x18", "0x28", "0x10"],
 );
+assert.equal(markerSkillProof.field_layouts[2].direct_dispatch_dependency, false);
+assert.equal(markerSkillProof.exact_type_info_pointer_slot_rvas["Panda.ZGame.SkillControlDataMgr"], "0x955F1A8");
+assert.equal(markerSkillProof.exact_type_info_pointer_slot_rvas["ZUtil.Pool.Collections.ZDictionary<int, Panda.ZGame.SkillControlData>"], "0x95CB618");
+assert.equal(markerSkillProof.exact_type_info_pointer_slot_rvas["System.Collections.Generic.Dictionary<int, SkillControlDataMgr.SkillContinuousInfo>"], "0x95CB640");
+assert.equal(markerSkillProof.exact_type_info_pointer_slot_rvas["Panda.ZGame.SkillControlData"], "0x962AD48");
+assert.equal(markerSkillProof.exact_type_info_pointer_slot_rvas["int[]"], "0x9614E08");
 assert.equal(markerSkillProof.concrete_zdictionary_layout.entry_int_int.stride_bytes, 16);
 assert.equal(markerSkillProof.concrete_zdictionary_layout.entry_int_object.stride_bytes, 24);
-assert.equal(markerSkillProof.runtime_acceptance_contract.length, 7);
+assert.equal(markerSkillProof.runtime_acceptance_contract.length, 8);
 assert.deepEqual(markerSkillProof.sanitized_receipt.success, {
   proven: true,
-  reason: "proven-read-only-marker-1-slot-and-skill-resolution",
+  reason: "proven-read-only-marker-1-skill-resolution",
 });
 assert.deepEqual(markerSkillProof.sanitized_receipt.failure_reasons, [
   "unstable-read-only-marker-skill-lifecycle",
   "unavailable-or-invalid-read-only-marker-skill-root-chain",
   "unavailable-or-invalid-marker-skill-data-manager",
-  "marker-skill-slot-dictionary-pointer-invalid",
-  "marker-skill-slot-dictionary-class-invalid",
-  "marker-skill-slot-dictionary-header-unavailable",
-  "marker-skill-slot-dictionary-counts-or-buckets-invalid",
-  "marker-skill-slot-dictionary-entry-storage-unavailable",
-  "marker-skill-slot-dictionary-entry-capacity-invalid",
-  "marker-skill-slot-dictionary-entry-array-class-invalid",
-  "marker-skill-slot-dictionary-entry-stride-invalid",
+  "unavailable-or-invalid-marker-skill-continuous-dictionary",
   "unavailable-or-invalid-marker-skill-control-dictionary",
-  "marker-1-slot-missing-or-duplicate",
-  "marker-1-slot-mapping-mismatch",
   "marker-1-control-data-missing-or-duplicate",
   "marker-1-control-data-class-invalid",
   "marker-1-control-data-skill-identity-invalid",
@@ -206,6 +203,8 @@ assert.deepEqual(markerSkillDictionaryObservation.marker_skill_resolution_gate, 
 });
 assert.equal(markerSkillDictionaryObservation.activation_attempted, false);
 assert.equal(markerSkillProof.decision.slot_201_to_skill_1101_static_layout_proven, true);
+assert.equal(markerSkillProof.decision.direct_skill_1101_dispatch_route_proven, true);
+assert.equal(markerSkillProof.decision.slot_dictionary_required_for_direct_dispatch, false);
 assert.equal(markerSkillProof.decision.non_invoking_live_resolution_probe_implemented, true);
 assert.equal(markerSkillProof.decision.game_method_invocation_enabled, false);
 assert.equal(markerSkillProof.decision.native_placement_enabled, false);

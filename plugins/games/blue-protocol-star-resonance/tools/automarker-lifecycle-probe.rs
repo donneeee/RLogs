@@ -153,6 +153,11 @@ mod windows {
     const ZLIST_ATTR_LONG_TYPE_INFO_RVA: usize = 0x955_E130;
     const ZLIST_LONG_TYPE_INFO_RVA: usize = 0x95E_A320;
     const LONG_ARRAY_TYPE_INFO_RVA: usize = 0x963_26E8;
+    const INT_ARRAY_TYPE_INFO_RVA: usize = 0x961_4E08;
+    const SKILL_CONTROL_DATA_MGR_TYPE_INFO_RVA: usize = 0x955_F1A8;
+    const ZDICTIONARY_INT_SKILL_CONTROL_DATA_TYPE_INFO_RVA: usize = 0x95C_B618;
+    const DICTIONARY_INT_SKILL_CONTINUOUS_INFO_TYPE_INFO_RVA: usize = 0x95C_B640;
+    const SKILL_CONTROL_DATA_TYPE_INFO_RVA: usize = 0x962_AD48;
     const PLAYER_LOOP_HELPER_TYPE_INFO_RVA: usize = 0x959_1498;
     const UNITY_SYNCHRONIZATION_CONTEXT_TYPE_INFO_RVA: usize = 0x955_9498;
     const CONTINUATION_QUEUE_TYPE_INFO_RVA: usize = 0x959_13E0;
@@ -169,20 +174,27 @@ mod windows {
     const SKILL_INPUT_COMP_DATA_MGR: usize = 0x20;
     const SKILL_INPUT_COMP_MGR: usize = 0x28;
     const SKILL_DATA_MGR_CONTROL_DATAS: usize = 0x18;
-    const SKILL_DATA_MGR_SLOT_DICT: usize = 0x28;
+    const SKILL_DATA_MGR_CONTINUOUS_DICTIONARY: usize = 0x40;
     const ZDICTIONARY_BUCKETS_LENGTH: usize = 0x14;
+    const ZDICTIONARY_BUCKETS: usize = 0x18;
     const ZDICTIONARY_ENTRIES: usize = 0x20;
     const ZDICTIONARY_COUNT: usize = 0x38;
     const ZDICTIONARY_VERSION: usize = 0x3C;
     const ZDICTIONARY_FREE_COUNT: usize = 0x44;
+    const ZDICTIONARY_COMPARER: usize = 0x48;
+    const DICTIONARY_BUCKETS: usize = 0x10;
+    const DICTIONARY_ENTRIES: usize = 0x18;
+    const DICTIONARY_COUNT: usize = 0x20;
+    const DICTIONARY_FREE_COUNT: usize = 0x28;
+    const DICTIONARY_VERSION: usize = 0x2C;
     const MANAGED_ARRAY_LENGTH: usize = 0x18;
     const MANAGED_ARRAY_VECTOR: usize = 0x20;
-    const ZDICTIONARY_INT_INT_ENTRY_STRIDE: usize = 0x10;
     const ZDICTIONARY_INT_OBJECT_ENTRY_STRIDE: usize = 0x18;
     const ZDICTIONARY_ENTRY_HASH_CODE: usize = 0;
     const ZDICTIONARY_ENTRY_KEY: usize = 0x08;
-    const ZDICTIONARY_INT_INT_ENTRY_VALUE: usize = 0x0C;
     const ZDICTIONARY_INT_OBJECT_ENTRY_VALUE: usize = 0x10;
+    const DICTIONARY_INT_CONTINUOUS_ENTRY_STRIDE: usize = 0x18;
+    const DICTIONARY_ENTRY_BEGIN_CONTINUOUS_SKILL_ID: usize = 0x0C;
     const SKILL_CONTROL_DATA_SKILL_ID: usize = 0x10;
     const MAX_REVIEWED_DICTIONARY_CAPACITY: usize = 16_384;
     const MAX_REVIEWED_PLAYER_LOOP_TIMINGS: usize = 64;
@@ -442,15 +454,21 @@ mod windows {
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     struct MarkerSkillResolutionSample {
         data_mgr: usize,
-        slot_dictionary: usize,
-        slot_dictionary_entries: usize,
-        slot_dictionary_count: usize,
-        slot_dictionary_version: i32,
+        continuous_dictionary: usize,
+        continuous_dictionary_entries: usize,
+        continuous_dictionary_count: usize,
+        continuous_dictionary_version: i32,
+        continuous_dictionary_fingerprint: [u8; 32],
+        resolved_lookup_skill_id: i32,
         control_dictionary: usize,
+        control_dictionary_buckets: usize,
+        control_dictionary_buckets_length: usize,
         control_dictionary_entries: usize,
+        control_dictionary_entries_length: usize,
         control_dictionary_count: usize,
+        control_dictionary_free_count: usize,
         control_dictionary_version: i32,
-        resolved_slot_skill_id: i32,
+        control_dictionary_fingerprint: [u8; 32],
         resolved_control_data: usize,
         resolved_control_skill_id: i32,
     }
@@ -459,17 +477,8 @@ mod windows {
     enum MarkerSkillResolutionError {
         RootChain,
         DataManager,
-        SlotDictionaryPointer,
-        SlotDictionaryClass,
-        SlotDictionaryHeader,
-        SlotDictionaryShape,
-        SlotDictionaryEntryStorage,
-        SlotDictionaryEntryCapacity,
-        SlotDictionaryEntryArrayClass,
-        SlotDictionaryEntryStride,
+        ContinuousDictionary,
         ControlDictionary,
-        MarkerSlotLookup,
-        MarkerSlotMapping,
         ControlDataLookup,
         ControlDataClass,
         ControlDataSkillIdentity,
@@ -480,27 +489,10 @@ mod windows {
             match self {
                 Self::RootChain => "unavailable-or-invalid-read-only-marker-skill-root-chain",
                 Self::DataManager => "unavailable-or-invalid-marker-skill-data-manager",
-                Self::SlotDictionaryPointer => "marker-skill-slot-dictionary-pointer-invalid",
-                Self::SlotDictionaryClass => "marker-skill-slot-dictionary-class-invalid",
-                Self::SlotDictionaryHeader => "marker-skill-slot-dictionary-header-unavailable",
-                Self::SlotDictionaryShape => {
-                    "marker-skill-slot-dictionary-counts-or-buckets-invalid"
-                }
-                Self::SlotDictionaryEntryStorage => {
-                    "marker-skill-slot-dictionary-entry-storage-unavailable"
-                }
-                Self::SlotDictionaryEntryCapacity => {
-                    "marker-skill-slot-dictionary-entry-capacity-invalid"
-                }
-                Self::SlotDictionaryEntryArrayClass => {
-                    "marker-skill-slot-dictionary-entry-array-class-invalid"
-                }
-                Self::SlotDictionaryEntryStride => {
-                    "marker-skill-slot-dictionary-entry-stride-invalid"
+                Self::ContinuousDictionary => {
+                    "unavailable-or-invalid-marker-skill-continuous-dictionary"
                 }
                 Self::ControlDictionary => "unavailable-or-invalid-marker-skill-control-dictionary",
-                Self::MarkerSlotLookup => "marker-1-slot-missing-or-duplicate",
-                Self::MarkerSlotMapping => "marker-1-slot-mapping-mismatch",
                 Self::ControlDataLookup => "marker-1-control-data-missing-or-duplicate",
                 Self::ControlDataClass => "marker-1-control-data-class-invalid",
                 Self::ControlDataSkillIdentity => "marker-1-control-data-skill-identity-invalid",
@@ -522,9 +514,14 @@ mod windows {
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     struct ReviewedDictionary {
         object: usize,
+        buckets: usize,
+        buckets_length: usize,
         entries: usize,
+        entries_length: usize,
         count: usize,
+        free_count: usize,
         version: i32,
+        fingerprint: [u8; 32],
     }
 
     #[derive(Clone, Debug, Serialize)]
@@ -1175,7 +1172,7 @@ mod windows {
             .and_then(|closed| closed.operator_placement.as_ref())
             .is_some_and(|placement| placement.human_click_observed);
         let receipt = Receipt {
-            schema_version: 9,
+            schema_version: 11,
             generated_by: "rlogs-bpsr-automarker-lifecycle-probe",
             game: "blue-protocol-star-resonance",
             deployment: "global",
@@ -3010,7 +3007,7 @@ mod windows {
         let first_skill = first
             .as_ref()
             .map_err(|_| MarkerSkillResolutionError::RootChain)
-            .and_then(|(roots, _)| read_marker_skill_resolution_sample(memory, roots));
+            .and_then(|(roots, _)| read_marker_skill_resolution_sample(memory, module_base, roots));
         let first_leader = first
             .as_ref()
             .map_err(|error| *error)
@@ -3022,7 +3019,7 @@ mod windows {
         let second_skill = second
             .as_ref()
             .map_err(|_| MarkerSkillResolutionError::RootChain)
-            .and_then(|(roots, _)| read_marker_skill_resolution_sample(memory, roots));
+            .and_then(|(roots, _)| read_marker_skill_resolution_sample(memory, module_base, roots));
         let second_leader = second
             .as_ref()
             .map_err(|error| *error)
@@ -3335,6 +3332,7 @@ mod windows {
 
     fn read_marker_skill_resolution_sample(
         memory: &impl Memory,
+        module_base: usize,
         roots: &Roots,
     ) -> Result<MarkerSkillResolutionSample, MarkerSkillResolutionError> {
         let data_mgr = pointer_at(
@@ -3344,40 +3342,37 @@ mod windows {
             true,
         )
         .map_err(|_| MarkerSkillResolutionError::DataManager)?;
-        validate_object(memory, data_mgr, "SkillControlDataMgr", "Panda.ZGame")
-            .map_err(|_| MarkerSkillResolutionError::DataManager)?;
-
-        let slot_dictionary_object = pointer_at(
+        validate_exact_type_info_object(
             memory,
-            checked_add(data_mgr, SKILL_DATA_MGR_SLOT_DICT)
-                .map_err(|_| MarkerSkillResolutionError::SlotDictionaryPointer)?,
+            module_base,
+            data_mgr,
+            SKILL_CONTROL_DATA_MGR_TYPE_INFO_RVA,
+        )
+        .and_then(|()| validate_object(memory, data_mgr, "SkillControlDataMgr", "Panda.ZGame"))
+        .map_err(|_| MarkerSkillResolutionError::DataManager)?;
+        let continuous_dictionary = pointer_at(
+            memory,
+            checked_add(data_mgr, SKILL_DATA_MGR_CONTINUOUS_DICTIONARY)
+                .map_err(|_| MarkerSkillResolutionError::ContinuousDictionary)?,
             true,
         )
-        .map_err(|_| MarkerSkillResolutionError::SlotDictionaryPointer)?;
-        let slot_dictionary = read_reviewed_dictionary(
+        .map_err(|_| MarkerSkillResolutionError::ContinuousDictionary)?;
+        let (
+            continuous_entries,
+            continuous_count,
+            continuous_version,
+            continuous_fingerprint,
+            resolved_lookup_skill_id,
+        ) = resolve_continuous_skill_id(
             memory,
-            slot_dictionary_object,
-            ZDICTIONARY_INT_INT_ENTRY_STRIDE,
+            module_base,
+            continuous_dictionary,
+            MARKER_1_SKILL_ID,
         )
-        .map_err(|error| match error {
-            ReviewedDictionaryError::Class => MarkerSkillResolutionError::SlotDictionaryClass,
-            ReviewedDictionaryError::Header => MarkerSkillResolutionError::SlotDictionaryHeader,
-            ReviewedDictionaryError::Shape => MarkerSkillResolutionError::SlotDictionaryShape,
-            ReviewedDictionaryError::EntryStorage => {
-                MarkerSkillResolutionError::SlotDictionaryEntryStorage
-            }
-            ReviewedDictionaryError::EntryCapacity => {
-                MarkerSkillResolutionError::SlotDictionaryEntryCapacity
-            }
-            ReviewedDictionaryError::EntryArrayClass => {
-                MarkerSkillResolutionError::SlotDictionaryEntryArrayClass
-            }
-            ReviewedDictionaryError::EntryStride => {
-                MarkerSkillResolutionError::SlotDictionaryEntryStride
-            }
-        })?;
+        .map_err(|_| MarkerSkillResolutionError::ContinuousDictionary)?;
         let control_dictionary = read_reviewed_dictionary(
             memory,
+            module_base,
             pointer_at(
                 memory,
                 checked_add(data_mgr, SKILL_DATA_MGR_CONTROL_DATAS)
@@ -3385,24 +3380,30 @@ mod windows {
                 true,
             )
             .map_err(|_| MarkerSkillResolutionError::ControlDictionary)?,
+            ZDICTIONARY_INT_SKILL_CONTROL_DATA_TYPE_INFO_RVA,
             ZDICTIONARY_INT_OBJECT_ENTRY_STRIDE,
         )
         .map_err(|_| MarkerSkillResolutionError::ControlDictionary)?;
-        let resolved_slot_skill_id =
-            unique_int_dictionary_value(memory, &slot_dictionary, MARKER_1_SLOT_ID)
-                .map_err(|_| MarkerSkillResolutionError::MarkerSlotLookup)?;
-        if resolved_slot_skill_id != MARKER_1_SKILL_ID {
-            return Err(MarkerSkillResolutionError::MarkerSlotMapping);
-        }
-        let resolved_control_data =
-            unique_object_dictionary_value(memory, &control_dictionary, resolved_slot_skill_id)
-                .map_err(|_| MarkerSkillResolutionError::ControlDataLookup)?;
-        validate_object(
+        let resolved_control_data = object_dictionary_value_by_int_key(
             memory,
-            resolved_control_data,
-            "SkillControlData",
-            "Panda.ZGame",
+            &control_dictionary,
+            resolved_lookup_skill_id,
         )
+        .map_err(|_| MarkerSkillResolutionError::ControlDataLookup)?;
+        validate_exact_type_info_object(
+            memory,
+            module_base,
+            resolved_control_data,
+            SKILL_CONTROL_DATA_TYPE_INFO_RVA,
+        )
+        .and_then(|()| {
+            validate_object(
+                memory,
+                resolved_control_data,
+                "SkillControlData",
+                "Panda.ZGame",
+            )
+        })
         .map_err(|_| MarkerSkillResolutionError::ControlDataClass)?;
         let resolved_control_skill_id = i32_at(
             memory,
@@ -3410,20 +3411,26 @@ mod windows {
                 .map_err(|_| MarkerSkillResolutionError::ControlDataSkillIdentity)?,
         )
         .map_err(|_| MarkerSkillResolutionError::ControlDataSkillIdentity)?;
-        if resolved_control_skill_id != MARKER_1_SKILL_ID {
+        if resolved_control_skill_id != resolved_lookup_skill_id {
             return Err(MarkerSkillResolutionError::ControlDataSkillIdentity);
         }
         Ok(MarkerSkillResolutionSample {
             data_mgr,
-            slot_dictionary: slot_dictionary.object,
-            slot_dictionary_entries: slot_dictionary.entries,
-            slot_dictionary_count: slot_dictionary.count,
-            slot_dictionary_version: slot_dictionary.version,
+            continuous_dictionary,
+            continuous_dictionary_entries: continuous_entries,
+            continuous_dictionary_count: continuous_count,
+            continuous_dictionary_version: continuous_version,
+            continuous_dictionary_fingerprint: continuous_fingerprint,
+            resolved_lookup_skill_id,
             control_dictionary: control_dictionary.object,
+            control_dictionary_buckets: control_dictionary.buckets,
+            control_dictionary_buckets_length: control_dictionary.buckets_length,
             control_dictionary_entries: control_dictionary.entries,
+            control_dictionary_entries_length: control_dictionary.entries_length,
             control_dictionary_count: control_dictionary.count,
+            control_dictionary_free_count: control_dictionary.free_count,
             control_dictionary_version: control_dictionary.version,
-            resolved_slot_skill_id,
+            control_dictionary_fingerprint: control_dictionary.fingerprint,
             resolved_control_data,
             resolved_control_skill_id,
         })
@@ -3670,12 +3677,120 @@ mod windows {
         }
     }
 
+    fn resolve_continuous_skill_id(
+        memory: &impl Memory,
+        module_base: usize,
+        object: usize,
+        requested_skill_id: i32,
+    ) -> Result<(usize, usize, i32, [u8; 32], i32), AcquireError> {
+        validate_exact_type_info_object(
+            memory,
+            module_base,
+            object,
+            DICTIONARY_INT_SKILL_CONTINUOUS_INFO_TYPE_INFO_RVA,
+        )?;
+        validate_object(memory, object, "Dictionary`2", "System.Collections.Generic")?;
+        let read_header = || {
+            Ok::<_, AcquireError>((
+                usize_at(memory, checked_add(object, DICTIONARY_BUCKETS)?)?,
+                usize_at(memory, checked_add(object, DICTIONARY_ENTRIES)?)?,
+                nonnegative_i32_at(memory, checked_add(object, DICTIONARY_COUNT)?)?,
+                nonnegative_i32_at(memory, checked_add(object, DICTIONARY_FREE_COUNT)?)?,
+                i32_at(memory, checked_add(object, DICTIONARY_VERSION)?)?,
+            ))
+        };
+        let (buckets, entries, count, free_count, version) = read_header()?;
+        if count > MAX_REVIEWED_DICTIONARY_CAPACITY || free_count > count {
+            return Err(AcquireError::Identity);
+        }
+        let mut fingerprint = Sha256::new();
+        fingerprint.update(buckets.to_le_bytes());
+        fingerprint.update(entries.to_le_bytes());
+        fingerprint.update(count.to_le_bytes());
+        fingerprint.update(free_count.to_le_bytes());
+        fingerprint.update(version.to_le_bytes());
+        if count == 0 {
+            if free_count != 0 || read_header()? != (buckets, entries, count, free_count, version) {
+                return Err(AcquireError::Identity);
+            }
+            return Ok((
+                entries,
+                count,
+                version,
+                fingerprint.finalize().into(),
+                requested_skill_id,
+            ));
+        }
+        if !plausible_pointer(entries) {
+            return Err(AcquireError::Identity);
+        }
+        let entries_length = usize_at(memory, checked_add(entries, MANAGED_ARRAY_LENGTH)?)?;
+        if entries_length < count || entries_length > MAX_REVIEWED_DICTIONARY_CAPACITY {
+            return Err(AcquireError::Identity);
+        }
+        let entries_class = pointer_at(memory, entries, false)?;
+        if byte_at(memory, checked_add(entries_class, IL2CPP_CLASS_RANK)?)? != 1
+            || nonnegative_i32_at(
+                memory,
+                checked_add(entries_class, IL2CPP_CLASS_ELEMENT_SIZE)?,
+            )? != DICTIONARY_INT_CONTINUOUS_ENTRY_STRIDE
+        {
+            return Err(AcquireError::Identity);
+        }
+        let mut resolved_skill_id = requested_skill_id;
+        let mut remapped = false;
+        for index in 0..count {
+            let entry =
+                dictionary_entry_address(entries, index, DICTIONARY_INT_CONTINUOUS_ENTRY_STRIDE)?;
+            let bytes = memory.read_exact(entry, DICTIONARY_INT_CONTINUOUS_ENTRY_STRIDE)?;
+            fingerprint.update(&bytes);
+            let hash = i32::from_le_bytes(bytes[0..4].try_into().map_err(|_| AcquireError::Read)?);
+            if hash < 0 || remapped {
+                continue;
+            }
+            let begin = i32::from_le_bytes(
+                bytes[DICTIONARY_ENTRY_BEGIN_CONTINUOUS_SKILL_ID
+                    ..DICTIONARY_ENTRY_BEGIN_CONTINUOUS_SKILL_ID + 4]
+                    .try_into()
+                    .map_err(|_| AcquireError::Read)?,
+            );
+            if begin == requested_skill_id {
+                resolved_skill_id = i32::from_le_bytes(
+                    bytes[ZDICTIONARY_ENTRY_KEY..ZDICTIONARY_ENTRY_KEY + 4]
+                        .try_into()
+                        .map_err(|_| AcquireError::Read)?,
+                );
+                remapped = true;
+            }
+        }
+        if resolved_skill_id <= 0 {
+            return Err(AcquireError::Identity);
+        }
+        if read_header()? != (buckets, entries, count, free_count, version)
+            || usize_at(memory, checked_add(entries, MANAGED_ARRAY_LENGTH)?)? != entries_length
+        {
+            return Err(AcquireError::Identity);
+        }
+        Ok((
+            entries,
+            count,
+            version,
+            fingerprint.finalize().into(),
+            resolved_skill_id,
+        ))
+    }
+
     fn read_reviewed_dictionary(
         memory: &impl Memory,
+        module_base: usize,
         object: usize,
+        type_info_rva: usize,
         entry_stride: usize,
     ) -> Result<ReviewedDictionary, ReviewedDictionaryError> {
-        validate_object(memory, object, "ZDictionary`2", "ZUtil.Pool.Collections")
+        validate_exact_type_info_object(memory, module_base, object, type_info_rva)
+            .and_then(|()| {
+                validate_object(memory, object, "ZDictionary`2", "ZUtil.Pool.Collections")
+            })
             .map_err(|_| ReviewedDictionaryError::Class)?;
         let buckets_length = nonnegative_i32_at(
             memory,
@@ -3694,12 +3809,46 @@ mod windows {
                 .map_err(|_| ReviewedDictionaryError::Header)?,
         )
         .map_err(|_| ReviewedDictionaryError::Header)?;
+        let version = i32_at(
+            memory,
+            checked_add(object, ZDICTIONARY_VERSION)
+                .map_err(|_| ReviewedDictionaryError::Header)?,
+        )
+        .map_err(|_| ReviewedDictionaryError::Header)?;
         if count == 0
             || buckets_length == 0
             || count > MAX_REVIEWED_DICTIONARY_CAPACITY
             || buckets_length > MAX_REVIEWED_DICTIONARY_CAPACITY
             || free_count > count
         {
+            return Err(ReviewedDictionaryError::Shape);
+        }
+        if usize_at(
+            memory,
+            checked_add(object, ZDICTIONARY_COMPARER)
+                .map_err(|_| ReviewedDictionaryError::Header)?,
+        )
+        .map_err(|_| ReviewedDictionaryError::Header)?
+            != 0
+        {
+            return Err(ReviewedDictionaryError::Class);
+        }
+        let buckets = pointer_at(
+            memory,
+            checked_add(object, ZDICTIONARY_BUCKETS)
+                .map_err(|_| ReviewedDictionaryError::Header)?,
+            true,
+        )
+        .map_err(|_| ReviewedDictionaryError::Header)?;
+        validate_exact_type_info_object(memory, module_base, buckets, INT_ARRAY_TYPE_INFO_RVA)
+            .map_err(|_| ReviewedDictionaryError::Shape)?;
+        let buckets_capacity = usize_at(
+            memory,
+            checked_add(buckets, MANAGED_ARRAY_LENGTH)
+                .map_err(|_| ReviewedDictionaryError::Header)?,
+        )
+        .map_err(|_| ReviewedDictionaryError::Header)?;
+        if buckets_capacity != buckets_length {
             return Err(ReviewedDictionaryError::Shape);
         }
         let entries = pointer_at(
@@ -3740,71 +3889,192 @@ mod windows {
         {
             return Err(ReviewedDictionaryError::EntryStride);
         }
-        Ok(ReviewedDictionary {
-            object,
+        let mut fingerprint = Sha256::new();
+        for index in 0..buckets_length {
+            fingerprint.update(
+                i32_at(
+                    memory,
+                    checked_add(
+                        buckets,
+                        MANAGED_ARRAY_VECTOR
+                            .checked_add(
+                                index
+                                    .checked_mul(4)
+                                    .ok_or(ReviewedDictionaryError::Header)?,
+                            )
+                            .ok_or(ReviewedDictionaryError::Header)?,
+                    )
+                    .map_err(|_| ReviewedDictionaryError::Header)?,
+                )
+                .map_err(|_| ReviewedDictionaryError::Header)?
+                .to_le_bytes(),
+            );
+        }
+        for index in 0..count {
+            let entry = dictionary_entry_address(entries, index, entry_stride)
+                .map_err(|_| ReviewedDictionaryError::EntryStorage)?;
+            fingerprint.update(
+                i32_at(memory, entry)
+                    .map_err(|_| ReviewedDictionaryError::EntryStorage)?
+                    .to_le_bytes(),
+            );
+            fingerprint.update(
+                i32_at(
+                    memory,
+                    checked_add(entry, 4).map_err(|_| ReviewedDictionaryError::EntryStorage)?,
+                )
+                .map_err(|_| ReviewedDictionaryError::EntryStorage)?
+                .to_le_bytes(),
+            );
+            fingerprint.update(
+                i32_at(
+                    memory,
+                    checked_add(entry, ZDICTIONARY_ENTRY_KEY)
+                        .map_err(|_| ReviewedDictionaryError::EntryStorage)?,
+                )
+                .map_err(|_| ReviewedDictionaryError::EntryStorage)?
+                .to_le_bytes(),
+            );
+            fingerprint.update(
+                usize_at(
+                    memory,
+                    checked_add(entry, ZDICTIONARY_INT_OBJECT_ENTRY_VALUE)
+                        .map_err(|_| ReviewedDictionaryError::EntryStorage)?,
+                )
+                .map_err(|_| ReviewedDictionaryError::EntryStorage)?
+                .to_le_bytes(),
+            );
+        }
+        let second_buckets_length = nonnegative_i32_at(
+            memory,
+            checked_add(object, ZDICTIONARY_BUCKETS_LENGTH)
+                .map_err(|_| ReviewedDictionaryError::Header)?,
+        )
+        .map_err(|_| ReviewedDictionaryError::Header)?;
+        let second_buckets = usize_at(
+            memory,
+            checked_add(object, ZDICTIONARY_BUCKETS)
+                .map_err(|_| ReviewedDictionaryError::Header)?,
+        )
+        .map_err(|_| ReviewedDictionaryError::Header)?;
+        let second_entries = usize_at(
+            memory,
+            checked_add(object, ZDICTIONARY_ENTRIES)
+                .map_err(|_| ReviewedDictionaryError::Header)?,
+        )
+        .map_err(|_| ReviewedDictionaryError::Header)?;
+        let second_count = nonnegative_i32_at(
+            memory,
+            checked_add(object, ZDICTIONARY_COUNT).map_err(|_| ReviewedDictionaryError::Header)?,
+        )
+        .map_err(|_| ReviewedDictionaryError::Header)?;
+        let second_free_count = nonnegative_i32_at(
+            memory,
+            checked_add(object, ZDICTIONARY_FREE_COUNT)
+                .map_err(|_| ReviewedDictionaryError::Header)?,
+        )
+        .map_err(|_| ReviewedDictionaryError::Header)?;
+        let second_version = i32_at(
+            memory,
+            checked_add(object, ZDICTIONARY_VERSION)
+                .map_err(|_| ReviewedDictionaryError::Header)?,
+        )
+        .map_err(|_| ReviewedDictionaryError::Header)?;
+        let second_comparer = usize_at(
+            memory,
+            checked_add(object, ZDICTIONARY_COMPARER)
+                .map_err(|_| ReviewedDictionaryError::Header)?,
+        )
+        .map_err(|_| ReviewedDictionaryError::Header)?;
+        let second_buckets_capacity = usize_at(
+            memory,
+            checked_add(buckets, MANAGED_ARRAY_LENGTH)
+                .map_err(|_| ReviewedDictionaryError::Header)?,
+        )
+        .map_err(|_| ReviewedDictionaryError::Header)?;
+        let second_entries_length = usize_at(
+            memory,
+            checked_add(entries, MANAGED_ARRAY_LENGTH)
+                .map_err(|_| ReviewedDictionaryError::Header)?,
+        )
+        .map_err(|_| ReviewedDictionaryError::Header)?;
+        if (
+            second_buckets_length,
+            second_buckets,
+            second_entries,
+            second_count,
+            second_free_count,
+            second_version,
+            second_comparer,
+            second_buckets_capacity,
+            second_entries_length,
+        ) != (
+            buckets_length,
+            buckets,
             entries,
             count,
-            version: i32_at(
-                memory,
-                checked_add(object, ZDICTIONARY_VERSION)
-                    .map_err(|_| ReviewedDictionaryError::Header)?,
-            )
-            .map_err(|_| ReviewedDictionaryError::Header)?,
+            free_count,
+            version,
+            0,
+            buckets_capacity,
+            entries_length,
+        ) {
+            return Err(ReviewedDictionaryError::Header);
+        }
+        Ok(ReviewedDictionary {
+            object,
+            buckets,
+            buckets_length,
+            entries,
+            entries_length,
+            count,
+            free_count,
+            version,
+            fingerprint: fingerprint.finalize().into(),
         })
     }
 
-    fn unique_int_dictionary_value(
-        memory: &impl Memory,
-        dictionary: &ReviewedDictionary,
-        expected_key: i32,
-    ) -> Result<i32, AcquireError> {
-        let mut found = None;
-        for index in 0..dictionary.count {
-            let entry = dictionary_entry_address(
-                dictionary.entries,
-                index,
-                ZDICTIONARY_INT_INT_ENTRY_STRIDE,
-            )?;
-            if i32_at(memory, checked_add(entry, ZDICTIONARY_ENTRY_HASH_CODE)?)? < 0
-                || i32_at(memory, checked_add(entry, ZDICTIONARY_ENTRY_KEY)?)? != expected_key
-            {
-                continue;
-            }
-            let value = i32_at(memory, checked_add(entry, ZDICTIONARY_INT_INT_ENTRY_VALUE)?)?;
-            if found.replace(value).is_some() {
-                return Err(AcquireError::Identity);
-            }
-        }
-        found.ok_or(AcquireError::Unavailable)
-    }
-
-    fn unique_object_dictionary_value(
+    fn object_dictionary_value_by_int_key(
         memory: &impl Memory,
         dictionary: &ReviewedDictionary,
         expected_key: i32,
     ) -> Result<usize, AcquireError> {
-        let mut found = None;
-        for index in 0..dictionary.count {
-            let entry = dictionary_entry_address(
-                dictionary.entries,
-                index,
-                ZDICTIONARY_INT_OBJECT_ENTRY_STRIDE,
-            )?;
-            if i32_at(memory, checked_add(entry, ZDICTIONARY_ENTRY_HASH_CODE)?)? < 0
-                || i32_at(memory, checked_add(entry, ZDICTIONARY_ENTRY_KEY)?)? != expected_key
+        let hash = expected_key & 0x7fff_ffff;
+        let bucket_index = (hash as usize) % dictionary.buckets_length;
+        let bucket_offset = MANAGED_ARRAY_VECTOR
+            .checked_add(bucket_index.checked_mul(4).ok_or(AcquireError::Read)?)
+            .ok_or(AcquireError::Read)?;
+        let mut index = i32_at(memory, checked_add(dictionary.buckets, bucket_offset)?)?;
+        let mut visited = BTreeSet::new();
+        while index >= 0 {
+            let entry_index = usize::try_from(index).map_err(|_| AcquireError::Identity)?;
+            if entry_index >= dictionary.count
+                || entry_index >= dictionary.entries_length
+                || !visited.insert(entry_index)
             {
-                continue;
-            }
-            let value = pointer_at(
-                memory,
-                checked_add(entry, ZDICTIONARY_INT_OBJECT_ENTRY_VALUE)?,
-                true,
-            )?;
-            if found.replace(value).is_some() {
                 return Err(AcquireError::Identity);
             }
+            let entry = dictionary_entry_address(
+                dictionary.entries,
+                entry_index,
+                ZDICTIONARY_INT_OBJECT_ENTRY_STRIDE,
+            )?;
+            let stored_hash = i32_at(memory, checked_add(entry, ZDICTIONARY_ENTRY_HASH_CODE)?)?;
+            if stored_hash < 0 {
+                return Err(AcquireError::Identity);
+            }
+            if stored_hash == hash
+                && i32_at(memory, checked_add(entry, ZDICTIONARY_ENTRY_KEY)?)? == expected_key
+            {
+                return pointer_at(
+                    memory,
+                    checked_add(entry, ZDICTIONARY_INT_OBJECT_ENTRY_VALUE)?,
+                    true,
+                );
+            }
+            index = i32_at(memory, checked_add(entry, 4)?)?;
         }
-        found.ok_or(AcquireError::Unavailable)
+        Err(AcquireError::Unavailable)
     }
 
     fn dictionary_entry_address(
@@ -3826,7 +4096,7 @@ mod windows {
         match (first, second) {
             (Ok(first), Ok(second)) if first == second => BoundedGate {
                 proven: true,
-                reason: "proven-read-only-marker-1-slot-and-skill-resolution",
+                reason: "proven-read-only-marker-1-skill-resolution",
             },
             (Ok(_), Ok(_)) => BoundedGate {
                 proven: false,
@@ -4182,6 +4452,10 @@ mod windows {
         stream
             .read_to_end(&mut bytes)
             .map_err(|_| "rlogs-host-unavailable")?;
+        parse_local_json_response(&bytes)
+    }
+
+    fn parse_local_json_response(bytes: &[u8]) -> Result<serde_json::Value, &'static str> {
         let split = bytes
             .windows(4)
             .position(|window| window == b"\r\n\r\n")
@@ -4964,6 +5238,9 @@ mod windows {
             root_reads: Cell<usize>,
             mutate_state: Cell<bool>,
             state_reads: Cell<usize>,
+            mutate_i32_address: Cell<Option<usize>>,
+            mutate_i32_after: Cell<usize>,
+            mutate_i32_reads: Cell<usize>,
         }
 
         impl FakeMemory {
@@ -4974,6 +5251,9 @@ mod windows {
                     root_reads: Cell::new(0),
                     mutate_state: Cell::new(false),
                     state_reads: Cell::new(0),
+                    mutate_i32_address: Cell::new(None),
+                    mutate_i32_after: Cell::new(usize::MAX),
+                    mutate_i32_reads: Cell::new(0),
                 }
             }
             fn put(&mut self, address: usize, bytes: &[u8]) {
@@ -5012,6 +5292,24 @@ mod windows {
                         return Ok(8i32.to_le_bytes().to_vec());
                     }
                 }
+                if length == 4 && self.mutate_i32_address.get() == Some(address) {
+                    let reads = self.mutate_i32_reads.get() + 1;
+                    self.mutate_i32_reads.set(reads);
+                    if reads > self.mutate_i32_after.get() {
+                        let original = (0..4)
+                            .map(|i| {
+                                self.bytes
+                                    .get(&(address + i))
+                                    .copied()
+                                    .ok_or(AcquireError::Read)
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        let value = i32::from_le_bytes(
+                            original.try_into().map_err(|_| AcquireError::Read)?,
+                        ) + 1;
+                        return Ok(value.to_le_bytes().to_vec());
+                    }
+                }
                 (0..length)
                     .map(|i| {
                         self.bytes
@@ -5036,11 +5334,13 @@ mod windows {
             let storage = 0x70_0000;
             let comp = 0x80_0000;
             let data_mgr = 0x85_0000;
-            let slot_dictionary = 0x86_0000;
+            let continuous_dictionary = 0x86_0000;
             let control_dictionary = 0x87_0000;
-            let slot_entries = 0x88_0000;
+            let continuous_entries = 0x88_0000;
             let control_entries = 0x89_0000;
             let control_data = 0x8A_0000;
+            let control_buckets = 0x8B_0000;
+            let continuous_buckets = 0x8C_0000;
             let mgr = 0x90_0000;
             let indicator = 0x91_0000;
             let classes = [0x31_0000, 0x32_0000, 0x33_0000, 0x34_0000];
@@ -5089,67 +5389,114 @@ mod windows {
                 m.text(0xA2_0000 + i * 0x100, "Panda.ZGame");
             }
             let data_mgr_class = 0x3B_0000;
-            let dictionary_class = 0x3C_0000;
-            let slot_array_class = 0x3D_0000;
+            let control_dictionary_class = 0x3C_0000;
+            let continuous_dictionary_class = 0x3C_1000;
             let control_array_class = 0x3D_1000;
+            let continuous_array_class = 0x3D_2000;
             let control_data_class = 0x3E_0000;
+            let int_array_class = 0x3F_0000;
             m.ptr(data_mgr, data_mgr_class);
+            m.ptr(base + SKILL_CONTROL_DATA_MGR_TYPE_INFO_RVA, data_mgr_class);
             m.ptr(data_mgr_class + IL2CPP_CLASS_NAME, 0xA5_0000);
             m.ptr(data_mgr_class + IL2CPP_CLASS_NAMESPACE, 0xA5_0100);
             m.text(0xA5_0000, "SkillControlDataMgr");
             m.text(0xA5_0100, "Panda.ZGame");
-            m.ptr(data_mgr + SKILL_DATA_MGR_SLOT_DICT, slot_dictionary);
             m.ptr(data_mgr + SKILL_DATA_MGR_CONTROL_DATAS, control_dictionary);
-            m.ptr(dictionary_class + IL2CPP_CLASS_NAME, 0xA5_0200);
-            m.ptr(dictionary_class + IL2CPP_CLASS_NAMESPACE, 0xA5_0300);
+            m.ptr(
+                data_mgr + SKILL_DATA_MGR_CONTINUOUS_DICTIONARY,
+                continuous_dictionary,
+            );
+            m.ptr(continuous_dictionary, continuous_dictionary_class);
+            m.ptr(
+                base + DICTIONARY_INT_SKILL_CONTINUOUS_INFO_TYPE_INFO_RVA,
+                continuous_dictionary_class,
+            );
+            m.ptr(continuous_dictionary_class + IL2CPP_CLASS_NAME, 0xA5_0600);
+            m.ptr(
+                continuous_dictionary_class + IL2CPP_CLASS_NAMESPACE,
+                0xA5_0700,
+            );
+            m.text(0xA5_0600, "Dictionary`2");
+            m.text(0xA5_0700, "System.Collections.Generic");
+            m.ptr(
+                continuous_dictionary + DICTIONARY_BUCKETS,
+                continuous_buckets,
+            );
+            m.ptr(continuous_buckets, int_array_class);
+            m.ptr(continuous_buckets + MANAGED_ARRAY_LENGTH, 1);
+            m.put(
+                continuous_buckets + MANAGED_ARRAY_VECTOR,
+                &(-1i32).to_le_bytes(),
+            );
+            m.ptr(
+                continuous_dictionary + DICTIONARY_ENTRIES,
+                continuous_entries,
+            );
+            m.put(
+                continuous_dictionary + DICTIONARY_COUNT,
+                &0i32.to_le_bytes(),
+            );
+            m.put(
+                continuous_dictionary + DICTIONARY_FREE_COUNT,
+                &0i32.to_le_bytes(),
+            );
+            m.put(
+                continuous_dictionary + DICTIONARY_VERSION,
+                &3i32.to_le_bytes(),
+            );
+            m.ptr(continuous_entries, continuous_array_class);
+            m.ptr(continuous_entries + MANAGED_ARRAY_LENGTH, 1);
+            m.put(continuous_array_class + IL2CPP_CLASS_RANK, &[1]);
+            m.put(
+                continuous_array_class + IL2CPP_CLASS_ELEMENT_SIZE,
+                &(DICTIONARY_INT_CONTINUOUS_ENTRY_STRIDE as i32).to_le_bytes(),
+            );
+            m.ptr(control_dictionary_class + IL2CPP_CLASS_NAME, 0xA5_0200);
+            m.ptr(control_dictionary_class + IL2CPP_CLASS_NAMESPACE, 0xA5_0300);
             m.text(0xA5_0200, "ZDictionary`2");
             m.text(0xA5_0300, "ZUtil.Pool.Collections");
-            for (dictionary, entries, array_class, entry_stride) in [
-                (
-                    slot_dictionary,
-                    slot_entries,
-                    slot_array_class,
-                    ZDICTIONARY_INT_INT_ENTRY_STRIDE,
-                ),
-                (
-                    control_dictionary,
-                    control_entries,
-                    control_array_class,
-                    ZDICTIONARY_INT_OBJECT_ENTRY_STRIDE,
-                ),
-            ] {
-                m.ptr(dictionary, dictionary_class);
-                m.put(dictionary + ZDICTIONARY_BUCKETS_LENGTH, &1i32.to_le_bytes());
-                m.ptr(dictionary + ZDICTIONARY_ENTRIES, entries);
-                m.put(dictionary + ZDICTIONARY_COUNT, &1i32.to_le_bytes());
-                m.put(dictionary + ZDICTIONARY_VERSION, &7i32.to_le_bytes());
-                m.put(dictionary + ZDICTIONARY_FREE_COUNT, &0i32.to_le_bytes());
-                m.ptr(entries, array_class);
-                m.ptr(entries + MANAGED_ARRAY_LENGTH, 1);
-                m.put(array_class + IL2CPP_CLASS_RANK, &[1]);
-                m.put(
-                    array_class + IL2CPP_CLASS_ELEMENT_SIZE,
-                    &(entry_stride as i32).to_le_bytes(),
-                );
-            }
-            let slot_entry = slot_entries + MANAGED_ARRAY_VECTOR;
-            m.put(
-                slot_entry + ZDICTIONARY_ENTRY_HASH_CODE,
-                &201i32.to_le_bytes(),
+            m.ptr(control_dictionary, control_dictionary_class);
+            m.ptr(
+                base + ZDICTIONARY_INT_SKILL_CONTROL_DATA_TYPE_INFO_RVA,
+                control_dictionary_class,
             );
             m.put(
-                slot_entry + ZDICTIONARY_ENTRY_KEY,
-                &MARKER_1_SLOT_ID.to_le_bytes(),
+                control_dictionary + ZDICTIONARY_BUCKETS_LENGTH,
+                &1i32.to_le_bytes(),
+            );
+            m.ptr(control_dictionary + ZDICTIONARY_BUCKETS, control_buckets);
+            m.ptr(control_buckets, int_array_class);
+            m.ptr(base + INT_ARRAY_TYPE_INFO_RVA, int_array_class);
+            m.ptr(control_buckets + MANAGED_ARRAY_LENGTH, 1);
+            m.put(control_buckets + MANAGED_ARRAY_VECTOR, &0i32.to_le_bytes());
+            m.ptr(control_dictionary + ZDICTIONARY_ENTRIES, control_entries);
+            m.put(control_dictionary + ZDICTIONARY_COUNT, &1i32.to_le_bytes());
+            m.put(
+                control_dictionary + ZDICTIONARY_VERSION,
+                &7i32.to_le_bytes(),
             );
             m.put(
-                slot_entry + ZDICTIONARY_INT_INT_ENTRY_VALUE,
-                &MARKER_1_SKILL_ID.to_le_bytes(),
+                control_dictionary + ZDICTIONARY_FREE_COUNT,
+                &0i32.to_le_bytes(),
+            );
+            m.ptr(control_dictionary + ZDICTIONARY_COMPARER, 0);
+            m.ptr(control_entries, control_array_class);
+            m.ptr(control_entries + MANAGED_ARRAY_LENGTH, 1);
+            m.put(control_array_class + IL2CPP_CLASS_RANK, &[1]);
+            m.put(
+                control_array_class + IL2CPP_CLASS_ELEMENT_SIZE,
+                &(ZDICTIONARY_INT_OBJECT_ENTRY_STRIDE as i32).to_le_bytes(),
             );
             let control_entry = control_entries + MANAGED_ARRAY_VECTOR;
+            m.put(
+                control_entry,
+                &vec![0u8; ZDICTIONARY_INT_OBJECT_ENTRY_STRIDE],
+            );
             m.put(
                 control_entry + ZDICTIONARY_ENTRY_HASH_CODE,
                 &MARKER_1_SKILL_ID.to_le_bytes(),
             );
+            m.put(control_entry + 4, &(-1i32).to_le_bytes());
             m.put(
                 control_entry + ZDICTIONARY_ENTRY_KEY,
                 &MARKER_1_SKILL_ID.to_le_bytes(),
@@ -5159,6 +5506,7 @@ mod windows {
                 control_data,
             );
             m.ptr(control_data, control_data_class);
+            m.ptr(base + SKILL_CONTROL_DATA_TYPE_INFO_RVA, control_data_class);
             m.ptr(control_data_class + IL2CPP_CLASS_NAME, 0xA5_0400);
             m.ptr(control_data_class + IL2CPP_CLASS_NAMESPACE, 0xA5_0500);
             m.text(0xA5_0400, "SkillControlData");
@@ -5674,20 +6022,148 @@ mod windows {
         }
 
         #[test]
-        fn proves_marker_one_slot_and_control_data_without_invoking_game_code() {
+        fn proves_marker_one_control_data_without_invoking_game_code() {
+            assert_eq!(SKILL_CONTROL_DATA_MGR_TYPE_INFO_RVA, 0x955_F1A8);
+            assert_eq!(ZDICTIONARY_INT_SKILL_CONTROL_DATA_TYPE_INFO_RVA, 0x95C_B618);
+            assert_eq!(SKILL_CONTROL_DATA_TYPE_INFO_RVA, 0x962_AD48);
+            assert_eq!(INT_ARRAY_TYPE_INFO_RVA, 0x961_4E08);
             let memory = valid_memory();
             let roots = acquire_roots(&memory, 0x10_0000).unwrap();
-            let first = read_marker_skill_resolution_sample(&memory, &roots);
-            let second = read_marker_skill_resolution_sample(&memory, &roots);
+            let first = read_marker_skill_resolution_sample(&memory, 0x10_0000, &roots);
+            let second = read_marker_skill_resolution_sample(&memory, 0x10_0000, &roots);
             let gate = marker_skill_resolution_gate(&first, &second);
             assert!(gate.proven);
-            assert_eq!(
-                gate.reason,
-                "proven-read-only-marker-1-slot-and-skill-resolution"
-            );
+            assert_eq!(gate.reason, "proven-read-only-marker-1-skill-resolution");
             let sample = first.unwrap();
-            assert_eq!(sample.resolved_slot_skill_id, MARKER_1_SKILL_ID);
             assert_eq!(sample.resolved_control_skill_id, MARKER_1_SKILL_ID);
+        }
+
+        #[test]
+        fn direct_marker_skill_gate_ignores_absent_slot_dictionary() {
+            let memory = valid_memory();
+            let roots = acquire_roots(&memory, 0x10_0000).unwrap();
+            assert!(read_marker_skill_resolution_sample(&memory, 0x10_0000, &roots).is_ok());
+        }
+
+        #[test]
+        fn marker_skill_resolution_accepts_native_empty_continuous_dictionary() {
+            let mut memory = valid_memory();
+            memory.ptr(0x86_0000 + DICTIONARY_BUCKETS, 0);
+            memory.ptr(0x86_0000 + DICTIONARY_ENTRIES, 0);
+            let roots = acquire_roots(&memory, 0x10_0000).unwrap();
+            let sample = read_marker_skill_resolution_sample(&memory, 0x10_0000, &roots).unwrap();
+            assert_eq!(sample.resolved_lookup_skill_id, MARKER_1_SKILL_ID);
+        }
+
+        #[test]
+        fn marker_skill_resolution_rejects_in_sample_dictionary_mutation() {
+            let continuous = valid_memory();
+            continuous
+                .mutate_i32_address
+                .set(Some(0x86_0000 + DICTIONARY_VERSION));
+            continuous.mutate_i32_after.set(1);
+            let roots = acquire_roots(&continuous, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&continuous, 0x10_0000, &roots),
+                Err(MarkerSkillResolutionError::ContinuousDictionary)
+            );
+
+            let control = valid_memory();
+            control
+                .mutate_i32_address
+                .set(Some(0x87_0000 + ZDICTIONARY_VERSION));
+            control.mutate_i32_after.set(1);
+            let roots = acquire_roots(&control, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&control, 0x10_0000, &roots),
+                Err(MarkerSkillResolutionError::ControlDictionary)
+            );
+        }
+
+        #[test]
+        fn marker_skill_resolution_reproduces_first_continuous_skill_remap() {
+            let mut memory = valid_memory();
+            let continuous_entry = 0x88_0000 + MANAGED_ARRAY_VECTOR;
+            memory.put(
+                continuous_entry,
+                &vec![0u8; DICTIONARY_INT_CONTINUOUS_ENTRY_STRIDE],
+            );
+            memory.put(0x86_0000 + DICTIONARY_COUNT, &1i32.to_le_bytes());
+            memory.put(continuous_entry, &1101i32.to_le_bytes());
+            memory.put(continuous_entry + 4, &(-1i32).to_le_bytes());
+            memory.put(
+                continuous_entry + ZDICTIONARY_ENTRY_KEY,
+                &1201i32.to_le_bytes(),
+            );
+            memory.put(
+                continuous_entry + DICTIONARY_ENTRY_BEGIN_CONTINUOUS_SKILL_ID,
+                &MARKER_1_SKILL_ID.to_le_bytes(),
+            );
+            let control_entry = 0x89_0000 + MANAGED_ARRAY_VECTOR;
+            memory.put(control_entry, &1201i32.to_le_bytes());
+            memory.put(
+                control_entry + ZDICTIONARY_ENTRY_KEY,
+                &1201i32.to_le_bytes(),
+            );
+            memory.put(
+                0x8A_0000 + SKILL_CONTROL_DATA_SKILL_ID,
+                &1201i32.to_le_bytes(),
+            );
+            let roots = acquire_roots(&memory, 0x10_0000).unwrap();
+            let sample = read_marker_skill_resolution_sample(&memory, 0x10_0000, &roots).unwrap();
+            assert_eq!(sample.resolved_lookup_skill_id, 1201);
+            assert_eq!(sample.resolved_control_skill_id, 1201);
+        }
+
+        #[test]
+        fn marker_skill_resolution_requires_native_bucket_reachability() {
+            let mut unreachable = valid_memory();
+            unreachable.put(0x8B_0000 + MANAGED_ARRAY_VECTOR, &(-1i32).to_le_bytes());
+            let roots = acquire_roots(&unreachable, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&unreachable, 0x10_0000, &roots),
+                Err(MarkerSkillResolutionError::ControlDataLookup)
+            );
+
+            let mut cycle = valid_memory();
+            let control_entry = 0x89_0000 + MANAGED_ARRAY_VECTOR;
+            cycle.put(control_entry + ZDICTIONARY_ENTRY_KEY, &999i32.to_le_bytes());
+            cycle.put(control_entry + 4, &0i32.to_le_bytes());
+            let roots = acquire_roots(&cycle, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&cycle, 0x10_0000, &roots),
+                Err(MarkerSkillResolutionError::ControlDataLookup)
+            );
+        }
+
+        #[test]
+        fn marker_skill_resolution_requires_exact_generic_and_bucket_array_types() {
+            let mut wrong_generic = valid_memory();
+            let lookalike_class = 0x3C_2000;
+            wrong_generic.ptr(0x87_0000, lookalike_class);
+            wrong_generic.ptr(lookalike_class + IL2CPP_CLASS_NAME, 0xA5_0200);
+            wrong_generic.ptr(lookalike_class + IL2CPP_CLASS_NAMESPACE, 0xA5_0300);
+            let roots = acquire_roots(&wrong_generic, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&wrong_generic, 0x10_0000, &roots),
+                Err(MarkerSkillResolutionError::ControlDictionary)
+            );
+
+            let mut wrong_bucket_type = valid_memory();
+            wrong_bucket_type.ptr(0x8B_0000, 0x3F_1000);
+            let roots = acquire_roots(&wrong_bucket_type, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&wrong_bucket_type, 0x10_0000, &roots),
+                Err(MarkerSkillResolutionError::ControlDictionary)
+            );
+
+            let mut wrong_bucket_length = valid_memory();
+            wrong_bucket_length.ptr(0x8B_0000 + MANAGED_ARRAY_LENGTH, 2);
+            let roots = acquire_roots(&wrong_bucket_length, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&wrong_bucket_length, 0x10_0000, &roots),
+                Err(MarkerSkillResolutionError::ControlDictionary)
+            );
         }
 
         #[test]
@@ -5787,46 +6263,6 @@ mod windows {
         }
 
         #[test]
-        fn marker_skill_resolution_rejects_wrong_slot_mapping() {
-            let mut memory = valid_memory();
-            let slot_entry = 0x88_0000 + MANAGED_ARRAY_VECTOR;
-            memory.put(
-                slot_entry + ZDICTIONARY_INT_INT_ENTRY_VALUE,
-                &1102i32.to_le_bytes(),
-            );
-            let roots = acquire_roots(&memory, 0x10_0000).unwrap();
-            assert_eq!(
-                read_marker_skill_resolution_sample(&memory, &roots),
-                Err(MarkerSkillResolutionError::MarkerSlotMapping)
-            );
-        }
-
-        #[test]
-        fn marker_skill_resolution_rejects_duplicate_active_slot_key() {
-            let mut memory = valid_memory();
-            memory.put(0x86_0000 + ZDICTIONARY_COUNT, &2i32.to_le_bytes());
-            memory.ptr(0x88_0000 + MANAGED_ARRAY_LENGTH, 2);
-            let duplicate = 0x88_0000 + MANAGED_ARRAY_VECTOR + ZDICTIONARY_INT_INT_ENTRY_STRIDE;
-            memory.put(
-                duplicate + ZDICTIONARY_ENTRY_HASH_CODE,
-                &201i32.to_le_bytes(),
-            );
-            memory.put(
-                duplicate + ZDICTIONARY_ENTRY_KEY,
-                &MARKER_1_SLOT_ID.to_le_bytes(),
-            );
-            memory.put(
-                duplicate + ZDICTIONARY_INT_INT_ENTRY_VALUE,
-                &MARKER_1_SKILL_ID.to_le_bytes(),
-            );
-            let roots = acquire_roots(&memory, 0x10_0000).unwrap();
-            assert_eq!(
-                read_marker_skill_resolution_sample(&memory, &roots),
-                Err(MarkerSkillResolutionError::MarkerSlotLookup)
-            );
-        }
-
-        #[test]
         fn marker_skill_resolution_rejects_mismatched_control_data_identity() {
             let mut memory = valid_memory();
             memory.put(
@@ -5835,7 +6271,7 @@ mod windows {
             );
             let roots = acquire_roots(&memory, 0x10_0000).unwrap();
             assert_eq!(
-                read_marker_skill_resolution_sample(&memory, &roots),
+                read_marker_skill_resolution_sample(&memory, 0x10_0000, &roots),
                 Err(MarkerSkillResolutionError::ControlDataSkillIdentity)
             );
         }
@@ -5844,38 +6280,35 @@ mod windows {
         fn marker_skill_resolution_bounds_dictionary_capacity() {
             let mut memory = valid_memory();
             memory.put(
-                0x86_0000 + ZDICTIONARY_COUNT,
+                0x87_0000 + ZDICTIONARY_COUNT,
                 &(MAX_REVIEWED_DICTIONARY_CAPACITY as i32 + 1).to_le_bytes(),
             );
             let roots = acquire_roots(&memory, 0x10_0000).unwrap();
             assert_eq!(
-                read_marker_skill_resolution_sample(&memory, &roots),
-                Err(MarkerSkillResolutionError::SlotDictionaryShape)
+                read_marker_skill_resolution_sample(&memory, 0x10_0000, &roots),
+                Err(MarkerSkillResolutionError::ControlDictionary)
             );
         }
 
         #[test]
         fn marker_skill_resolution_rejects_wrong_concrete_entry_stride() {
             let mut memory = valid_memory();
-            memory.put(
-                0x3D_0000 + IL2CPP_CLASS_ELEMENT_SIZE,
-                &(ZDICTIONARY_INT_OBJECT_ENTRY_STRIDE as i32).to_le_bytes(),
-            );
+            memory.put(0x3D_1000 + IL2CPP_CLASS_ELEMENT_SIZE, &16i32.to_le_bytes());
             let roots = acquire_roots(&memory, 0x10_0000).unwrap();
             assert_eq!(
-                read_marker_skill_resolution_sample(&memory, &roots),
-                Err(MarkerSkillResolutionError::SlotDictionaryEntryStride)
+                read_marker_skill_resolution_sample(&memory, 0x10_0000, &roots),
+                Err(MarkerSkillResolutionError::ControlDictionary)
             );
         }
 
         #[test]
         fn marker_skill_resolution_rejects_non_array_entry_storage() {
             let mut memory = valid_memory();
-            memory.put(0x3D_0000 + IL2CPP_CLASS_RANK, &[0]);
+            memory.put(0x3D_1000 + IL2CPP_CLASS_RANK, &[0]);
             let roots = acquire_roots(&memory, 0x10_0000).unwrap();
             assert_eq!(
-                read_marker_skill_resolution_sample(&memory, &roots),
-                Err(MarkerSkillResolutionError::SlotDictionaryEntryArrayClass)
+                read_marker_skill_resolution_sample(&memory, 0x10_0000, &roots),
+                Err(MarkerSkillResolutionError::ControlDictionary)
             );
         }
 
@@ -5888,48 +6321,8 @@ mod windows {
                     "unavailable-or-invalid-marker-skill-data-manager",
                 ),
                 (
-                    MarkerSkillResolutionError::SlotDictionaryPointer,
-                    "marker-skill-slot-dictionary-pointer-invalid",
-                ),
-                (
-                    MarkerSkillResolutionError::SlotDictionaryClass,
-                    "marker-skill-slot-dictionary-class-invalid",
-                ),
-                (
-                    MarkerSkillResolutionError::SlotDictionaryHeader,
-                    "marker-skill-slot-dictionary-header-unavailable",
-                ),
-                (
-                    MarkerSkillResolutionError::SlotDictionaryShape,
-                    "marker-skill-slot-dictionary-counts-or-buckets-invalid",
-                ),
-                (
-                    MarkerSkillResolutionError::SlotDictionaryEntryStorage,
-                    "marker-skill-slot-dictionary-entry-storage-unavailable",
-                ),
-                (
-                    MarkerSkillResolutionError::SlotDictionaryEntryCapacity,
-                    "marker-skill-slot-dictionary-entry-capacity-invalid",
-                ),
-                (
-                    MarkerSkillResolutionError::SlotDictionaryEntryArrayClass,
-                    "marker-skill-slot-dictionary-entry-array-class-invalid",
-                ),
-                (
-                    MarkerSkillResolutionError::SlotDictionaryEntryStride,
-                    "marker-skill-slot-dictionary-entry-stride-invalid",
-                ),
-                (
                     MarkerSkillResolutionError::ControlDictionary,
                     "unavailable-or-invalid-marker-skill-control-dictionary",
-                ),
-                (
-                    MarkerSkillResolutionError::MarkerSlotLookup,
-                    "marker-1-slot-missing-or-duplicate",
-                ),
-                (
-                    MarkerSkillResolutionError::MarkerSlotMapping,
-                    "marker-1-slot-mapping-mismatch",
                 ),
                 (
                     MarkerSkillResolutionError::ControlDataLookup,
@@ -5953,7 +6346,8 @@ mod windows {
                     || byte == b'-'));
             }
 
-            let valid = read_marker_skill_resolution_sample(&valid_memory(), &roots).unwrap();
+            let valid =
+                read_marker_skill_resolution_sample(&valid_memory(), 0x10_0000, &roots).unwrap();
             let gate = marker_skill_resolution_gate(
                 &Err(MarkerSkillResolutionError::DataManager),
                 &Ok(valid),
@@ -5963,7 +6357,7 @@ mod windows {
                 "unavailable-or-invalid-marker-skill-data-manager"
             );
             let gate = marker_skill_resolution_gate(
-                &Err(MarkerSkillResolutionError::SlotDictionaryClass),
+                &Err(MarkerSkillResolutionError::DataManager),
                 &Err(MarkerSkillResolutionError::ControlDictionary),
             );
             assert_eq!(
@@ -5978,7 +6372,7 @@ mod windows {
             data_mgr.text(0xA5_0000, "WrongSkillDataMgr");
             let roots = acquire_roots(&data_mgr, 0x10_0000).unwrap();
             assert_eq!(
-                read_marker_skill_resolution_sample(&data_mgr, &roots),
+                read_marker_skill_resolution_sample(&data_mgr, 0x10_0000, &roots),
                 Err(MarkerSkillResolutionError::DataManager)
             );
 
@@ -5986,7 +6380,7 @@ mod windows {
             control_dictionary.put(0x87_0000 + ZDICTIONARY_COUNT, &0i32.to_le_bytes());
             let roots = acquire_roots(&control_dictionary, 0x10_0000).unwrap();
             assert_eq!(
-                read_marker_skill_resolution_sample(&control_dictionary, &roots),
+                read_marker_skill_resolution_sample(&control_dictionary, 0x10_0000, &roots,),
                 Err(MarkerSkillResolutionError::ControlDictionary)
             );
 
@@ -5994,7 +6388,7 @@ mod windows {
             control_data.text(0xA5_0400, "WrongControlData");
             let roots = acquire_roots(&control_data, 0x10_0000).unwrap();
             assert_eq!(
-                read_marker_skill_resolution_sample(&control_data, &roots),
+                read_marker_skill_resolution_sample(&control_data, 0x10_0000, &roots),
                 Err(MarkerSkillResolutionError::ControlDataClass)
             );
         }
@@ -6003,9 +6397,9 @@ mod windows {
         fn marker_skill_gate_rejects_dictionary_version_change() {
             let memory = valid_memory();
             let roots = acquire_roots(&memory, 0x10_0000).unwrap();
-            let first = read_marker_skill_resolution_sample(&memory, &roots).unwrap();
+            let first = read_marker_skill_resolution_sample(&memory, 0x10_0000, &roots).unwrap();
             let mut second = first;
-            second.slot_dictionary_version += 1;
+            second.control_dictionary_version += 1;
             let gate = marker_skill_resolution_gate(&Ok(first), &Ok(second));
             assert!(!gate.proven);
             assert_eq!(gate.reason, "unstable-read-only-marker-skill-lifecycle");
@@ -6599,33 +6993,16 @@ mod windows {
 
         #[test]
         fn loopback_http_rejects_chunked_and_trailing_response_bytes() {
-            use std::net::{Shutdown, TcpListener};
-
-            fn serve_once(response: &'static [u8]) -> u16 {
-                let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-                let port = listener.local_addr().unwrap().port();
-                thread::spawn(move || {
-                    let (mut stream, _) = listener.accept().unwrap();
-                    let mut request = [0u8; 1024];
-                    let _ = stream.read(&mut request).unwrap();
-                    stream.write_all(response).unwrap();
-                    stream.shutdown(Shutdown::Write).unwrap();
-                });
-                port
-            }
-
-            let chunked_port = serve_once(
-                b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n2\r\n{}\r\n0\r\n\r\n",
-            );
+            let chunked =
+                b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n2\r\n{}\r\n0\r\n\r\n";
             assert_eq!(
-                local_json_get(&chunked_port.to_string(), "/test"),
+                parse_local_json_response(chunked),
                 Err("unsupported-rlogs-transfer-encoding")
             );
 
-            let trailing_port =
-                serve_once(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}x");
+            let trailing = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}x";
             assert_eq!(
-                local_json_get(&trailing_port.to_string(), "/test"),
+                parse_local_json_response(trailing),
                 Err("rlogs-content-length-mismatch")
             );
         }

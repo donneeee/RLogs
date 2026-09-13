@@ -342,28 +342,41 @@ proven.
 The marker-skill query is likewise resolved without invoking a lookup method.
 The observer follows the already class-validated current
 `PlayerSkillInputComp`, class-validates `dataMgr_` at `+0x20` as
-`SkillControlDataMgr`, then reads its `skillSlotDict_` at `+0x28` and
-`skillControlDatas_` at `+0x18`. Exact generated layouts and native lookup
-code prove a 16-byte `ZDictionary<int,int>` entry and a 24-byte
-`ZDictionary<int,SkillControlData>` entry, both following the managed-array
-vector at `+0x20`. The read-only gate bounds every container and count,
-requires each entry-array class to report rank one and the corresponding exact
-element size, rejects duplicate active keys, requires slot `201 -> 1101`,
-class-validates the resulting `SkillControlData`, and requires its `skillId_`
-at `+0x10` to remain `1101`. It repeats the entire query across the stability interval and
-requires identical manager, dictionaries, entry arrays, counts, versions,
-mapping, and resolved object. The sanitized receipt exposes only the bounded
-gate result documented in `automarker-read-only-marker-skill-proof.v1.json`;
-it never exposes addresses or dictionary contents.
+`SkillControlDataMgr`, then reproduces the first-match enumeration of
+`skillContinuousDict_` at `+0x40` before reading `skillControlDatas_` at
+`+0x18`. If the first active continuous entry whose `BeginContinuousSkillId`
+equals 1101 exists, its dictionary key becomes the effective lookup ID;
+otherwise the effective ID remains 1101. A native-valid empty continuous
+dictionary, including null storage with zero count/free-count, is accepted as
+the no-remap case. Exact-build
+disassembly proves that `ZSkillInputMgr.FirePlaySkillByIndicator` receives the
+skill ID directly and calls `SkillControlDataMgr.TryGetSkillControlData`; this
+route does not consult `skillSlotDict_` at `+0x28`. That slot dictionary belongs
+to the separate `TryGetSkillDataBySlotId` UI lookup and is intentionally not an
+activation gate for direct dispatch. The read-only gate requires the exact
+reviewed generic dictionary TypeInfo, the exact `int[]` bucket TypeInfo, a
+rank-one 24-byte entry array, bounded coherent counts, a null/default integer
+comparer, and native-equivalent bucket-chain reachability for the effective
+skill ID. Bucket and collision indexes are bounded and cycles are rejected. It
+then requires the resolved object to have the exact reviewed `SkillControlData`
+TypeInfo and a `skillId_` equal to the effective lookup ID. The entire query is
+repeated across the stability interval and must retain identical manager,
+dictionary objects, arrays, capacities, counts, versions, remap result,
+validated structure fingerprints, and resolved-object identity.
+Each individual dictionary scan also bookends its mutable header/version and
+array lengths, so a torn scan is rejected before the outer stability read.
+The sanitized receipt exposes only the bounded gate result documented in
+`automarker-read-only-marker-skill-proof.v1.json`; it never exposes addresses
+or dictionary contents.
 
 When that gate fails, the receipt identifies only the fixed chain stage: root
-chain, `SkillControlDataMgr`, the slot-dictionary pointer/class/header/count
-shape/entry storage/capacity/array class/entry stride, control-data dictionary,
-Marker 1 slot lookup or mapping, or control-data lookup, class, or skill identity. A
+chain, `SkillControlDataMgr`, continuous dictionary/remap state, control-data dictionary shape/type/storage,
+Marker 1 control-data lookup, exact class identity, or skill identity. A
 distinct fixed token reports when the two bounded reads fail at different
 stages. These diagnostics contain no pointers, container counts, dictionary
 keys or values, character identity, process identity, or other live runtime
-values; they still grant no placement or invocation authority.
+values; they still grant no placement or invocation authority. Receipt schema
+11 records this method-equivalent direct-route contract.
 
 The party-leader query is also resolved read-only. Exact-build disassembly of
 `PlayerTeamLeaderCondition.Check` proves that leadership is the current

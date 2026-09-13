@@ -711,17 +711,8 @@ function Assert-NativeDispatchPreflight($Value) {
         'unstable-read-only-marker-skill-lifecycle',
         'unavailable-or-invalid-read-only-marker-skill-root-chain',
         'unavailable-or-invalid-marker-skill-data-manager',
-        'marker-skill-slot-dictionary-pointer-invalid',
-        'marker-skill-slot-dictionary-class-invalid',
-        'marker-skill-slot-dictionary-header-unavailable',
-        'marker-skill-slot-dictionary-counts-or-buckets-invalid',
-        'marker-skill-slot-dictionary-entry-storage-unavailable',
-        'marker-skill-slot-dictionary-entry-capacity-invalid',
-        'marker-skill-slot-dictionary-entry-array-class-invalid',
-        'marker-skill-slot-dictionary-entry-stride-invalid',
+        'unavailable-or-invalid-marker-skill-continuous-dictionary',
         'unavailable-or-invalid-marker-skill-control-dictionary',
-        'marker-1-slot-missing-or-duplicate',
-        'marker-1-slot-mapping-mismatch',
         'marker-1-control-data-missing-or-duplicate',
         'marker-1-control-data-class-invalid',
         'marker-1-control-data-skill-identity-invalid',
@@ -729,7 +720,7 @@ function Assert-NativeDispatchPreflight($Value) {
     )
     if (-not (Test-ExactPropertySet $markerSkillGate @('proven', 'reason')) -or
         $markerSkillGate.proven -isnot [bool] -or
-        ([bool]$markerSkillGate.proven -and [string]$markerSkillGate.reason -cne 'proven-read-only-marker-1-slot-and-skill-resolution') -or
+        ([bool]$markerSkillGate.proven -and [string]$markerSkillGate.reason -cne 'proven-read-only-marker-1-skill-resolution') -or
         (-not [bool]$markerSkillGate.proven -and [string]$markerSkillGate.reason -cnotin $markerSkillFalseReasons)) {
         throw 'The sanitized native-dispatch preflight has an invalid marker_skill_resolution_gate result.'
     }
@@ -786,7 +777,7 @@ function Read-ValidatedLifecycleReceipt(
     )
     if (-not (Test-ExactPropertySet $receipt $topLevel) -or
         -not (Test-FiniteJsonNumber $receipt.schema_version) -or
-        [decimal]$receipt.schema_version % 1 -ne 0 -or [decimal]$receipt.schema_version -ne 9 -or
+        [decimal]$receipt.schema_version % 1 -ne 0 -or [decimal]$receipt.schema_version -ne 11 -or
         [string]$receipt.generated_by -cne 'rlogs-bpsr-automarker-lifecycle-probe' -or
         [string]$receipt.game -cne 'blue-protocol-star-resonance' -or
         [string]$receipt.deployment -cne 'global' -or [string]$receipt.channel -cne 'steam' -or
@@ -928,7 +919,7 @@ function Assert-ArmedCanaryPassed($Receipt) {
 function New-SyntheticLifecycleReceipt([bool]$Armed, [string]$Mode, [string]$Outcome) {
     $identity = [ordered]@{ byte_length = 1; sha256 = ('a' * 64) }
     $receipt = [ordered]@{
-        schema_version = 9; generated_by = 'rlogs-bpsr-automarker-lifecycle-probe'
+        schema_version = 11; generated_by = 'rlogs-bpsr-automarker-lifecycle-probe'
         game = 'blue-protocol-star-resonance'; deployment = 'global'; channel = 'steam'
         game_build = $expectedBuild; distribution_app_id = $expectedAppId
         observed_unix_millis = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
@@ -1219,19 +1210,19 @@ function Invoke-LauncherSelfTest {
             )
             dungeon_stage_gate = [ordered]@{ proven = $true; reason = 'proven-read-only-current-dungeon-stage' }
             leader_gate = [ordered]@{ proven = $true; reason = 'proven-read-only-current-player-is-party-leader' }
-            marker_skill_resolution_gate = [ordered]@{ proven = $true; reason = 'proven-read-only-marker-1-slot-and-skill-resolution' }
+            marker_skill_resolution_gate = [ordered]@{ proven = $true; reason = 'proven-read-only-marker-1-skill-resolution' }
             main_thread_scheduler_gate = [ordered]@{ proven = $true; reason = 'proven-read-only-main-thread-scheduler-state' }
             main_thread_bridge_gate = [ordered]@{ proven = $false; reason = 'unresolved-no-sanctioned-one-shot-main-thread-bridge' }
             all_resolvable_gates_passed = $true; activation_attempted = $false; outcome = 'blocked-unresolved-native-gates'
         }
         [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
         [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1)))
-        $native.schema_version = '9'
+        $native.schema_version = '11'
         [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
         $rejected = $false
         try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
         if (-not $rejected) { throw 'Self-test failed: a string-valued schema version was accepted.' }
-        $native.schema_version = 9
+        $native.schema_version = 11
         $native.canary.native_dispatch_preflight.reviewed_code[0].byte_length = '464'
         [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
         $rejected = $false
@@ -1303,17 +1294,8 @@ function Invoke-LauncherSelfTest {
         $markerSkillDiagnosticReasons = @(
             'unavailable-or-invalid-read-only-marker-skill-root-chain',
             'unavailable-or-invalid-marker-skill-data-manager',
-            'marker-skill-slot-dictionary-pointer-invalid',
-            'marker-skill-slot-dictionary-class-invalid',
-            'marker-skill-slot-dictionary-header-unavailable',
-            'marker-skill-slot-dictionary-counts-or-buckets-invalid',
-            'marker-skill-slot-dictionary-entry-storage-unavailable',
-            'marker-skill-slot-dictionary-entry-capacity-invalid',
-            'marker-skill-slot-dictionary-entry-array-class-invalid',
-            'marker-skill-slot-dictionary-entry-stride-invalid',
+            'unavailable-or-invalid-marker-skill-continuous-dictionary',
             'unavailable-or-invalid-marker-skill-control-dictionary',
-            'marker-1-slot-missing-or-duplicate',
-            'marker-1-slot-mapping-mismatch',
             'marker-1-control-data-missing-or-duplicate',
             'marker-1-control-data-class-invalid',
             'marker-1-control-data-skill-identity-invalid',
@@ -1450,7 +1432,7 @@ if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
 }
 
 $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
-$receipt = Join-Path $PSScriptRoot "automarker-lifecycle-$stamp.v9.json"
+$receipt = Join-Path $PSScriptRoot "automarker-lifecycle-$stamp.v11.json"
 if (Test-Path -LiteralPath $receipt) { throw 'Refusing to overwrite an existing receipt.' }
 
 $arguments = @(

@@ -30,9 +30,16 @@
   "field_layouts": [
     { "declaring_type": "Panda.ZGame.PlayerSkillInputComp", "field": "dataMgr_", "instance_offset_hex": "0x20", "target_class": "Panda.ZGame.SkillControlDataMgr" },
     { "declaring_type": "Panda.ZGame.SkillControlDataMgr", "field": "skillControlDatas_", "instance_offset_hex": "0x18", "target_type": "ZUtil.Pool.Collections.ZDictionary<int, Panda.ZGame.SkillControlData>" },
-    { "declaring_type": "Panda.ZGame.SkillControlDataMgr", "field": "skillSlotDict_", "instance_offset_hex": "0x28", "target_type": "ZUtil.Pool.Collections.ZDictionary<int, int>" },
+    { "declaring_type": "Panda.ZGame.SkillControlDataMgr", "field": "skillSlotDict_", "instance_offset_hex": "0x28", "target_type": "ZUtil.Pool.Collections.ZDictionary<int, int>", "direct_dispatch_dependency": false },
     { "declaring_type": "Panda.ZGame.SkillControlData", "field": "skillId_", "instance_offset_hex": "0x10", "value_type": "int32" }
   ],
+  "exact_type_info_pointer_slot_rvas": {
+    "Panda.ZGame.SkillControlDataMgr": "0x955F1A8",
+    "ZUtil.Pool.Collections.ZDictionary<int, Panda.ZGame.SkillControlData>": "0x95CB618",
+    "System.Collections.Generic.Dictionary<int, SkillControlDataMgr.SkillContinuousInfo>": "0x95CB640",
+    "Panda.ZGame.SkillControlData": "0x962AD48",
+    "int[]": "0x9614E08"
+  },
   "concrete_zdictionary_layout": {
     "managed_object_header_bytes": 16,
     "fields": [
@@ -69,6 +76,34 @@
   },
   "bounded_native_semantics": [
     {
+      "identity": "Panda.ZGame.ZSkillInputMgr.FirePlaySkillByIndicator",
+      "rva_hex": "0x52E09E0",
+      "byte_length": 208,
+      "sha256": "6ae23a6d1f432969dd2d4c9dd4461f80b7ac6ecf5b5382526dbc00a7b6d8b9f6",
+      "meaning": "receives skillID directly and calls SkillControlDataMgr.TryGetSkillControlData without consulting skillSlotDict_"
+    },
+    {
+      "identity": "Panda.ZGame.SkillControlDataMgr.TryGetSkillControlData",
+      "rva_hex": "0x52BE550",
+      "byte_length": 976,
+      "sha256": "ca46585b1ba490d336fb819de357ff56f94d033cfca25a0a1ab62f4632cd64a9",
+      "meaning": "enumerates skillContinuousDict_ at offset 0x40 for the first BeginContinuousSkillId match, substitutes that entry key when present, then resolves the effective ID through skillControlDatas_ at offset 0x18"
+    },
+    {
+      "identity": "System.Collections.Generic.Dictionary<int, SkillContinuousInfo>.Enumerator.MoveNext",
+      "rva_hex": "0x19CA980",
+      "byte_length": 272,
+      "sha256": "d59c1c5fc8fd56ccf8d6db469bdef7fbb117f4589e2bc15c03f714a90b72469c",
+      "meaning": "enumerates active physical entries in index order while enforcing dictionary version stability"
+    },
+    {
+      "identity": "ZDictionary<int, object>.FindEntry",
+      "rva_hex": "0x1108160",
+      "byte_length": 592,
+      "sha256": "b7518aa2d8b1bb49ad49393bb3e4bdb82f49252fa42816488cf8dbc32ff53478",
+      "meaning": "masks the integer hash sign bit, selects buckets_[hash % bucketsLen_], and follows direct zero-based next indexes"
+    },
+    {
       "identity": "Panda.ZGame.PlayerSkillInputComp.GetSkillControlData",
       "rva_hex": "0x41739A0",
       "byte_length": 160,
@@ -82,7 +117,7 @@
       "byte_length": 320,
       "sha256": "6c569240110f989523397ab7330539d621b09e7e7182f863b07805e054463db0",
       "bounded_instruction_bytes_hex": "48837e280048896c2430746f488b6e28",
-      "meaning": "requires skillSlotDict_ at offset 0x28"
+      "meaning": "separate UI slot lookup that requires skillSlotDict_ at offset 0x28; not used by the selected direct dispatch route"
     },
     {
       "identity": "Panda.ZGame.SkillControlDataMgr.TryGetSkillDataBySlotId entry extraction",
@@ -108,29 +143,21 @@
   "runtime_acceptance_contract": [
     "start from the already class-validated current PlayerSkillInputComp root",
     "class-validate dataMgr_ as Panda.ZGame.SkillControlDataMgr",
-    "class-validate both dictionary objects as ZUtil.Pool.Collections.ZDictionary`2 and require each entry-array class to have rank 1 and the exact concrete 16-byte or 24-byte element size",
-    "require positive bounded bucket lengths and counts, freeCount no larger than count, and managed entry-array length at least count and no larger than 16384",
-    "scan only count entries using the exact concrete stride, reject duplicate active keys, and require skillSlotDict_[201] == 1101",
-    "require skillControlDatas_[1101] to be a class-valid Panda.ZGame.SkillControlData whose skillId_ is 1101",
-    "repeat after the stability interval and require identical manager, dictionary, entry-array, count, version, mapping, and resolved-object identity"
+    "exact-validate skillContinuousDict_ at +0x40, accept its native-valid zero-count no-storage state, reproduce its physical first-match enumeration by BeginContinuousSkillId, and use the matching entry key as the effective lookup ID",
+    "require skillControlDatas_ to have the exact reviewed ZDictionary<int, SkillControlData> TypeInfo and its buckets_ to have the exact reviewed int[] TypeInfo",
+    "require positive bounded bucket length and count, freeCount no larger than count, bucket array length equal to bucketsLen, and a rank-one managed entry array with the exact 24-byte element size",
+    "follow the native default-int-comparer bucket and collision chain for the effective skill ID, rejecting out-of-range indexes and cycles",
+    "require the resolved object to have the exact reviewed Panda.ZGame.SkillControlData TypeInfo and skillId_ equal to the effective lookup ID",
+    "bookend every mutable dictionary scan with identical header, version, storage, and array-length reads, then repeat after the stability interval and require identical manager, dictionary objects, arrays, capacities, counts, versions, remap result, structure fingerprints, and resolved-object identity; skillSlotDict_ is not read or gated"
   ],
   "sanitized_receipt": {
-    "success": { "proven": true, "reason": "proven-read-only-marker-1-slot-and-skill-resolution" },
+    "success": { "proven": true, "reason": "proven-read-only-marker-1-skill-resolution" },
     "failure_reasons": [
       "unstable-read-only-marker-skill-lifecycle",
       "unavailable-or-invalid-read-only-marker-skill-root-chain",
       "unavailable-or-invalid-marker-skill-data-manager",
-      "marker-skill-slot-dictionary-pointer-invalid",
-      "marker-skill-slot-dictionary-class-invalid",
-      "marker-skill-slot-dictionary-header-unavailable",
-      "marker-skill-slot-dictionary-counts-or-buckets-invalid",
-      "marker-skill-slot-dictionary-entry-storage-unavailable",
-      "marker-skill-slot-dictionary-entry-capacity-invalid",
-      "marker-skill-slot-dictionary-entry-array-class-invalid",
-      "marker-skill-slot-dictionary-entry-stride-invalid",
+      "unavailable-or-invalid-marker-skill-continuous-dictionary",
       "unavailable-or-invalid-marker-skill-control-dictionary",
-      "marker-1-slot-missing-or-duplicate",
-      "marker-1-slot-mapping-mismatch",
       "marker-1-control-data-missing-or-duplicate",
       "marker-1-control-data-class-invalid",
       "marker-1-control-data-skill-identity-invalid",
@@ -152,7 +179,7 @@
         "reason": "unavailable-or-invalid-read-only-marker-skill-chain"
       },
       "activation_attempted": false,
-      "interpretation": "The static slot-to-skill route remains proven, but this live state did not satisfy the current combined chain; bounded stage diagnostics are required before revising the runtime contract."
+      "interpretation": "This observation used the earlier combined slot-and-control contract. Later exact route analysis proved that direct dispatch does not depend on the slot lookup, so this result cannot reject the direct skill route."
     },
     {
       "receipt_schema_version": 8,
@@ -165,11 +192,13 @@
         "reason": "unavailable-or-invalid-marker-skill-slot-dictionary"
       },
       "activation_attempted": false,
-      "interpretation": "The first bounded stage diagnostic isolated the live rejection to the presumed skillSlotDict_ concrete dictionary; a finer fixed-only dictionary diagnostic is required before changing the layout contract."
+      "interpretation": "This rejection exposed an overconstrained preflight: skillSlotDict_ belongs to a separate UI slot lookup and is not consulted by FirePlaySkillByIndicator. Receipt schema 11 replaces it with method-equivalent continuous remap and bucket-chain validation."
     }
   ],
   "decision": {
     "slot_201_to_skill_1101_static_layout_proven": true,
+    "direct_skill_1101_dispatch_route_proven": true,
+    "slot_dictionary_required_for_direct_dispatch": false,
     "non_invoking_live_resolution_probe_implemented": true,
     "game_method_invocation_enabled": false,
     "native_placement_enabled": false
