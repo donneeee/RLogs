@@ -104,6 +104,9 @@ pub(crate) struct PrivateMarkerAdd {
     pub asserted_authoritative_server_decode: bool,
     pub raw_skill_id: Option<i32>,
     pub derived_marker_number: Option<u8>,
+    /// May be present only after ingress resolved `marker_owner_entity_uuid`
+    /// against the exact record-time mechanics snapshot. The router never
+    /// invents this cross-identity mapping.
     pub marker_owner_actor_id: Option<i64>,
     pub marker_owner_entity_uuid: Option<i64>,
     pub passive_instance_identity: Option<i64>,
@@ -334,8 +337,10 @@ impl AutomarkerConfirmationRouter {
                     if event.carrier_capture_sequence == 0 {
                         continue;
                     }
+                    let target_route_authoritative = event.provenance.route_resolved
+                        && event.provenance.service_id == WORLD_SERVICE_ID;
                     OwnedConfirmationEventKind::RpcReturnCandidate(OwnedRpcReturnCandidate {
-                        method_id: if event.provenance.route_resolved {
+                        method_id: if target_route_authoritative {
                             event.provenance.method_id
                         } else {
                             0
@@ -344,7 +349,7 @@ impl AutomarkerConfirmationRouter {
                         original_call_id: event.provenance.call_id.unwrap_or(0),
                         asserted_authoritative_server_decode: event
                             .asserted_authoritative_server_decode
-                            && event.provenance.route_resolved,
+                            && target_route_authoritative,
                         decoded_as_success: event.decoded_as_success,
                         decoded_body_length: event.decoded_body_length,
                     })
@@ -353,14 +358,16 @@ impl AutomarkerConfirmationRouter {
                     // Preserve the lossless extractor shape through admission.
                     // Only this owned coordinator boundary converts absent or
                     // invalid fields into values the coordinator must reject.
+                    let target_route_authoritative = event.provenance.route_resolved
+                        && event.provenance.service_id == WORLD_NOTIFICATION_SERVICE_ID;
                     OwnedConfirmationEventKind::MarkerAddCandidate(OwnedMarkerAddCandidate {
-                        method_id: if event.provenance.route_resolved {
+                        method_id: if target_route_authoritative {
                             event.provenance.method_id
                         } else {
                             0
                         },
                         marker_number: normalize_marker_number(&event),
-                        marker_owner_actor_id: event.marker_owner_actor_id.unwrap_or(0),
+                        marker_owner_actor_id: normalize_marker_owner_actor_id(&event),
                         position: PrivateMarkerPosition {
                             x: normalize_marker_axis(&event, event.x),
                             y: normalize_marker_axis(&event, event.y),
@@ -368,7 +375,8 @@ impl AutomarkerConfirmationRouter {
                         },
                         passive_instance_identity: event.passive_instance_identity.unwrap_or(0),
                         asserted_authoritative_server_decode: event
-                            .asserted_authoritative_server_decode,
+                            .asserted_authoritative_server_decode
+                            && target_route_authoritative,
                         runtime_revision: event.runtime_revision,
                         observed_micros: 0,
                     })
@@ -493,6 +501,13 @@ fn normalize_marker_number(event: &PrivateMarkerAdd) -> u8 {
         {
             marker_number
         }
+        _ => 0,
+    }
+}
+
+fn normalize_marker_owner_actor_id(event: &PrivateMarkerAdd) -> i64 {
+    match (event.marker_owner_actor_id, event.marker_owner_entity_uuid) {
+        (Some(actor_id), Some(_)) => actor_id,
         _ => 0,
     }
 }
@@ -934,6 +949,11 @@ mod tests {
             routed[0].kind,
             OwnedConfirmationEventKind::MarkerAddCandidate(_)
         ));
+        let OwnedConfirmationEventKind::MarkerAddCandidate(wrong_service) = &routed[0].kind else {
+            unreachable!();
+        };
+        assert_eq!(wrong_service.method_id, 0);
+        assert!(!wrong_service.asserted_authoritative_server_decode);
     }
 
     #[test]
@@ -957,7 +977,6 @@ mod tests {
             unreachable!();
         };
         wrong_event.provenance.service_id = 7;
-        wrong_event.provenance.method_id = 777;
 
         let routed = router
             .route_snapshot_at(
@@ -978,8 +997,8 @@ mod tests {
             panic!("expected wrong-route Return candidate");
         };
         assert!(wrong.route_resolved);
-        assert_eq!(wrong.method_id, 777);
-        assert!(wrong.asserted_authoritative_server_decode);
+        assert_eq!(wrong.method_id, 0);
+        assert!(!wrong.asserted_authoritative_server_decode);
     }
 
     #[test]
@@ -1011,6 +1030,9 @@ mod tests {
             unreachable!();
         };
         malformed_marker.target_position_present = true;
+        // An actor identity without the entity identity from which ingress
+        // resolved it is not an admissible ownership mapping.
+        malformed_marker.marker_owner_actor_id = Some(44);
 
         let mut partial = marker(12, 1, 1);
         let PrivateParserConfirmationEvent::MarkerAdd(partial_marker) = &mut partial else {
@@ -1053,7 +1075,8 @@ mod tests {
         assert!(markers[1].position.y.is_nan());
         assert!(markers[1].position.z.is_nan());
         assert_eq!(markers[1].method_id, 0);
-        assert!(markers[1].asserted_authoritative_server_decode);
+        assert!(!markers[1].asserted_authoritative_server_decode);
+        assert_eq!(markers[1].marker_owner_actor_id, 0);
         assert_eq!(markers[2].position.x, 1.0);
         assert!(markers[2].position.y.is_nan());
         assert_eq!(markers[2].position.z, 3.0);
@@ -1061,11 +1084,9 @@ mod tests {
         assert!(markers[3].position.y.is_nan());
         assert_eq!(markers[3].position.z, 3.0);
         assert_eq!(markers[3].marker_number, 0);
-        assert!(
-            markers
-                .iter()
-                .all(|marker| marker.asserted_authoritative_server_decode)
-        );
+        assert!(markers[0].asserted_authoritative_server_decode);
+        assert!(markers[2].asserted_authoritative_server_decode);
+        assert!(markers[3].asserted_authoritative_server_decode);
     }
 
     #[test]
