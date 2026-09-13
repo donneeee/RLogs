@@ -771,6 +771,7 @@ mod tests {
         packet
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn inspection_packet(
         source: AutomarkerIpv4Endpoint,
         destination: AutomarkerIpv4Endpoint,
