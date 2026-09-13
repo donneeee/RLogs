@@ -33,15 +33,21 @@ assert.ok(launcher.includes("'RLOGS_WINDIVERT_DRIVER_BOOTSTRAP_V1'"));
 assert.ok(setup.includes("'RLOGS_WINDIVERT_DRIVER_REMOVE_V1'"));
 assert.ok(packaging.includes("setup-bpsr-automarker-windivert-driver.ps1"));
 assert.ok(source.indexOf("if !args.armed") < source.indexOf("load_pinned_api(&dll)"));
+assert.ok(source.includes('"blocked_reflect_arbitration_unimplemented"'));
+assert.ok(source.includes("same_priority_reflect_arbitration: false"));
+const reflectBlock = source.indexOf("if !gates.same_priority_reflect_arbitration");
+assert.ok(reflectBlock > source.indexOf("load_pinned_api(&dll)"));
+assert.ok(reflectBlock < source.indexOf("let bootstrap_handle = if args.bootstrap"));
+assert.ok(reflectBlock < source.indexOf("discover_exact_bpsr_syn_epoch(&loaded"));
 assert.match(source, /WINDIVERT_SHUTDOWN_RECV: i32 = 0x1/);
 assert.match(source, /WINDIVERT_FLAG_NO_INSTALL: u64 = 16/);
 assert.match(
   source,
-  /open_handle\(&loaded\.api, &filter, 0, WINDIVERT_FLAG_NO_INSTALL\)/,
+  /open_handle\(&loaded, &filter, 0, WINDIVERT_FLAG_NO_INSTALL\)/,
 );
 assert.match(
   source,
-  /open_handle\(\s*&loaded\.api,\s*"false",\s*0,\s*WINDIVERT_FLAG_SNIFF \| WINDIVERT_FLAG_RECV_ONLY,\s*\)/s,
+  /open_handle\(\s*&loaded,\s*"false",\s*0,\s*WINDIVERT_FLAG_SNIFF \| WINDIVERT_FLAG_RECV_ONLY,\s*\)/s,
 );
 assert.equal(
   (source.match(/WINDIVERT_FLAG_SNIFF \| WINDIVERT_FLAG_RECV_ONLY,\s*\)/g) ?? []).length,
@@ -54,6 +60,16 @@ assert.match(source, /WINDIVERT_SHUTDOWN_RECV/);
 assert.match(source, /drain_byte_identically\(&mut backend\)/);
 assert.match(source, /send_unchanged\(received\.bytes\.as_slice\(\), &received\.address\)/);
 assert.match(source, /if sent != received\.bytes\.len\(\)/);
+assert.ok(source.includes('close: export!("WinDivertClose", CloseFn)'));
+assert.ok(source.includes('compile_filter: export!("WinDivertHelperCompileFilter", CompileFilterFn)'));
+assert.ok(source.indexOf("compile_network_filter(&loaded.api, &filter)?") < source.indexOf("open_handle(&loaded, &filter"));
+assert.ok(source.includes("loaded: Arc<LoadedApi>"));
+assert.ok(source.indexOf("let relay_result = drain_byte_identically(&mut backend)") < source.indexOf("let _ = stop_send.send(())"));
+assert.ok(source.indexOf("let _ = stop_send.send(())") < source.indexOf("let relay = relay_result?"));
+assert.match(source, /total != packet\.len\(\)/);
+assert.ok(source.includes("let start_sequence = view.sequence.wrapping_add(1)"));
+assert.ok(source.includes("DiscoveryPrefix::new(start_sequence)"));
+assert.ok(source.includes("owned_connection_count(owner, connection)? == 1"));
 
 for (const forbidden of [
   "copy_from_slice(",

@@ -158,8 +158,11 @@ mod windows {
         *const OpaqueAddress,
     ) -> i32;
     type ShutdownFn = unsafe extern "system" fn(HANDLE, i32) -> i32;
+    type CloseFn = unsafe extern "system" fn(HANDLE) -> i32;
     type SetParamFn = unsafe extern "system" fn(HANDLE, i32, u64) -> i32;
     type GetParamFn = unsafe extern "system" fn(HANDLE, i32, *mut u64) -> i32;
+    type CompileFilterFn =
+        unsafe extern "system" fn(*const i8, i32, *mut i8, u32, *mut *const i8, *mut u32) -> i32;
 
     #[derive(Clone, Copy)]
     struct WinDivertApi {
@@ -167,8 +170,10 @@ mod windows {
         recv: RecvFn,
         send: SendFn,
         shutdown: ShutdownFn,
+        close: CloseFn,
         set_param: SetParamFn,
         get_param: GetParamFn,
+        compile_filter: CompileFilterFn,
     }
 
     struct LoadedApi {
@@ -176,18 +181,36 @@ mod windows {
         api: WinDivertApi,
     }
 
+    // The pinned module is retained by Arc until every handle and worker is
+    // gone; the exported WinDivert entry points are safe for concurrent calls.
+    unsafe impl Send for LoadedApi {}
+    unsafe impl Sync for LoadedApi {}
+
     impl Drop for LoadedApi {
         fn drop(&mut self) {
             unsafe { FreeLibrary(self.module) };
         }
     }
 
-    struct OwnedHandle(HANDLE);
+    struct OwnedWinDivertHandle {
+        raw: HANDLE,
+        loaded: Arc<LoadedApi>,
+    }
 
-    unsafe impl Send for OwnedHandle {}
-    unsafe impl Sync for OwnedHandle {}
+    unsafe impl Send for OwnedWinDivertHandle {}
+    unsafe impl Sync for OwnedWinDivertHandle {}
 
-    impl Drop for OwnedHandle {
+    impl Drop for OwnedWinDivertHandle {
+        fn drop(&mut self) {
+            if !self.raw.is_null() && self.raw != INVALID_HANDLE_VALUE {
+                unsafe { (self.loaded.api.close)(self.raw) };
+            }
+        }
+    }
+
+    struct OwnedKernelHandle(HANDLE);
+
+    impl Drop for OwnedKernelHandle {
         fn drop(&mut self) {
             if !self.0.is_null() && self.0 != INVALID_HANDLE_VALUE {
                 unsafe { CloseHandle(self.0) };
@@ -196,7 +219,7 @@ mod windows {
     }
 
     struct LiveBackend {
-        handle: Arc<OwnedHandle>,
+        handle: Arc<OwnedWinDivertHandle>,
         api: WinDivertApi,
     }
 
@@ -207,7 +230,7 @@ mod windows {
             let mut length = 0u32;
             let ok = unsafe {
                 (self.api.recv)(
-                    self.handle.0,
+                    self.handle.raw,
                     bytes.as_mut_ptr().cast(),
                     bytes.len() as u32,
                     &mut length,
@@ -237,7 +260,7 @@ mod windows {
             let mut sent = 0u32;
             let ok = unsafe {
                 (self.api.send)(
-                    self.handle.0,
+                    self.handle.raw,
                     bytes.as_ptr().cast(),
                     bytes.len() as u32,
                     &mut sent,
@@ -265,6 +288,8 @@ mod windows {
         exact_ipv4_tuple_discovered: bool,
         syn_observed: bool,
         exact_process_owned_epoch: bool,
+        same_priority_reflect_arbitration: bool,
+        exact_filter_compiled: bool,
         exact_filter_opened: bool,
         version_2_2: bool,
         queue_policy_readback: bool,
@@ -369,26 +394,44 @@ mod windows {
         gates.exact_ipv4_tuple_discovered = false;
 
         // Dynamic loading occurs only after literal consent and all non-driver gates.
-        let loaded = unsafe { load_pinned_api(&dll)? };
+        let loaded = Arc::new(unsafe { load_pinned_api(&dll)? });
+        // WinDivert documents same-priority ordering as undefined. Until this
+        // executable owns a REFLECT-layer arbitration gate that proves no
+        // overlapping NETWORK handle exists at priority 0, it must not open
+        // either discovery or active traffic-observing handles.
+        if !gates.same_priority_reflect_arbitration {
+            return write_receipt(
+                &args.output,
+                CanaryReceipt::blocked_armed(
+                    if args.bootstrap {
+                        "explicitly-armed-bootstrap-and-passthrough"
+                    } else {
+                        "explicitly-armed"
+                    },
+                    "blocked_reflect_arbitration_unimplemented",
+                    gates,
+                ),
+            );
+        }
         // In the separately armed bootstrap-and-pass-through mode, keep this
         // non-matching handle alive for the entire canary. This is the sole
         // call site allowed to omit NO_INSTALL. It can install/start the pinned
         // driver, but its false filter cannot capture, block, or send traffic.
         let bootstrap_handle = if args.bootstrap {
             let handle = open_handle(
-                &loaded.api,
+                &loaded,
                 "false",
                 0,
                 WINDIVERT_FLAG_SNIFF | WINDIVERT_FLAG_RECV_ONLY,
             )?;
-            configure_and_verify(&loaded.api, handle.0, &mut gates)?;
+            configure_and_verify(&loaded.api, handle.raw, &mut gates)?;
             Some(handle)
         } else {
             None
         };
         let owner = WindowsProcessSocketOwner::new(process_id)?;
         let connection =
-            discover_exact_bpsr_syn_epoch(&loaded.api, &owner, process_id, args.syn_wait_seconds)?;
+            discover_exact_bpsr_syn_epoch(&loaded, &owner, process_id, args.syn_wait_seconds)?;
         let filter = offline_automarker_windivert_active_filter(connection);
         gates.syn_observed = true;
         gates.exact_ipv4_tuple_discovered = true;
@@ -421,17 +464,21 @@ mod windows {
         }
         gates.exact_process_owned_epoch = true;
 
-        let active = open_handle(&loaded.api, &filter, 0, WINDIVERT_FLAG_NO_INSTALL)?;
+        compile_network_filter(&loaded.api, &filter)?;
+        gates.exact_filter_compiled = true;
+        let active = open_handle(&loaded, &filter, 0, WINDIVERT_FLAG_NO_INSTALL)?;
         gates.exact_filter_opened = true;
-        configure_and_verify(&loaded.api, active.0, &mut gates)?;
+        configure_and_verify(&loaded.api, active.raw, &mut gates)?;
 
         let active = Arc::new(active);
         let stop_handle = Arc::clone(&active);
-        let shutdown = loaded.api.shutdown;
         let duration = args.duration_seconds;
+        let (stop_send, stop_receive) = std::sync::mpsc::channel();
         let timer = thread::spawn(move || {
-            thread::sleep(Duration::from_secs(duration));
-            let ok = unsafe { shutdown(stop_handle.0, WINDIVERT_SHUTDOWN_RECV) };
+            let _ = stop_receive.recv_timeout(Duration::from_secs(duration));
+            let ok = unsafe {
+                (stop_handle.loaded.api.shutdown)(stop_handle.raw, WINDIVERT_SHUTDOWN_RECV)
+            };
             if ok == 0 {
                 Err(unsafe { GetLastError() })
             } else {
@@ -445,11 +492,14 @@ mod windows {
             handle: active,
             api: loaded.api,
         };
-        let relay = drain_byte_identically(&mut backend)?;
-        timer
+        let relay_result = drain_byte_identically(&mut backend);
+        let _ = stop_send.send(());
+        let shutdown_result = timer
             .join()
             .map_err(|_| "shutdown timer panicked")?
-            .map_err(|error| format!("WinDivertShutdown failed with Windows error {error}"))?;
+            .map_err(|error| format!("WinDivertShutdown failed with Windows error {error}"));
+        shutdown_result?;
+        let relay = relay_result?;
 
         let conserved = relay.packets_received == relay.packets_reinjected
             && relay.bytes_received == relay.bytes_reinjected;
@@ -477,80 +527,206 @@ mod windows {
     }
 
     fn discover_exact_bpsr_syn_epoch(
-        api: &WinDivertApi,
+        api_owner: &Arc<LoadedApi>,
         owner: &WindowsProcessSocketOwner,
         process_id: u32,
         wait_seconds: u64,
     ) -> Result<AutomarkerOwnedTcpConnection, Box<dyn Error>> {
+        let loaded = Arc::clone(api_owner);
+        let api = loaded.api;
         let handle = Arc::new(open_handle(
-            api,
+            &loaded,
             "outbound and ip and tcp",
             1,
             WINDIVERT_FLAG_SNIFF | WINDIVERT_FLAG_RECV_ONLY | WINDIVERT_FLAG_NO_INSTALL,
         )?);
         let stop_handle = Arc::clone(&handle);
         let shutdown = api.shutdown;
-        let (cancel_send, cancel_receive) = std::sync::mpsc::channel();
+        let (timer_send, timer_receive) = std::sync::mpsc::channel();
         let timer = thread::spawn(move || {
-            if cancel_receive
-                .recv_timeout(Duration::from_secs(wait_seconds))
-                .is_err()
-            {
-                unsafe { shutdown(stop_handle.0, WINDIVERT_SHUTDOWN_RECV) };
+            if matches!(
+                timer_receive.recv_timeout(Duration::from_secs(wait_seconds)),
+                Ok(DiscoveryTimerSignal::CandidateFound)
+            ) {
+                let _ = timer_receive.recv_timeout(Duration::from_millis(250));
+            }
+            let ok = unsafe { shutdown(stop_handle.raw, WINDIVERT_SHUTDOWN_RECV) };
+            if ok == 0 {
+                Err(unsafe { GetLastError() })
+            } else {
+                Ok(())
             }
         });
         println!(
             "Waiting up to {wait_seconds} seconds for a SYN-scoped, process-owned BPSR connection..."
         );
-        let mut backend = LiveBackend { handle, api: *api };
-        let mut syn_owned = HashSet::new();
-        let mut prefixes = HashMap::<AutomarkerOwnedTcpConnection, Vec<u8>>::new();
+        let mut backend = LiveBackend { handle, api };
+        let mut syn_streams = HashMap::<AutomarkerOwnedTcpConnection, DiscoveryPrefix>::new();
         let mut confirmed = HashSet::new();
-        while let Some(packet) = backend.receive()? {
-            let Some(view) = parse_ipv4_tcp(packet.bytes.as_slice()) else {
-                continue;
-            };
-            let connection = AutomarkerOwnedTcpConnection {
-                process_id,
-                local: AutomarkerIpv4Endpoint {
-                    address: view.source_address,
-                    port: view.source_port,
-                },
-                remote: AutomarkerIpv4Endpoint {
-                    address: view.destination_address,
-                    port: view.destination_port,
-                },
-            };
-            if view.syn && !view.ack && owned_connection_count(owner, connection)? == 1 {
-                syn_owned.insert(connection);
-            }
-            if syn_owned.contains(&connection) && !view.payload.is_empty() {
-                let prefix = prefixes.entry(connection).or_default();
-                if prefix.len().saturating_add(view.payload.len()) <= 65_536 {
-                    prefix.extend_from_slice(view.payload);
-                    let regular = classify_bpsr_tcp_prefix(prefix);
-                    let marker = classify_observed_automarker_tcp_prefix(prefix);
+        let candidate_timer = timer_send.clone();
+        let discovery_result = (|| -> Result<(), Box<dyn Error>> {
+            while let Some(packet) = backend.receive()? {
+                let Some(view) = parse_ipv4_tcp(packet.bytes.as_slice()) else {
+                    continue;
+                };
+                let connection = AutomarkerOwnedTcpConnection {
+                    process_id,
+                    local: AutomarkerIpv4Endpoint {
+                        address: view.source_address,
+                        port: view.source_port,
+                    },
+                    remote: AutomarkerIpv4Endpoint {
+                        address: view.destination_address,
+                        port: view.destination_port,
+                    },
+                };
+                if view.syn && !view.ack {
+                    let start_sequence = view.sequence.wrapping_add(1);
+                    syn_streams
+                        .entry(connection)
+                        .and_modify(|prefix| {
+                            if prefix.start_sequence != start_sequence {
+                                *prefix = DiscoveryPrefix::new(start_sequence);
+                            }
+                        })
+                        .or_insert_with(|| DiscoveryPrefix::new(start_sequence));
+                }
+                if let Some(prefix) = syn_streams.get_mut(&connection)
+                    && !view.payload.is_empty()
+                    && prefix.ingest(view.sequence, view.payload)
+                {
+                    let regular = classify_bpsr_tcp_prefix(prefix.bytes());
+                    let marker = classify_observed_automarker_tcp_prefix(prefix.bytes());
                     if matches!(regular, rlogs_capture::TcpPayloadSignatureResult::Match(_))
                         || matches!(marker, rlogs_capture::TcpPayloadSignatureResult::Match(_))
                     {
-                        confirmed.insert(connection);
-                        if confirmed.len() == 1 {
-                            break;
+                        if owned_connection_count(owner, connection)? == 1
+                            && confirmed.insert(connection)
+                            && confirmed.len() == 1
+                        {
+                            let _ = candidate_timer.send(DiscoveryTimerSignal::CandidateFound);
                         }
                     } else if matches!(regular, rlogs_capture::TcpPayloadSignatureResult::Reject)
                         && matches!(marker, rlogs_capture::TcpPayloadSignatureResult::Reject)
                     {
-                        prefixes.remove(&connection);
+                        prefix.reject();
                     }
                 }
             }
-        }
-        let _ = cancel_send.send(());
-        timer.join().map_err(|_| "SYN timer panicked")?;
+            Ok(())
+        })();
+        let _ = timer_send.send(DiscoveryTimerSignal::StopNow);
+        timer
+            .join()
+            .map_err(|_| "SYN timer panicked")?
+            .map_err(|error| format!("WinDivertShutdown failed with Windows error {error}"))?;
+        discovery_result?;
         match confirmed.into_iter().collect::<Vec<_>>().as_slice() {
             [connection] => Ok(*connection),
             [] => Err("no SYN-scoped, exact-process-owned BPSR connection was confirmed; start the canary before reconnecting the game".into()),
             _ => Err("more than one SYN-scoped BPSR connection was confirmed for the game process".into()),
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    enum DiscoveryTimerSignal {
+        CandidateFound,
+        StopNow,
+    }
+
+    struct DiscoveryPrefix {
+        start_sequence: u32,
+        bytes: Vec<u8>,
+        pending: HashMap<u32, Vec<u8>>,
+        rejected: bool,
+    }
+
+    impl DiscoveryPrefix {
+        const MAX_BYTES: usize = 65_536;
+
+        fn new(start_sequence: u32) -> Self {
+            Self {
+                start_sequence,
+                bytes: Vec::new(),
+                pending: HashMap::new(),
+                rejected: false,
+            }
+        }
+
+        fn bytes(&self) -> &[u8] {
+            &self.bytes
+        }
+
+        fn reject(&mut self) {
+            self.rejected = true;
+            self.pending.clear();
+        }
+
+        /// Assemble only bytes in the first 64 KiB after the observed SYN.
+        /// Exact duplicate/overlapping retransmissions are accepted; gaps are
+        /// retained until their predecessor arrives; conflicting or ambiguous
+        /// serial ranges permanently reject this candidate.
+        fn ingest(&mut self, sequence: u32, payload: &[u8]) -> bool {
+            if self.rejected || payload.is_empty() {
+                return false;
+            }
+            if !self.ingest_one(sequence, payload) {
+                self.reject();
+                return false;
+            }
+            while let Some((&sequence, _)) = self.pending.iter().find(|(sequence, _)| {
+                sequence.wrapping_sub(self.start_sequence) as usize <= self.bytes.len()
+            }) {
+                let payload = self
+                    .pending
+                    .remove(&sequence)
+                    .expect("pending segment exists");
+                if !self.ingest_one(sequence, &payload) {
+                    self.reject();
+                    return false;
+                }
+            }
+            true
+        }
+
+        fn ingest_one(&mut self, sequence: u32, payload: &[u8]) -> bool {
+            let delta = sequence.wrapping_sub(self.start_sequence);
+            if delta >= 0x8000_0000 {
+                return false;
+            }
+            let offset = delta as usize;
+            let Some(end) = offset.checked_add(payload.len()) else {
+                return false;
+            };
+            if end > Self::MAX_BYTES {
+                return false;
+            }
+            if offset > self.bytes.len() {
+                match self.pending.get(&sequence) {
+                    Some(existing) => return existing == payload,
+                    None => {
+                        let pending_bytes = self
+                            .pending
+                            .values()
+                            .map(Vec::len)
+                            .sum::<usize>()
+                            .saturating_add(payload.len());
+                        if self.bytes.len().saturating_add(pending_bytes) > Self::MAX_BYTES {
+                            return false;
+                        }
+                        self.pending.insert(sequence, payload.to_vec());
+                        return true;
+                    }
+                }
+            }
+            let overlap = payload.len().min(self.bytes.len() - offset);
+            if self.bytes[offset..offset + overlap] != payload[..overlap] {
+                return false;
+            }
+            if overlap < payload.len() {
+                self.bytes.extend_from_slice(&payload[overlap..]);
+            }
+            true
         }
     }
 
@@ -560,6 +736,7 @@ mod windows {
         destination_address: Ipv4Addr,
         source_port: u16,
         destination_port: u16,
+        sequence: u32,
         syn: bool,
         ack: bool,
         payload: &'a [u8],
@@ -571,7 +748,7 @@ mod windows {
         }
         let ip_header = usize::from(packet[0] & 0x0f) * 4;
         let total = usize::from(u16::from_be_bytes([packet[2], packet[3]]));
-        if ip_header < 20 || total > packet.len() || total < ip_header + 20 {
+        if ip_header < 20 || total != packet.len() || total < ip_header + 20 {
             return None;
         }
         let fragment = u16::from_be_bytes([packet[6], packet[7]]);
@@ -588,6 +765,12 @@ mod windows {
             destination_address: Ipv4Addr::new(packet[16], packet[17], packet[18], packet[19]),
             source_port: u16::from_be_bytes([packet[ip_header], packet[ip_header + 1]]),
             destination_port: u16::from_be_bytes([packet[ip_header + 2], packet[ip_header + 3]]),
+            sequence: u32::from_be_bytes([
+                packet[ip_header + 4],
+                packet[ip_header + 5],
+                packet[ip_header + 6],
+                packet[ip_header + 7],
+            ]),
             syn: packet[ip_header + 13] & 0x02 != 0,
             ack: packet[ip_header + 13] & 0x10 != 0,
             payload: &packet[payload_start..total],
@@ -616,14 +799,14 @@ mod windows {
     }
 
     fn open_handle(
-        api: &WinDivertApi,
+        loaded: &Arc<LoadedApi>,
         filter: &str,
         priority: i16,
         flags: u64,
-    ) -> Result<OwnedHandle, Box<dyn Error>> {
+    ) -> Result<OwnedWinDivertHandle, Box<dyn Error>> {
         let filter = CString::new(filter)?;
         let handle =
-            unsafe { (api.open)(filter.as_ptr(), WINDIVERT_LAYER_NETWORK, priority, flags) };
+            unsafe { (loaded.api.open)(filter.as_ptr(), WINDIVERT_LAYER_NETWORK, priority, flags) };
         if handle == INVALID_HANDLE_VALUE || handle.is_null() {
             return Err(
                 format!("WinDivertOpen failed with Windows error {}", unsafe {
@@ -632,7 +815,30 @@ mod windows {
                 .into(),
             );
         }
-        Ok(OwnedHandle(handle))
+        Ok(OwnedWinDivertHandle {
+            raw: handle,
+            loaded: Arc::clone(loaded),
+        })
+    }
+
+    fn compile_network_filter(api: &WinDivertApi, filter: &str) -> Result<(), Box<dyn Error>> {
+        let filter = CString::new(filter)?;
+        let mut error = ptr::null();
+        let mut position = 0u32;
+        let ok = unsafe {
+            (api.compile_filter)(
+                filter.as_ptr(),
+                WINDIVERT_LAYER_NETWORK,
+                ptr::null_mut(),
+                0,
+                &mut error,
+                &mut position,
+            )
+        };
+        if ok == 0 {
+            return Err(format!("active WinDivert filter failed compilation at {position}").into());
+        }
+        Ok(())
     }
 
     fn configure_and_verify(
@@ -718,8 +924,10 @@ mod windows {
                 recv: export!("WinDivertRecv", RecvFn),
                 send: export!("WinDivertSend", SendFn),
                 shutdown: export!("WinDivertShutdown", ShutdownFn),
+                close: export!("WinDivertClose", CloseFn),
                 set_param: export!("WinDivertSetParam", SetParamFn),
                 get_param: export!("WinDivertGetParam", GetParamFn),
+                compile_filter: export!("WinDivertHelperCompileFilter", CompileFilterFn),
             },
         })
     }
@@ -751,7 +959,7 @@ mod windows {
         if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0 {
             return Err("OpenProcessToken failed".into());
         }
-        let token = OwnedHandle(token);
+        let token = OwnedKernelHandle(token);
         let mut elevation = TOKEN_ELEVATION::default();
         let mut returned = 0u32;
         let ok = unsafe {
@@ -773,7 +981,7 @@ mod windows {
         if snapshot == INVALID_HANDLE_VALUE {
             return Err("could not enumerate processes".into());
         }
-        let snapshot = OwnedHandle(snapshot);
+        let snapshot = OwnedKernelHandle(snapshot);
         let mut entry = PROCESSENTRY32W {
             dwSize: size_of::<PROCESSENTRY32W>() as u32,
             ..Default::default()
@@ -821,6 +1029,8 @@ mod windows {
                 exact_ipv4_tuple_discovered: false,
                 syn_observed: false,
                 exact_process_owned_epoch: false,
+                same_priority_reflect_arbitration: false,
+                exact_filter_compiled: false,
                 exact_filter_opened: false,
                 version_2_2: false,
                 queue_policy_readback: false,
@@ -829,6 +1039,19 @@ mod windows {
     }
 
     impl CanaryReceipt {
+        fn blocked_armed(mode: &'static str, outcome: &str, gates: GateReceipt) -> Self {
+            Self {
+                schema_version: 1,
+                artifact_kind: "sanitized-automarker-windivert-byte-identical-passthrough",
+                game_build: AUTOMARKER_REQUEST_BUILD,
+                mode,
+                outcome: outcome.into(),
+                gates,
+                counts: CountsReceipt::from(RelayCounts::default()),
+                invariants: InvariantReceipt::dry_run(),
+            }
+        }
+
         fn dry_run(outcome: &str) -> Self {
             Self {
                 schema_version: 1,
@@ -847,6 +1070,8 @@ mod windows {
                     exact_ipv4_tuple_discovered: false,
                     syn_observed: false,
                     exact_process_owned_epoch: false,
+                    same_priority_reflect_arbitration: false,
+                    exact_filter_compiled: false,
                     exact_filter_opened: false,
                     version_2_2: false,
                     queue_policy_readback: false,
@@ -953,6 +1178,37 @@ mod windows {
                 duration_seconds,
                 output: output.ok_or("--output is required")?,
             })
+        }
+    }
+
+    #[cfg(test)]
+    mod discovery_tests {
+        use super::{DiscoveryPrefix, GateReceipt};
+
+        #[test]
+        fn prefix_assembly_handles_gap_overlap_and_exact_retransmission() {
+            let mut prefix = DiscoveryPrefix::new(100);
+            assert!(prefix.ingest(104, b"ef"));
+            assert!(prefix.bytes().is_empty());
+            assert!(prefix.ingest(100, b"abcd"));
+            assert_eq!(prefix.bytes(), b"abcdef");
+            assert!(prefix.ingest(102, b"cdefgh"));
+            assert_eq!(prefix.bytes(), b"abcdefgh");
+            assert!(prefix.ingest(100, b"abcdefgh"));
+            assert_eq!(prefix.bytes(), b"abcdefgh");
+        }
+
+        #[test]
+        fn prefix_assembly_rejects_conflicting_retransmission() {
+            let mut prefix = DiscoveryPrefix::new(u32::MAX - 1);
+            assert!(prefix.ingest(u32::MAX - 1, b"abcd"));
+            assert!(!prefix.ingest(0, b"XX"));
+            assert!(!prefix.ingest(2, b"ef"));
+        }
+
+        #[test]
+        fn armed_mode_is_fail_closed_until_reflect_arbitration_exists() {
+            assert!(!GateReceipt::new_armed().same_priority_reflect_arbitration);
         }
     }
 }

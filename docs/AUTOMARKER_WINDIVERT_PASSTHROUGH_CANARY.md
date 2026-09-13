@@ -1,14 +1,25 @@
 # Automarker WinDivert pass-through canary
 
-Status: research-only; byte-identical pass-through; marker substitution disabled.
+Status: research-only; armed traffic observation is fail-closed; marker
+substitution disabled.
 
-This package tests the narrow Windows interception boundary needed by future
-Automarkers. It does not place or change a marker. It discovers a new outbound
-connection only after observing its SYN, verifies that the exact four-tuple is
-owned by the sole `BPSR_STEAM.exe` process, confirms the BPSR wire signature,
-then diverts only payload packets for that tuple for at most 60 seconds. Each
-packet and its full WinDivert address metadata are synchronously reinjected
-without changing a byte.
+This package tests the non-network portions of the narrow Windows interception
+boundary needed by future Automarkers. It does not place or change a marker.
+Armed mode validates elevation, the exact game process, the pinned official
+WinDivert dependencies, and their signature, then writes the explicit outcome
+`blocked_reflect_arbitration_unimplemented`. It opens no discovery or active
+traffic-observing handle. WinDivert defines ordering between overlapping handles
+at the same priority as undefined, so live observation remains disabled until a
+REFLECT-layer arbitration gate is implemented and tested.
+
+The dormant pass-through implementation now pins DLL ownership through every
+handle and worker, closes WinDivert handles with `WinDivertClose`, compiles the
+exact active filter before opening it, and makes every relay exit request receive
+shutdown and join its timer before DLL unload. Its discovery assembler begins at
+the observed SYN sequence, accepts exact/consistent retransmissions and gaps
+within a bounded 64 KiB prefix, verifies process ownership only after a BPSR
+signature is present, and retains a 250 ms uniqueness window. These paths remain
+unreachable in armed mode until REFLECT arbitration exists.
 
 ## Safe first check
 
@@ -21,21 +32,18 @@ From a normal PowerShell console in the package directory:
 That default is a dry-run. It does not load the WinDivert DLL, open a handle,
 install a driver, divert traffic, or transmit anything.
 
-## Explicit driver bootstrap (only when the service is absent)
+## Driver bootstrap status
 
-The pass-through canary deliberately keeps `NO_INSTALL` on every handle that
-can observe traffic. On a machine where the `WinDivert` service is absent, run
-the separate setup script once. Its default invocation is a read-only
-preflight: it checks the packaged hashes/signature and reports service state,
-without starting the executable, requesting elevation, writing a receipt, or
-changing driver/service state.
+The setup script's default invocation is a read-only preflight: it checks the
+packaged hashes/signature and reports service state without starting the
+executable, requesting elevation, writing a receipt, or changing driver/service
+state.
 
 ```powershell
 .\setup-bpsr-automarker-windivert-driver.ps1
 ```
 
-After reviewing that result, the only installation-capable command is the
-combined bootstrap-and-pass-through mode:
+The former combined bootstrap-and-pass-through command is currently fail-closed:
 
 ```powershell
 .\run-bpsr-automarker-windivert-passthrough.ps1 `
@@ -43,15 +51,9 @@ combined bootstrap-and-pass-through mode:
   -DurationSeconds 20
 ```
 
-This requests Administrator elevation, revalidates the pinned official 2.2.2
-x64 DLL and driver plus the driver signer, then calls `WinDivertOpen` without
-`NO_INSTALL` exactly once using the filter `false` with `SNIFF | RECV_ONLY`.
-That bootstrap handle cannot match, divert, or transmit a packet. WinDivert
-creates and starts its demand-start kernel-driver service if needed; rLogs then
-verifies the loaded driver reports version 2.2 and retains that harmless handle
-through SYN discovery and the pass-through interval. This avoids relying on
-service persistence between separate processes. All traffic-observing handles
-still use `NO_INSTALL`, and none of these paths contains substitution logic.
+It validates the dependencies and then writes
+`blocked_reflect_arbitration_unimplemented` before opening even the false-filter
+bootstrap handle. It therefore cannot install or start the driver in this slice.
 
 WinDivert marks a newly created service for deletion, but the loaded driver can
 remain available until it is stopped or Windows reboots. To explicitly request
@@ -68,13 +70,10 @@ application using WinDivert; close those applications first. If Windows defers
 unload/deletion, reboot. Deleting the standalone package files prevents future
 on-demand installation from this package.
 
-## Explicit armed canary
+## Explicit armed dependency check
 
-This can briefly interrupt the selected game connection if Windows, the
-driver, or the process fails while a packet is in user space. Save anything
-important first. Run with ExitLag **off** for the first receipt. Start the
-command while the game process exists, then reconnect the game only after the
-console says it is waiting for a SYN:
+The armed command currently performs only dependency/process checks and writes
+the REFLECT blocker receipt. It does not observe or interrupt game traffic:
 
 ```powershell
 .\run-bpsr-automarker-windivert-passthrough.ps1 `
@@ -82,19 +81,11 @@ console says it is waiting for a SYN:
   -DurationSeconds 20
 ```
 
-The canary launcher requests Administrator elevation because WinDivert requires it.
-It validates the pinned official WinDivert 2.2.2 x64 DLL and driver hashes and
-the driver signature before the executable dynamically loads the DLL. The
-discovery and active handles always use `NO_INSTALL`; this canary will not
-install a missing driver. If the driver is not already installed, it refuses
-to run; use the separately named combined bootstrap mode above instead.
-
-Do not close the elevated console during the 20-second active interval. On
-normal completion rLogs stops receive, drains and byte-identically reinjects
-the queue, then closes the handle. If the game disconnects, allow the command
-to exit, restart the game, and retain the sanitized receipt or error text. To
-roll back, delete this standalone folder; it does not change rLogs settings or
-install a persistent rLogs component.
+The launcher requests Administrator elevation because the dependency boundary
+still validates the environment expected by the future WinDivert path. It
+validates the pinned official WinDivert 2.2.2 x64 DLL and driver hashes and the
+driver signature before dynamically loading the DLL. It then writes the blocker
+receipt and exits without opening a NETWORK or REFLECT handle.
 
 Receipts contain only gate results and aggregate packet/byte counts. They omit
 endpoints, ports, sequence/ack values, payloads, timestamps, paths, RPC call
