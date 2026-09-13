@@ -220,7 +220,7 @@ impl AutomarkerBridgeCaptureTcpConnection {
         .filter(|identity| identity.client_port != 0 && identity.server_port != 0)
     }
 
-    fn matches_reverse_packet(self, packet: &rlogs_game_bpsr::PacketEnvelope) -> bool {
+    pub(crate) fn matches_reverse_packet(self, packet: &rlogs_game_bpsr::PacketEnvelope) -> bool {
         let Some(source) = packet.source.as_ref() else {
             return false;
         };

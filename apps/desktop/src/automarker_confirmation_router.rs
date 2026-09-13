@@ -92,6 +92,8 @@ pub(crate) struct PrivateCorrelatedReturn {
     pub provenance: PrivateConfirmationProvenance,
     pub source_clocks: PrivateSourceClocks,
     pub carrier_capture_sequence: u64,
+    pub raw_stub_id: u32,
+    pub raw_status: u32,
     pub asserted_authoritative_server_decode: bool,
     pub decoded_as_success: bool,
     /// Distinguishes a present empty application body from a missing body.
@@ -535,6 +537,8 @@ fn same_event_payload(
         ) => {
             left.provenance == right.provenance
                 && left.carrier_capture_sequence == right.carrier_capture_sequence
+                && left.raw_stub_id == right.raw_stub_id
+                && left.raw_status == right.raw_status
                 && left.asserted_authoritative_server_decode
                     == right.asserted_authoritative_server_decode
                 && left.decoded_as_success == right.decoded_as_success
@@ -646,6 +650,8 @@ mod tests {
                 wall_clock_unix_micros: Some(1_800_000_000_000_000),
             },
             carrier_capture_sequence: 8,
+            raw_stub_id: 99,
+            raw_status: 0,
             asserted_authoritative_server_decode: true,
             decoded_as_success: true,
             decoded_body_present: true,
