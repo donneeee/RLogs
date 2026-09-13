@@ -8,6 +8,9 @@
 use aes::Aes128;
 use cbc::cipher::{BlockDecryptMut, KeyIvInit, block_padding::Pkcs7};
 use hmac::{Hmac, Mac};
+use rlogs_capture::{
+    MAX_TCP_SIGNATURE_PREFIX_BYTES, TcpPayloadDirection, TcpPayloadSignatureResult,
+};
 use serde::Serialize;
 use sha2::Sha256;
 use std::ops::Range;
@@ -39,6 +42,54 @@ const CALL_FRAGMENT: u16 = 1;
 const WORLD_SERVICE_ID: u64 = 103_198_054;
 const WORLD_STUB_ID: u32 = 1;
 const USE_SLOT_METHOD_ID: u32 = 249_858;
+
+/// Recognizes an exact current-build ground-marker request inside a bounded
+/// contiguous TCP prefix.
+///
+/// This late-attach signature exists for passive mirror diagnostics that may
+/// start after the normal early BPSR server signature has already passed. It
+/// requires the complete uncompressed 197-byte FrameUp/Call layout and the
+/// authenticated marker application body. No payload or decoded identity is
+/// returned to the capture boundary.
+pub fn classify_observed_automarker_tcp_prefix(payload: &[u8]) -> TcpPayloadSignatureResult {
+    if payload.len() > MAX_TCP_SIGNATURE_PREFIX_BYTES {
+        return TcpPayloadSignatureResult::Reject;
+    }
+    for start in 0..payload.len().saturating_sub(OBSERVED_FRAME_UP_LENGTH - 1) {
+        let candidate = &payload[start..start + OBSERVED_FRAME_UP_LENGTH];
+        if u32::from_be_bytes(candidate[0..4].try_into().expect("fixed outer length")) as usize
+            != OBSERVED_FRAME_UP_LENGTH
+            || u16::from_be_bytes(candidate[4..6].try_into().expect("fixed outer fragment"))
+                != FRAME_UP_FRAGMENT
+            || u32::from_be_bytes(candidate[10..14].try_into().expect("fixed nested length"))
+                as usize
+                != OBSERVED_NESTED_CALL_LENGTH
+            || u16::from_be_bytes(candidate[14..16].try_into().expect("fixed nested fragment"))
+                != CALL_FRAGMENT
+            || u64::from_be_bytes(candidate[16..24].try_into().expect("fixed service"))
+                != WORLD_SERVICE_ID
+            || u32::from_be_bytes(candidate[24..28].try_into().expect("fixed stub"))
+                != WORLD_STUB_ID
+            || u32::from_be_bytes(candidate[32..36].try_into().expect("fixed method"))
+                != USE_SLOT_METHOD_ID
+        {
+            continue;
+        }
+        let application = &candidate[36..];
+        let mut scratch = Vec::new();
+        if one_message(application, "Zproto.World.Types.UseSlot", 1)
+            .and_then(|request| decode_request(request, &mut scratch))
+            .is_ok()
+        {
+            return TcpPayloadSignatureResult::Match(TcpPayloadDirection::ClientToServer);
+        }
+    }
+    if payload.len() == MAX_TCP_SIGNATURE_PREFIX_BYTES {
+        TcpPayloadSignatureResult::Reject
+    } else {
+        TcpPayloadSignatureResult::NeedMore
+    }
+}
 
 // Current observations prove continuity of these gameplay-envelope keys from
 // the reviewed source build. They authenticate only the captured marker
@@ -1531,6 +1582,43 @@ mod tests {
         assert!(!supports_observed_automarker_requests(
             &ProtocolPack::build(definition).unwrap()
         ));
+    }
+
+    #[test]
+    fn late_attach_signature_finds_only_an_authenticated_complete_marker_frame() {
+        let application = request(
+            1,
+            [250.35721, 118.0, -64.2384, 250.49268],
+            [250.44351, 118.02, -61.48509, 250.49268],
+            1_789_176_498_286,
+            607,
+        );
+        let frame = observed_frame(&application);
+        let mut prefix = b"unrelated earlier stream bytes".to_vec();
+        prefix.extend_from_slice(&frame);
+        assert_eq!(
+            classify_observed_automarker_tcp_prefix(&prefix),
+            TcpPayloadSignatureResult::Match(TcpPayloadDirection::ClientToServer)
+        );
+        assert_eq!(
+            classify_observed_automarker_tcp_prefix(&prefix[..prefix.len() - 1]),
+            TcpPayloadSignatureResult::NeedMore
+        );
+
+        let envelope = substitution_spans(&application)
+            .unwrap()
+            .authenticated_envelope;
+        let mut unauthenticated = frame;
+        unauthenticated[36 + envelope.start + IV_LENGTH] ^= 1;
+        assert_eq!(
+            classify_observed_automarker_tcp_prefix(&unauthenticated),
+            TcpPayloadSignatureResult::NeedMore
+        );
+        unauthenticated.resize(MAX_TCP_SIGNATURE_PREFIX_BYTES, 0);
+        assert_eq!(
+            classify_observed_automarker_tcp_prefix(&unauthenticated),
+            TcpPayloadSignatureResult::Reject
+        );
     }
 
     #[test]

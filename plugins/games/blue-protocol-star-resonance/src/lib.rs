@@ -89,9 +89,9 @@ pub use automarker_request::{
     AutomarkerRequestDecodeError, AutomarkerRequestPosition, AutomarkerRequestXyz,
     ObservedAutomarkerRequest, ObservedUseSlotCurrentPosition, OfflineAutomarkerFrameSubstitution,
     OfflineAutomarkerSubstitutionError, OfflineAutomarkerSubstitutionProof,
-    decode_observed_automarker_request_into, decode_observed_use_slot_current_position_into,
-    substitute_offline_automarker_frame, supports_observed_automarker_requests,
-    verify_offline_automarker_substitution,
+    classify_observed_automarker_tcp_prefix, decode_observed_automarker_request_into,
+    decode_observed_use_slot_current_position_into, substitute_offline_automarker_frame,
+    supports_observed_automarker_requests, verify_offline_automarker_substitution,
 };
 pub use auxiliary_action_presentation::{
     AuxiliaryActionPresentation, auxiliary_action_presentation, localized_auxiliary_action_name,

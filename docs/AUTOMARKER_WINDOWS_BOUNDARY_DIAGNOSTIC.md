@@ -26,6 +26,33 @@ When ExitLag is enabled for that test, use:
 pwsh -NoProfile -File .\run-bpsr-automarker-windows-boundary.ps1 -ExitLag
 ```
 
+On a separate PC that receives mirrored traffic, no local game process is
+required:
+
+```powershell
+pwsh -NoProfile -File .\run-bpsr-automarker-windows-boundary.ps1 -Mirror
+```
+
+The mirror path uses the active routed adapter by default. If mirrored traffic
+arrives on a different local adapter, select its exact Windows friendly name:
+
+```powershell
+pwsh -NoProfile -File .\run-bpsr-automarker-windows-boundary.ps1 `
+  -Mirror -InterfaceName 'Ethernet 2'
+```
+
+The name must uniquely match a locally enumerated adapter. It is used only to
+open the capture surface and is never included in the receipt. Mirror mode does
+not query a local game socket table and categorically reports game-process
+ownership, the remote game's ExitLag state, and WFP/callout ordering as
+unproven. `-Mirror` and `-ExitLag` cannot be combined.
+
+The signature boundary recognizes either the normal early BPSR server proof or
+an exact authenticated marker request. The second path lets a mirror capture
+attach after the game connection was established without broadening ordinary
+traffic access. Place the marker promptly after the diagnostic starts so the
+bounded 64 KiB private prefix window is not exhausted first.
+
 Place exactly one marker through the normal game UI during the 30-second
 window. A separate standard and ExitLag run makes the comparison unambiguous.
 Only the file ending in `.safe.v1.json` is created.

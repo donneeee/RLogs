@@ -32,8 +32,8 @@ mod windows {
         AUTOMARKER_REQUEST_BUILD, AutomarkerRequestXyz, BpsrFrame, BpsrFrameUpLayout,
         BpsrFramerSet, BpsrFramerSetConfig, BpsrFramingConfig, BpsrFramingEvent, FragmentKind,
         MappingProvenance, PacketDirection, ProtocolPack, classify_bpsr_tcp_prefix,
-        decode_observed_automarker_request_into, supports_observed_automarker_requests,
-        verify_offline_automarker_substitution,
+        classify_observed_automarker_tcp_prefix, decode_observed_automarker_request_into,
+        supports_observed_automarker_requests, verify_offline_automarker_substitution,
     };
     use rlogs_network::{
         IpEndpoint, NetworkDecodeEvent, NetworkDecoder, ReassemblyMetrics, TcpFlowKey,
@@ -65,27 +65,31 @@ mod windows {
         }
 
         let adapters = windows_capture_adapters()?;
-        let recommendation = recommend_windows_capture_adapter(&adapters, &[args.process_id])
-            .ok_or("no bounded Windows capture adapter could be selected")?;
-        let primary_interface = npcap_device_name(&recommendation.adapter_name);
-        let mode = if args.exitlag {
+        let process_ids = args.process_id.into_iter().collect::<Vec<_>>();
+        let primary_adapter =
+            resolve_primary_adapter(&adapters, &process_ids, args.interface_name.as_deref())?;
+        let primary_interface = npcap_device_name(&primary_adapter);
+        let mode = if args.exitlag && !args.mirror {
             WindowsRouteAwareCaptureMode::ExitLag
         } else {
             WindowsRouteAwareCaptureMode::Standard
         };
         let capture = WindowsSignatureLiveCapture::open_route_aware_prefix(
             &primary_interface,
-            &[args.process_id],
+            &process_ids,
             mode,
             args.duration_seconds,
             None,
-            classify_bpsr_tcp_prefix,
+            classify_boundary_tcp_prefix,
             SignatureFlowCaptureConfig::default(),
         )?;
-        let owner = WindowsProcessSocketOwner::new(args.process_id)?;
+        let owner = args
+            .process_id
+            .map(WindowsProcessSocketOwner::new)
+            .transpose()?;
         let pack = current_automarker_pack()?;
         let mut capture = ValidatedCapture::new(capture);
-        let mut analyzer = BoundaryAnalyzer::new(pack)?;
+        let mut analyzer = BoundaryAnalyzer::new(pack, owner.is_some())?;
 
         println!(
             "Passive diagnostic running for {} seconds. Place one marker normally; no traffic will be transmitted or modified.",
@@ -93,10 +97,15 @@ mod windows {
         );
         while let Some(frame) = capture.next_frame()? {
             let confirmed = capture.source().confirmed_connections();
-            let owned = owner.snapshot_all_connections().unwrap_or_default();
+            let owned = owner
+                .as_ref()
+                .map(WindowsProcessSocketOwner::snapshot_all_connections)
+                .transpose()
+                .unwrap_or_default()
+                .unwrap_or_default();
             analyzer.process_frame(&frame, &confirmed, &owned)?;
         }
-        let receipt = analyzer.finish(args.exitlag);
+        let receipt = analyzer.finish(args.capture_mode());
         let file = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -108,6 +117,50 @@ mod windows {
         writer.get_ref().sync_all()?;
         println!("Sanitized create-only boundary receipt written.");
         Ok(())
+    }
+
+    fn classify_boundary_tcp_prefix(payload: &[u8]) -> rlogs_capture::TcpPayloadSignatureResult {
+        let early = classify_bpsr_tcp_prefix(payload);
+        if matches!(early, rlogs_capture::TcpPayloadSignatureResult::Match(_)) {
+            return early;
+        }
+        classify_observed_automarker_tcp_prefix(payload)
+    }
+
+    fn resolve_primary_adapter(
+        adapters: &[rlogs_capture::WindowsCaptureAdapter],
+        process_ids: &[u32],
+        requested: Option<&str>,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        if let Some(requested) = requested {
+            let requested = requested.trim();
+            if requested.is_empty()
+                || requested.len() > 256
+                || requested.chars().any(char::is_control)
+            {
+                return Err("interface name must be 1-256 printable characters".into());
+            }
+            let mut matches = adapters.iter().filter(|adapter| {
+                [
+                    adapter.adapter_name.as_str(),
+                    adapter.friendly_name.as_str(),
+                    adapter.description.as_str(),
+                ]
+                .into_iter()
+                .any(|value| value.eq_ignore_ascii_case(requested))
+                    || npcap_device_name(&adapter.adapter_name).eq_ignore_ascii_case(requested)
+            });
+            let Some(adapter) = matches.next() else {
+                return Err("interface name did not uniquely match a local capture adapter".into());
+            };
+            if matches.next().is_some() {
+                return Err("interface name matched more than one local capture adapter".into());
+            }
+            return Ok(adapter.adapter_name.clone());
+        }
+        recommend_windows_capture_adapter(adapters, process_ids)
+            .map(|recommendation| recommendation.adapter_name)
+            .ok_or_else(|| "no bounded Windows capture adapter could be selected".into())
     }
 
     fn current_automarker_pack() -> Result<ProtocolPack, Box<dyn std::error::Error>> {
@@ -202,7 +255,7 @@ mod windows {
         surface: CaptureSurface,
         connection_epoch_ordinal: u32,
         epoch_syn_observed: bool,
-        exact_game_process_ownership_observed: bool,
+        process_ownership_evidence: ProcessOwnershipEvidence,
         application_length_bytes: usize,
         application_uncompressed_on_wire: bool,
         outer_frame_uncompressed_on_wire: bool,
@@ -226,10 +279,14 @@ mod windows {
         markers: Vec<MarkerObservation>,
         physical_payload_segments: u64,
         decoded_tcp_segments: u64,
+        process_ownership_available: bool,
     }
 
     impl BoundaryAnalyzer {
-        fn new(pack: ProtocolPack) -> Result<Self, Box<dyn std::error::Error>> {
+        fn new(
+            pack: ProtocolPack,
+            process_ownership_available: bool,
+        ) -> Result<Self, Box<dyn std::error::Error>> {
             Ok(Self {
                 pack,
                 network: NetworkDecoder::new(),
@@ -249,6 +306,7 @@ mod windows {
                 markers: Vec::new(),
                 physical_payload_segments: 0,
                 decoded_tcp_segments: 0,
+                process_ownership_available,
             })
         }
 
@@ -278,6 +336,7 @@ mod windows {
                 markers,
                 physical_payload_segments,
                 decoded_tcp_segments,
+                process_ownership_available,
             } = self;
             let mut failure = None;
             network.process_frame(frame, |event| {
@@ -320,7 +379,16 @@ mod windows {
                     }
                     framing.process(direction, stream_event, |event| {
                         if let BpsrFramingEvent::Frame(frame) = event {
-                            collect_frame(pack, frame, chunks, outers, epochs, confirmed, markers);
+                            collect_frame(
+                                pack,
+                                frame,
+                                chunks,
+                                outers,
+                                epochs,
+                                confirmed,
+                                markers,
+                                *process_ownership_available,
+                            );
                         }
                     });
                 });
@@ -334,14 +402,24 @@ mod windows {
             Ok(())
         }
 
-        fn finish(self, exitlag_requested: bool) -> Receipt {
+        fn finish(self, capture_mode: CaptureMode) -> Receipt {
             let mut surfaces = BTreeMap::<CaptureSurface, SurfaceAggregate>::new();
             for connection in self.confirmed.values().copied() {
                 let aggregate = surfaces.entry(surface(connection)).or_default();
                 aggregate.signature_confirmed_connections =
                     aggregate.signature_confirmed_connections.saturating_add(1);
-                aggregate.exact_game_process_owned_connections +=
-                    usize::from(self.owned_ever.contains(&connection_key(connection)));
+                if self.process_ownership_available {
+                    aggregate.exact_game_process_owned_connections_observed = Some(
+                        aggregate
+                            .exact_game_process_owned_connections_observed
+                            .unwrap_or_default()
+                            + usize::from(self.owned_ever.contains(&connection_key(connection))),
+                    );
+                    aggregate.process_ownership_scope = "exact_four_tuple_poll";
+                } else {
+                    aggregate.exact_game_process_owned_connections_observed = None;
+                    aggregate.process_ownership_scope = "unproven_mirror_capture";
+                }
             }
             for marker in &self.markers {
                 surfaces.entry(marker.surface).or_default().marker_requests += 1;
@@ -352,18 +430,19 @@ mod windows {
             let physical_marker_visible = surfaces
                 .get(&CaptureSurface::PhysicalOrRouted)
                 .is_some_and(|row| row.marker_requests > 0);
+            let game_process_ownership_proven = self.process_ownership_available
+                && self.markers.iter().any(|marker| {
+                    marker.process_ownership_evidence
+                        == ProcessOwnershipEvidence::ExactGameProcessSocketObserved
+                });
             Receipt {
                 schema_version: 1,
                 audit_kind: "sanitized-passive-automarker-windows-boundary",
-                requested_mode: if exitlag_requested {
-                    "exitlag"
-                } else {
-                    "standard"
-                },
+                requested_mode: capture_mode.as_str(),
                 input_scope: InputScope {
                     live_npcap_capture: true,
                     protocol_signature_gate: true,
-                    process_socket_table_read: true,
+                    process_socket_table_read: self.process_ownership_available,
                     packet_persistence_performed: false,
                     packet_transmission_performed: false,
                     packet_modification_performed: false,
@@ -402,6 +481,10 @@ mod windows {
                     physical_signature_proves_plain_bpsr_visible_on_routed_adapter:
                         physical_marker_visible,
                     process_ownership_is_exact_four_tuple_not_process_name_inference: true,
+                    game_process_ownership_proven,
+                    mirror_mode_never_infers_game_process_ownership: true,
+                    wfp_and_exitlag_callout_ordering: "unproven",
+                    remote_game_exitlag_state_observed: capture_mode != CaptureMode::Mirror,
                     observation_proves_inline_ordering: false,
                     observation_proves_server_acceptance: false,
                     runtime_sender_enabled: false,
@@ -411,6 +494,7 @@ mod windows {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn collect_frame(
         pack: &ProtocolPack,
         frame: BpsrFrame,
@@ -419,6 +503,7 @@ mod windows {
         epochs: &BTreeMap<ConnectionKey, EpochState>,
         confirmed: &BTreeMap<ConnectionKey, TcpConnection>,
         markers: &mut Vec<MarkerObservation>,
+        process_ownership_available: bool,
     ) {
         if frame.direction != PacketDirection::ClientToServer {
             return;
@@ -489,8 +574,13 @@ mod windows {
             surface: surface(connection),
             connection_epoch_ordinal: epoch.map_or(0, |state| state.ordinal),
             epoch_syn_observed: epoch.is_some_and(|state| state.syn_observed),
-            exact_game_process_ownership_observed: epoch
-                .is_some_and(|state| state.process_owned_observed),
+            process_ownership_evidence: if !process_ownership_available {
+                ProcessOwnershipEvidence::UnprovenMirrorCapture
+            } else if epoch.is_some_and(|state| state.process_owned_observed) {
+                ProcessOwnershipEvidence::ExactGameProcessSocketObserved
+            } else {
+                ProcessOwnershipEvidence::NotObservedDuringPoll
+            },
             application_length_bytes: application.len(),
             application_uncompressed_on_wire: application_uncompressed,
             outer_frame_uncompressed_on_wire: outer_uncompressed,
@@ -504,11 +594,31 @@ mod windows {
         });
     }
 
-    #[derive(Debug, Default, Serialize)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+    #[serde(rename_all = "snake_case")]
+    enum ProcessOwnershipEvidence {
+        ExactGameProcessSocketObserved,
+        NotObservedDuringPoll,
+        UnprovenMirrorCapture,
+    }
+
+    #[derive(Debug, Serialize)]
     struct SurfaceAggregate {
         signature_confirmed_connections: usize,
-        exact_game_process_owned_connections: usize,
+        exact_game_process_owned_connections_observed: Option<usize>,
+        process_ownership_scope: &'static str,
         marker_requests: usize,
+    }
+
+    impl Default for SurfaceAggregate {
+        fn default() -> Self {
+            Self {
+                signature_confirmed_connections: 0,
+                exact_game_process_owned_connections_observed: None,
+                process_ownership_scope: "unproven",
+                marker_requests: 0,
+            }
+        }
     }
 
     #[derive(Debug, Serialize)]
@@ -584,6 +694,10 @@ mod windows {
         loopback_signature_proves_plain_bpsr_visible_before_local_proxy: bool,
         physical_signature_proves_plain_bpsr_visible_on_routed_adapter: bool,
         process_ownership_is_exact_four_tuple_not_process_name_inference: bool,
+        game_process_ownership_proven: bool,
+        mirror_mode_never_infers_game_process_ownership: bool,
+        wfp_and_exitlag_callout_ordering: &'static str,
+        remote_game_exitlag_state_observed: bool,
         observation_proves_inline_ordering: bool,
         observation_proves_server_acceptance: bool,
         runtime_sender_enabled: bool,
@@ -622,6 +736,7 @@ mod windows {
         passive_capture_only: bool,
         process_owned_four_tuple_snapshot: bool,
         loopback_and_physical_surface_classification: bool,
+        mirror_mode_available: bool,
         exact_application_mutable_byte_count: usize,
         sensitive_wire_fields_emitted: bool,
         packet_transmission_available: bool,
@@ -634,6 +749,7 @@ mod windows {
             passive_capture_only: true,
             process_owned_four_tuple_snapshot: true,
             loopback_and_physical_surface_classification: true,
+            mirror_mode_available: true,
             exact_application_mutable_byte_count: 16,
             sensitive_wire_fields_emitted: false,
             packet_transmission_available: false,
@@ -642,10 +758,29 @@ mod windows {
     }
 
     struct Arguments {
-        process_id: u32,
+        process_id: Option<u32>,
         duration_seconds: u32,
         exitlag: bool,
+        mirror: bool,
+        interface_name: Option<String>,
         output: PathBuf,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum CaptureMode {
+        Standard,
+        ExitLag,
+        Mirror,
+    }
+
+    impl CaptureMode {
+        const fn as_str(self) -> &'static str {
+            match self {
+                Self::Standard => "standard",
+                Self::ExitLag => "exitlag",
+                Self::Mirror => "mirror",
+            }
+        }
     }
 
     impl Arguments {
@@ -653,7 +788,9 @@ mod windows {
             let mut process_id = None;
             let mut duration = None;
             let mut output = None;
+            let mut interface_name = None;
             let mut exitlag = false;
+            let mut mirror = false;
             let mut private = false;
             let mut args = raw.into_iter();
             while let Some(arg) = args.next() {
@@ -661,8 +798,12 @@ mod windows {
                     private = true;
                 } else if arg == OsStr::new("--exitlag") {
                     exitlag = true;
+                } else if arg == OsStr::new("--mirror") {
+                    mirror = true;
                 } else if arg == OsStr::new("--process-id") {
                     process_id = unique(process_id, args.next(), "--process-id")?;
+                } else if arg == OsStr::new("--interface-name") {
+                    interface_name = unique(interface_name, args.next(), "--interface-name")?;
                 } else if arg == OsStr::new("--duration-seconds") {
                     duration = unique(duration, args.next(), "--duration-seconds")?;
                 } else if arg == OsStr::new("--output") {
@@ -674,18 +815,42 @@ mod windows {
             if !private {
                 return Err(Self::usage());
             }
-            let process_id = parse_u32(process_id, "--process-id", 1, u32::MAX)?;
+            if mirror == process_id.is_some() || (mirror && exitlag) {
+                return Err(Self::usage());
+            }
+            let process_id = process_id
+                .map(|value| parse_u32(Some(value), "--process-id", 1, u32::MAX))
+                .transpose()?;
             let duration_seconds = parse_u32(duration, "--duration-seconds", 1, 600)?;
+            let interface_name = interface_name
+                .map(|value| {
+                    value
+                        .into_string()
+                        .map_err(|_| "--interface-name must be valid UTF-8".to_owned())
+                })
+                .transpose()?;
             Ok(Self {
                 process_id,
                 duration_seconds,
                 exitlag,
+                mirror,
+                interface_name,
                 output: PathBuf::from(output.ok_or_else(Self::usage)?),
             })
         }
 
+        fn capture_mode(&self) -> CaptureMode {
+            if self.mirror {
+                CaptureMode::Mirror
+            } else if self.exitlag {
+                CaptureMode::ExitLag
+            } else {
+                CaptureMode::Standard
+            }
+        }
+
         fn usage() -> String {
-            "usage: rlogs-bpsr-automarker-windows-boundary --private-research --process-id <pid> --duration-seconds <1-600> [--exitlag] --output <create-only-receipt.json>".into()
+            "usage: rlogs-bpsr-automarker-windows-boundary --private-research (--process-id <pid> [--exitlag] | --mirror) [--interface-name <local-adapter>] --duration-seconds <1-600> --output <create-only-receipt.json>".into()
         }
     }
 
@@ -759,9 +924,66 @@ mod windows {
                 "safe.json".into(),
             ])
             .unwrap();
-            assert_eq!(parsed.process_id, 42);
+            assert_eq!(parsed.process_id, Some(42));
             assert_eq!(parsed.duration_seconds, 25);
             assert!(parsed.exitlag);
+            assert!(!parsed.mirror);
+        }
+
+        #[test]
+        fn mirror_arguments_require_no_process_or_exitlag_claim() {
+            let parsed = Arguments::parse(vec![
+                "--private-research".into(),
+                "--mirror".into(),
+                "--interface-name".into(),
+                "Ethernet 2".into(),
+                "--duration-seconds".into(),
+                "30".into(),
+                "--output".into(),
+                "safe.json".into(),
+            ])
+            .unwrap();
+            assert_eq!(parsed.process_id, None);
+            assert_eq!(parsed.capture_mode(), CaptureMode::Mirror);
+            assert_eq!(parsed.interface_name.as_deref(), Some("Ethernet 2"));
+            for invalid in [
+                vec![
+                    "--private-research",
+                    "--mirror",
+                    "--process-id",
+                    "42",
+                    "--duration-seconds",
+                    "30",
+                    "--output",
+                    "safe.json",
+                ],
+                vec![
+                    "--private-research",
+                    "--mirror",
+                    "--exitlag",
+                    "--duration-seconds",
+                    "30",
+                    "--output",
+                    "safe.json",
+                ],
+            ] {
+                assert!(Arguments::parse(invalid.into_iter().map(Into::into).collect()).is_err());
+            }
+        }
+
+        #[test]
+        fn empty_mirror_receipt_keeps_ownership_and_ordering_unproven() {
+            let receipt = BoundaryAnalyzer::new(current_automarker_pack().unwrap(), false)
+                .unwrap()
+                .finish(CaptureMode::Mirror);
+            let json = serde_json::to_string(&receipt).unwrap();
+            assert!(json.contains("\"requested_mode\":\"mirror\""));
+            assert!(json.contains("\"process_socket_table_read\":false"));
+            assert!(json.contains("\"game_process_ownership_proven\":false"));
+            assert!(json.contains("\"wfp_and_exitlag_callout_ordering\":\"unproven\""));
+            assert!(json.contains("\"remote_game_exitlag_state_observed\":false"));
+            assert!(!json.contains("process_id"));
+            assert!(!json.contains("interface_name"));
         }
     }
 }
