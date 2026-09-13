@@ -3,6 +3,7 @@
 mod action_correlation;
 mod actor_presentation;
 mod automarker_inline_transport;
+mod automarker_preset_sequence;
 mod automarker_request;
 mod auxiliary_action_presentation;
 mod battle_imagine_presentation;
@@ -96,6 +97,10 @@ pub use automarker_inline_transport::{
     OfflineAutomarkerWinDivertHandlePolicy, OfflineAutomarkerWinDivertLayer,
     OfflineAutomarkerWinDivertReadiness, OfflineAutomarkerWinDivertReadinessGate,
     bind_offline_automarker_connection_epoch, offline_automarker_windivert_active_filter,
+};
+pub use automarker_preset_sequence::{
+    AutomarkerCarrierObservation, AutomarkerPresetMarker, AutomarkerPresetSequence,
+    AutomarkerPresetSequenceError, AutomarkerPresetSequenceState, AutomarkerRewriteAssignment,
 };
 pub use automarker_request::{
     AUTOMARKER_REQUEST_BUILD, AUTOMARKER_REQUEST_PACK_DIGEST, AutomarkerRequestAttributes,
