@@ -1801,6 +1801,111 @@ fn as_i32(
 }
 
 #[cfg(test)]
+pub(crate) mod tests_support {
+    use super::*;
+    use cbc::Encryptor;
+    use cbc::cipher::{BlockEncryptMut, block_padding::Pkcs7};
+
+    type Aes128CbcEncryptor = Encryptor<Aes128>;
+
+    fn push_varint(out: &mut Vec<u8>, mut value: u64) {
+        while value >= 0x80 {
+            out.push((value as u8) | 0x80);
+            value >>= 7;
+        }
+        out.push(value as u8);
+    }
+
+    fn push_v(out: &mut Vec<u8>, field: u8, value: u64) {
+        out.push(field << 3);
+        push_varint(out, value);
+    }
+
+    fn push_f(out: &mut Vec<u8>, field: u8, value: f32) {
+        out.push((field << 3) | 5);
+        out.extend_from_slice(&value.to_le_bytes());
+    }
+
+    fn push_b(out: &mut Vec<u8>, field: u8, value: &[u8]) {
+        out.push((field << 3) | 2);
+        push_varint(out, value.len() as u64);
+        out.extend_from_slice(value);
+    }
+
+    fn position(values: [f32; 4]) -> Vec<u8> {
+        let mut out = Vec::new();
+        for (index, value) in values.into_iter().enumerate() {
+            push_f(&mut out, index as u8 + 1, value);
+        }
+        out
+    }
+
+    fn envelope(timestamp: u64) -> Vec<u8> {
+        let mut plaintext = Vec::new();
+        push_v(&mut plaintext, 1, timestamp);
+        push_f(&mut plaintext, 2, 4.0);
+        push_v(&mut plaintext, 3, 4493);
+        push_v(&mut plaintext, 4, 4168);
+        push_f(&mut plaintext, 6, 1.0);
+        let iv = [0x5a; 16];
+        let mut buffer = plaintext.clone();
+        let original_len = buffer.len();
+        buffer.resize(original_len + AES_BLOCK_LENGTH, 0);
+        let ciphertext = Aes128CbcEncryptor::new_from_slices(&SKILL_AES_KEY, &iv)
+            .unwrap()
+            .encrypt_padded_mut::<Pkcs7>(&mut buffer, original_len)
+            .unwrap();
+        let mut mac = <HmacSha256 as Mac>::new_from_slice(&SKILL_HMAC_KEY).unwrap();
+        mac.update(&iv);
+        mac.update(ciphertext);
+        let mut out = iv.to_vec();
+        out.extend_from_slice(&mac.finalize().into_bytes());
+        out.extend_from_slice(ciphertext);
+        out
+    }
+
+    pub(crate) fn synthetic_frame_for_adapter() -> Vec<u8> {
+        let marker = 1_u8;
+        let begin = 1_789_176_498_286_u64;
+        let mut param = Vec::new();
+        push_v(&mut param, 1, 1_610_614_694);
+        push_v(&mut param, 2, 1100 + u64::from(marker));
+        push_v(&mut param, 3, 1);
+        push_v(&mut param, 4, begin);
+        push_b(&mut param, 6, &position([1.0, 2.0, 3.0, 4.0]));
+        push_b(&mut param, 7, &position([5.0, 6.0, 7.0, 8.0]));
+        push_v(&mut param, 10, 1);
+        push_v(&mut param, 11, 1);
+        let mut inner = Vec::new();
+        push_v(&mut inner, 1, 200 + u64::from(marker));
+        push_v(&mut inner, 2, 1);
+        push_b(&mut inner, 3, &param);
+        push_b(&mut inner, 4, &envelope(begin));
+        push_v(&mut inner, 5, 607);
+        let mut application = Vec::new();
+        push_b(&mut application, 1, &inner);
+        assert_eq!(application.len(), OBSERVED_APPLICATION_LENGTH);
+
+        let mut nested = Vec::with_capacity(OBSERVED_NESTED_CALL_LENGTH);
+        nested.extend_from_slice(&(OBSERVED_NESTED_CALL_LENGTH as u32).to_be_bytes());
+        nested.extend_from_slice(&CALL_FRAGMENT.to_be_bytes());
+        nested.extend_from_slice(&WORLD_SERVICE_ID.to_be_bytes());
+        nested.extend_from_slice(&WORLD_STUB_ID.to_be_bytes());
+        nested.extend_from_slice(&0x1234_5678_u32.to_be_bytes());
+        nested.extend_from_slice(&USE_SLOT_METHOD_ID.to_be_bytes());
+        nested.extend_from_slice(&application);
+        assert_eq!(nested.len(), OBSERVED_NESTED_CALL_LENGTH);
+        let mut outer = Vec::with_capacity(OBSERVED_FRAME_UP_LENGTH);
+        outer.extend_from_slice(&(OBSERVED_FRAME_UP_LENGTH as u32).to_be_bytes());
+        outer.extend_from_slice(&FRAME_UP_FRAGMENT.to_be_bytes());
+        outer.extend_from_slice(&0x9abc_def0_u32.to_be_bytes());
+        outer.extend_from_slice(&nested);
+        assert_eq!(outer.len(), OBSERVED_FRAME_UP_LENGTH);
+        outer
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use cbc::Encryptor;

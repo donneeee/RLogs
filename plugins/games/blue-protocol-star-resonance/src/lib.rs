@@ -2,6 +2,7 @@
 
 mod action_correlation;
 mod actor_presentation;
+mod automarker_inline_transport;
 mod automarker_request;
 mod auxiliary_action_presentation;
 mod battle_imagine_presentation;
@@ -83,6 +84,12 @@ pub use action_correlation::{
 pub use actor_presentation::{
     ActorCombatIdentity, ActorCombatPresentation, resolve_actor_combat_identity,
     resolve_actor_combat_presentation, resolve_actor_profile_identity,
+};
+pub use automarker_inline_transport::{
+    AutomarkerIpv4Endpoint, AutomarkerOwnedTcpConnection, OfflineAutomarkerBindingError,
+    OfflineAutomarkerConnectionEpochBinding, OfflineAutomarkerIpv4TcpAdapter,
+    OfflineAutomarkerIpv4TcpProof, OfflineAutomarkerIpv4TcpReason, OfflineAutomarkerIpv4TcpResult,
+    bind_offline_automarker_connection_epoch,
 };
 pub use automarker_request::{
     AUTOMARKER_REQUEST_BUILD, AUTOMARKER_REQUEST_PACK_DIGEST, AutomarkerRequestAttributes,
