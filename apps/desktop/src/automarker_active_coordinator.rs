@@ -21,14 +21,14 @@ use rlogs_game_bpsr::{
 
 use crate::{
     automarker_active_worker::{
-        ActiveAutomarkerCancelDisposition, ActiveAutomarkerClassificationMode,
-        ActiveAutomarkerCommitDisposition, ActiveAutomarkerCoordinator,
-        ActiveAutomarkerDisposition, ActiveAutomarkerPacket, ActiveAutomarkerSendOutcome,
-        ActiveAutomarkerTimeoutDisposition,
+        ActiveAutomarkerBoundProcess, ActiveAutomarkerCancelDisposition,
+        ActiveAutomarkerClassificationMode, ActiveAutomarkerCommitDisposition,
+        ActiveAutomarkerCoordinator, ActiveAutomarkerDisposition, ActiveAutomarkerPacket,
+        ActiveAutomarkerSendOutcome, ActiveAutomarkerTimeoutDisposition,
     },
     automarker_confirmation_adapter::{
-        PrivateAutomarkerConfirmationAdapter, PrivateAutomarkerConfirmationBinding,
-        PrivateAutomarkerTcpObservation,
+        PrivateAutomarkerConfirmationAdapter, PrivateAutomarkerConfirmationAdapterState,
+        PrivateAutomarkerConfirmationBinding, PrivateAutomarkerTcpObservation,
     },
     automarker_confirmation_router::PrivateParserConfirmationSnapshot,
 };
@@ -173,6 +173,8 @@ impl ProductionActiveAutomarkerCoordinator {
         loop {
             match self.commands.try_recv() {
                 Ok(ActiveAutomarkerCommand::ParserSnapshot(snapshot)) => {
+                    self.runtime_revision =
+                        self.runtime_revision.max(snapshot.context.runtime_revision);
                     if let Some(adapter) = self.adapter.as_mut() {
                         if adapter.route_parser_snapshot(snapshot).is_err() {
                             self.context_invalidated = true;
@@ -216,6 +218,14 @@ impl ProductionActiveAutomarkerCoordinator {
         let Some(adapter) = self.adapter.as_mut() else {
             return ActiveAutomarkerDisposition::PassThrough;
         };
+        if matches!(
+            adapter.state(),
+            PrivateAutomarkerConfirmationAdapterState::Complete
+                | PrivateAutomarkerConfirmationAdapterState::Failed
+        ) && !adapter.coordinator_state().tcp_rewrite_obligation_active
+        {
+            return ActiveAutomarkerDisposition::PassThrough;
+        }
         match adapter.prepare_outbound_packet(
             self.connection_binding.connection_epoch(),
             tcp_sequence_start,
@@ -524,7 +534,16 @@ impl ActiveAutomarkerCoordinator for ProductionActiveAutomarkerCoordinator {
         if let Some(adapter) = self.adapter.as_mut() {
             let _ = adapter.observe_timeout();
         }
-        if self.termination_requested && !self.rewrite_obligation_active() {
+        let terminal_without_obligation = self.adapter.as_ref().is_some_and(|adapter| {
+            matches!(
+                adapter.state(),
+                PrivateAutomarkerConfirmationAdapterState::Complete
+                    | PrivateAutomarkerConfirmationAdapterState::Failed
+            ) && !adapter.coordinator_state().tcp_rewrite_obligation_active
+        });
+        if (self.termination_requested || terminal_without_obligation)
+            && !self.rewrite_obligation_active()
+        {
             ActiveAutomarkerTimeoutDisposition::Terminate
         } else {
             ActiveAutomarkerTimeoutDisposition::Continue
@@ -546,6 +565,27 @@ impl ActiveAutomarkerCoordinator for ProductionActiveAutomarkerCoordinator {
             self.adapter = None;
         }
     }
+
+    fn retained_bound_process(&self) -> Option<ActiveAutomarkerBoundProcess> {
+        self.rewrite_obligation_active()
+            .then_some(ActiveAutomarkerBoundProcess {
+                process_id: self.connection_binding.process_id(),
+                connection_epoch: self.connection_binding.connection_epoch(),
+            })
+    }
+
+    fn observe_bound_process_terminated(&mut self, proof: ActiveAutomarkerBoundProcess) -> bool {
+        if proof.process_id != self.connection_binding.process_id()
+            || proof.connection_epoch != self.connection_binding.connection_epoch()
+        {
+            return false;
+        }
+        let Some(adapter) = self.adapter.as_mut() else {
+            return false;
+        };
+        let _ = adapter.observe_connection_terminated(proof.connection_epoch);
+        !adapter.coordinator_state().tcp_rewrite_obligation_active
+    }
 }
 
 fn tcp_syn(packet: &[u8], payload_offset: usize) -> bool {
@@ -564,6 +604,11 @@ mod tests {
     };
 
     use super::*;
+    use crate::automarker_confirmation_router::{
+        PrivateConfirmationContext, PrivateConfirmationProvenance, PrivateCorrelatedReturn,
+        PrivateFragmentKind, PrivateMarkerAdd, PrivatePacketDirection,
+        PrivateParserConfirmationEvent, PrivateSourceClocks,
+    };
 
     const FRAME_SEQUENCE: u32 = 1_000;
     const FRAME_HEX: &str = concat!(
@@ -685,6 +730,106 @@ mod tests {
         .unwrap()
     }
 
+    fn confirmation_snapshot() -> PrivateParserConfirmationSnapshot {
+        let context = PrivateConfirmationContext {
+            game_build: AUTOMARKER_REQUEST_BUILD.into(),
+            scene_family: "mech-facility".into(),
+            local_actor_id: 77,
+            connection_epoch: 7,
+            client_address: connection().local.address.octets(),
+            client_port: connection().local.port,
+            server_address: connection().remote.address.octets(),
+            server_port: connection().remote.port,
+            runtime_revision: 102,
+        };
+        let provenance = |capture_sequence, fragment, service_id, method_id, call_id| {
+            PrivateConfirmationProvenance {
+                capture_sequence,
+                record_event_index: 0,
+                connection_id: 31,
+                stream_id: 7,
+                direction: PrivatePacketDirection::ServerToClient,
+                fragment,
+                route_resolved: true,
+                service_id,
+                method_id,
+                stub_id: 1,
+                call_id,
+            }
+        };
+        PrivateParserConfirmationSnapshot {
+            session_key: "private-session".into(),
+            context,
+            events: vec![
+                PrivateParserConfirmationEvent::CorrelatedReturn(PrivateCorrelatedReturn {
+                    provenance: provenance(
+                        11,
+                        PrivateFragmentKind::Return,
+                        103_198_054,
+                        249_858,
+                        Some(0x1234_5678),
+                    ),
+                    source_clocks: PrivateSourceClocks {
+                        observed_micros: 1,
+                        wall_clock_unix_micros: None,
+                    },
+                    carrier_capture_sequence: 10,
+                    raw_stub_id: 1,
+                    raw_status: 0,
+                    asserted_authoritative_server_decode: true,
+                    decoded_as_success: true,
+                    decoded_body_present: true,
+                    decoded_body_length: 0,
+                }),
+                PrivateParserConfirmationEvent::MarkerAdd(PrivateMarkerAdd {
+                    provenance: provenance(
+                        12,
+                        PrivateFragmentKind::Notify,
+                        1_664_308_034,
+                        46,
+                        None,
+                    ),
+                    source_clocks: PrivateSourceClocks {
+                        observed_micros: 2,
+                        wall_clock_unix_micros: None,
+                    },
+                    asserted_authoritative_server_decode: true,
+                    raw_skill_id: Some(1_101),
+                    derived_marker_number: Some(1),
+                    marker_owner_actor_id: Some(77),
+                    marker_owner_entity_uuid: Some(8_888),
+                    passive_instance_identity: Some(89),
+                    target_position_present: true,
+                    target_position_decode_valid: true,
+                    x: Some(101.25),
+                    y: Some(-22.5),
+                    z: Some(303.75),
+                    runtime_revision: 102,
+                }),
+            ],
+        }
+    }
+
+    fn commit_carrier(
+        coordinator: &mut ProductionActiveAutomarkerCoordinator,
+        outcome: ActiveAutomarkerSendOutcome,
+    ) {
+        let carrier = packet(FRAME_SEQUENCE, 0x18, &frame(), false);
+        let ActiveAutomarkerDisposition::HoldExactCarrier { preparation_id, .. } = coordinator
+            .classify(
+                &carrier,
+                ActiveAutomarkerClassificationMode::AuthorizeNewCarrier,
+            )
+        else {
+            panic!("exact carrier was not held")
+        };
+        assert_eq!(
+            coordinator.record_modified_send_may_begin(preparation_id),
+            ActiveAutomarkerCommitDisposition::Committed
+        );
+        let _ = coordinator.commit_send(preparation_id, outcome);
+    }
+
     #[test]
     fn exact_carrier_is_held_then_committed_without_early_send_claim() {
         let (mut coordinator, _control) = coordinator();
@@ -796,6 +941,86 @@ mod tests {
                 &packet(FRAME_SEQUENCE, 0x18, &frame(), false),
                 ActiveAutomarkerClassificationMode::AuthorizeNewCarrier,
             ),
+            ActiveAutomarkerDisposition::PassThrough
+        );
+        assert_eq!(
+            coordinator.observe_timeout(),
+            ActiveAutomarkerTimeoutDisposition::Terminate
+        );
+    }
+
+    #[test]
+    fn packets_after_confirmed_terminal_state_pass_through_and_worker_completes() {
+        let (mut coordinator, control) = coordinator();
+        commit_carrier(&mut coordinator, ActiveAutomarkerSendOutcome::Complete);
+        control.parser_snapshot(confirmation_snapshot()).unwrap();
+        let ack = packet(FRAME_SEQUENCE + EXACT_CARRIER_BYTES as u32, 0x10, &[], true);
+        assert_eq!(
+            coordinator.classify(&ack, ActiveAutomarkerClassificationMode::DrainExistingOnly),
+            ActiveAutomarkerDisposition::PassThrough
+        );
+        assert_eq!(
+            coordinator.adapter.as_ref().unwrap().state(),
+            PrivateAutomarkerConfirmationAdapterState::Complete
+        );
+        let next_outbound = packet(9_000, 0x18, &[1, 2, 3], false);
+        assert_eq!(
+            coordinator.classify(
+                &next_outbound,
+                ActiveAutomarkerClassificationMode::AuthorizeNewCarrier
+            ),
+            ActiveAutomarkerDisposition::PassThrough
+        );
+        assert_eq!(
+            coordinator.classify(&ack, ActiveAutomarkerClassificationMode::DrainExistingOnly),
+            ActiveAutomarkerDisposition::PassThrough
+        );
+        assert_eq!(
+            coordinator.observe_timeout(),
+            ActiveAutomarkerTimeoutDisposition::Terminate
+        );
+    }
+
+    #[test]
+    fn packets_after_failed_send_retirement_pass_through_and_worker_completes() {
+        let (mut coordinator, _control) = coordinator();
+        commit_carrier(
+            &mut coordinator,
+            ActiveAutomarkerSendOutcome::FailedOrIndeterminate,
+        );
+        assert!(coordinator.rewrite_obligation_active());
+        assert_eq!(
+            coordinator.retained_bound_process(),
+            Some(ActiveAutomarkerBoundProcess {
+                process_id: 42,
+                connection_epoch: 7,
+            })
+        );
+        assert!(
+            !coordinator.observe_bound_process_terminated(ActiveAutomarkerBoundProcess {
+                process_id: 43,
+                connection_epoch: 7,
+            })
+        );
+        let ack = packet(FRAME_SEQUENCE + EXACT_CARRIER_BYTES as u32, 0x10, &[], true);
+        assert_eq!(
+            coordinator.classify(&ack, ActiveAutomarkerClassificationMode::DrainExistingOnly),
+            ActiveAutomarkerDisposition::PassThrough
+        );
+        assert!(!coordinator.rewrite_obligation_active());
+        assert_eq!(
+            coordinator.adapter.as_ref().unwrap().state(),
+            PrivateAutomarkerConfirmationAdapterState::Failed
+        );
+        assert_eq!(
+            coordinator.classify(
+                &packet(9_000, 0x18, &[1, 2, 3], false),
+                ActiveAutomarkerClassificationMode::AuthorizeNewCarrier,
+            ),
+            ActiveAutomarkerDisposition::PassThrough
+        );
+        assert_eq!(
+            coordinator.classify(&ack, ActiveAutomarkerClassificationMode::DrainExistingOnly),
             ActiveAutomarkerDisposition::PassThrough
         );
         assert_eq!(
