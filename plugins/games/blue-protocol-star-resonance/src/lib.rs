@@ -6,6 +6,7 @@ mod automarker_inline_transport;
 mod automarker_preset_sequence;
 mod automarker_request;
 mod automarker_single_carrier_canary;
+mod automarker_windivert_checksum;
 mod auxiliary_action_presentation;
 mod battle_imagine_presentation;
 mod behavior;
@@ -121,6 +122,12 @@ pub use automarker_single_carrier_canary::{
     SingleMarkerXyzCanaryContext, SingleMarkerXyzCanaryError, SingleMarkerXyzCanaryState,
     SingleMarkerXyzCarrierIdentity, SingleMarkerXyzInterceptedSegment,
     SingleMarkerXyzSegmentDisposition,
+};
+#[cfg(windows)]
+pub use automarker_windivert_checksum::PinnedWinDivertChecksumHelper;
+pub use automarker_windivert_checksum::{
+    AutomarkerPacketSendPreparation, AutomarkerWinDivertAddress, AutomarkerWinDivertChecksumError,
+    AutomarkerWinDivertChecksumHelper, prepare_automarker_ipv4_tcp_packet,
 };
 pub use auxiliary_action_presentation::{
     AuxiliaryActionPresentation, auxiliary_action_presentation, localized_auxiliary_action_name,
