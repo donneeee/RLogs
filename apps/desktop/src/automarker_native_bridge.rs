@@ -8,16 +8,45 @@
 
 use std::sync::Mutex;
 
-use rlogs_game_bpsr::AutomarkerBridgeCoordinator;
+use rlogs_game_bpsr::{
+    AutomarkerBridgeCoordinator, AutomarkerOwnedTcpConnection,
+    OfflineAutomarkerConnectionEpochBinding,
+};
 
 #[cfg(windows)]
 use crate::automarker_windivert_backend::WinDivertHandle;
 use crate::{
     automarker_bridge_evidence::{
-        AutomarkerBridgeEvidenceSnapshot, AutomarkerBridgeSessionIdentity,
+        AutomarkerBridgeCaptureTcpConnection, AutomarkerBridgeEvidenceSnapshot,
+        AutomarkerBridgeSessionIdentity,
     },
     automarker_presets::AutomarkerSceneContext,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AutomarkerBridgeReverseAckObservation {
+    pub connection_epoch: u64,
+    pub capture_sequence: u64,
+    pub observed_micros: u64,
+    pub source_address: std::net::Ipv4Addr,
+    pub source_port: u16,
+    pub destination_address: std::net::Ipv4Addr,
+    pub destination_port: u16,
+    pub ack_flag: bool,
+    pub cumulative_ack: u32,
+    pub syn: bool,
+    pub fin: bool,
+    pub rst: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct NativeFlowEvidence {
+    binding: OfflineAutomarkerConnectionEpochBinding,
+    capture_connection: AutomarkerBridgeCaptureTcpConnection,
+    syn_capture_sequence: u64,
+    syn_observed_micros: u64,
+    reverse_ack: Option<AutomarkerBridgeReverseAckObservation>,
+}
 
 const LIVE_PACKET_MUTATION_WIRED: bool = false;
 const STOP_DRAIN_JOIN_RESOURCE_BUNDLE_WIRED: bool = false;
@@ -104,6 +133,7 @@ struct NativeBridgeState {
     session: Option<AutomarkerBridgeSessionIdentity>,
     continuity: Option<BridgeContinuity>,
     parser_evidence: Option<AutomarkerBridgeEvidenceSnapshot>,
+    native_flow: Option<NativeFlowEvidence>,
     gates: NativeGateState,
     #[cfg(windows)]
     active_handle: Option<WinDivertHandle>,
@@ -227,15 +257,135 @@ impl AutomarkerNativeBridgeLifecycle {
         }
         state.continuity = Some(continuity);
         state.parser_evidence = Some(evidence);
+        let capture_connection = state
+            .parser_evidence
+            .as_ref()
+            .and_then(|evidence| evidence.outbound_carrier.as_ref())
+            .map(|carrier| carrier.tcp_connection);
+        if state.native_flow.as_ref().is_some_and(|flow| {
+            capture_connection.is_none_or(|capture| {
+                capture != flow.capture_connection
+                    || !binding_matches_capture(flow.binding, capture)
+            })
+        }) {
+            return Self::invalidate_and_release(state);
+        }
+        if capture_connection.is_none() {
+            state.native_flow = None;
+            state.gates.exact_local_process = false;
+            state.gates.exact_syn_owned_tuple_epoch = false;
+        }
         state.phase = LifecyclePhase::Observing;
         // Parser continuity is necessary but insufficient. It cannot assert
         // process ownership, REFLECT arbitration, or packet-send readiness.
         state.gates.exact_build_pack_scene = true;
-        state.gates.fresh_world_use_slot_carrier = state
+        // A parser-observed carrier is correlation evidence only. The fresh
+        // carrier gate belongs to a future active game-PC interception loop
+        // holding the exact packet it can synchronously return.
+        state.gates.fresh_world_use_slot_carrier = false;
+        true
+    }
+
+    /// Retain only an opaque SYN/process-owned binding whose exact IPv4 tuple
+    /// matches the passive parser carrier. This method opens no native handle.
+    #[allow(dead_code)] // Consumed by the future reviewed passive WinDivert loop.
+    pub(crate) fn accept_native_flow_binding(
+        &self,
+        binding: OfflineAutomarkerConnectionEpochBinding,
+        syn_capture_sequence: u64,
+        syn_observed_micros: u64,
+    ) -> bool {
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            return false;
+        };
+        let Some(capture) = state
             .parser_evidence
             .as_ref()
-            .is_some_and(|evidence| evidence.outbound_carrier.is_some());
+            .and_then(|evidence| evidence.outbound_carrier.as_ref())
+            .map(|carrier| carrier.tcp_connection)
+        else {
+            return Self::invalidate_and_release(state);
+        };
+        if state.phase != LifecyclePhase::Observing
+            || state.continuity.is_none()
+            || binding.connection_epoch() == 0
+            || syn_capture_sequence == 0
+            || !binding_matches_capture(binding, capture)
+        {
+            return Self::invalidate_and_release(state);
+        }
+        state.native_flow = Some(NativeFlowEvidence {
+            binding,
+            capture_connection: capture,
+            syn_capture_sequence,
+            syn_observed_micros,
+            reverse_ack: None,
+        });
+        state.gates.exact_local_process = true;
+        state.gates.exact_syn_owned_tuple_epoch = true;
         true
+    }
+
+    /// Retain the latest reverse cumulative ACK only on the exact bound epoch
+    /// and tuple. SYN/FIN/RST or regressed capture order invalidates the flow.
+    #[allow(dead_code)] // Consumed by the future reviewed passive WinDivert loop.
+    pub(crate) fn observe_native_reverse_ack(
+        &self,
+        observation: AutomarkerBridgeReverseAckObservation,
+    ) -> bool {
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            return false;
+        };
+        let Some(mut flow) = state.native_flow else {
+            return Self::invalidate_and_release(state);
+        };
+        let capture = flow.capture_connection;
+        let ordered = observation.capture_sequence > flow.syn_capture_sequence
+            && observation.observed_micros >= flow.syn_observed_micros
+            && flow.reverse_ack.is_none_or(|previous| {
+                observation.capture_sequence > previous.capture_sequence
+                    && observation.observed_micros >= previous.observed_micros
+                    && observation
+                        .cumulative_ack
+                        .wrapping_sub(previous.cumulative_ack)
+                        < (1_u32 << 31)
+            });
+        let exact_reverse = observation.source_address == capture.server_address
+            && observation.source_port == capture.server_port
+            && observation.destination_address == capture.client_address
+            && observation.destination_port == capture.client_port;
+        if state.phase != LifecyclePhase::Observing
+            || observation.connection_epoch != flow.binding.connection_epoch()
+            || !observation.ack_flag
+            || observation.syn
+            || observation.fin
+            || observation.rst
+            || !ordered
+            || !exact_reverse
+        {
+            return Self::invalidate_and_release(state);
+        }
+        flow.reverse_ack = Some(observation);
+        state.native_flow = Some(flow);
+        true
+    }
+
+    #[allow(dead_code)] // Consumed by the future reviewed passive WinDivert loop.
+    pub(crate) fn observe_native_connection_terminated(&self, connection_epoch: u64) -> bool {
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            return false;
+        };
+        if state
+            .native_flow
+            .as_ref()
+            .is_some_and(|flow| flow.binding.connection_epoch() == connection_epoch)
+        {
+            let detached = Self::detach_owned_state(&mut state, LifecyclePhase::Invalidated, false);
+            drop(state);
+            detached.drop_in_shutdown_order();
+            return true;
+        }
+        false
     }
 
     pub(crate) fn reconcile_context(&self, scene: Option<&AutomarkerSceneContext>) -> bool {
@@ -307,6 +457,7 @@ impl AutomarkerNativeBridgeLifecycle {
         }
         state.continuity = None;
         state.parser_evidence = None;
+        state.native_flow = None;
         state.gates = NativeGateState::default();
         DetachedNativeResources {
             #[cfg(windows)]
@@ -340,9 +491,30 @@ impl AutomarkerNativeBridgeLifecycle {
     }
 }
 
+fn binding_matches_capture(
+    binding: OfflineAutomarkerConnectionEpochBinding,
+    capture: AutomarkerBridgeCaptureTcpConnection,
+) -> bool {
+    let connection: AutomarkerOwnedTcpConnection = binding.connection();
+    binding.process_id() != 0
+        && connection.process_id == binding.process_id()
+        && connection.local.address == capture.client_address
+        && connection.local.port == capture.client_port
+        && connection.remote.address == capture.server_address
+        && connection.remote.port == capture.server_port
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::automarker_bridge_evidence::{
+        AutomarkerBridgeOutboundCarrierEvidence, AutomarkerBridgeRecordProvenance,
+    };
+    use rlogs_game_bpsr::{
+        AutomarkerIpv4Endpoint, DecoderKind, FragmentKind, PacketDirection,
+        bind_offline_automarker_connection_epoch,
+    };
+    use std::net::Ipv4Addr;
 
     fn state(
         bridge: &AutomarkerNativeBridgeLifecycle,
@@ -367,6 +539,84 @@ mod tests {
             map_id: 6525,
             activity_family_id: family.into(),
             scene_name: None,
+        }
+    }
+
+    fn capture_connection() -> AutomarkerBridgeCaptureTcpConnection {
+        AutomarkerBridgeCaptureTcpConnection {
+            capture_connection_id: 50,
+            client_address: Ipv4Addr::new(10, 0, 0, 2),
+            client_port: 50_000,
+            server_address: Ipv4Addr::new(10, 0, 0, 3),
+            server_port: 443,
+        }
+    }
+
+    fn parser_evidence() -> AutomarkerBridgeEvidenceSnapshot {
+        AutomarkerBridgeEvidenceSnapshot {
+            feed_revision: 2,
+            markers: Vec::new(),
+            outbound_carrier: Some(AutomarkerBridgeOutboundCarrierEvidence {
+                capture_session_id: "capture-a".into(),
+                deployment_id: "global".into(),
+                client_build: "25247556".into(),
+                protocol_pack_digest: "sha256:exact".into(),
+                scene_id: 6525,
+                map_id: 6525,
+                activity_family_id: "mech-facility".into(),
+                mechanics_runtime_revision: 7,
+                marker_number: 1,
+                session_sequence: 9,
+                tcp_connection: capture_connection(),
+                application_bytes: vec![0; 161],
+                provenance: AutomarkerBridgeRecordProvenance {
+                    capture_sequence: 30,
+                    observed_micros: 1_000,
+                    wall_clock_unix_micros: None,
+                    connection_id: 50,
+                    stream_id: 60,
+                    direction: PacketDirection::ClientToServer,
+                    fragment: FragmentKind::Call,
+                    service_id: 103_198_054,
+                    method_id: 249_858,
+                    stub_id: 1,
+                    call_id: Some(77),
+                    decoder: DecoderKind::WorldUseSlotV1,
+                },
+            }),
+            correlated_return: None,
+        }
+    }
+
+    fn binding(remote_port: u16) -> OfflineAutomarkerConnectionEpochBinding {
+        let connection = AutomarkerOwnedTcpConnection {
+            process_id: 42,
+            local: AutomarkerIpv4Endpoint {
+                address: Ipv4Addr::new(10, 0, 0, 2),
+                port: 50_000,
+            },
+            remote: AutomarkerIpv4Endpoint {
+                address: Ipv4Addr::new(10, 0, 0, 3),
+                port: remote_port,
+            },
+        };
+        bind_offline_automarker_connection_epoch(42, connection, 9, true, &[connection]).unwrap()
+    }
+
+    fn reverse_ack() -> AutomarkerBridgeReverseAckObservation {
+        AutomarkerBridgeReverseAckObservation {
+            connection_epoch: 9,
+            capture_sequence: 12,
+            observed_micros: 1_200,
+            source_address: Ipv4Addr::new(10, 0, 0, 3),
+            source_port: 443,
+            destination_address: Ipv4Addr::new(10, 0, 0, 2),
+            destination_port: 50_000,
+            ack_flag: true,
+            cumulative_ack: 1234,
+            syn: false,
+            fin: false,
+            rst: false,
         }
     }
 
@@ -435,6 +685,68 @@ mod tests {
         }
         // No coordinator and no reviewed packet loop: still impossible.
         assert!(!bridge.placement_enabled());
+    }
+
+    #[test]
+    fn passive_carrier_does_not_satisfy_active_held_carrier_gate() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        assert!(bridge.accept_parser_evidence(Some(&scene("mech-facility")), parser_evidence(),));
+        assert!(!state(&bridge).gates.fresh_world_use_slot_carrier);
+    }
+
+    #[test]
+    fn exact_syn_owned_tuple_and_reverse_ack_are_retained_privately() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        assert!(bridge.accept_parser_evidence(Some(&scene("mech-facility")), parser_evidence(),));
+        assert!(bridge.accept_native_flow_binding(binding(443), 10, 900));
+        assert!(bridge.observe_native_reverse_ack(reverse_ack()));
+        let snapshot = state(&bridge);
+        assert!(snapshot.gates.exact_local_process);
+        assert!(snapshot.gates.exact_syn_owned_tuple_epoch);
+        let flow = snapshot.native_flow.as_ref().unwrap();
+        assert_eq!(flow.capture_connection.capture_connection_id, 50);
+        assert_eq!(flow.binding.connection_epoch(), 9);
+        assert_eq!(flow.reverse_ack.unwrap().cumulative_ack, 1234);
+
+        let mut regressed = reverse_ack();
+        regressed.capture_sequence = 13;
+        regressed.observed_micros = 1_300;
+        regressed.cumulative_ack = 1233;
+        drop(snapshot);
+        assert!(!bridge.observe_native_reverse_ack(regressed));
+        assert_eq!(state(&bridge).phase, LifecyclePhase::Invalidated);
+    }
+
+    #[test]
+    fn tuple_ack_and_epoch_mismatches_fail_closed() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        assert!(bridge.accept_parser_evidence(Some(&scene("mech-facility")), parser_evidence(),));
+        assert!(!bridge.accept_native_flow_binding(binding(444), 10, 900));
+        assert_eq!(state(&bridge).phase, LifecyclePhase::Invalidated);
+
+        bridge.begin_session(session());
+        assert!(bridge.accept_parser_evidence(Some(&scene("mech-facility")), parser_evidence(),));
+        assert!(bridge.accept_native_flow_binding(binding(443), 10, 900));
+        let mut wrong = reverse_ack();
+        wrong.connection_epoch = 10;
+        assert!(!bridge.observe_native_reverse_ack(wrong));
+        let snapshot = state(&bridge);
+        assert_eq!(snapshot.phase, LifecyclePhase::Invalidated);
+        assert!(snapshot.native_flow.is_none());
+        assert_eq!(snapshot.gates, NativeGateState::default());
+    }
+
+    #[test]
+    fn exact_connection_termination_invalidates_retained_flow() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        assert!(bridge.accept_parser_evidence(Some(&scene("mech-facility")), parser_evidence(),));
+        assert!(bridge.accept_native_flow_binding(binding(443), 10, 900));
+        assert!(bridge.observe_native_connection_terminated(9));
+        assert_eq!(state(&bridge).phase, LifecyclePhase::Invalidated);
     }
 
     #[test]

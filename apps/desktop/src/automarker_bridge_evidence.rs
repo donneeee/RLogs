@@ -5,6 +5,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
+    net::Ipv4Addr,
     sync::Mutex,
 };
 
@@ -187,8 +188,51 @@ pub(crate) struct AutomarkerBridgeOutboundCarrierEvidence {
     pub mechanics_runtime_revision: u64,
     pub marker_number: u8,
     pub session_sequence: u32,
+    pub tcp_connection: AutomarkerBridgeCaptureTcpConnection,
     pub application_bytes: Vec<u8>,
     pub provenance: AutomarkerBridgeRecordProvenance,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AutomarkerBridgeCaptureTcpConnection {
+    pub capture_connection_id: u64,
+    pub client_address: Ipv4Addr,
+    pub client_port: u16,
+    pub server_address: Ipv4Addr,
+    pub server_port: u16,
+}
+
+impl AutomarkerBridgeCaptureTcpConnection {
+    fn from_packet(packet: &rlogs_game_bpsr::PacketEnvelope) -> Option<Self> {
+        let source = packet.source.as_ref()?;
+        let destination = packet.destination.as_ref()?;
+        if packet.direction != PacketDirection::ClientToServer || packet.connection_id == 0 {
+            return None;
+        }
+        Some(Self {
+            capture_connection_id: packet.connection_id,
+            client_address: source.address.parse().ok()?,
+            client_port: source.port,
+            server_address: destination.address.parse().ok()?,
+            server_port: destination.port,
+        })
+        .filter(|identity| identity.client_port != 0 && identity.server_port != 0)
+    }
+
+    fn matches_reverse_packet(self, packet: &rlogs_game_bpsr::PacketEnvelope) -> bool {
+        let Some(source) = packet.source.as_ref() else {
+            return false;
+        };
+        let Some(destination) = packet.destination.as_ref() else {
+            return false;
+        };
+        packet.direction == PacketDirection::ServerToClient
+            && packet.connection_id == self.capture_connection_id
+            && source.address.parse::<Ipv4Addr>().ok() == Some(self.server_address)
+            && source.port == self.server_port
+            && destination.address.parse::<Ipv4Addr>().ok() == Some(self.client_address)
+            && destination.port == self.client_port
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -338,6 +382,10 @@ impl AutomarkerBridgeEvidenceFeed {
         let CaptureRecordKind::Packet(packet) = &record.kind else {
             return None;
         };
+        let Some(tcp_connection) = AutomarkerBridgeCaptureTcpConnection::from_packet(packet) else {
+            self.invalidate();
+            return None;
+        };
         if packet.compression != CompressionState::NotCompressed {
             self.invalidate();
             return None;
@@ -360,7 +408,7 @@ impl AutomarkerBridgeEvidenceFeed {
             scene,
             mechanics,
             provenance,
-            request,
+            (request, tcp_connection),
             application,
             (&pack.definition().target.build_id, pack.digest()),
         )
@@ -372,10 +420,14 @@ impl AutomarkerBridgeEvidenceFeed {
         scene: Option<&AutomarkerSceneContext>,
         mechanics: &MechanicsMapSnapshot,
         provenance: AutomarkerBridgeRecordProvenance,
-        request: ObservedAutomarkerRequest,
+        decoded: (
+            ObservedAutomarkerRequest,
+            AutomarkerBridgeCaptureTcpConnection,
+        ),
         application: &[u8],
         observed_pack: (&str, &str),
     ) -> bool {
+        let (request, tcp_connection) = decoded;
         let mut state = self
             .state
             .lock()
@@ -407,6 +459,7 @@ impl AutomarkerBridgeEvidenceFeed {
             || provenance.service_id != WORLD_SERVICE_ID
             || provenance.method_id != WORLD_USE_SLOT_METHOD_ID
             || provenance.decoder != DecoderKind::WorldUseSlotV1
+            || provenance.connection_id != tcp_connection.capture_connection_id
         {
             Self::invalidate_locked(&mut state);
             return false;
@@ -424,6 +477,7 @@ impl AutomarkerBridgeEvidenceFeed {
             mechanics_runtime_revision: mechanics.revision,
             marker_number: request.marker_number,
             session_sequence: request.session_sequence,
+            tcp_connection,
             application_bytes: application.to_vec(),
             provenance,
         });
@@ -491,6 +545,7 @@ impl AutomarkerBridgeEvidenceFeed {
             || carrier.map_id != scene.map_id
             || carrier.activity_family_id != scene.activity_family_id
             || provenance.connection_id != carrier.provenance.connection_id
+            || !carrier.tcp_connection.matches_reverse_packet(packet)
             || provenance.call_id != carrier.provenance.call_id
             || provenance.observed_micros < carrier.provenance.observed_micros
             || provenance
@@ -650,9 +705,19 @@ mod tests {
     use super::*;
     use crate::mechanics_map::MechanicsMapEntity;
     use rlogs_game_bpsr::{
-        AutomarkerRequestAttributes, AutomarkerRequestPosition, CompressionState, PacketEnvelope,
-        PacketPayload, RouteKey, RoutedMessage,
+        AutomarkerRequestAttributes, AutomarkerRequestPosition, CompressionState, NetworkEndpoint,
+        PacketEnvelope, PacketPayload, RouteKey, RoutedMessage,
     };
+
+    fn capture_tcp_connection() -> AutomarkerBridgeCaptureTcpConnection {
+        AutomarkerBridgeCaptureTcpConnection {
+            capture_connection_id: 50,
+            client_address: Ipv4Addr::new(10, 0, 0, 2),
+            client_port: 50_000,
+            server_address: Ipv4Addr::new(10, 0, 0, 3),
+            server_port: 443,
+        }
+    }
 
     fn observed_request() -> ObservedAutomarkerRequest {
         ObservedAutomarkerRequest {
@@ -724,8 +789,14 @@ mod tests {
             kind: CaptureRecordKind::Packet(PacketEnvelope {
                 connection_id: 50,
                 stream_id: 61,
-                source: None,
-                destination: None,
+                source: Some(NetworkEndpoint {
+                    address: "10.0.0.3".into(),
+                    port: 443,
+                }),
+                destination: Some(NetworkEndpoint {
+                    address: "10.0.0.2".into(),
+                    port: 50_000,
+                }),
                 direction: PacketDirection::ServerToClient,
                 fragment: Some(FragmentKind::Return),
                 route: Some(RoutedMessage {
@@ -1143,7 +1214,7 @@ mod tests {
             Some(&scene),
             &mechanics,
             carrier_provenance(77, 100),
-            observed_request(),
+            (observed_request(), capture_tcp_connection()),
             &[0; EXACT_CARRIER_APPLICATION_BYTES + 1],
             (&pack.definition().target.build_id, pack.digest()),
         ));
@@ -1154,7 +1225,7 @@ mod tests {
             Some(&scene),
             &mechanics,
             carrier_provenance(77, 100),
-            observed_request(),
+            (observed_request(), capture_tcp_connection()),
             &[0; EXACT_CARRIER_APPLICATION_BYTES],
             (&pack.definition().target.build_id, pack.digest()),
         ));
@@ -1181,7 +1252,7 @@ mod tests {
             Some(&scene),
             &mechanics,
             carrier_provenance(77, 100),
-            observed_request(),
+            (observed_request(), capture_tcp_connection()),
             &[0; EXACT_CARRIER_APPLICATION_BYTES],
             (&pack.definition().target.build_id, pack.digest()),
         ));
@@ -1198,7 +1269,7 @@ mod tests {
             Some(&scene),
             &mechanics,
             carrier_provenance(77, 100),
-            observed_request(),
+            (observed_request(), capture_tcp_connection()),
             &[0; EXACT_CARRIER_APPLICATION_BYTES],
             (&pack.definition().target.build_id, pack.digest()),
         ));
