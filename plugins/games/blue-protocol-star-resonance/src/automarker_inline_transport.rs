@@ -101,6 +101,16 @@ pub fn offline_automarker_windivert_active_filter(
     connection: AutomarkerOwnedTcpConnection,
 ) -> String {
     format!(
+        "outbound and ip and tcp and tcp.PayloadLength > 0 and ip.SrcAddr == {} and tcp.SrcPort == {} and ip.DstAddr == {} and tcp.DstPort == {}",
+        connection.local.address,
+        connection.local.port,
+        connection.remote.address,
+        connection.remote.port,
+    )
+}
+
+fn reviewed_automarker_bidirectional_filter(connection: AutomarkerOwnedTcpConnection) -> String {
+    format!(
         "((outbound and tcp.PayloadLength > 0 and ip.SrcAddr == {} and tcp.SrcPort == {} and ip.DstAddr == {} and tcp.DstPort == {}) or (inbound and (tcp.Ack or tcp.Fin or tcp.Rst) and ip.SrcAddr == {} and tcp.SrcPort == {} and ip.DstAddr == {} and tcp.DstPort == {})) and ip and tcp",
         connection.local.address,
         connection.local.port,
@@ -172,7 +182,7 @@ pub fn reviewed_automarker_active_filter_plan(
     AutomarkerActiveFilterPlan {
         connection,
         connection_epoch: binding.connection_epoch(),
-        expression: offline_automarker_windivert_active_filter(connection),
+        expression: reviewed_automarker_bidirectional_filter(connection),
     }
 }
 
@@ -608,7 +618,11 @@ fn parse_ipv4_tcp(packet: &[u8]) -> Result<Ipv4TcpLayout, OfflineAutomarkerIpv4T
     if total_length != packet.len() {
         return Err(OfflineAutomarkerIpv4TcpReason::LengthMismatch);
     }
+    validate_ip_options(&packet[IPV4_MIN_HEADER_BYTES..ip_header_len])?;
     let fragmentation = u16::from_be_bytes([packet[6], packet[7]]);
+    if fragmentation & 0x8000 != 0 {
+        return Err(OfflineAutomarkerIpv4TcpReason::InvalidIpv4Header);
+    }
     if fragmentation & 0x3fff != 0 {
         return Err(OfflineAutomarkerIpv4TcpReason::FragmentedIpv4);
     }
@@ -620,6 +634,7 @@ fn parse_ipv4_tcp(packet: &[u8]) -> Result<Ipv4TcpLayout, OfflineAutomarkerIpv4T
     if tcp_header_len < TCP_MIN_HEADER_BYTES || packet.len() < tcp_start + tcp_header_len {
         return Err(OfflineAutomarkerIpv4TcpReason::InvalidTcpHeader);
     }
+    validate_tcp_options(&packet[tcp_start + TCP_MIN_HEADER_BYTES..tcp_start + tcp_header_len])?;
     let flags = packet[tcp_start + 13];
     Ok(Ipv4TcpLayout {
         source: AutomarkerIpv4Endpoint {
@@ -648,6 +663,32 @@ fn parse_ipv4_tcp(packet: &[u8]) -> Result<Ipv4TcpLayout, OfflineAutomarkerIpv4T
         tcp_header_len,
         payload_start: tcp_start + tcp_header_len,
     })
+}
+
+fn validate_ip_options(options: &[u8]) -> Result<(), OfflineAutomarkerIpv4TcpReason> {
+    validate_option_tlvs(options).map_err(|()| OfflineAutomarkerIpv4TcpReason::InvalidIpv4Header)
+}
+
+fn validate_tcp_options(options: &[u8]) -> Result<(), OfflineAutomarkerIpv4TcpReason> {
+    validate_option_tlvs(options).map_err(|()| OfflineAutomarkerIpv4TcpReason::InvalidTcpHeader)
+}
+
+fn validate_option_tlvs(options: &[u8]) -> Result<(), ()> {
+    let mut offset = 0;
+    while offset < options.len() {
+        match options[offset] {
+            0 => return Ok(()),
+            1 => offset += 1,
+            _ => {
+                let declared_length = *options.get(offset + 1).ok_or(())? as usize;
+                if declared_length < 2 || offset + declared_length > options.len() {
+                    return Err(());
+                }
+                offset += declared_length;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn checksum(bytes: &[u8]) -> u16 {
@@ -823,14 +864,22 @@ mod tests {
     }
 
     #[test]
-    fn windivert_active_filter_is_exact_bidirectional_tuple() {
+    fn compatibility_filter_remains_exact_outbound_payload_tuple() {
         assert_eq!(
             offline_automarker_windivert_active_filter(connection()),
-            "((outbound and tcp.PayloadLength > 0 and ip.SrcAddr == 10.0.0.2 and tcp.SrcPort == 50000 and ip.DstAddr == 203.0.113.7 and tcp.DstPort == 44321) or (inbound and (tcp.Ack or tcp.Fin or tcp.Rst) and ip.SrcAddr == 203.0.113.7 and tcp.SrcPort == 44321 and ip.DstAddr == 10.0.0.2 and tcp.DstPort == 50000)) and ip and tcp"
+            "outbound and ip and tcp and tcp.PayloadLength > 0 and ip.SrcAddr == 10.0.0.2 and tcp.SrcPort == 50000 and ip.DstAddr == 203.0.113.7 and tcp.DstPort == 44321"
         );
+    }
+
+    #[test]
+    fn reviewed_plan_filter_is_exact_bidirectional_tuple() {
         let plan = reviewed_automarker_active_filter_plan(binding());
         assert_eq!(plan.connection_epoch(), 7);
         assert_eq!(
+            plan.expression(),
+            "((outbound and tcp.PayloadLength > 0 and ip.SrcAddr == 10.0.0.2 and tcp.SrcPort == 50000 and ip.DstAddr == 203.0.113.7 and tcp.DstPort == 44321) or (inbound and (tcp.Ack or tcp.Fin or tcp.Rst) and ip.SrcAddr == 203.0.113.7 and tcp.SrcPort == 44321 and ip.DstAddr == 10.0.0.2 and tcp.DstPort == 50000)) and ip and tcp"
+        );
+        assert_ne!(
             plan.expression(),
             offline_automarker_windivert_active_filter(connection())
         );
@@ -858,7 +907,7 @@ mod tests {
 
     #[test]
     fn inspection_exposes_exact_tuple_flags_ack_and_option_aware_payload() {
-        let candidate = inspection_packet(
+        let mut candidate = inspection_packet(
             connection().local,
             connection().remote,
             0x1020_3040,
@@ -868,6 +917,8 @@ mod tests {
             8,
             &[1, 2, 3],
         );
+        candidate[20..24].copy_from_slice(&[1, 7, 2, 0]);
+        candidate[44..52].copy_from_slice(&[1, 2, 4, 0, 0, 0, 0, 0]);
         let inspected = inspect_automarker_ipv4_tcp_packet(&candidate).unwrap();
         assert_eq!(inspected.source, connection().local);
         assert_eq!(inspected.destination, connection().remote);
@@ -965,7 +1016,7 @@ mod tests {
     }
 
     #[test]
-    fn inspection_rejects_truncation_trailing_bytes_fragments_and_bad_options() {
+    fn inspection_rejects_truncation_trailing_bytes_fragments_and_bad_header_lengths() {
         let valid = inspection_packet(
             connection().local,
             connection().remote,
@@ -1004,6 +1055,65 @@ mod tests {
         );
         assert_eq!(
             inspect_automarker_ipv4_tcp_packet(&bad_tcp_options),
+            Err(OfflineAutomarkerIpv4TcpReason::InvalidTcpHeader)
+        );
+    }
+
+    #[test]
+    fn inspection_rejects_reserved_ipv4_flag_and_malformed_option_tlvs() {
+        let valid = inspection_packet(
+            connection().local,
+            connection().remote,
+            1,
+            2,
+            0x10,
+            4,
+            4,
+            &[],
+        );
+
+        let mut reserved_flag = valid.clone();
+        reserved_flag[6..8].copy_from_slice(&0x8000_u16.to_be_bytes());
+        assert_eq!(
+            inspect_automarker_ipv4_tcp_packet(&reserved_flag),
+            Err(OfflineAutomarkerIpv4TcpReason::InvalidIpv4Header)
+        );
+
+        let mut ip_option_too_long = valid.clone();
+        ip_option_too_long[20..24].copy_from_slice(&[7, 5, 0, 0]);
+        assert_eq!(
+            inspect_automarker_ipv4_tcp_packet(&ip_option_too_long),
+            Err(OfflineAutomarkerIpv4TcpReason::InvalidIpv4Header)
+        );
+
+        let tcp_start = 24;
+        let mut tcp_option_too_short = valid.clone();
+        tcp_option_too_short[tcp_start + 20..tcp_start + 24].copy_from_slice(&[2, 1, 0, 0]);
+        assert_eq!(
+            inspect_automarker_ipv4_tcp_packet(&tcp_option_too_short),
+            Err(OfflineAutomarkerIpv4TcpReason::InvalidTcpHeader)
+        );
+
+        let mut tcp_option_too_long = valid;
+        tcp_option_too_long[tcp_start + 20..tcp_start + 24].copy_from_slice(&[2, 5, 0, 0]);
+        assert_eq!(
+            inspect_automarker_ipv4_tcp_packet(&tcp_option_too_long),
+            Err(OfflineAutomarkerIpv4TcpReason::InvalidTcpHeader)
+        );
+
+        let mut tcp_option_missing_length = inspection_packet(
+            connection().local,
+            connection().remote,
+            1,
+            2,
+            0x10,
+            0,
+            4,
+            &[],
+        );
+        tcp_option_missing_length[40..44].copy_from_slice(&[1, 1, 1, 2]);
+        assert_eq!(
+            inspect_automarker_ipv4_tcp_packet(&tcp_option_missing_length),
             Err(OfflineAutomarkerIpv4TcpReason::InvalidTcpHeader)
         );
     }
