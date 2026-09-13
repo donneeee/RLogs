@@ -31,6 +31,10 @@ pub(crate) struct ActiveAutomarkerPacket {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ActiveAutomarkerWake {
     Packet(ActiveAutomarkerPacket),
+    /// The backend observed bytes outside the reviewed packet role despite
+    /// the exact kernel filter. They remain diverted and must bypass all
+    /// mutation/classification logic for byte-exact reinjection.
+    PassThroughOnly(ActiveAutomarkerPacket),
     Timeout,
     EndOfStream,
 }
@@ -188,6 +192,7 @@ pub(crate) struct ActiveAutomarkerWorkerReport {
 pub(crate) struct ActiveAutomarkerFatalOwnership {
     backend: ManuallyDrop<Box<dyn ActiveAutomarkerBackend>>,
     coordinator: ManuallyDrop<Box<dyn ActiveAutomarkerCoordinator>>,
+    indeterminate_packet: Option<ActiveAutomarkerPacket>,
     released: bool,
 }
 
@@ -201,6 +206,12 @@ impl ActiveAutomarkerFatalOwnership {
         if self.coordinator.rewrite_obligation_active() {
             return Err(
                 "cannot discard Automarker ownership while retransmission obligation remains"
+                    .to_owned(),
+            );
+        }
+        if self.indeterminate_packet.is_some() {
+            return Err(
+                "cannot close Automarker interception after an indeterminate packet send"
                     .to_owned(),
             );
         }
@@ -347,6 +358,7 @@ struct ActiveWorkerOwnership {
     backend: Option<Box<dyn ActiveAutomarkerBackend>>,
     coordinator: Option<Box<dyn ActiveAutomarkerCoordinator>>,
     interception_closed: bool,
+    indeterminate_packet: Option<ActiveAutomarkerPacket>,
 }
 
 impl ActiveWorkerOwnership {
@@ -358,6 +370,7 @@ impl ActiveWorkerOwnership {
             backend: Some(backend),
             coordinator: Some(coordinator),
             interception_closed: false,
+            indeterminate_packet: None,
         }
     }
 
@@ -372,6 +385,9 @@ impl ActiveWorkerOwnership {
     }
 
     fn close_confirmed(&mut self) -> Result<(), String> {
+        if self.indeterminate_packet.is_some() {
+            return Err("an Automarker packet send remains indeterminate".into());
+        }
         self.backend().close_interception()?;
         self.interception_closed = true;
         Ok(())
@@ -384,8 +400,29 @@ impl ActiveWorkerOwnership {
             coordinator: ManuallyDrop::new(
                 self.coordinator.take().expect("coordinator remains owned"),
             ),
+            indeterminate_packet: self.indeterminate_packet.take(),
             released: false,
         }
+    }
+
+    fn send_exact(
+        &mut self,
+        packet: &ActiveAutomarkerPacket,
+        modified: bool,
+        report: &mut ActiveAutomarkerWorkerReport,
+    ) -> bool {
+        if self.indeterminate_packet.is_some() {
+            report.send_failures = report.send_failures.saturating_add(1);
+            return false;
+        }
+        // Record ownership before entering a call whose outcome can fail,
+        // short-write, or unwind. Clear it only after exact completion.
+        self.indeterminate_packet = Some(packet.clone());
+        let complete = send_exact(self.backend(), packet, modified, report);
+        if complete {
+            self.indeterminate_packet = None;
+        }
+        complete
     }
 }
 
@@ -487,6 +524,12 @@ fn run_worker(
                         pending_exit.get_or_insert(ActiveAutomarkerWorkerExit::Timeout);
                     }
                 }
+                ActiveAutomarkerWake::PassThroughOnly(packet) => {
+                    report.packets_received = report.packets_received.saturating_add(1);
+                    if !owned.send_exact(&packet, false, &mut report) {
+                        pending_exit.get_or_insert(ActiveAutomarkerWorkerExit::BackendFailure);
+                    }
+                }
                 ActiveAutomarkerWake::Packet(packet) => {
                     report.packets_received = report.packets_received.saturating_add(1);
                     if stop_requested.load(Ordering::Acquire) {
@@ -500,20 +543,20 @@ fn run_worker(
                     };
                     match owned.coordinator().classify(&packet, mode) {
                         ActiveAutomarkerDisposition::PassThrough => {
-                            if !send_exact(owned.backend(), &packet, false, &mut report) {
+                            if !owned.send_exact(&packet, false, &mut report) {
                                 pending_exit
                                     .get_or_insert(ActiveAutomarkerWorkerExit::BackendFailure);
                             }
                         }
                         ActiveAutomarkerDisposition::FinObservedPassThrough => {
-                            if !send_exact(owned.backend(), &packet, false, &mut report) {
+                            if !owned.send_exact(&packet, false, &mut report) {
                                 pending_exit
                                     .get_or_insert(ActiveAutomarkerWorkerExit::BackendFailure);
                             }
                         }
                         ActiveAutomarkerDisposition::ConnectionTerminatedAfterPassThrough => {
                             pending_exit.get_or_insert(
-                                if send_exact(owned.backend(), &packet, false, &mut report) {
+                                if owned.send_exact(&packet, false, &mut report) {
                                     ActiveAutomarkerWorkerExit::ConnectionTerminated
                                 } else {
                                     ActiveAutomarkerWorkerExit::BackendFailure
@@ -554,8 +597,7 @@ fn run_worker(
                                     );
                                     continue;
                                 }
-                                let complete =
-                                    send_exact(owned.backend(), &repaired, true, &mut report);
+                                let complete = owned.send_exact(&repaired, true, &mut report);
                                 let commit = owned.coordinator().commit_send(
                                     preparation_id,
                                     if complete {
@@ -582,8 +624,7 @@ fn run_worker(
                                     .cancel_after_checksum_failure(preparation_id)
                                 {
                                     ActiveAutomarkerCancelDisposition::ReinjectHeldOriginal => {
-                                        if !send_exact(owned.backend(), &packet, false, &mut report)
-                                        {
+                                        if !owned.send_exact(&packet, false, &mut report) {
                                             pending_exit.get_or_insert(
                                                 ActiveAutomarkerWorkerExit::BackendFailure,
                                             );
@@ -638,12 +679,12 @@ fn run_worker(
     // Recover only coordinator-proven never-emitted originals. Then close the
     // intercepting handle before destroying retransmission state.
     for original in owned.coordinator().drain_unsent_originals() {
-        if !send_exact(owned.backend(), &original, false, &mut report) {
+        if !owned.send_exact(&original, false, &mut report) {
             report.exit = ActiveAutomarkerWorkerExit::BackendFailure;
         }
     }
     if owned.close_confirmed().is_err() {
-        report.exit = ActiveAutomarkerWorkerExit::BackendFailure;
+        report.exit = ActiveAutomarkerWorkerExit::FatalOwnershipRetained;
         return ActiveAutomarkerWorkerCompletion {
             report,
             fatal_ownership: Some(owned.take_fatal_ownership()),
@@ -750,6 +791,7 @@ mod tests {
         ingress: VecDeque<Result<ActiveAutomarkerWake, String>>,
         events: Vec<Event>,
         short_send_for: Option<Vec<u8>>,
+        failed_send_for: Option<Vec<u8>>,
         checksum_fails: bool,
         checksum_returns_original: bool,
         close_fails: bool,
@@ -890,7 +932,9 @@ mod tests {
                 packet.bytes.clone(),
                 packet.address.into_opaque_bytes(),
             ));
-            if state.short_send_for.as_ref() == Some(&packet.bytes) {
+            if state.failed_send_for.as_ref() == Some(&packet.bytes) {
+                Err("injected send failure".into())
+            } else if state.short_send_for.as_ref() == Some(&packet.bytes) {
                 Ok(packet.bytes.len().saturating_sub(1))
             } else {
                 Ok(packet.bytes.len())
@@ -1204,13 +1248,70 @@ mod tests {
         assert!(!harness.events().contains(&Event::BackendClosed));
         assert!(!harness.events().contains(&Event::LedgerDiscarded));
         harness.push(ActiveAutomarkerWake::Packet(packet(b"ack")));
-        let report = bundle.join().unwrap();
-        assert_eq!(report.send_failures, 1);
+        let completion = bundle.join().unwrap();
+        assert_eq!(completion.send_failures, 2);
         assert_eq!(
-            report.exit,
-            ActiveAutomarkerWorkerExit::RequiresConnectionTermination
+            completion.exit,
+            ActiveAutomarkerWorkerExit::FatalOwnershipRetained
         );
+        assert!(completion.fatal_ownership.is_some());
         assert!(!harness.events().contains(&sent(b"carrier")));
+    }
+
+    #[test]
+    fn filter_escape_short_or_failed_send_retains_exact_fatal_ownership() {
+        for short in [true, false] {
+            let harness = Harness::default();
+            let escaped = packet(if short {
+                b"escape-short"
+            } else {
+                b"escape-error"
+            });
+            {
+                let mut state = harness.0.0.lock().unwrap();
+                state.panic_on_classify = true;
+                if short {
+                    state.short_send_for = Some(escaped.bytes.clone());
+                } else {
+                    state.failed_send_for = Some(escaped.bytes.clone());
+                }
+            }
+            harness.push(ActiveAutomarkerWake::PassThroughOnly(escaped.clone()));
+            let bundle = ActiveAutomarkerWorkerBundle::spawn(
+                FakeBackend(harness.clone()),
+                FakeCoordinator::new(harness.clone()),
+            )
+            .unwrap();
+            let mut completion = bundle.join().unwrap();
+            assert_eq!(
+                completion.exit,
+                ActiveAutomarkerWorkerExit::FatalOwnershipRetained
+            );
+            assert_eq!(completion.send_failures, 1);
+            assert!(harness.events().contains(&Event::Sent(
+                escaped.bytes.clone(),
+                escaped.address.into_opaque_bytes()
+            )));
+            assert_eq!(
+                completion
+                    .fatal_ownership
+                    .as_ref()
+                    .unwrap()
+                    .indeterminate_packet
+                    .as_ref(),
+                Some(&escaped)
+            );
+            assert!(!harness.events().contains(&Event::BackendClosed));
+            assert!(!harness.events().contains(&Event::LedgerDiscarded));
+            assert!(
+                completion
+                    .fatal_ownership
+                    .as_mut()
+                    .unwrap()
+                    .retry_close_and_discard()
+                    .is_err()
+            );
+        }
     }
 
     #[test]
@@ -1414,7 +1515,10 @@ mod tests {
         .unwrap();
         harness.push(ActiveAutomarkerWake::EndOfStream);
         let mut completion = bundle.join().unwrap();
-        assert_eq!(completion.exit, ActiveAutomarkerWorkerExit::BackendFailure);
+        assert_eq!(
+            completion.exit,
+            ActiveAutomarkerWorkerExit::FatalOwnershipRetained
+        );
         assert!(completion.fatal_ownership.is_some());
         assert!(!harness.events().contains(&Event::LedgerDiscarded));
         assert!(!harness.events().contains(&Event::BackendDropped));

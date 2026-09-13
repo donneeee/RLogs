@@ -165,58 +165,52 @@ impl WindowsActiveAutomarkerBackend {
     }
 
     fn receive_checked(&mut self) -> Result<ActiveAutomarkerWake, String> {
-        loop {
-            let control = self.receive_control.borrowed_event()?;
-            let mut receive = match self.pending_receive.take() {
-                Some(receive) => receive,
-                None => self
-                    .handle()?
-                    .receive_overlapped_owned(MAXIMUM_PACKET_BYTES)?,
-            };
-            let wait = match receive.wait(RECEIVE_WAIT, Some(control)) {
-                Ok(wait) => wait,
-                Err(error) => {
-                    // Keep the I/O storage and handle reference alive. A
-                    // caller receiving this error may retain the backend and
-                    // retry rather than losing indeterminate receive state.
-                    self.pending_receive = Some(receive);
-                    return Err(error);
-                }
-            };
-            match wait {
-                OverlappedReceiveWait::TimedOut => {
-                    self.pending_receive = Some(receive);
-                    return Ok(ActiveAutomarkerWake::Timeout);
-                }
-                OverlappedReceiveWait::ControlWoken => {
-                    self.receive_control.reset()?;
-                    self.pending_receive = Some(receive);
-                    return Ok(ActiveAutomarkerWake::Timeout);
-                }
-                OverlappedReceiveWait::Completed => {}
+        let control = self.receive_control.borrowed_event()?;
+        let mut receive = match self.pending_receive.take() {
+            Some(receive) => receive,
+            None => self
+                .handle()?
+                .receive_overlapped_owned(MAXIMUM_PACKET_BYTES)?,
+        };
+        let wait = match receive.wait(RECEIVE_WAIT, Some(control)) {
+            Ok(wait) => wait,
+            Err(error) => {
+                // Keep the I/O storage and handle reference alive. A
+                // caller receiving this error may retain the backend and
+                // retry rather than losing indeterminate receive state.
+                self.pending_receive = Some(receive);
+                return Err(error);
             }
-            let (bytes, address) = receive
-                .take_packet()?
-                .ok_or_else(|| "completed WinDivert receive had no packet".to_owned())?;
-            let address = to_public_address(address);
-            if packet_matches_reviewed_filter(&self.filter_plan, &bytes, address) {
-                return Ok(ActiveAutomarkerWake::Packet(ActiveAutomarkerPacket {
-                    bytes,
-                    address,
-                }));
+        };
+        match wait {
+            OverlappedReceiveWait::TimedOut => {
+                self.pending_receive = Some(receive);
+                return Ok(ActiveAutomarkerWake::Timeout);
             }
-
-            // A kernel-filter escape is not eligible for mutation. Return it
-            // byte-for-byte before continuing; never abandon diverted bytes.
-            let address = to_backend_address(address);
-            let sent = self.handle()?.send_unchanged(&bytes, &address)?;
-            if sent != bytes.len() {
-                return Err(format!(
-                    "WinDivert pass-through sent {sent} of {} bytes",
-                    bytes.len()
-                ));
+            OverlappedReceiveWait::ControlWoken => {
+                self.receive_control.reset()?;
+                self.pending_receive = Some(receive);
+                return Ok(ActiveAutomarkerWake::Timeout);
             }
+            OverlappedReceiveWait::Completed => {}
         }
+        let (bytes, address) = receive
+            .take_packet()?
+            .ok_or_else(|| "completed WinDivert receive had no packet".to_owned())?;
+        let address = to_public_address(address);
+        if packet_matches_reviewed_filter(&self.filter_plan, &bytes, address) {
+            return Ok(ActiveAutomarkerWake::Packet(ActiveAutomarkerPacket {
+                bytes,
+                address,
+            }));
+        }
+
+        // A kernel-filter escape is not eligible for coordinator
+        // classification or mutation. Transfer its exact owned bytes to
+        // the worker's explicit pass-through branch.
+        Ok(ActiveAutomarkerWake::PassThroughOnly(
+            ActiveAutomarkerPacket { bytes, address },
+        ))
     }
 }
 
