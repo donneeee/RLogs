@@ -212,6 +212,402 @@ impl OfflineAutomarkerFrameSubstitution {
     }
 }
 
+/// Why an offline TCP rewrite ledger can no longer safely rewrite its current
+/// connection epoch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OfflineAutomarkerTcpPoisonReason {
+    GapObserved,
+    ConflictingRetransmission,
+    AmbiguousSequenceRange,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OfflineAutomarkerTcpArmError {
+    EpochMismatch { expected: u64, actual: u64 },
+    LedgerPoisoned(OfflineAutomarkerTcpPoisonReason),
+    FrameRejected(OfflineAutomarkerSubstitutionError),
+    OverlappingOperation,
+    AmbiguousSequenceRange,
+    OperationCapacityExceeded,
+}
+
+/// Result of arming an offline rewrite operation. A failure always carries an
+/// unchanged owned copy of the candidate frame.
+#[derive(Debug, Clone, PartialEq)]
+pub enum OfflineAutomarkerTcpArmResult {
+    Armed {
+        sequence_start: u32,
+        frame_length_bytes: usize,
+        proof: OfflineAutomarkerSubstitutionProof,
+    },
+    OriginalUnchanged {
+        frame: Vec<u8>,
+        reason: OfflineAutomarkerTcpArmError,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OfflineAutomarkerTcpSegmentReason {
+    EpochMismatch { expected: u64, actual: u64 },
+    LedgerPoisoned(OfflineAutomarkerTcpPoisonReason),
+    NoActiveOverlap,
+    ConflictingRetransmission,
+    AmbiguousSequenceRange,
+}
+
+/// Pure offline result for one copied TCP payload segment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OfflineAutomarkerTcpSegmentResult {
+    Rewritten {
+        payload: Vec<u8>,
+        overlapped_bytes: usize,
+        changed_bytes: usize,
+        operations_touched: usize,
+    },
+    OriginalUnchanged {
+        payload: Vec<u8>,
+        reason: OfflineAutomarkerTcpSegmentReason,
+    },
+}
+
+impl OfflineAutomarkerTcpSegmentResult {
+    pub fn payload(&self) -> &[u8] {
+        match self {
+            Self::Rewritten { payload, .. } | Self::OriginalUnchanged { payload, .. } => payload,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OfflineAutomarkerTcpAckResult {
+    pub retired_operations: usize,
+    pub active_operations: usize,
+    pub ledger_poisoned: bool,
+}
+
+#[derive(Debug, Clone)]
+struct OfflineAutomarkerTcpOperation {
+    sequence_start: u32,
+    original: Vec<u8>,
+    replacement: Vec<u8>,
+}
+
+/// Pure, connection-local TCP sequence-range rewrite ledger.
+///
+/// The ledger has no network or process capabilities. Callers supply copied
+/// bytes plus an explicit connection epoch. It supports segmentation,
+/// coalescing, reordering, retransmission, overlap, and RFC-style 32-bit
+/// sequence wrap as long as compared ranges stay within one serial half-space.
+/// A gap, conflicting retransmission, or ambiguous half-space comparison
+/// poisons the epoch and makes all subsequent payloads pass through unchanged
+/// until `reset_connection_epoch` is called.
+#[derive(Debug, Clone)]
+pub struct OfflineAutomarkerTcpRewriteLedger {
+    connection_epoch: u64,
+    operations: Vec<OfflineAutomarkerTcpOperation>,
+    poison: Option<OfflineAutomarkerTcpPoisonReason>,
+}
+
+impl OfflineAutomarkerTcpRewriteLedger {
+    const MAX_ACTIVE_OPERATIONS: usize = 64;
+
+    pub fn new(connection_epoch: u64) -> Self {
+        Self {
+            connection_epoch,
+            operations: Vec::new(),
+            poison: None,
+        }
+    }
+
+    pub fn connection_epoch(&self) -> u64 {
+        self.connection_epoch
+    }
+
+    pub fn active_operations(&self) -> usize {
+        self.operations.len()
+    }
+
+    pub fn poison_reason(&self) -> Option<OfflineAutomarkerTcpPoisonReason> {
+        self.poison
+    }
+
+    pub fn reset_connection_epoch(&mut self, connection_epoch: u64) {
+        self.connection_epoch = connection_epoch;
+        self.operations.clear();
+        self.poison = None;
+    }
+
+    /// Validates and records one exact-length frame transformation without
+    /// touching any TCP payload. The frame copy is returned unchanged if the
+    /// operation cannot be armed.
+    pub fn arm_frame(
+        &mut self,
+        connection_epoch: u64,
+        sequence_start: u32,
+        pack: &ProtocolPack,
+        original_frame: &[u8],
+        replacement_marker: u8,
+        target_position: AutomarkerRequestXyz,
+    ) -> OfflineAutomarkerTcpArmResult {
+        let reject = |reason| OfflineAutomarkerTcpArmResult::OriginalUnchanged {
+            frame: original_frame.to_vec(),
+            reason,
+        };
+        if connection_epoch != self.connection_epoch {
+            return reject(OfflineAutomarkerTcpArmError::EpochMismatch {
+                expected: self.connection_epoch,
+                actual: connection_epoch,
+            });
+        }
+        if let Some(reason) = self.poison {
+            return reject(OfflineAutomarkerTcpArmError::LedgerPoisoned(reason));
+        }
+        if self.operations.len() >= Self::MAX_ACTIVE_OPERATIONS {
+            return reject(OfflineAutomarkerTcpArmError::OperationCapacityExceeded);
+        }
+
+        let (replacement, proof) = match substitute_offline_automarker_frame(
+            pack,
+            original_frame,
+            replacement_marker,
+            target_position,
+        ) {
+            OfflineAutomarkerFrameSubstitution::Substituted { frame, proof } => (frame, proof),
+            OfflineAutomarkerFrameSubstitution::OriginalUnchanged { reason, .. } => {
+                return reject(OfflineAutomarkerTcpArmError::FrameRejected(reason));
+            }
+        };
+
+        for operation in &self.operations {
+            match tcp_overlap(
+                operation.sequence_start,
+                operation.original.len(),
+                sequence_start,
+                original_frame.len(),
+            ) {
+                Ok(Some(_)) => return reject(OfflineAutomarkerTcpArmError::OverlappingOperation),
+                Ok(None) => {}
+                Err(()) => {
+                    return reject(OfflineAutomarkerTcpArmError::AmbiguousSequenceRange);
+                }
+            }
+        }
+        self.operations.push(OfflineAutomarkerTcpOperation {
+            sequence_start,
+            original: original_frame.to_vec(),
+            replacement,
+        });
+        OfflineAutomarkerTcpArmResult::Armed {
+            sequence_start,
+            frame_length_bytes: original_frame.len(),
+            proof,
+        }
+    }
+
+    /// Rewrites every byte overlapping an armed operation in a copied segment.
+    /// All overlaps are validated against the original carrier bytes before
+    /// any output byte is changed, making conflicting input transactionally
+    /// fail open.
+    pub fn rewrite_segment(
+        &mut self,
+        connection_epoch: u64,
+        sequence_start: u32,
+        payload: &[u8],
+    ) -> OfflineAutomarkerTcpSegmentResult {
+        let unchanged = |reason| OfflineAutomarkerTcpSegmentResult::OriginalUnchanged {
+            payload: payload.to_vec(),
+            reason,
+        };
+        if connection_epoch != self.connection_epoch {
+            return unchanged(OfflineAutomarkerTcpSegmentReason::EpochMismatch {
+                expected: self.connection_epoch,
+                actual: connection_epoch,
+            });
+        }
+        if let Some(reason) = self.poison {
+            return unchanged(OfflineAutomarkerTcpSegmentReason::LedgerPoisoned(reason));
+        }
+        if payload.len() >= TCP_SERIAL_HALF_SPACE as usize {
+            self.poison(OfflineAutomarkerTcpPoisonReason::AmbiguousSequenceRange);
+            return unchanged(OfflineAutomarkerTcpSegmentReason::AmbiguousSequenceRange);
+        }
+
+        let mut overlaps = Vec::new();
+        for (operation_index, operation) in self.operations.iter().enumerate() {
+            match tcp_overlap(
+                operation.sequence_start,
+                operation.original.len(),
+                sequence_start,
+                payload.len(),
+            ) {
+                Ok(Some(overlap)) => overlaps.push((operation_index, overlap)),
+                Ok(None) => {}
+                Err(()) => {
+                    self.poison(OfflineAutomarkerTcpPoisonReason::AmbiguousSequenceRange);
+                    return unchanged(OfflineAutomarkerTcpSegmentReason::AmbiguousSequenceRange);
+                }
+            }
+        }
+        if overlaps.is_empty() {
+            return unchanged(OfflineAutomarkerTcpSegmentReason::NoActiveOverlap);
+        }
+
+        for (operation_index, overlap) in &overlaps {
+            let operation = &self.operations[*operation_index];
+            if payload[overlap.candidate.clone()] != operation.original[overlap.operation.clone()] {
+                self.poison(OfflineAutomarkerTcpPoisonReason::ConflictingRetransmission);
+                return unchanged(OfflineAutomarkerTcpSegmentReason::ConflictingRetransmission);
+            }
+        }
+
+        let mut rewritten = payload.to_vec();
+        let mut overlapped_bytes = 0;
+        let mut changed_bytes = 0;
+        for (operation_index, overlap) in &overlaps {
+            let replacement =
+                &self.operations[*operation_index].replacement[overlap.operation.clone()];
+            let output = &mut rewritten[overlap.candidate.clone()];
+            overlapped_bytes += output.len();
+            changed_bytes += output
+                .iter()
+                .zip(replacement)
+                .filter(|(before, after)| before != after)
+                .count();
+            output.copy_from_slice(replacement);
+        }
+        OfflineAutomarkerTcpSegmentResult::Rewritten {
+            payload: rewritten,
+            overlapped_bytes,
+            changed_bytes,
+            operations_touched: overlaps.len(),
+        }
+    }
+
+    /// Marks a known TCP stream gap. Only a gap overlapping an active rewrite
+    /// range poisons the epoch; unrelated gaps cannot alter an operation.
+    pub fn observe_gap(
+        &mut self,
+        connection_epoch: u64,
+        sequence_start: u32,
+        length: usize,
+    ) -> bool {
+        if connection_epoch != self.connection_epoch || self.poison.is_some() {
+            return false;
+        }
+        if length >= TCP_SERIAL_HALF_SPACE as usize {
+            self.poison(OfflineAutomarkerTcpPoisonReason::AmbiguousSequenceRange);
+            return true;
+        }
+        for operation in &self.operations {
+            match tcp_overlap(
+                operation.sequence_start,
+                operation.original.len(),
+                sequence_start,
+                length,
+            ) {
+                Ok(Some(_)) => {
+                    self.poison(OfflineAutomarkerTcpPoisonReason::GapObserved);
+                    return true;
+                }
+                Ok(None) => {}
+                Err(()) => {
+                    self.poison(OfflineAutomarkerTcpPoisonReason::AmbiguousSequenceRange);
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Retires operations covered by a cumulative TCP ACK. ACKs behind an
+    /// operation do not retire it; the exactly-half-space case poisons the
+    /// epoch because RFC serial ordering is undefined there.
+    pub fn observe_cumulative_ack(
+        &mut self,
+        connection_epoch: u64,
+        cumulative_ack: u32,
+    ) -> OfflineAutomarkerTcpAckResult {
+        if connection_epoch != self.connection_epoch || self.poison.is_some() {
+            return self.ack_result(0);
+        }
+        let before = self.operations.len();
+        let mut ambiguous = false;
+        self.operations.retain(|operation| {
+            let distance = cumulative_ack.wrapping_sub(operation.sequence_start);
+            if distance == TCP_SERIAL_HALF_SPACE {
+                ambiguous = true;
+                true
+            } else if distance < TCP_SERIAL_HALF_SPACE {
+                (distance as usize) < operation.original.len()
+            } else {
+                true
+            }
+        });
+        if ambiguous {
+            self.poison(OfflineAutomarkerTcpPoisonReason::AmbiguousSequenceRange);
+            return self.ack_result(0);
+        }
+        self.ack_result(before - self.operations.len())
+    }
+
+    fn poison(&mut self, reason: OfflineAutomarkerTcpPoisonReason) {
+        self.operations.clear();
+        self.poison = Some(reason);
+    }
+
+    fn ack_result(&self, retired_operations: usize) -> OfflineAutomarkerTcpAckResult {
+        OfflineAutomarkerTcpAckResult {
+            retired_operations,
+            active_operations: self.operations.len(),
+            ledger_poisoned: self.poison.is_some(),
+        }
+    }
+}
+
+const TCP_SERIAL_HALF_SPACE: u32 = 0x8000_0000;
+
+#[derive(Debug, Clone)]
+struct TcpOverlap {
+    operation: Range<usize>,
+    candidate: Range<usize>,
+}
+
+fn tcp_overlap(
+    operation_start: u32,
+    operation_length: usize,
+    candidate_start: u32,
+    candidate_length: usize,
+) -> Result<Option<TcpOverlap>, ()> {
+    if operation_length >= TCP_SERIAL_HALF_SPACE as usize
+        || candidate_length >= TCP_SERIAL_HALF_SPACE as usize
+    {
+        return Err(());
+    }
+    let raw_delta = candidate_start.wrapping_sub(operation_start);
+    if raw_delta == TCP_SERIAL_HALF_SPACE {
+        return Err(());
+    }
+    let candidate_relative_start = if raw_delta < TCP_SERIAL_HALF_SPACE {
+        i64::from(raw_delta)
+    } else {
+        i64::from(raw_delta) - (1_i64 << 32)
+    };
+    let candidate_relative_end = candidate_relative_start + candidate_length as i64;
+    if candidate_relative_end > i64::from(TCP_SERIAL_HALF_SPACE) {
+        return Err(());
+    }
+    let overlap_start = candidate_relative_start.max(0);
+    let overlap_end = candidate_relative_end.min(operation_length as i64);
+    if overlap_start >= overlap_end {
+        return Ok(None);
+    }
+    Ok(Some(TcpOverlap {
+        operation: overlap_start as usize..overlap_end as usize,
+        candidate: (overlap_start - candidate_relative_start) as usize
+            ..(overlap_end - candidate_relative_start) as usize,
+    }))
+}
+
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum OfflineAutomarkerSubstitutionError {
     #[error(transparent)]
@@ -2157,6 +2553,406 @@ mod tests {
                     )
                 )
             },
+        );
+    }
+
+    fn replacement_frame(
+        pack: &ProtocolPack,
+        original: &[u8],
+        marker: u8,
+        target: AutomarkerRequestXyz,
+    ) -> Vec<u8> {
+        match substitute_offline_automarker_frame(pack, original, marker, target) {
+            OfflineAutomarkerFrameSubstitution::Substituted { frame, .. } => frame,
+            OfflineAutomarkerFrameSubstitution::OriginalUnchanged { reason, .. } => {
+                panic!("test carrier rejected: {reason:?}")
+            }
+        }
+    }
+
+    fn assert_segment_rewritten(
+        outcome: OfflineAutomarkerTcpSegmentResult,
+        expected: &[u8],
+    ) -> (usize, usize) {
+        match outcome {
+            OfflineAutomarkerTcpSegmentResult::Rewritten {
+                payload,
+                overlapped_bytes,
+                operations_touched,
+                ..
+            } => {
+                assert_eq!(payload, expected);
+                (overlapped_bytes, operations_touched)
+            }
+            OfflineAutomarkerTcpSegmentResult::OriginalUnchanged { reason, .. } => {
+                panic!("expected rewritten segment, got {reason:?}")
+            }
+        }
+    }
+
+    #[test]
+    fn tcp_ledger_rewrites_segmented_coalesced_out_of_order_and_retransmitted_bytes() {
+        let pack = current_pack(AUTOMARKER_REQUEST_BUILD);
+        let original = observed_frame(&request(
+            1,
+            [1.0, 2.0, 3.0, 4.0],
+            [5.0, 6.0, 7.0, 8.0],
+            1_789_176_498_286,
+            607,
+        ));
+        let target = AutomarkerRequestXyz {
+            x: -100.25,
+            y: 200.5,
+            z: -300.75,
+        };
+        let replacement = replacement_frame(&pack, &original, 6, target);
+        let epoch = 41;
+        let base = 10_000_u32;
+        let mut ledger = OfflineAutomarkerTcpRewriteLedger::new(epoch);
+        assert!(matches!(
+            ledger.arm_frame(epoch, base, &pack, &original, 6, target),
+            OfflineAutomarkerTcpArmResult::Armed {
+                frame_length_bytes: OBSERVED_FRAME_UP_LENGTH,
+                ..
+            }
+        ));
+
+        // Coalesced bytes on both sides are conserved while the whole frame is
+        // rewritten at its exact offset.
+        let mut coalesced_original = vec![0xa5; 13];
+        coalesced_original.extend_from_slice(&original);
+        coalesced_original.extend_from_slice(&[0x5a; 17]);
+        let mut coalesced_expected = vec![0xa5; 13];
+        coalesced_expected.extend_from_slice(&replacement);
+        coalesced_expected.extend_from_slice(&[0x5a; 17]);
+        let (overlap, touched) = assert_segment_rewritten(
+            ledger.rewrite_segment(epoch, base.wrapping_sub(13), &coalesced_original),
+            &coalesced_expected,
+        );
+        assert_eq!(overlap, original.len());
+        assert_eq!(touched, 1);
+
+        // Arbitrary splits can arrive out of order. Every segment is derived
+        // from the same immutable replacement, so retransmission is identical.
+        let ranges = [0..1, 1..5, 5..36, 36..91, 91..196, 196..197];
+        for index in [4, 1, 5, 0, 3, 2] {
+            let range = ranges[index].clone();
+            let outcome = ledger.rewrite_segment(
+                epoch,
+                base.wrapping_add(range.start as u32),
+                &original[range.clone()],
+            );
+            assert_segment_rewritten(outcome, &replacement[range]);
+        }
+        for range in [20..120, 73..173, 20..120] {
+            let outcome = ledger.rewrite_segment(
+                epoch,
+                base.wrapping_add(range.start as u32),
+                &original[range.clone()],
+            );
+            assert_segment_rewritten(outcome, &replacement[range]);
+        }
+
+        // Exhaust every internal two-segment boundary in both arrival orders,
+        // then every one-byte retransmission offset.
+        for split in 1..original.len() {
+            for range in [split..original.len(), 0..split] {
+                assert_segment_rewritten(
+                    ledger.rewrite_segment(
+                        epoch,
+                        base.wrapping_add(range.start as u32),
+                        &original[range.clone()],
+                    ),
+                    &replacement[range],
+                );
+            }
+        }
+        for offset in 0..original.len() {
+            assert_segment_rewritten(
+                ledger.rewrite_segment(
+                    epoch,
+                    base.wrapping_add(offset as u32),
+                    &original[offset..offset + 1],
+                ),
+                &replacement[offset..offset + 1],
+            );
+        }
+    }
+
+    #[test]
+    fn tcp_ledger_rewrites_multiple_operations_and_conserves_every_nonoperation_byte() {
+        let pack = current_pack(AUTOMARKER_REQUEST_BUILD);
+        let first = observed_frame(&request(
+            1,
+            [1.0, 2.0, 3.0, 4.0],
+            [5.0, 6.0, 7.0, 8.0],
+            1_789_176_498_286,
+            607,
+        ));
+        let second = observed_frame(&request(
+            2,
+            [11.0, 12.0, 13.0, 14.0],
+            [15.0, 16.0, 17.0, 18.0],
+            1_789_176_505_357,
+            696,
+        ));
+        let first_target = AutomarkerRequestXyz {
+            x: 101.0,
+            y: 102.0,
+            z: 103.0,
+        };
+        let second_target = AutomarkerRequestXyz {
+            x: 201.0,
+            y: 202.0,
+            z: 203.0,
+        };
+        let first_replacement = replacement_frame(&pack, &first, 5, first_target);
+        let second_replacement = replacement_frame(&pack, &second, 6, second_target);
+        let epoch = 7;
+        let first_base = 50_000_u32;
+        let second_base = first_base.wrapping_add(300);
+        let mut ledger = OfflineAutomarkerTcpRewriteLedger::new(epoch);
+        assert!(matches!(
+            ledger.arm_frame(epoch, first_base, &pack, &first, 5, first_target),
+            OfflineAutomarkerTcpArmResult::Armed { .. }
+        ));
+        assert!(matches!(
+            ledger.arm_frame(epoch, second_base, &pack, &second, 6, second_target),
+            OfflineAutomarkerTcpArmResult::Armed { .. }
+        ));
+
+        let mut carrier = vec![0xcc; 25];
+        carrier.extend_from_slice(&first);
+        carrier.extend_from_slice(&[0xdd; 103]);
+        carrier.extend_from_slice(&second);
+        carrier.extend_from_slice(&[0xee; 31]);
+        let mut expected = vec![0xcc; 25];
+        expected.extend_from_slice(&first_replacement);
+        expected.extend_from_slice(&[0xdd; 103]);
+        expected.extend_from_slice(&second_replacement);
+        expected.extend_from_slice(&[0xee; 31]);
+        let (overlap, touched) = assert_segment_rewritten(
+            ledger.rewrite_segment(epoch, first_base.wrapping_sub(25), &carrier),
+            &expected,
+        );
+        assert_eq!(overlap, first.len() + second.len());
+        assert_eq!(touched, 2);
+        assert_eq!(&expected[..25], &carrier[..25]);
+        assert_eq!(
+            &expected[25 + first.len()..25 + first.len() + 103],
+            &[0xdd; 103]
+        );
+        assert_eq!(&expected[expected.len() - 31..], &[0xee; 31]);
+
+        let rejected = ledger.arm_frame(
+            epoch,
+            first_base.wrapping_add(100),
+            &pack,
+            &first,
+            4,
+            first_target,
+        );
+        assert!(matches!(
+            rejected,
+            OfflineAutomarkerTcpArmResult::OriginalUnchanged {
+                frame,
+                reason: OfflineAutomarkerTcpArmError::OverlappingOperation,
+            } if frame == first
+        ));
+
+        let first_ack =
+            ledger.observe_cumulative_ack(epoch, first_base.wrapping_add(first.len() as u32));
+        assert_eq!(first_ack.retired_operations, 1);
+        assert_eq!(first_ack.active_operations, 1);
+        let second_ack =
+            ledger.observe_cumulative_ack(epoch, second_base.wrapping_add(second.len() as u32));
+        assert_eq!(second_ack.retired_operations, 1);
+        assert_eq!(second_ack.active_operations, 0);
+    }
+
+    #[test]
+    fn tcp_ledger_handles_sequence_wrap_and_retires_only_on_complete_cumulative_ack() {
+        let pack = current_pack(AUTOMARKER_REQUEST_BUILD);
+        let original = observed_frame(&request(
+            3,
+            [1.0, 2.0, 3.0, 4.0],
+            [5.0, 6.0, 7.0, 8.0],
+            1_789_176_510_696,
+            762,
+        ));
+        let target = AutomarkerRequestXyz {
+            x: -1.25,
+            y: -2.5,
+            z: -3.75,
+        };
+        let replacement = replacement_frame(&pack, &original, 4, target);
+        let epoch = 99;
+        let base = u32::MAX - 80;
+        let mut ledger = OfflineAutomarkerTcpRewriteLedger::new(epoch);
+        assert!(matches!(
+            ledger.arm_frame(epoch, base, &pack, &original, 4, target),
+            OfflineAutomarkerTcpArmResult::Armed { .. }
+        ));
+
+        for range in [0..81, 81..150, 150..197] {
+            assert_segment_rewritten(
+                ledger.rewrite_segment(
+                    epoch,
+                    base.wrapping_add(range.start as u32),
+                    &original[range.clone()],
+                ),
+                &replacement[range],
+            );
+        }
+        assert_eq!(ledger.active_operations(), 1);
+        let behind = ledger.observe_cumulative_ack(epoch, base.wrapping_sub(1));
+        assert_eq!(behind.retired_operations, 0);
+        assert_eq!(behind.active_operations, 1);
+        let partial = ledger.observe_cumulative_ack(epoch, base.wrapping_add(196));
+        assert_eq!(partial.retired_operations, 0);
+        assert_eq!(partial.active_operations, 1);
+        let complete = ledger.observe_cumulative_ack(epoch, base.wrapping_add(197));
+        assert_eq!(complete.retired_operations, 1);
+        assert_eq!(complete.active_operations, 0);
+
+        let after_ack = ledger.rewrite_segment(epoch, base, &original);
+        assert!(matches!(
+            after_ack,
+            OfflineAutomarkerTcpSegmentResult::OriginalUnchanged {
+                payload,
+                reason: OfflineAutomarkerTcpSegmentReason::NoActiveOverlap,
+            } if payload == original
+        ));
+    }
+
+    #[test]
+    fn tcp_ledger_fails_open_on_conflict_gap_ambiguity_and_epoch_change() {
+        let pack = current_pack(AUTOMARKER_REQUEST_BUILD);
+        let original = observed_frame(&request(
+            1,
+            [1.0, 2.0, 3.0, 4.0],
+            [5.0, 6.0, 7.0, 8.0],
+            1_789_176_498_286,
+            607,
+        ));
+        let target = AutomarkerRequestXyz {
+            x: 9.0,
+            y: 10.0,
+            z: 11.0,
+        };
+        let epoch = 123;
+        let base = 77_000_u32;
+        let mut ledger = OfflineAutomarkerTcpRewriteLedger::new(epoch);
+        assert!(matches!(
+            ledger.arm_frame(epoch, base, &pack, &original, 2, target),
+            OfflineAutomarkerTcpArmResult::Armed { .. }
+        ));
+
+        let wrong_epoch = ledger.rewrite_segment(epoch + 1, base, &original);
+        assert!(matches!(
+            wrong_epoch,
+            OfflineAutomarkerTcpSegmentResult::OriginalUnchanged {
+                payload,
+                reason: OfflineAutomarkerTcpSegmentReason::EpochMismatch { .. },
+            } if payload == original
+        ));
+        assert_eq!(ledger.active_operations(), 1);
+
+        // A gap outside the frame is irrelevant; one crossing the frame makes
+        // the entire epoch unavailable until an explicit connection reset.
+        assert!(!ledger.observe_gap(epoch, base.wrapping_add(500), 10));
+        assert!(ledger.observe_gap(epoch, base.wrapping_add(40), 5));
+        assert_eq!(
+            ledger.poison_reason(),
+            Some(OfflineAutomarkerTcpPoisonReason::GapObserved)
+        );
+        let after_gap = ledger.rewrite_segment(epoch, base, &original);
+        assert!(matches!(
+            after_gap,
+            OfflineAutomarkerTcpSegmentResult::OriginalUnchanged {
+                payload,
+                reason: OfflineAutomarkerTcpSegmentReason::LedgerPoisoned(
+                    OfflineAutomarkerTcpPoisonReason::GapObserved
+                ),
+            } if payload == original
+        ));
+
+        ledger.reset_connection_epoch(epoch + 1);
+        assert_eq!(ledger.active_operations(), 0);
+        assert_eq!(ledger.poison_reason(), None);
+        assert!(matches!(
+            ledger.arm_frame(epoch + 1, base, &pack, &original, 2, target),
+            OfflineAutomarkerTcpArmResult::Armed { .. }
+        ));
+        let mut conflict = original[30..90].to_vec();
+        conflict[7] ^= 0xff;
+        let conflict_sequence = base.wrapping_add(30);
+        let conflict_outcome = ledger.rewrite_segment(epoch + 1, conflict_sequence, &conflict);
+        assert!(matches!(
+            conflict_outcome,
+            OfflineAutomarkerTcpSegmentResult::OriginalUnchanged {
+                payload,
+                reason: OfflineAutomarkerTcpSegmentReason::ConflictingRetransmission,
+            } if payload == conflict
+        ));
+        assert_eq!(
+            ledger.poison_reason(),
+            Some(OfflineAutomarkerTcpPoisonReason::ConflictingRetransmission)
+        );
+
+        ledger.reset_connection_epoch(epoch + 2);
+        assert!(matches!(
+            ledger.arm_frame(epoch + 2, base, &pack, &original, 2, target),
+            OfflineAutomarkerTcpArmResult::Armed { .. }
+        ));
+        let ambiguous = ledger.rewrite_segment(
+            epoch + 2,
+            base.wrapping_add(TCP_SERIAL_HALF_SPACE),
+            &[1, 2, 3],
+        );
+        assert!(matches!(
+            ambiguous,
+            OfflineAutomarkerTcpSegmentResult::OriginalUnchanged {
+                payload,
+                reason: OfflineAutomarkerTcpSegmentReason::AmbiguousSequenceRange,
+            } if payload == [1, 2, 3]
+        ));
+        assert_eq!(
+            ledger.poison_reason(),
+            Some(OfflineAutomarkerTcpPoisonReason::AmbiguousSequenceRange)
+        );
+
+        ledger.reset_connection_epoch(epoch + 3);
+        assert!(matches!(
+            ledger.arm_frame(epoch + 3, base, &pack, &original, 2, target),
+            OfflineAutomarkerTcpArmResult::Armed { .. }
+        ));
+        let near_half_space = base.wrapping_add(TCP_SERIAL_HALF_SPACE).wrapping_sub(100);
+        let ambiguous_arm =
+            ledger.arm_frame(epoch + 3, near_half_space, &pack, &original, 3, target);
+        assert!(matches!(
+            ambiguous_arm,
+            OfflineAutomarkerTcpArmResult::OriginalUnchanged {
+                frame,
+                reason: OfflineAutomarkerTcpArmError::AmbiguousSequenceRange,
+            } if frame == original
+        ));
+    }
+
+    #[test]
+    fn tcp_ledger_proof_keeps_live_transport_disabled() {
+        let proof: serde_json::Value = serde_json::from_str(include_str!(
+            "../research/game-file-inventory/global/steam-25247556/ground-marker-packet-substitution-feasibility.v1.json"
+        ))
+        .unwrap();
+        let ledger = &proof["offline_tcp_sequence_rewrite_ledger"];
+        assert_eq!(ledger["implemented"], true);
+        assert_eq!(ledger["network_or_process_capability"], false);
+        assert_eq!(ledger["live_activation_available"], false);
+        assert_eq!(proof["conclusion"]["runtime_sender_enabled"], false);
+        assert_eq!(
+            proof["conclusion"]["permission_to_replay_inject_or_rewrite"],
+            false
         );
     }
 

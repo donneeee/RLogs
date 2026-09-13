@@ -226,6 +226,38 @@
     "transport_or_sender_available": false,
     "live_interception_suppression_retransmission_or_checksum_behavior_available": false
   },
+  "offline_tcp_sequence_rewrite_ledger": {
+    "implemented": true,
+    "scope": "pure copied-buffer transformation for one explicit connection epoch",
+    "active_operation_limit": 64,
+    "supports": [
+      "arbitrary TCP payload segmentation and coalescing",
+      "out-of-order segments",
+      "retransmitted and overlapping original byte ranges",
+      "multiple non-overlapping active marker frames",
+      "32-bit TCP sequence wrap",
+      "cumulative ACK retirement after the complete frame range"
+    ],
+    "transactional_fail_open": [
+      "wrong connection epoch",
+      "overlapping armed operations",
+      "known gap intersecting an active operation",
+      "conflicting retransmission bytes",
+      "undefined TCP serial half-space comparison",
+      "rejected exact-frame substitution"
+    ],
+    "poison_lifecycle": "a gap, conflicting retransmission, or ambiguous sequence range clears active operations and passes subsequent bytes unchanged until explicit connection-epoch reset",
+    "byte_conservation": "all candidate overlaps are validated before mutation; output length is identical and every byte outside registered replacement ranges is copied unchanged",
+    "exhaustive_tests": [
+      "every internal two-segment boundary in both out-of-order arrival positions",
+      "every one-byte retransmission offset in the 197-byte frame",
+      "coalesced prefix, inter-operation gap, and suffix conservation",
+      "multiple overlapping retransmission windows",
+      "sequence wrap and pre-complete/complete cumulative ACK boundaries"
+    ],
+    "network_or_process_capability": false,
+    "live_activation_available": false
+  },
   "next_non_invasive_evidence": {
     "source": "already-retained private current-build capture only",
     "completed_action": "Generated a sanitized offline frame-layout receipt without network endpoints, raw payloads, identifiers, timestamps, or exact TCP sequence numbers.",
