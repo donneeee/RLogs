@@ -533,3 +533,7 @@ path = "tools/automarker-windows-boundary.rs"
 [[bin]]
 name = "rlogs-bpsr-automarker-windivert-passthrough"
 path = "tools/automarker-windivert-passthrough.rs"
+
+[[bin]]
+name = "rlogs-bpsr-automarker-one-marker-canary"
+path = "tools/automarker-one-marker-canary.rs"
