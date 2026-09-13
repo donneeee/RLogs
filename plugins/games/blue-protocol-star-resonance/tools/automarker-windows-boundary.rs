@@ -253,6 +253,7 @@ mod windows {
     struct MarkerObservation {
         marker_number: u8,
         surface: CaptureSurface,
+        connection_ordinal: u32,
         connection_epoch_ordinal: u32,
         epoch_syn_observed: bool,
         process_ownership_evidence: ProcessOwnershipEvidence,
@@ -275,6 +276,7 @@ mod windows {
         outers: HashMap<(TcpFlowKey, u64), OuterLayout>,
         epochs: BTreeMap<ConnectionKey, EpochState>,
         confirmed: BTreeMap<ConnectionKey, TcpConnection>,
+        connection_ordinals: BTreeMap<ConnectionKey, u32>,
         owned_ever: BTreeSet<ConnectionKey>,
         markers: Vec<MarkerObservation>,
         physical_payload_segments: u64,
@@ -302,6 +304,7 @@ mod windows {
                 outers: HashMap::new(),
                 epochs: BTreeMap::new(),
                 confirmed: BTreeMap::new(),
+                connection_ordinals: BTreeMap::new(),
                 owned_ever: BTreeSet::new(),
                 markers: Vec::new(),
                 physical_payload_segments: 0,
@@ -317,8 +320,14 @@ mod windows {
             owned: &[TcpConnection],
         ) -> Result<(), Box<dyn std::error::Error>> {
             for connection in confirmed {
-                self.confirmed
-                    .insert(connection_key(*connection), *connection);
+                let key = connection_key(*connection);
+                self.confirmed.insert(key, *connection);
+                if !self.connection_ordinals.contains_key(&key) {
+                    let ordinal = u32::try_from(self.connection_ordinals.len())
+                        .unwrap_or(u32::MAX)
+                        .saturating_add(1);
+                    self.connection_ordinals.insert(key, ordinal);
+                }
             }
             for connection in owned {
                 self.owned_ever.insert(connection_key(*connection));
@@ -332,6 +341,7 @@ mod windows {
                 outers,
                 epochs,
                 confirmed,
+                connection_ordinals,
                 owned_ever,
                 markers,
                 physical_payload_segments,
@@ -386,6 +396,7 @@ mod windows {
                                 outers,
                                 epochs,
                                 confirmed,
+                                connection_ordinals,
                                 markers,
                                 *process_ownership_available,
                             );
@@ -435,8 +446,9 @@ mod windows {
                     marker.process_ownership_evidence
                         == ProcessOwnershipEvidence::ExactGameProcessSocketObserved
                 });
+            let topology = assess_topology(&self.markers, capture_mode);
             Receipt {
-                schema_version: 1,
+                schema_version: 2,
                 audit_kind: "sanitized-passive-automarker-windows-boundary",
                 requested_mode: capture_mode.as_str(),
                 input_scope: InputScope {
@@ -475,16 +487,17 @@ mod windows {
                     future_inline_rewrite_must_recalculate_tcp_checksum: true,
                     future_inline_design_must_handle_segmentation_and_retransmission: true,
                 },
+                topology,
                 interpretation: Interpretation {
-                    loopback_signature_proves_plain_bpsr_visible_before_local_proxy:
-                        loopback_marker_visible,
-                    physical_signature_proves_plain_bpsr_visible_on_routed_adapter:
+                    plain_bpsr_marker_visible_on_loopback_capture_surface: loopback_marker_visible,
+                    plain_bpsr_marker_visible_on_physical_or_routed_capture_surface:
                         physical_marker_visible,
                     process_ownership_is_exact_four_tuple_not_process_name_inference: true,
                     game_process_ownership_proven,
                     mirror_mode_never_infers_game_process_ownership: true,
                     wfp_and_exitlag_callout_ordering: "unproven",
-                    remote_game_exitlag_state_observed: capture_mode != CaptureMode::Mirror,
+                    exitlag_mode_was_operator_selected: capture_mode == CaptureMode::ExitLag,
+                    exitlag_process_or_driver_state_observed: false,
                     observation_proves_inline_ordering: false,
                     observation_proves_server_acceptance: false,
                     runtime_sender_enabled: false,
@@ -502,6 +515,7 @@ mod windows {
         outers: &mut HashMap<(TcpFlowKey, u64), OuterLayout>,
         epochs: &BTreeMap<ConnectionKey, EpochState>,
         confirmed: &BTreeMap<ConnectionKey, TcpConnection>,
+        connection_ordinals: &BTreeMap<ConnectionKey, u32>,
         markers: &mut Vec<MarkerObservation>,
         process_ownership_available: bool,
     ) {
@@ -564,6 +578,7 @@ mod windows {
             return;
         };
         let epoch = epochs.get(&key);
+        let connection_ordinal = connection_ordinals.get(&key).copied().unwrap_or_default();
         let application_uncompressed = !frame.compressed_on_wire;
         let outer_uncompressed = outer.is_some_and(|layout| !layout.compressed);
         let reconstructable = proof.as_ref().is_some_and(|proof| {
@@ -572,6 +587,7 @@ mod windows {
         markers.push(MarkerObservation {
             marker_number: request.marker_number,
             surface: surface(connection),
+            connection_ordinal,
             connection_epoch_ordinal: epoch.map_or(0, |state| state.ordinal),
             epoch_syn_observed: epoch.is_some_and(|state| state.syn_observed),
             process_ownership_evidence: if !process_ownership_available {
@@ -633,6 +649,7 @@ mod windows {
         marker_requests: Vec<MarkerObservation>,
         filtered_tcp: FilteredTcpAggregate,
         checksum_and_offload: ChecksumAndOffload,
+        topology: TopologyAssessment,
         interpretation: Interpretation,
         privacy: Privacy,
     }
@@ -689,15 +706,171 @@ mod windows {
         future_inline_design_must_handle_segmentation_and_retransmission: bool,
     }
 
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+    #[serde(rename_all = "snake_case")]
+    enum PlaintextTopology {
+        NotObserved,
+        LoopbackOnly,
+        PhysicalOrRoutedOnly,
+        LoopbackAndPhysicalOrRouted,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct TopologyAssessment {
+        plaintext_bpsr: PlaintextBpsrGate,
+        game_socket: GameSocketGate,
+        local_proxy: LocalProxyGate,
+        wfp_ordering: WfpOrderingGate,
+        live_interception_activation_allowed: bool,
+        blocking_reasons: Vec<&'static str>,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct PlaintextBpsrGate {
+        topology: PlaintextTopology,
+        exact_marker_requests_observed: usize,
+        distinct_marker_connection_epochs: usize,
+        exactly_one_candidate_connection_epoch: bool,
+        every_request_has_direct_uncompressed_wire_offsets: bool,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct GameSocketGate {
+        socket_table_was_available: bool,
+        exact_owned_marker_requests: usize,
+        every_marker_request_was_game_owned: bool,
+        every_marker_epoch_started_with_observed_syn: bool,
+        exact_owned_game_socket_epoch_proven: bool,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct LocalProxyGate {
+        loopback_marker_requests: usize,
+        game_owned_loopback_marker_requests: usize,
+        loopback_requests_without_observed_game_ownership: usize,
+        peer_process_ownership_was_queried: bool,
+        exitlag_peer_identity_proven: bool,
+        authoritative_plaintext_proxy_leg_proven: bool,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct WfpOrderingGate {
+        passive_npcap_can_observe_callout_ordering: bool,
+        interception_layer_was_exercised: bool,
+        exitlag_relative_callout_ordering_proven: bool,
+    }
+
+    fn assess_topology(
+        markers: &[MarkerObservation],
+        capture_mode: CaptureMode,
+    ) -> TopologyAssessment {
+        let loopback = markers
+            .iter()
+            .filter(|marker| marker.surface == CaptureSurface::Loopback)
+            .count();
+        let physical = markers.len().saturating_sub(loopback);
+        let topology = match (loopback > 0, physical > 0) {
+            (false, false) => PlaintextTopology::NotObserved,
+            (true, false) => PlaintextTopology::LoopbackOnly,
+            (false, true) => PlaintextTopology::PhysicalOrRoutedOnly,
+            (true, true) => PlaintextTopology::LoopbackAndPhysicalOrRouted,
+        };
+        let connection_epochs = markers
+            .iter()
+            .map(|marker| (marker.connection_ordinal, marker.connection_epoch_ordinal))
+            .collect::<BTreeSet<_>>();
+        let exactly_one_candidate_connection_epoch = connection_epochs.len() == 1;
+        let every_request_has_direct_uncompressed_wire_offsets = !markers.is_empty()
+            && markers
+                .iter()
+                .all(|marker| marker.all_16_approved_bytes_directly_locatable_on_wire);
+        let exact_owned = markers
+            .iter()
+            .filter(|marker| {
+                marker.process_ownership_evidence
+                    == ProcessOwnershipEvidence::ExactGameProcessSocketObserved
+            })
+            .count();
+        let every_marker_request_was_game_owned =
+            !markers.is_empty() && exact_owned == markers.len();
+        let every_marker_epoch_started_with_observed_syn =
+            !markers.is_empty() && markers.iter().all(|marker| marker.epoch_syn_observed);
+        let exact_owned_game_socket_epoch_proven = exactly_one_candidate_connection_epoch
+            && every_marker_request_was_game_owned
+            && every_marker_epoch_started_with_observed_syn;
+        let game_owned_loopback = markers
+            .iter()
+            .filter(|marker| {
+                marker.surface == CaptureSurface::Loopback
+                    && marker.process_ownership_evidence
+                        == ProcessOwnershipEvidence::ExactGameProcessSocketObserved
+            })
+            .count();
+
+        let mut blocking_reasons = Vec::new();
+        if markers.is_empty() {
+            blocking_reasons.push("no_exact_marker_request_observed");
+        }
+        if !exactly_one_candidate_connection_epoch {
+            blocking_reasons.push("candidate_plaintext_connection_epoch_not_unique");
+        }
+        if !every_request_has_direct_uncompressed_wire_offsets {
+            blocking_reasons.push("direct_uncompressed_wire_offsets_not_proven");
+        }
+        if !exact_owned_game_socket_epoch_proven {
+            blocking_reasons.push("exact_game_owned_syn_epoch_not_proven");
+        }
+        if capture_mode == CaptureMode::ExitLag {
+            blocking_reasons.push("exitlag_peer_process_identity_not_observed");
+            blocking_reasons.push("exitlag_authoritative_plaintext_leg_not_proven");
+        }
+        blocking_reasons.push("wfp_relative_callout_ordering_not_measured");
+        blocking_reasons.push("live_interception_backend_not_exercised");
+
+        TopologyAssessment {
+            plaintext_bpsr: PlaintextBpsrGate {
+                topology,
+                exact_marker_requests_observed: markers.len(),
+                distinct_marker_connection_epochs: connection_epochs.len(),
+                exactly_one_candidate_connection_epoch,
+                every_request_has_direct_uncompressed_wire_offsets,
+            },
+            game_socket: GameSocketGate {
+                socket_table_was_available: capture_mode != CaptureMode::Mirror,
+                exact_owned_marker_requests: exact_owned,
+                every_marker_request_was_game_owned,
+                every_marker_epoch_started_with_observed_syn,
+                exact_owned_game_socket_epoch_proven,
+            },
+            local_proxy: LocalProxyGate {
+                loopback_marker_requests: loopback,
+                game_owned_loopback_marker_requests: game_owned_loopback,
+                loopback_requests_without_observed_game_ownership: loopback
+                    .saturating_sub(game_owned_loopback),
+                peer_process_ownership_was_queried: false,
+                exitlag_peer_identity_proven: false,
+                authoritative_plaintext_proxy_leg_proven: false,
+            },
+            wfp_ordering: WfpOrderingGate {
+                passive_npcap_can_observe_callout_ordering: false,
+                interception_layer_was_exercised: false,
+                exitlag_relative_callout_ordering_proven: false,
+            },
+            live_interception_activation_allowed: false,
+            blocking_reasons,
+        }
+    }
+
     #[derive(Debug, Serialize)]
     struct Interpretation {
-        loopback_signature_proves_plain_bpsr_visible_before_local_proxy: bool,
-        physical_signature_proves_plain_bpsr_visible_on_routed_adapter: bool,
+        plain_bpsr_marker_visible_on_loopback_capture_surface: bool,
+        plain_bpsr_marker_visible_on_physical_or_routed_capture_surface: bool,
         process_ownership_is_exact_four_tuple_not_process_name_inference: bool,
         game_process_ownership_proven: bool,
         mirror_mode_never_infers_game_process_ownership: bool,
         wfp_and_exitlag_callout_ordering: &'static str,
-        remote_game_exitlag_state_observed: bool,
+        exitlag_mode_was_operator_selected: bool,
+        exitlag_process_or_driver_state_observed: bool,
         observation_proves_inline_ordering: bool,
         observation_proves_server_acceptance: bool,
         runtime_sender_enabled: bool,
@@ -738,6 +911,9 @@ mod windows {
         loopback_and_physical_surface_classification: bool,
         mirror_mode_available: bool,
         exact_application_mutable_byte_count: usize,
+        explicit_topology_gates: bool,
+        exitlag_process_or_driver_observation_available: bool,
+        wfp_order_observation_available: bool,
         sensitive_wire_fields_emitted: bool,
         packet_transmission_available: bool,
         packet_modification_available: bool,
@@ -745,12 +921,15 @@ mod windows {
 
     fn schema_capabilities() -> SchemaCapabilities {
         SchemaCapabilities {
-            schema_version: 1,
+            schema_version: 2,
             passive_capture_only: true,
             process_owned_four_tuple_snapshot: true,
             loopback_and_physical_surface_classification: true,
             mirror_mode_available: true,
             exact_application_mutable_byte_count: 16,
+            explicit_topology_gates: true,
+            exitlag_process_or_driver_observation_available: false,
+            wfp_order_observation_available: false,
             sensitive_wire_fields_emitted: false,
             packet_transmission_available: false,
             packet_modification_available: false,
@@ -887,6 +1066,9 @@ mod windows {
         fn schema_is_passive_and_sanitized() {
             let json = serde_json::to_string(&schema_capabilities()).unwrap();
             assert!(json.contains("\"passive_capture_only\":true"));
+            assert!(json.contains("\"explicit_topology_gates\":true"));
+            assert!(json.contains("\"exitlag_process_or_driver_observation_available\":false"));
+            assert!(json.contains("\"wfp_order_observation_available\":false"));
             assert!(json.contains("\"sensitive_wire_fields_emitted\":false"));
             assert!(json.contains("\"packet_transmission_available\":false"));
             assert!(json.contains("\"packet_modification_available\":false"));
@@ -981,9 +1163,110 @@ mod windows {
             assert!(json.contains("\"process_socket_table_read\":false"));
             assert!(json.contains("\"game_process_ownership_proven\":false"));
             assert!(json.contains("\"wfp_and_exitlag_callout_ordering\":\"unproven\""));
-            assert!(json.contains("\"remote_game_exitlag_state_observed\":false"));
+            assert!(json.contains("\"exitlag_mode_was_operator_selected\":false"));
+            assert!(json.contains("\"exitlag_process_or_driver_state_observed\":false"));
+            assert!(json.contains("\"live_interception_activation_allowed\":false"));
             assert!(!json.contains("process_id"));
             assert!(!json.contains("interface_name"));
+        }
+
+        fn marker(
+            surface: CaptureSurface,
+            connection_ordinal: u32,
+            ownership: ProcessOwnershipEvidence,
+        ) -> MarkerObservation {
+            MarkerObservation {
+                marker_number: 1,
+                surface,
+                connection_ordinal,
+                connection_epoch_ordinal: 1,
+                epoch_syn_observed: true,
+                process_ownership_evidence: ownership,
+                application_length_bytes: 197,
+                application_uncompressed_on_wire: true,
+                outer_frame_uncompressed_on_wire: true,
+                tcp_stream_chunks_spanned: Some(1),
+                exactly_one_tcp_stream_chunk: true,
+                approved_application_value_bytes: 16,
+                all_16_approved_application_bytes_reconstructable: true,
+                all_16_approved_bytes_directly_locatable_on_wire: true,
+            }
+        }
+
+        #[test]
+        fn exitlag_selection_never_claims_peer_identity_or_wfp_ordering() {
+            let assessment = assess_topology(
+                &[marker(
+                    CaptureSurface::Loopback,
+                    1,
+                    ProcessOwnershipEvidence::ExactGameProcessSocketObserved,
+                )],
+                CaptureMode::ExitLag,
+            );
+            assert_eq!(
+                assessment.plaintext_bpsr.topology,
+                PlaintextTopology::LoopbackOnly
+            );
+            assert!(assessment.game_socket.exact_owned_game_socket_epoch_proven);
+            assert!(!assessment.local_proxy.exitlag_peer_identity_proven);
+            assert!(
+                !assessment
+                    .local_proxy
+                    .authoritative_plaintext_proxy_leg_proven
+            );
+            assert!(
+                !assessment
+                    .wfp_ordering
+                    .exitlag_relative_callout_ordering_proven
+            );
+            assert!(!assessment.live_interception_activation_allowed);
+            assert!(
+                assessment
+                    .blocking_reasons
+                    .contains(&"exitlag_peer_process_identity_not_observed")
+            );
+            assert!(
+                assessment
+                    .blocking_reasons
+                    .contains(&"wfp_relative_callout_ordering_not_measured")
+            );
+        }
+
+        #[test]
+        fn two_observed_plaintext_legs_are_explicitly_ambiguous() {
+            let assessment = assess_topology(
+                &[
+                    marker(
+                        CaptureSurface::Loopback,
+                        1,
+                        ProcessOwnershipEvidence::ExactGameProcessSocketObserved,
+                    ),
+                    marker(
+                        CaptureSurface::PhysicalOrRouted,
+                        2,
+                        ProcessOwnershipEvidence::ExactGameProcessSocketObserved,
+                    ),
+                ],
+                CaptureMode::Standard,
+            );
+            assert_eq!(
+                assessment.plaintext_bpsr.topology,
+                PlaintextTopology::LoopbackAndPhysicalOrRouted
+            );
+            assert_eq!(
+                assessment.plaintext_bpsr.distinct_marker_connection_epochs,
+                2
+            );
+            assert!(
+                !assessment
+                    .plaintext_bpsr
+                    .exactly_one_candidate_connection_epoch
+            );
+            assert!(
+                assessment
+                    .blocking_reasons
+                    .contains(&"candidate_plaintext_connection_epoch_not_unique")
+            );
         }
     }
 }

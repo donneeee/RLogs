@@ -54,3 +54,12 @@ proof and review:
 No product UI activation should be added until all gates are satisfied. A future
 backend must remain separately feature-gated and disabled by default through its
 first reviewed canary phase.
+
+The schema-2 passive Windows boundary receipt now keeps the observable pieces of
+gate 3 separate: exact marker visibility per capture surface, a unique sanitized
+connection epoch, exact game-owned four-tuple evidence, SYN lifecycle, and direct
+uncompressed byte offsets. It explicitly records that peer-process identity and
+WFP ordering were not observed. Selecting `-ExitLag` is only an operator-requested
+capture mode; it is not treated as evidence that ExitLag is running. This closes
+the prior diagnostic ambiguity without claiming that passive Npcap can satisfy
+the remaining activation gate.

@@ -55,7 +55,7 @@ bounded 64 KiB private prefix window is not exhausted first.
 
 Place exactly one marker through the normal game UI during the 30-second
 window. A separate standard and ExitLag run makes the comparison unambiguous.
-Only the file ending in `.safe.v1.json` is created.
+Only the file ending in `.safe.v2.json` is created.
 
 ## What the receipt establishes
 
@@ -72,6 +72,43 @@ For each decoded exact-build marker request, the receipt records:
   approved application value bytes (slot varint, skill varint, and target XYZ);
 - whether those 16 bytes are directly locatable in the observed uncompressed
   wire layout.
+
+Schema 2 also emits one fail-closed `topology` assessment. It assigns a local,
+receipt-only ordinal to each signature-confirmed connection so the diagnostic
+can report whether the marker appeared on exactly one connection epoch without
+retaining an endpoint. Its independent gates are:
+
+- **Plaintext BPSR leg:** at least one exact marker request, exactly one
+  connection epoch, and directly locatable uncompressed offsets for every
+  observed request. Seeing the same action on loopback and a routed adapter is
+  reported as ambiguous, not silently resolved.
+- **Game socket:** every request must match the exact bidirectional four-tuple
+  in the selected game's IP Helper table and the diagnostic must have observed
+  the SYN that began that epoch. A process name or protocol signature does not
+  satisfy this gate.
+- **Local proxy:** loopback requests are counted separately according to whether
+  the game-owned tuple was observed. The diagnostic does not query peer-process
+  ownership, so neither an ExitLag peer nor the authoritative proxy leg can be
+  claimed from this receipt.
+- **WFP ordering:** passive Npcap cannot observe relative WFP callout order and
+  no interception layer is exercised. This gate therefore always remains
+  false in this diagnostic.
+
+`-ExitLag` records that the operator selected the ExitLag test mode; it is not
+evidence that an ExitLag process, driver, or callout was present. Live
+interception activation remains false even when every passive wire and socket
+gate passes.
+
+## ZDPS comparison
+
+The retained ZDPS source does not supply a stronger ExitLag transport route. It
+documents manual Loopback selection for VPNs and recommends ExitLag Legacy-NDIS
+mode. Its capture code opens one selected SharpPcap device and checks packets
+against game TCP-table rows. rLogs retains selected/routed readers, adds one
+bounded loopback candidate only in the opt-in compatibility mode, and applies
+one shared BPSR signature privacy boundary across the fan-in. The ZDPS guidance
+is useful setup advice, but it does not prove a plaintext leg or WFP ordering
+for Automarkers.
 
 Npcap observation cannot determine checksum-offload state. A checksum that
 looks invalid before egress cannot distinguish a bad wire checksum from normal

@@ -34,7 +34,7 @@ if (-not (Test-Path -LiteralPath $ExecutablePath -PathType Leaf)) {
 $outputRoot = [System.IO.Path]::GetFullPath($OutputDirectory)
 [System.IO.Directory]::CreateDirectory($outputRoot) | Out-Null
 $timestamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
-$outputPath = Join-Path $outputRoot "automarker-windows-boundary-$timestamp.safe.v1.json"
+$outputPath = Join-Path $outputRoot "automarker-windows-boundary-$timestamp.safe.v2.json"
 if (Test-Path -LiteralPath $outputPath) {
     throw "Refusing to overwrite an existing receipt: $outputPath"
 }
