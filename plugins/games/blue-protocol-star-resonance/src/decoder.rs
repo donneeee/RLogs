@@ -626,6 +626,7 @@ impl<'a> ProtocolRuntime<'a> {
         for draft in &drafts {
             if let CanonicalEventDraftKind::WorldChanged(world) = &draft.kind {
                 self.dungeon.current_scene_id = world.scene_id;
+                self.profile.current_world = Some(world.clone());
             }
         }
         let events = drafts
@@ -764,6 +765,9 @@ struct DungeonObjectiveState {
 struct ProfileTracker {
     local_character: Option<CharacterIdentity>,
     local_entity_uuid: Option<i64>,
+    /// Last canonical world context accepted by the runtime. Team-member
+    /// scenes are recovery-only and may populate this only while it is empty.
+    current_world: Option<WorldContext>,
     /// Latest complete local profile projection. Dirty slot updates patch this
     /// snapshot so every live consumer receives the same loadout projection as
     /// history without reparsing or consulting a stale identity cache.
@@ -1961,6 +1965,43 @@ fn team_member_character_id(member: &schema::TeamMemberData) -> Option<i64> {
         .filter(|character_id| *character_id > 0)
 }
 
+fn known_catalog_scene_id(scene_id: i32) -> Option<SceneId> {
+    (scene_id > 0
+        && matches!(
+            crate::scene_localization::localized_scene_name(i64::from(scene_id), "en-US"),
+            Ok(Some(_))
+        ))
+    .then_some(SceneId(scene_id))
+}
+
+fn team_member_world(member: &schema::TeamMemberData) -> Option<WorldContext> {
+    let scene_id = member
+        .scene_id
+        .and_then(known_catalog_scene_id)
+        .or_else(|| {
+            member
+                .social
+                .as_ref()
+                .and_then(|social| social.basic.as_ref())
+                .and_then(|basic| basic.scene_id)
+                .and_then(|scene_id| i32::try_from(scene_id).ok())
+                .and_then(known_catalog_scene_id)
+        })?;
+    let scene_instance_id = member
+        .social
+        .as_ref()
+        .and_then(|social| social.basic.as_ref())
+        .and_then(|basic| clean_text(basic.scene_instance_id.as_deref()));
+
+    Some(WorldContext {
+        scene_id: Some(scene_id),
+        map_id: u32::try_from(scene_id.0).ok(),
+        line_id: None,
+        scene_instance_id,
+        dungeon_instance_id: None,
+    })
+}
+
 fn party_roster_draft(
     metadata: &DecodeMetadata,
     observation: PartyRosterObservation,
@@ -1979,10 +2020,28 @@ fn decode_team_members(
     tracker: &mut ProfileTracker,
 ) -> Result<Vec<CanonicalEventDraft>, ProtocolMessageError> {
     let mut drafts = Vec::with_capacity(members.len().saturating_mul(2));
+    let mut has_current_world = tracker.current_world.is_some();
     for member in members {
         let Some(character_id) = team_member_character_id(&member) else {
             continue;
         };
+        // Fail closed until a packet-derived owner snapshot has established
+        // which roster member is local; a party member must never guess it.
+        let is_local_character = tracker
+            .local_character
+            .as_ref()
+            .is_some_and(|local| local.character_id == character_id.to_string());
+        if !has_current_world
+            && is_local_character
+            && let Some(world) = team_member_world(&member)
+        {
+            drafts.push(draft(
+                metadata,
+                EventSensitivity::PublicGameplay,
+                CanonicalEventDraftKind::WorldChanged(world),
+            ));
+            has_current_world = true;
+        }
         let Some(social) = member.social else {
             continue;
         };
@@ -10963,6 +11022,164 @@ mod tests {
                 observation: PartyRosterObservation::MembersObserved { members },
             }) if members.len() == 2
         ));
+    }
+
+    #[test]
+    fn team_member_scene_is_recovery_only_and_cannot_overwrite_authoritative_world() {
+        let pack = pack();
+        let mut live_runtime = runtime(&pack);
+        live_runtime.profile.local_character = Some(CharacterIdentity {
+            region: live_runtime.envelopes.region().identity.clone(),
+            character_id: "3296036".into(),
+        });
+        let member = |character_id: i64, scene_id: Option<i32>, basic_scene_id: Option<u32>| {
+            schema::TeamMemberData {
+                character_id: Some(character_id),
+                enter_time: Some(100),
+                talent_id: Some(1),
+                online_status: Some(1),
+                scene_id,
+                group_id: Some(2),
+                social: basic_scene_id.map(|scene_id| schema::TeamMemberSocialData {
+                    basic: Some(schema::SocialBasicData {
+                        character_id: Some(character_id),
+                        display_id: None,
+                        display_name: None,
+                        gender_id: None,
+                        body_size_id: None,
+                        level: None,
+                        scene_id: Some(scene_id),
+                        scene_instance_id: None,
+                        season_level: None,
+                    }),
+                    profession: None,
+                    equipment: None,
+                    user_attributes: None,
+                }),
+            }
+        };
+        let update = |members| {
+            encode(schema::NoticeUpdateTeamMemberInfo {
+                request: Some(schema::NoticeUpdateTeamMemberInfoRequest { members }),
+            })
+        };
+
+        let initial_payload = update(vec![
+            member(3_296_036, Some(6_565), None),
+            member(9_876_543, Some(6_515), None),
+        ]);
+        let initial = live_runtime
+            .process(&record_for(TEAM_SERVICE, 1, 2, initial_payload.clone()))
+            .unwrap();
+        let initial_worlds = initial
+            .events
+            .iter()
+            .filter_map(|event| match &event.event {
+                rlogs_events::CanonicalEvent::WorldChanged(world) => Some(world),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(initial_worlds.len(), 1);
+        assert_eq!(initial_worlds[0].scene_id, Some(SceneId(6_565)));
+        assert_eq!(initial_worlds[0].map_id, Some(6_565));
+        assert_eq!(
+            live_runtime.profile.current_world,
+            Some(initial_worlds[0].clone())
+        );
+
+        let duplicate = live_runtime
+            .process(&record_for(TEAM_SERVICE, 2, 2, initial_payload))
+            .unwrap();
+        assert!(
+            !duplicate
+                .events
+                .iter()
+                .any(|event| matches!(event.event, rlogs_events::CanonicalEvent::WorldChanged(_)))
+        );
+
+        let authoritative = live_runtime
+            .process(&record(
+                3,
+                3,
+                encode(schema::EnterScene {
+                    enter_scene_info: Some(schema::EnterSceneInfo {
+                        scene_attrs: Some(schema::AttrCollection {
+                            uuid: None,
+                            attributes: vec![
+                                int_attr(ATTR_SCENE_ID, 6_515),
+                                int_attr(ATTR_SCENE_LINE, 7),
+                            ],
+                            map_attributes: Vec::new(),
+                        }),
+                        player_entity: None,
+                        scene_instance_id: Some("authoritative-instance".into()),
+                    }),
+                }),
+            ))
+            .unwrap();
+        let authoritative_world = authoritative
+            .events
+            .iter()
+            .find_map(|event| match &event.event {
+                rlogs_events::CanonicalEvent::WorldChanged(world) => Some(world),
+                _ => None,
+            })
+            .expect("authoritative world event");
+        assert_eq!(authoritative_world.scene_id, Some(SceneId(6_515)));
+        assert_eq!(authoritative_world.map_id, Some(6_515));
+        assert_eq!(authoritative_world.line_id, Some(7));
+        assert_eq!(
+            authoritative_world.scene_instance_id.as_deref(),
+            Some("authoritative-instance")
+        );
+        assert_eq!(
+            live_runtime.profile.current_world,
+            Some(authoritative_world.clone())
+        );
+
+        let delayed_team = live_runtime
+            .process(&record_for(
+                TEAM_SERVICE,
+                4,
+                2,
+                update(vec![member(3_296_036, None, Some(6_561))]),
+            ))
+            .unwrap();
+        assert!(
+            !delayed_team
+                .events
+                .iter()
+                .any(|event| matches!(event.event, rlogs_events::CanonicalEvent::WorldChanged(_)))
+        );
+        assert_eq!(
+            live_runtime.profile.current_world,
+            Some(authoritative_world.clone()),
+            "delayed team evidence must not erase richer authoritative context"
+        );
+
+        let mut invalid_runtime = runtime(&pack);
+        invalid_runtime.profile.local_character = Some(CharacterIdentity {
+            region: invalid_runtime.envelopes.region().identity.clone(),
+            character_id: "3296036".into(),
+        });
+        let invalid = invalid_runtime
+            .process(&record_for(
+                TEAM_SERVICE,
+                1,
+                2,
+                update(vec![
+                    member(9_876_543, Some(6_515), None),
+                    member(3_296_036, Some(99_999), None),
+                ]),
+            ))
+            .unwrap();
+        assert!(
+            !invalid
+                .events
+                .iter()
+                .any(|event| matches!(event.event, rlogs_events::CanonicalEvent::WorldChanged(_)))
+        );
+        assert_eq!(invalid_runtime.profile.current_world, None);
     }
 
     #[test]
