@@ -484,6 +484,77 @@ mod windows_backend {
         RejectedAfterOpen(WinDivertHandle, String),
     }
 
+    #[must_use = "failed WinDivert drain ownership must be retained"]
+    pub(crate) struct WinDivertDrainFailure {
+        handle: Option<WinDivertHandle>,
+        held_packet: Option<(Vec<u8>, WinDivertAddress)>,
+        receive_shutdown: bool,
+        error: String,
+    }
+
+    impl WinDivertDrainFailure {
+        pub(crate) fn message(&self) -> &str {
+            &self.error
+        }
+
+        #[allow(dead_code)] // Introspection for retained-owner recovery/tests.
+        pub(crate) fn held_packet(&self) -> Option<(&[u8], &WinDivertAddress)> {
+            self.held_packet
+                .as_ref()
+                .map(|(bytes, address)| (bytes.as_slice(), address))
+        }
+
+        #[allow(dead_code)] // Introspection for retained-owner recovery/tests.
+        pub(crate) fn receive_shutdown(&self) -> bool {
+            self.receive_shutdown
+        }
+
+        #[allow(dead_code, clippy::type_complexity)] // Recovery owner transfer seam.
+        pub(crate) fn into_parts(
+            mut self,
+        ) -> (
+            WinDivertHandle,
+            Option<(Vec<u8>, WinDivertAddress)>,
+            bool,
+            String,
+        ) {
+            (
+                self.handle.take().expect("drain failure retains handle"),
+                self.held_packet.take(),
+                self.receive_shutdown,
+                std::mem::take(&mut self.error),
+            )
+        }
+
+        /// Deliberately retain unresolved native ownership for process life.
+        pub(crate) fn retain_forever(self: Box<Self>) {
+            std::mem::forget(self);
+        }
+    }
+
+    impl std::fmt::Debug for WinDivertDrainFailure {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter
+                .debug_struct("WinDivertDrainFailure")
+                .field("receive_shutdown", &self.receive_shutdown)
+                .field(
+                    "held_packet_bytes",
+                    &self.held_packet.as_ref().map(|p| p.0.len()),
+                )
+                .field("error", &self.error)
+                .finish_non_exhaustive()
+        }
+    }
+
+    impl Drop for WinDivertDrainFailure {
+        fn drop(&mut self) {
+            if self.handle.is_some() {
+                eprintln!("fatal: unresolved WinDivert drain ownership was discarded");
+                std::process::abort();
+            }
+        }
+    }
+
     impl PinnedWinDivertBackend {
         pub(crate) unsafe fn load(path: &Path) -> Result<Self, Box<dyn Error>> {
             let wide = path
@@ -831,18 +902,66 @@ mod windows_backend {
 
         /// Freeze receive admission, reinject every packet already queued on
         /// this handle without changing bytes/metadata, then close it.
-        pub(crate) fn drain_reinject_and_close(self, maximum_bytes: usize) -> Result<(), String> {
-            self.shutdown_receive()?;
-            while let Some((bytes, address)) = self.receive(maximum_bytes)? {
-                let sent = self.send_unchanged(&bytes, &address)?;
+        pub(crate) fn drain_reinject_and_close(
+            self,
+            maximum_bytes: usize,
+        ) -> Result<(), Box<WinDivertDrainFailure>> {
+            let handle = self;
+            if let Err(error) = handle.shutdown_receive() {
+                return Err(Box::new(WinDivertDrainFailure {
+                    handle: Some(handle),
+                    held_packet: None,
+                    receive_shutdown: false,
+                    error,
+                }));
+            }
+            loop {
+                let received = match handle.receive(maximum_bytes) {
+                    Ok(received) => received,
+                    Err(error) => {
+                        return Err(Box::new(WinDivertDrainFailure {
+                            handle: Some(handle),
+                            held_packet: None,
+                            receive_shutdown: true,
+                            error,
+                        }));
+                    }
+                };
+                let Some((bytes, address)) = received else {
+                    break;
+                };
+                let sent = match handle.send_unchanged(&bytes, &address) {
+                    Ok(sent) => sent,
+                    Err(error) => {
+                        return Err(Box::new(WinDivertDrainFailure {
+                            handle: Some(handle),
+                            held_packet: Some((bytes, address)),
+                            receive_shutdown: true,
+                            error,
+                        }));
+                    }
+                };
                 if sent != bytes.len() {
-                    return Err(format!(
+                    let error = format!(
                         "WinDivert drain reinjection was short: expected {}, sent {sent}",
                         bytes.len()
-                    ));
+                    );
+                    return Err(Box::new(WinDivertDrainFailure {
+                        handle: Some(handle),
+                        held_packet: Some((bytes, address)),
+                        receive_shutdown: true,
+                        error,
+                    }));
                 }
             }
-            self.try_close().map_err(|(_, error)| error)
+            handle.try_close().map_err(|(handle, error)| {
+                Box::new(WinDivertDrainFailure {
+                    handle: Some(handle),
+                    held_packet: None,
+                    receive_shutdown: true,
+                    error,
+                })
+            })
         }
 
         pub(crate) fn set_param(&self, parameter: i32, value: u64) -> Result<(), String> {

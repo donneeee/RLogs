@@ -343,7 +343,11 @@ mod windows {
                 );
             }
             ArbitratedNetworkOpen::RejectedAfterOpen(handle, _reason) => {
-                handle.drain_reinject_and_close(65_535)?;
+                if let Err(failure) = handle.drain_reinject_and_close(65_535) {
+                    let message = format!("fatal retained WinDivert drain: {}", failure.message());
+                    failure.retain_forever();
+                    return Err(message.into());
+                }
                 return write_receipt(
                     &args.output,
                     CanaryReceipt::blocked_armed(
@@ -424,7 +428,11 @@ mod windows {
                 );
             }
             ArbitratedNetworkOpen::RejectedAfterOpen(handle, _reason) => {
-                handle.drain_reinject_and_close(65_535)?;
+                if let Err(failure) = handle.drain_reinject_and_close(65_535) {
+                    let message = format!("fatal retained WinDivert drain: {}", failure.message());
+                    failure.retain_forever();
+                    return Err(message.into());
+                }
                 return write_receipt(
                     &args.output,
                     CanaryReceipt::blocked_armed(

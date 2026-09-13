@@ -270,6 +270,27 @@ impl ActiveAutomarkerFatalOwnership {
             .and_then(ActiveAutomarkerCoordinator::retained_bound_process)
     }
 
+    /// Drain an interception that opened but was never authorized to mutate.
+    /// Every queued packet is therefore reinjected byte-identically without
+    /// consulting coordinator classification.
+    pub(crate) fn drain_unstarted(
+        &mut self,
+    ) -> Result<ActiveAutomarkerFatalRecoveryStatus, String> {
+        self.backend()?.shutdown_receive()?;
+        loop {
+            match self.backend()?.receive()? {
+                ActiveAutomarkerWake::Packet(packet)
+                | ActiveAutomarkerWake::PassThroughOnly(packet) => {
+                    self.send_recovery_packet(&packet)?;
+                }
+                ActiveAutomarkerWake::Timeout => continue,
+                ActiveAutomarkerWake::EndOfStream => break,
+            }
+        }
+        self.retry_close_and_discard()?;
+        Ok(ActiveAutomarkerFatalRecoveryStatus::Released)
+    }
+
     /// Make one bounded recovery step without surrendering ownership. Exact
     /// ACK/RST traffic is classified in drain-only mode and passed through
     /// byte-for-byte. An independently proven death of the exact retained
@@ -340,7 +361,13 @@ impl ActiveAutomarkerFatalOwnership {
     }
 
     fn send_recovery_packet(&mut self, packet: &ActiveAutomarkerPacket) -> Result<(), String> {
-        let sent = self.backend()?.send(packet)?;
+        let sent = match self.backend()?.send(packet) {
+            Ok(sent) => sent,
+            Err(error) => {
+                self.indeterminate_packet = Some(packet.clone());
+                return Err(error);
+            }
+        };
         if sent != packet.bytes.len() {
             self.indeterminate_packet = Some(packet.clone());
             return Err(format!(
@@ -414,13 +441,76 @@ pub(crate) struct ActiveAutomarkerWorkerBundle {
     worker: Option<JoinHandle<ActiveAutomarkerWorkerCompletion>>,
 }
 
+#[must_use = "failed worker spawn retains interception ownership"]
+pub(crate) struct ActiveAutomarkerWorkerSpawnFailure {
+    message: String,
+    fatal_ownership: Option<ActiveAutomarkerFatalOwnership>,
+}
+
+impl ActiveAutomarkerWorkerSpawnFailure {
+    pub(crate) fn into_parts(mut self) -> (String, ActiveAutomarkerFatalOwnership) {
+        (
+            std::mem::take(&mut self.message),
+            self.fatal_ownership.take().expect("spawn failure owner"),
+        )
+    }
+}
+
+impl std::fmt::Debug for ActiveAutomarkerWorkerSpawnFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ActiveAutomarkerWorkerSpawnFailure")
+            .field("message", &self.message)
+            .finish_non_exhaustive()
+    }
+}
+
 impl ActiveAutomarkerWorkerBundle {
     pub(crate) fn spawn<B, C>(backend: B, coordinator: C) -> Result<Self, String>
     where
         B: ActiveAutomarkerBackend,
         C: ActiveAutomarkerCoordinator,
     {
-        let stop_requested = Arc::new(AtomicBool::new(false));
+        Self::spawn_recoverable(backend, coordinator, false).map_err(|failure| {
+            let (message, fatal) = (*failure).into_parts();
+            // The ordinary convenience entrypoint is used where thread
+            // creation is assumed infallible. Retain ownership if that host
+            // assumption is ever violated.
+            std::mem::forget(fatal);
+            message
+        })
+    }
+
+    pub(crate) fn spawn_recoverable<B, C>(
+        backend: B,
+        coordinator: C,
+        initially_stopped: bool,
+    ) -> Result<Self, Box<ActiveAutomarkerWorkerSpawnFailure>>
+    where
+        B: ActiveAutomarkerBackend,
+        C: ActiveAutomarkerCoordinator,
+    {
+        Self::spawn_recoverable_with(backend, coordinator, initially_stopped, |run| {
+            thread::Builder::new()
+                .name("rlogs-automarker-active".into())
+                .spawn(run)
+        })
+    }
+
+    fn spawn_recoverable_with<B, C, S>(
+        backend: B,
+        coordinator: C,
+        initially_stopped: bool,
+        spawn: S,
+    ) -> Result<Self, Box<ActiveAutomarkerWorkerSpawnFailure>>
+    where
+        B: ActiveAutomarkerBackend,
+        C: ActiveAutomarkerCoordinator,
+        S: FnOnce(
+            Box<dyn FnOnce() -> ActiveAutomarkerWorkerCompletion + Send>,
+        ) -> std::io::Result<JoinHandle<ActiveAutomarkerWorkerCompletion>>,
+    {
+        let stop_requested = Arc::new(AtomicBool::new(initially_stopped));
         let rewrite_obligation_active = Arc::new(AtomicBool::new(false));
         let termination_required = Arc::new(AtomicBool::new(false));
         let stop_acknowledged = Arc::new(AtomicBool::new(false));
@@ -428,19 +518,35 @@ impl ActiveAutomarkerWorkerBundle {
         let worker_obligation = Arc::clone(&rewrite_obligation_active);
         let worker_termination_required = Arc::clone(&termination_required);
         let worker_stop_acknowledged = Arc::clone(&stop_acknowledged);
-        let owned = ActiveWorkerOwnership::new(Box::new(backend), Box::new(coordinator));
-        let worker = thread::Builder::new()
-            .name("rlogs-automarker-active".into())
-            .spawn(move || {
-                run_worker(
-                    owned,
-                    worker_stop,
-                    worker_obligation,
-                    worker_termination_required,
-                    worker_stop_acknowledged,
-                )
+        let owned = Arc::new(std::sync::Mutex::new(Some(ActiveWorkerOwnership::new(
+            Box::new(backend),
+            Box::new(coordinator),
+        ))));
+        let worker_owned = Arc::clone(&owned);
+        let worker = spawn(Box::new(move || {
+            let owned = worker_owned
+                .lock()
+                .expect("Automarker spawn ownership mutex")
+                .take()
+                .expect("Automarker worker takes ownership once");
+            run_worker(
+                owned,
+                worker_stop,
+                worker_obligation,
+                worker_termination_required,
+                worker_stop_acknowledged,
+            )
+        }))
+        .map_err(|error| {
+            let mut owned = owned
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let mut owned = owned.take().expect("failed spawn retains ownership");
+            Box::new(ActiveAutomarkerWorkerSpawnFailure {
+                message: format!("failed to spawn Automarker active worker: {error}"),
+                fatal_ownership: Some(owned.take_fatal_ownership()),
             })
-            .map_err(|error| format!("failed to spawn Automarker active worker: {error}"))?;
+        })?;
         Ok(Self {
             stop_requested,
             rewrite_obligation_active,
@@ -652,6 +758,10 @@ fn run_worker(
         loop {
             let rewrite_obligation = owned.coordinator().rewrite_obligation_active();
             shared_rewrite_obligation.store(rewrite_obligation, Ordering::Release);
+            if stop_requested.load(Ordering::Acquire) {
+                pending_exit.get_or_insert(ActiveAutomarkerWorkerExit::Stopped);
+                stop_acknowledged.store(true, Ordering::Release);
+            }
             if !owned.backend().active_lifetime_arbitration_healthy() {
                 pending_exit.get_or_insert(ActiveAutomarkerWorkerExit::LifetimeArbitrationLost);
             }
@@ -1023,6 +1133,7 @@ mod tests {
         checksum_fails: bool,
         checksum_returns_original: bool,
         close_fails: bool,
+        shutdown_fails: bool,
         panic_on_classify: bool,
         panic_on_send: bool,
         panic_on_commit: bool,
@@ -1197,6 +1308,9 @@ mod tests {
         fn shutdown_receive(&mut self) -> Result<(), String> {
             let (lock, ready) = &*self.0.0;
             let mut state = lock.lock().unwrap();
+            if state.shutdown_fails {
+                return Err("injected shutdown failure".into());
+            }
             state.receive_shutdown = true;
             state.events.push(Event::ReceiveShutdown);
             while let Some(packet) = state.queued_on_shutdown.pop_front() {
@@ -1696,6 +1810,147 @@ mod tests {
             );
             recover_fatal_with_rst(&harness, &mut completion);
         }
+    }
+
+    #[test]
+    fn recovery_send_error_retains_packet_and_forbids_close() {
+        let harness = Harness::default();
+        harness.0.0.lock().unwrap().panic_on_classify = true;
+        harness.push(ActiveAutomarkerWake::Packet(packet(b"panic")));
+        let bundle = ActiveAutomarkerWorkerBundle::spawn(
+            FakeBackend(harness.clone()),
+            FakeCoordinator::new(harness.clone()),
+        )
+        .unwrap();
+        let mut completion = bundle.join().unwrap();
+        let recovery_packet = packet(b"recovery-send-error");
+        {
+            let mut state = harness.0.0.lock().unwrap();
+            state.panic_on_classify = false;
+            state.failed_send_for = Some(recovery_packet.bytes.clone());
+        }
+        harness.push(ActiveAutomarkerWake::Packet(recovery_packet));
+        let fatal = completion.fatal_ownership.as_mut().unwrap();
+        assert!(
+            fatal
+                .recover(ActiveAutomarkerFatalRecovery::DrainOneReceive)
+                .is_err()
+        );
+        assert!(fatal.indeterminate_packet.is_some());
+        assert!(fatal.retry_close_and_discard().is_err());
+        assert!(!harness.events().contains(&Event::BackendClosed));
+        let proof = fatal.retained_bound_process().unwrap();
+        fatal
+            .recover(ActiveAutomarkerFatalRecovery::BoundProcessTerminated(proof))
+            .unwrap();
+    }
+
+    #[test]
+    fn unstarted_drain_retains_owner_across_every_backend_failure_stage() {
+        for stage in ["shutdown", "receive", "send", "short", "close"] {
+            let harness = Harness::default();
+            let queued = packet(b"startup-queued");
+            {
+                let mut state = harness.0.0.lock().unwrap();
+                match stage {
+                    "shutdown" => state.shutdown_fails = true,
+                    "receive" => state.ingress.push_back(Err("receive".into())),
+                    "send" => {
+                        state.failed_send_for = Some(queued.bytes.clone());
+                        state
+                            .ingress
+                            .push_back(Ok(ActiveAutomarkerWake::Packet(queued.clone())));
+                    }
+                    "short" => {
+                        state.short_send_for = Some(queued.bytes.clone());
+                        state
+                            .ingress
+                            .push_back(Ok(ActiveAutomarkerWake::Packet(queued.clone())));
+                    }
+                    "close" => state.close_fails = true,
+                    _ => unreachable!(),
+                }
+            }
+            let mut owned = ActiveWorkerOwnership::new(
+                Box::new(FakeBackend(harness.clone())),
+                Box::new(FakeCoordinator::new(harness.clone())),
+            );
+            let mut fatal = owned.take_fatal_ownership();
+            assert!(fatal.drain_unstarted().is_err(), "stage={stage}");
+            assert!(fatal.backend.is_some(), "stage={stage}");
+            assert!(fatal.coordinator.is_some(), "stage={stage}");
+            assert_eq!(
+                fatal.indeterminate_packet.is_some(),
+                matches!(stage, "send" | "short"),
+                "stage={stage}"
+            );
+
+            {
+                let mut state = harness.0.0.lock().unwrap();
+                state.shutdown_fails = false;
+                state.close_fails = false;
+                state.failed_send_for = None;
+                state.short_send_for = None;
+            }
+            if matches!(stage, "send" | "short") {
+                let proof = fatal.retained_bound_process().unwrap();
+                fatal
+                    .recover(ActiveAutomarkerFatalRecovery::BoundProcessTerminated(proof))
+                    .unwrap();
+            } else if stage == "close" {
+                fatal.retry_close_and_discard().unwrap();
+            } else {
+                fatal.drain_unstarted().unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn worker_spawn_failure_returns_backend_and_queued_packet_to_drain_owner() {
+        let harness = Harness::default();
+        harness
+            .0
+            .0
+            .lock()
+            .unwrap()
+            .ingress
+            .push_back(Ok(ActiveAutomarkerWake::Packet(packet(b"spawn-queued"))));
+        let failure = match ActiveAutomarkerWorkerBundle::spawn_recoverable_with(
+            FakeBackend(harness.clone()),
+            FakeCoordinator::new(harness.clone()),
+            false,
+            |run| {
+                drop(run);
+                Err(std::io::Error::other("injected spawn failure"))
+            },
+        ) {
+            Ok(_) => panic!("injected worker spawn unexpectedly succeeded"),
+            Err(failure) => failure,
+        };
+        let (message, mut fatal) = (*failure).into_parts();
+        assert!(message.contains("injected spawn failure"));
+        assert_eq!(
+            fatal.drain_unstarted().unwrap(),
+            ActiveAutomarkerFatalRecoveryStatus::Released
+        );
+        assert!(harness.events().contains(&sent(b"spawn-queued")));
+    }
+
+    #[test]
+    fn initially_stopped_worker_drains_queued_carrier_without_authorizing_mutation() {
+        let harness = Harness::default();
+        harness.push(ActiveAutomarkerWake::Packet(packet(b"carrier")));
+        let bundle = ActiveAutomarkerWorkerBundle::spawn_recoverable(
+            FakeBackend(harness.clone()),
+            FakeCoordinator::new(harness.clone()),
+            true,
+        )
+        .unwrap();
+        let report = bundle.join().unwrap().report;
+        assert_eq!(report.exit, ActiveAutomarkerWorkerExit::Stopped);
+        assert_eq!(report.modified_sent, 0);
+        assert_eq!(report.unchanged_sent, 1);
+        assert!(harness.events().contains(&sent(b"carrier")));
     }
 
     #[test]

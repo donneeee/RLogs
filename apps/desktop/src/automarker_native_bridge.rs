@@ -389,18 +389,39 @@ impl AutomarkerNativeBridgeLifecycle {
         let (coordinator, control) =
             ProductionActiveAutomarkerCoordinator::create(config, ACTIVE_COMMAND_CAPACITY)
                 .map_err(str::to_owned)?;
-        let (mut backend, receive_control) =
+        let (backend, receive_control) =
             crate::automarker_active_windivert::WindowsActiveAutomarkerBackend::open(
                 dependency_directory,
                 binding,
             )?;
         if !backend.active_lifetime_arbitration_healthy() {
-            backend.close_interception()?;
+            let worker =
+                ActiveAutomarkerWorkerBundle::spawn_recoverable(backend, coordinator, true);
+            let Some(mut state) = self.lock_or_poison_shutdown() else {
+                if let Ok(worker) = worker {
+                    std::mem::forget(worker);
+                } else if let Err(failure) = worker {
+                    let (_, fatal) = (*failure).into_parts();
+                    std::mem::forget(fatal);
+                }
+                return Err(
+                    "Automarker lifecycle was poisoned while retaining startup drain".into(),
+                );
+            };
+            Self::retain_startup_drain_locked(&mut state, worker, control, receive_control)?;
             return Ok(false);
         }
         let Some(mut state) = self.lock_or_poison_shutdown() else {
-            backend.close_interception()?;
-            return Ok(false);
+            let worker =
+                ActiveAutomarkerWorkerBundle::spawn_recoverable(backend, coordinator, true);
+            match worker {
+                Ok(worker) => std::mem::forget(worker),
+                Err(failure) => {
+                    let (_, fatal) = (*failure).into_parts();
+                    std::mem::forget(fatal);
+                }
+            }
+            return Err("Automarker lifecycle was poisoned while retaining startup drain".into());
         };
         let still_exact = Self::activation_still_exact_locked(
             &state,
@@ -410,14 +431,34 @@ impl AutomarkerNativeBridgeLifecycle {
             binding,
         );
         if !still_exact {
-            drop(state);
-            backend.close_interception()?;
+            let worker =
+                ActiveAutomarkerWorkerBundle::spawn_recoverable(backend, coordinator, true);
+            Self::retain_startup_drain_locked(&mut state, worker, control, receive_control)?;
             return Ok(false);
         }
         // Spawn while retaining the lifecycle lock. Parser/context ingress
         // cannot advance the authority between the exact post-open check and
         // installing the control/worker owners.
-        let worker = ActiveAutomarkerWorkerBundle::spawn(backend, coordinator)?;
+        let worker =
+            match ActiveAutomarkerWorkerBundle::spawn_recoverable(backend, coordinator, false) {
+                Ok(worker) => worker,
+                Err(failure) => {
+                    let (spawn_error, mut fatal) = (*failure).into_parts();
+                    match fatal.drain_unstarted() {
+                        Ok(ActiveAutomarkerFatalRecoveryStatus::Released) => {
+                            return Err(spawn_error);
+                        }
+                        Ok(ActiveAutomarkerFatalRecoveryStatus::StillRetained) => unreachable!(),
+                        Err(drain_error) => {
+                            state.fatal_ownership = Some(fatal);
+                            state.phase = LifecyclePhase::OwnershipRecoveryRequired;
+                            return Err(format!(
+                                "{spawn_error}; startup drain retained: {drain_error}"
+                            ));
+                        }
+                    }
+                }
+            };
         drop(state.coordinator.take());
         state.active_control = Some(control);
         state.active_receive_control = Some(receive_control);
@@ -425,6 +466,40 @@ impl AutomarkerNativeBridgeLifecycle {
         state.gates.reflect_arbitrated = true;
         state.gates.authoritative_inbound_decoder_ready = true;
         Ok(true)
+    }
+
+    #[cfg(windows)]
+    fn retain_startup_drain_locked(
+        state: &mut NativeBridgeState,
+        worker: Result<
+            ActiveAutomarkerWorkerBundle,
+            Box<crate::automarker_active_worker::ActiveAutomarkerWorkerSpawnFailure>,
+        >,
+        control: ActiveAutomarkerControl,
+        receive_control: crate::automarker_active_windivert::ActiveAutomarkerReceiveControl,
+    ) -> Result<(), String> {
+        match worker {
+            Ok(worker) => {
+                state.active_control = Some(control);
+                state.active_receive_control = Some(receive_control);
+                state.active_worker = Some(worker);
+                Ok(())
+            }
+            Err(failure) => {
+                let (spawn_error, mut fatal) = (*failure).into_parts();
+                match fatal.drain_unstarted() {
+                    Ok(ActiveAutomarkerFatalRecoveryStatus::Released) => Err(spawn_error),
+                    Ok(ActiveAutomarkerFatalRecoveryStatus::StillRetained) => unreachable!(),
+                    Err(drain_error) => {
+                        state.fatal_ownership = Some(fatal);
+                        state.phase = LifecyclePhase::OwnershipRecoveryRequired;
+                        Err(format!(
+                            "{spawn_error}; startup drain retained: {drain_error}"
+                        ))
+                    }
+                }
+            }
+        }
     }
 
     fn claim_activation_authority_locked(

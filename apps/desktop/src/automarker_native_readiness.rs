@@ -220,7 +220,11 @@ impl AutomarkerPassiveReadinessWorker {
                 return Err("a same-priority passive WinDivert handle is already open".into());
             }
             ArbitratedNetworkOpen::RejectedAfterOpen(handle, reason) => {
-                handle.drain_reinject_and_close(65_535)?;
+                if let Err(failure) = handle.drain_reinject_and_close(65_535) {
+                    let detail = failure.message().to_owned();
+                    failure.retain_forever();
+                    return Err(format!("{reason}; drain ownership retained: {detail}"));
+                }
                 return Err(reason);
             }
         };
@@ -478,7 +482,11 @@ pub(crate) fn discover_native_readiness(
             return Err("a same-priority WinDivert NETWORK handle is already open".into());
         }
         ArbitratedNetworkOpen::RejectedAfterOpen(handle, reason) => {
-            handle.drain_reinject_and_close(65_535)?;
+            if let Err(failure) = handle.drain_reinject_and_close(65_535) {
+                let detail = failure.message().to_owned();
+                failure.retain_forever();
+                return Err(format!("{reason}; drain ownership retained: {detail}"));
+            }
             return Err(reason);
         }
     };

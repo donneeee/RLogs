@@ -131,9 +131,14 @@ impl WindowsActiveAutomarkerBackend {
                 return Err("a same-priority WinDivert NETWORK handle is already open".into());
             }
             ArbitratedNetworkOpen::RejectedAfterOpen(handle, reason) => {
-                drain_reinject_rejected_open(handle).map_err(|cleanup| {
-                    format!("{reason}; rejected active handle cleanup failed: {cleanup}")
-                })?;
+                if let Err(cleanup) = drain_reinject_rejected_open(handle) {
+                    let message = format!(
+                        "{reason}; rejected active handle cleanup failed: {}",
+                        cleanup.message
+                    );
+                    cleanup.retain_forever();
+                    return Err(message);
+                }
                 return Err(reason);
             }
         };
@@ -150,7 +155,11 @@ impl WindowsActiveAutomarkerBackend {
         if let Some(error) = version_error {
             return match handle.drain_reinject_and_close(MAXIMUM_PACKET_BYTES) {
                 Ok(()) => Err(error),
-                Err(close_error) => Err(format!("{error}; additionally, {close_error}")),
+                Err(failure) => {
+                    let message = format!("{error}; additionally, {}", failure.message());
+                    failure.retain_forever();
+                    Err(message)
+                }
             };
         }
         Ok((
@@ -240,7 +249,7 @@ trait RejectedOpenDrain: Sized {
     fn shutdown_receive(&mut self) -> Result<(), String>;
     fn receive(&mut self) -> Result<Option<RejectedOpenPacket<Self::Address>>, String>;
     fn send_unchanged(&mut self, bytes: &[u8], address: &Self::Address) -> Result<usize, String>;
-    fn close(self) -> Result<(), String>;
+    fn close(self) -> Result<(), (Self, String)>;
 }
 
 impl RejectedOpenDrain for WinDivertHandle {
@@ -258,23 +267,103 @@ impl RejectedOpenDrain for WinDivertHandle {
         WinDivertHandle::send_unchanged(self, bytes, address)
     }
 
-    fn close(self) -> Result<(), String> {
-        self.try_close().map_err(|(_, error)| error)
+    fn close(self) -> Result<(), (Self, String)> {
+        self.try_close()
     }
 }
 
-fn drain_reinject_rejected_open<H: RejectedOpenDrain>(mut handle: H) -> Result<(), String> {
-    handle.shutdown_receive()?;
-    while let Some((bytes, address)) = handle.receive()? {
-        let sent = handle.send_unchanged(&bytes, &address)?;
-        if sent != bytes.len() {
-            return Err(format!(
-                "rejected active handle reinjection was short: expected {}, sent {sent}",
-                bytes.len()
-            ));
+#[must_use = "failed rejected-open drain ownership must be retained"]
+struct RejectedOpenDrainFailure<H: RejectedOpenDrain> {
+    handle: Option<H>,
+    held_packet: Option<(Vec<u8>, H::Address)>,
+    receive_shutdown: bool,
+    message: String,
+}
+
+impl<H: RejectedOpenDrain> RejectedOpenDrainFailure<H> {
+    fn retain_forever(self: Box<Self>) {
+        std::mem::forget(self);
+    }
+
+    #[cfg(test)]
+    #[allow(clippy::type_complexity)]
+    fn release_for_test(mut self) -> (H, Option<(Vec<u8>, H::Address)>, bool, String) {
+        (
+            self.handle.take().unwrap(),
+            self.held_packet.take(),
+            self.receive_shutdown,
+            std::mem::take(&mut self.message),
+        )
+    }
+}
+
+impl<H: RejectedOpenDrain> Drop for RejectedOpenDrainFailure<H> {
+    fn drop(&mut self) {
+        if self.handle.is_some() {
+            eprintln!("fatal: rejected-open Automarker drain ownership was discarded");
+            std::process::abort();
         }
     }
-    handle.close()
+}
+
+fn drain_reinject_rejected_open<H: RejectedOpenDrain>(
+    mut handle: H,
+) -> Result<(), Box<RejectedOpenDrainFailure<H>>> {
+    if let Err(message) = handle.shutdown_receive() {
+        return Err(Box::new(RejectedOpenDrainFailure {
+            handle: Some(handle),
+            held_packet: None,
+            receive_shutdown: false,
+            message,
+        }));
+    }
+    loop {
+        let received = match handle.receive() {
+            Ok(received) => received,
+            Err(message) => {
+                return Err(Box::new(RejectedOpenDrainFailure {
+                    handle: Some(handle),
+                    held_packet: None,
+                    receive_shutdown: true,
+                    message,
+                }));
+            }
+        };
+        let Some((bytes, address)) = received else {
+            break;
+        };
+        let sent = match handle.send_unchanged(&bytes, &address) {
+            Ok(sent) => sent,
+            Err(message) => {
+                return Err(Box::new(RejectedOpenDrainFailure {
+                    handle: Some(handle),
+                    held_packet: Some((bytes, address)),
+                    receive_shutdown: true,
+                    message,
+                }));
+            }
+        };
+        if sent != bytes.len() {
+            let message = format!(
+                "rejected active handle reinjection was short: expected {}, sent {sent}",
+                bytes.len()
+            );
+            return Err(Box::new(RejectedOpenDrainFailure {
+                handle: Some(handle),
+                held_packet: Some((bytes, address)),
+                receive_shutdown: true,
+                message,
+            }));
+        }
+    }
+    handle.close().map_err(|(handle, message)| {
+        Box::new(RejectedOpenDrainFailure {
+            handle: Some(handle),
+            held_packet: None,
+            receive_shutdown: true,
+            message,
+        })
+    })
 }
 
 impl ActiveAutomarkerBackend for WindowsActiveAutomarkerBackend {
@@ -497,35 +586,52 @@ mod tests {
         struct FakeRejected {
             queued: VecDeque<(Vec<u8>, u8)>,
             events: Arc<Mutex<Vec<DrainEvent>>>,
+            fail: Option<&'static str>,
         }
         impl RejectedOpenDrain for FakeRejected {
             type Address = u8;
             fn shutdown_receive(&mut self) -> Result<(), String> {
+                if self.fail == Some("shutdown") {
+                    return Err("shutdown".into());
+                }
                 self.events.lock().unwrap().push(DrainEvent::Shutdown);
                 Ok(())
             }
             fn receive(&mut self) -> Result<Option<(Vec<u8>, u8)>, String> {
+                if self.fail == Some("receive") {
+                    return Err("receive".into());
+                }
                 Ok(self.queued.pop_front())
             }
             fn send_unchanged(&mut self, bytes: &[u8], address: &u8) -> Result<usize, String> {
+                if self.fail == Some("send") {
+                    return Err("send".into());
+                }
+                if self.fail == Some("short") {
+                    return Ok(bytes.len().saturating_sub(1));
+                }
                 self.events
                     .lock()
                     .unwrap()
                     .push(DrainEvent::Sent(bytes.to_vec(), *address));
                 Ok(bytes.len())
             }
-            fn close(self) -> Result<(), String> {
+            fn close(self) -> Result<(), (Self, String)> {
+                if self.fail == Some("close") {
+                    return Err((self, "close".into()));
+                }
                 self.events.lock().unwrap().push(DrainEvent::Closed);
                 Ok(())
             }
         }
 
         let events = Arc::new(Mutex::new(Vec::new()));
-        drain_reinject_rejected_open(FakeRejected {
+        let drained = drain_reinject_rejected_open(FakeRejected {
             queued: VecDeque::from([(vec![1, 2, 3], 7), (vec![4, 5], 9)]),
             events: Arc::clone(&events),
-        })
-        .unwrap();
+            fail: None,
+        });
+        assert!(drained.is_ok());
         assert_eq!(
             *events.lock().unwrap(),
             vec![
@@ -535,5 +641,20 @@ mod tests {
                 DrainEvent::Closed,
             ]
         );
+
+        for stage in ["shutdown", "receive", "send", "short", "close"] {
+            let failure = match drain_reinject_rejected_open(FakeRejected {
+                queued: VecDeque::from([(vec![1, 2, 3], 7)]),
+                events: Arc::new(Mutex::new(Vec::new())),
+                fail: Some(stage),
+            }) {
+                Ok(()) => panic!("{stage} fault unexpectedly completed"),
+                Err(failure) => failure,
+            };
+            let (_owner, held, shutdown, message) = (*failure).release_for_test();
+            assert_eq!(shutdown, stage != "shutdown");
+            assert_eq!(held.is_some(), matches!(stage, "send" | "short"));
+            assert!(message.contains(stage));
+        }
     }
 }
