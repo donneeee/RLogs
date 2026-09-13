@@ -325,7 +325,7 @@ struct MechanicsMapFeedState {
     snapshot: MechanicsMapSnapshot,
     native_scene_active: bool,
     native_scene: Option<(i32, u32, Option<String>)>,
-    packet_scene_authoritative: bool,
+    reconciled_scene: Option<(i32, u32, Option<String>)>,
 }
 
 impl MechanicsMapFeed {
@@ -340,8 +340,10 @@ impl MechanicsMapFeed {
         if snapshot.revision <= current.snapshot.revision {
             snapshot.revision = current.snapshot.revision.saturating_add(1);
         }
-        if snapshot.scene_id.is_some() {
-            current.packet_scene_authoritative = true;
+        if current.reconciled_scene.is_none()
+            && let (Some(scene_id), Some(map_id)) = (snapshot.scene_id, snapshot.map_id)
+        {
+            current.reconciled_scene = Some((scene_id, map_id, snapshot.scene_name.clone()));
         }
         current.snapshot = snapshot;
         self.changed.notify_all();
@@ -361,8 +363,33 @@ impl MechanicsMapFeed {
         if state.native_scene_active == active && state.native_scene == scene {
             return;
         }
+        let previous_native = state.native_scene.clone();
         state.native_scene_active = active;
         state.native_scene = scene;
+        if active {
+            if let Some(native) = state.native_scene.clone() {
+                state.reconciled_scene = Some(native);
+            }
+        } else if state.reconciled_scene == previous_native {
+            state.reconciled_scene = state
+                .snapshot
+                .scene_id
+                .zip(state.snapshot.map_id)
+                .map(|(scene_id, map_id)| (scene_id, map_id, state.snapshot.scene_name.clone()));
+        }
+        state.snapshot.revision = state.snapshot.revision.saturating_add(1);
+        self.changed.notify_all();
+    }
+
+    pub fn reconcile_scene_presentation(&self, scene: Option<(i32, u32, Option<String>)>) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.reconciled_scene == scene {
+            return;
+        }
+        state.reconciled_scene = scene;
         state.snapshot.revision = state.snapshot.revision.saturating_add(1);
         self.changed.notify_all();
     }
@@ -377,7 +404,7 @@ impl MechanicsMapFeed {
             revision,
             ..MechanicsMapSnapshot::default()
         };
-        state.packet_scene_authoritative = false;
+        state.reconciled_scene = None;
         state.native_scene_active = false;
         state.native_scene = None;
         self.changed.notify_all();
@@ -423,19 +450,31 @@ impl MechanicsMapFeed {
 
 fn effective_snapshot(state: &MechanicsMapFeedState) -> MechanicsMapSnapshot {
     let mut snapshot = state.snapshot.clone();
-    if state.native_scene_active && !state.packet_scene_authoritative {
-        snapshot.scene_id = state.native_scene.as_ref().map(|scene| scene.0);
-        snapshot.map_id = state.native_scene.as_ref().map(|scene| scene.1);
-        snapshot.scene_name = state
-            .native_scene
-            .as_ref()
-            .and_then(|scene| scene.2.clone());
+    if let Some(scene) = state.reconciled_scene.as_ref() {
+        let identity_changed =
+            snapshot.scene_id != Some(scene.0) || snapshot.map_id != Some(scene.1);
+        snapshot.scene_id = Some(scene.0);
+        snapshot.map_id = Some(scene.1);
+        snapshot.scene_name = scene.2.clone();
         // These are keyed by the packet projector's scene. Never present
-        // stale geometry or encounter semantics under the native identity.
-        snapshot.map_layout = None;
-        snapshot.background_asset_url = None;
-        snapshot.encounter_pack = None;
-        snapshot.encounter_pack_reviewed = false;
+        // stale geometry or encounter semantics under a reconciled identity.
+        if identity_changed {
+            snapshot.map_layout = None;
+            snapshot.background_asset_url = None;
+            snapshot.encounter_pack = None;
+            snapshot.encounter_pack_reviewed = false;
+            snapshot.local_actor_id = None;
+            snapshot.local_position_observed = false;
+            snapshot.player = None;
+            snapshot.party.clear();
+            snapshot.action_controls.clear();
+            snapshot.resources.clear();
+            snapshot.dungeon = None;
+            snapshot.target = None;
+            snapshot.entities.clear();
+            snapshot.mechanics.clear();
+            snapshot.markers.clear();
+        }
     }
     snapshot
 }
@@ -566,6 +605,26 @@ impl MechanicsMapProjector {
         };
     }
 
+    pub fn reconcile_scene(&mut self, scene_id: i32, map_id: u32) -> bool {
+        let identity_changed = self.scene_id != Some(scene_id) || self.map_id != Some(map_id);
+        if !identity_changed {
+            return false;
+        }
+        self.scene_id = Some(scene_id);
+        self.map_id = Some(map_id);
+        self.entities.clear();
+        self.attack_targets.clear();
+        self.target_statuses.clear();
+        self.resource_values.clear();
+        self.signals.clear();
+        self.markers.clear();
+        self.local_markers.clear();
+        self.dungeon = None;
+        self.data_gap = None;
+        self.revision = self.revision.saturating_add(1);
+        true
+    }
+
     pub fn observe(&mut self, envelope: &EventEnvelope) -> bool {
         if self.session_id.as_deref() != Some(envelope.session_id.as_str()) {
             self.reset(&envelope.session_id, &envelope.region.client_build);
@@ -600,7 +659,9 @@ impl MechanicsMapProjector {
         match &envelope.event {
             CanonicalEvent::WorldChanged(world) => {
                 let next_scene = world.scene_id.map(|scene| scene.0);
-                if self.scene_id != next_scene {
+                if let (Some(scene_id), Some(map_id)) = (next_scene, world.map_id) {
+                    changed |= self.reconcile_scene(scene_id, map_id);
+                } else if self.scene_id != next_scene {
                     self.scene_id = next_scene;
                     self.entities.clear();
                     self.attack_targets.clear();
@@ -4358,6 +4419,7 @@ mod tests {
             encounter_pack_reviewed: true,
             ..MechanicsMapSnapshot::default()
         });
+        feed.reconcile_scene_presentation(Some((6_561, 6_561, Some("Sea-Ringed Reef".into()))));
         feed.set_native_scene_presentation(
             true,
             Some((6_515, 6_515, Some("Chaotic - Mech Facility".into()))),
@@ -4385,6 +4447,31 @@ mod tests {
 
         feed.set_native_scene_presentation(false, None);
         assert_eq!(feed.current().snapshot.scene_id, Some(6_561));
+
+        feed.set_native_scene_presentation(
+            true,
+            Some((6_565, 6_565, Some("Sea-Ringed Reef - Master".into()))),
+        );
+        assert_eq!(feed.current().snapshot.scene_id, Some(6_565));
+    }
+
+    #[test]
+    fn reconciled_scene_clears_packet_state_from_the_previous_scene() {
+        let feed = MechanicsMapFeed::default();
+        feed.publish(MechanicsMapSnapshot {
+            revision: 8,
+            scene_id: Some(6_515),
+            map_id: Some(6_515),
+            local_actor_id: Some(1),
+            local_position_observed: true,
+            ..MechanicsMapSnapshot::default()
+        });
+        feed.reconcile_scene_presentation(Some((6_565, 6_565, None)));
+        let snapshot = feed.current().snapshot;
+        assert_eq!(snapshot.scene_id, Some(6_565));
+        assert_eq!(snapshot.map_id, Some(6_565));
+        assert_eq!(snapshot.local_actor_id, None);
+        assert!(!snapshot.local_position_observed);
     }
 
     #[test]
