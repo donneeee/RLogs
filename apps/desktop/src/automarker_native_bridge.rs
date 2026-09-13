@@ -501,11 +501,16 @@ impl AutomarkerNativeBridgeLifecycle {
             drop(worker);
             return Ok(false);
         };
-        if state.phase != LifecyclePhase::Observing || state.session.is_none() {
+        if !matches!(
+            state.phase,
+            LifecyclePhase::Observing | LifecyclePhase::Invalidated
+        ) || state.session.is_none()
+        {
             drop(state);
             worker.stop_drain_join();
             return Ok(false);
         }
+        state.phase = LifecyclePhase::Observing;
         let previous = state.passive_readiness_worker.replace(worker);
         state.native_failure = None;
         drop(state);
@@ -513,6 +518,21 @@ impl AutomarkerNativeBridgeLifecycle {
             previous.stop_drain_join();
         }
         Ok(true)
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn passive_readiness_worker_needed(&self) -> bool {
+        let Some(state) = self.lock_or_poison_shutdown() else {
+            return false;
+        };
+        matches!(
+            state.phase,
+            LifecyclePhase::Observing | LifecyclePhase::Invalidated
+        ) && state.session.is_some()
+            && state.passive_readiness_worker.is_none()
+            && state.pending_passive_readiness.is_none()
+            && state.native_flow.is_none()
+            && state.native_failure.is_none()
     }
 
     /// Consume at most one packet-free readiness result. Exact parser

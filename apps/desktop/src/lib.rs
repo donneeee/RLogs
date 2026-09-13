@@ -10019,6 +10019,18 @@ impl RuntimeController {
                         // matched by SignatureFlowCapture in the same turn.
                         let _ = live_automarker_native_bridge
                             .poll_passive_readiness_worker();
+                        if live_automarker_native_bridge.passive_readiness_worker_needed() {
+                            automarker_native_connection_epoch =
+                                automarker_native_connection_epoch.checked_add(1).ok_or(
+                                    "Automarker native connection epoch exhausted",
+                                )?;
+                            let _ = live_automarker_native_bridge
+                                .start_passive_readiness_worker(
+                                    automarker_native_process_id,
+                                    &automarker_native_dependency_directory,
+                                    automarker_native_connection_epoch,
+                                );
+                        }
                         if let Some(confirmed_connections) = confirmed_connections {
                             if live_automarker_native_bridge
                                 .confirmed_connections_require_restart(&confirmed_connections)
