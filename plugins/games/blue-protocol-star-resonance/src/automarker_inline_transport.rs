@@ -663,9 +663,11 @@ mod tests {
                 no_install: true,
             }
         );
-        assert!(AUTOMARKER_WINDIVERT_DISCOVERY_NETWORK_POLICY.sniff);
-        assert!(AUTOMARKER_WINDIVERT_DISCOVERY_NETWORK_POLICY.recv_only);
-        assert!(AUTOMARKER_WINDIVERT_DISCOVERY_NETWORK_POLICY.no_install);
+        const {
+            assert!(AUTOMARKER_WINDIVERT_DISCOVERY_NETWORK_POLICY.sniff);
+            assert!(AUTOMARKER_WINDIVERT_DISCOVERY_NETWORK_POLICY.recv_only);
+            assert!(AUTOMARKER_WINDIVERT_DISCOVERY_NETWORK_POLICY.no_install);
+        }
         assert_eq!(AUTOMARKER_WINDIVERT_DISCOVERY_NETWORK_POLICY.priority, 1);
     }
 
