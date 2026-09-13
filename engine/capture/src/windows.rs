@@ -19,9 +19,9 @@ use windows_sys::Win32::{
         IpHelper::{
             GAA_FLAG_INCLUDE_GATEWAYS, GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_DNS_SERVER,
             GAA_FLAG_SKIP_MULTICAST, GetAdaptersAddresses, GetBestInterfaceEx, GetExtendedTcpTable,
-            IF_TYPE_SOFTWARE_LOOPBACK, IP_ADAPTER_ADDRESSES_LH, MIB_TCP6ROW_OWNER_PID,
-            MIB_TCP6TABLE_OWNER_PID, MIB_TCPROW_OWNER_PID, MIB_TCPTABLE_OWNER_PID,
-            TCP_TABLE_OWNER_PID_ALL,
+            IF_TYPE_SOFTWARE_LOOPBACK, IP_ADAPTER_ADDRESSES_LH, MIB_TCP_STATE_ESTAB,
+            MIB_TCP6ROW_OWNER_PID, MIB_TCP6TABLE_OWNER_PID, MIB_TCPROW_OWNER_PID,
+            MIB_TCPTABLE_OWNER_PID, TCP_TABLE_OWNER_PID_ALL,
         },
         Ndis::IfOperStatusUp,
     },
@@ -501,13 +501,33 @@ impl WindowsProcessSocketOwner {
         self.snapshot_adapter_candidates()
     }
 
+    /// Snapshot only fully established TCP four-tuples currently owned by the
+    /// process. Unlike the compatibility snapshots, this preserves the
+    /// `MIB_TCP_STATE_ESTAB` requirement while rows still carry TCP state.
+    pub fn snapshot_established_connections(&self) -> Result<Vec<TcpConnection>, CaptureError> {
+        let mut connections = self.snapshot_ipv4_with_loopback_and_state(true, true)?;
+        connections.extend(self.snapshot_ipv6_with_loopback_and_state(true, true)?);
+        connections.sort_unstable();
+        // Preserve duplicate table rows so exact-match consumers can reject
+        // ambiguity instead of normalizing it away.
+        Ok(connections)
+    }
+
     fn snapshot_ipv4(&self) -> Result<Vec<TcpConnection>, CaptureError> {
-        self.snapshot_ipv4_with_loopback(false)
+        self.snapshot_ipv4_with_loopback_and_state(false, false)
     }
 
     fn snapshot_ipv4_with_loopback(
         &self,
         include_loopback: bool,
+    ) -> Result<Vec<TcpConnection>, CaptureError> {
+        self.snapshot_ipv4_with_loopback_and_state(include_loopback, false)
+    }
+
+    fn snapshot_ipv4_with_loopback_and_state(
+        &self,
+        include_loopback: bool,
+        established_only: bool,
     ) -> Result<Vec<TcpConnection>, CaptureError> {
         let buffer = query_tcp_table(u32::from(AF_INET))?;
         // SAFETY: `query_tcp_table` returns an aligned buffer initialized by
@@ -526,7 +546,12 @@ impl WindowsProcessSocketOwner {
         for index in 0..count {
             // SAFETY: bounds were checked against the returned buffer above.
             let row = unsafe { ptr::read_unaligned(first.add(index)) };
-            if row.dwOwningPid != self.process_id {
+            if !owned_row_matches_state(
+                row.dwOwningPid,
+                row.dwState,
+                self.process_id,
+                established_only,
+            ) {
                 continue;
             }
             let connection = TcpConnection::new(
@@ -549,12 +574,20 @@ impl WindowsProcessSocketOwner {
     }
 
     fn snapshot_ipv6(&self) -> Result<Vec<TcpConnection>, CaptureError> {
-        self.snapshot_ipv6_with_loopback(false)
+        self.snapshot_ipv6_with_loopback_and_state(false, false)
     }
 
     fn snapshot_ipv6_with_loopback(
         &self,
         include_loopback: bool,
+    ) -> Result<Vec<TcpConnection>, CaptureError> {
+        self.snapshot_ipv6_with_loopback_and_state(include_loopback, false)
+    }
+
+    fn snapshot_ipv6_with_loopback_and_state(
+        &self,
+        include_loopback: bool,
+        established_only: bool,
     ) -> Result<Vec<TcpConnection>, CaptureError> {
         let buffer = query_tcp_table(u32::from(AF_INET6))?;
         // SAFETY: `query_tcp_table` returns an aligned buffer initialized by
@@ -573,7 +606,12 @@ impl WindowsProcessSocketOwner {
         for index in 0..count {
             // SAFETY: bounds were checked against the returned buffer above.
             let row = unsafe { ptr::read_unaligned(first.add(index)) };
-            if row.dwOwningPid != self.process_id {
+            if !owned_row_matches_state(
+                row.dwOwningPid,
+                row.dwState,
+                self.process_id,
+                established_only,
+            ) {
                 continue;
             }
             let connection = TcpConnection::new(
@@ -2082,6 +2120,16 @@ fn usable_candidate_connection(connection: TcpConnection) -> bool {
         && !connection.server.address.is_unspecified()
 }
 
+fn owned_row_matches_state(
+    row_process_id: u32,
+    row_state: u32,
+    expected_process_id: u32,
+    established_only: bool,
+) -> bool {
+    row_process_id == expected_process_id
+        && (!established_only || row_state == MIB_TCP_STATE_ESTAB as u32)
+}
+
 fn usable_remote_connection(connection: TcpConnection) -> bool {
     usable_candidate_connection(connection)
         && !connection.client.address.is_loopback()
@@ -2130,6 +2178,24 @@ mod tests {
     use etherparse::PacketBuilder;
 
     use super::*;
+
+    #[test]
+    fn established_snapshot_row_gate_requires_owner_and_established_state() {
+        assert!(owned_row_matches_state(
+            42,
+            MIB_TCP_STATE_ESTAB as u32,
+            42,
+            true
+        ));
+        assert!(!owned_row_matches_state(42, 3, 42, true));
+        assert!(!owned_row_matches_state(
+            7,
+            MIB_TCP_STATE_ESTAB as u32,
+            42,
+            true
+        ));
+        assert!(owned_row_matches_state(42, 3, 42, false));
+    }
     use crate::{
         CaptureLinkType, CaptureSourceKind, TcpPayloadDirection, TcpPayloadSignatureResult,
         TimestampNormalization,

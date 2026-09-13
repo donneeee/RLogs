@@ -42,6 +42,7 @@ use crate::{
 const EXACT_CARRIER_BYTES: usize = 197;
 const APPLICATION_OFFSET: usize = 36;
 const COMMAND_CAPACITY_MAX: usize = 256;
+const PREARM_FRESH_CARRIER_TIMEOUT_MILLIS: u64 = 30_000;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum ActiveAutomarkerCanaryPhase {
@@ -323,6 +324,7 @@ pub(crate) struct ProductionActiveAutomarkerCoordinator {
     adapter: Option<PrivateAutomarkerConfirmationAdapter>,
     pending_packet_len: Option<usize>,
     pending_parser_carrier: Option<(u64, u32)>,
+    awaiting_source_carrier: bool,
     context_invalidated: bool,
     termination_requested: bool,
     progress: ActiveAutomarkerCanaryProgressSink,
@@ -346,7 +348,6 @@ impl ProductionActiveAutomarkerCoordinator {
         if config.pack.definition().target.build_id != AUTOMARKER_REQUEST_BUILD
             || config.filter_plan.connection_epoch() != config.connection_binding.connection_epoch()
             || config.session_key.trim().is_empty()
-            || config.carrier_capture_sequence == 0
             || config.scene_family.trim().is_empty()
             || config.local_actor_id == 0
             || config.marker_number != 1
@@ -388,6 +389,7 @@ impl ProductionActiveAutomarkerCoordinator {
                 adapter: None,
                 pending_packet_len: None,
                 pending_parser_carrier: None,
+                awaiting_source_carrier: config.carrier_capture_sequence == 0,
                 context_invalidated: false,
                 termination_requested: false,
                 progress: progress.clone(),
@@ -532,8 +534,8 @@ impl ProductionActiveAutomarkerCoordinator {
         tcp_payload_offset: usize,
         payload: &[u8],
     ) -> ActiveAutomarkerDisposition {
-        let context_age_millis = self.current_context_age_millis();
-        if context_age_millis > rlogs_game_bpsr::SINGLE_MARKER_XYZ_MAX_CONTEXT_AGE_MILLIS {
+        let prearm_age_millis = self.current_context_age_millis();
+        if self.awaiting_source_carrier && prearm_age_millis > PREARM_FRESH_CARRIER_TIMEOUT_MILLIS {
             self.termination_requested = true;
             return ActiveAutomarkerDisposition::PassThrough;
         }
@@ -550,6 +552,15 @@ impl ProductionActiveAutomarkerCoordinator {
         if carrier_rpc_call_id == 0 {
             return ActiveAutomarkerDisposition::PassThrough;
         }
+        if self.awaiting_source_carrier {
+            // The worker was opened from stable session/scene/process/tuple
+            // authority. Freshness begins at this exact decoded packet rather
+            // than at a prior carrier observation that the operator must race.
+            self.observation_age_millis = 0;
+            self.context_age_started_at = Instant::now();
+            self.awaiting_source_carrier = false;
+        }
+        let context_age_millis = self.current_context_age_millis();
         let carrier_capture_sequence = match self.pending_parser_carrier.take() {
             Some((capture_sequence, rpc_call_id)) if rpc_call_id == carrier_rpc_call_id => {
                 self.carrier_capture_sequence = capture_sequence;
@@ -557,6 +568,7 @@ impl ProductionActiveAutomarkerCoordinator {
             }
             Some(_) => {
                 self.context_invalidated = true;
+                self.termination_requested = true;
                 return ActiveAutomarkerDisposition::PassThrough;
             }
             None => self.carrier_capture_sequence,
@@ -583,8 +595,8 @@ impl ProductionActiveAutomarkerCoordinator {
             rewrite_runtime_revision: self.runtime_revision,
         };
         let mut prepared = None;
-        let adapter =
-            PrivateAutomarkerConfirmationAdapter::begin_prepared(private_binding, |clock| {
+        let source_carrier_already_bound = carrier_capture_sequence != 0;
+        let begin = |clock: &crate::automarker_confirmation_adapter::PrivateAutomarkerCoordinatorClockInputs| {
                 let baseline = AutomarkerConfirmationBaseline {
                     context: clock.baseline_context.clone(),
                     observation_ordinal: clock.baseline_stamp.observation_ordinal,
@@ -657,10 +669,19 @@ impl ProductionActiveAutomarkerCoordinator {
                 let preparation_id = input.preparation_id;
                 prepared = Some(input);
                 Ok((coordinator, preparation_id))
-            });
+            };
+        let adapter = if source_carrier_already_bound {
+            PrivateAutomarkerConfirmationAdapter::begin_prepared(private_binding, begin)
+        } else {
+            PrivateAutomarkerConfirmationAdapter::begin_prepared_awaiting_source_carrier(
+                private_binding,
+                begin,
+            )
+        };
         let adapter = match adapter {
             Ok(adapter) => adapter,
             Err(_reason) => {
+                self.termination_requested = true;
                 self.progress
                     .fail(ActiveAutomarkerCanaryFailureCategory::Carrier);
                 #[cfg(test)]
@@ -669,12 +690,18 @@ impl ProductionActiveAutomarkerCoordinator {
             }
         };
         let Some(input) = prepared else {
+            self.termination_requested = true;
+            self.progress
+                .fail(ActiveAutomarkerCanaryFailureCategory::Carrier);
             return ActiveAutomarkerDisposition::AbortWithoutReinject;
         };
         if input.original_packet != packet.bytes
             || input.address != packet.address
             || input.approved_changed_packet.len() != packet.bytes.len()
         {
+            self.termination_requested = true;
+            self.progress
+                .fail(ActiveAutomarkerCanaryFailureCategory::Carrier);
             return ActiveAutomarkerDisposition::AbortWithoutReinject;
         }
         self.adapter = Some(adapter);
@@ -841,9 +868,12 @@ impl ActiveAutomarkerCoordinator for ProductionActiveAutomarkerCoordinator {
 
     fn observe_timeout(&mut self) -> ActiveAutomarkerTimeoutDisposition {
         self.drain_commands();
-        if self.current_context_age_millis()
-            > rlogs_game_bpsr::SINGLE_MARKER_XYZ_MAX_CONTEXT_AGE_MILLIS
-        {
+        let timeout_millis = if self.adapter.is_none() && self.awaiting_source_carrier {
+            PREARM_FRESH_CARRIER_TIMEOUT_MILLIS
+        } else {
+            rlogs_game_bpsr::SINGLE_MARKER_XYZ_MAX_CONTEXT_AGE_MILLIS
+        };
+        if self.current_context_age_millis() > timeout_millis {
             self.termination_requested = true;
             self.progress
                 .fail(ActiveAutomarkerCanaryFailureCategory::Timeout);
@@ -1482,6 +1512,149 @@ mod tests {
             coordinator.classify(&ack, ActiveAutomarkerClassificationMode::DrainExistingOnly),
             ActiveAutomarkerDisposition::PassThrough
         );
+        assert!(!coordinator.rewrite_obligation_active());
+    }
+
+    #[test]
+    fn prearmed_marker_one_needs_no_prior_carrier_and_binds_the_next_exact_request() {
+        let mut config = coordinator_config(1, 0);
+        config.carrier_capture_sequence = 0;
+        let (mut coordinator, control, progress) =
+            ProductionActiveAutomarkerCoordinator::create(config, 4).unwrap();
+        coordinator.context_age_started_at =
+            Instant::now().checked_sub(Duration::from_secs(10)).unwrap();
+
+        let carrier = packet(FRAME_SEQUENCE, 0x18, &frame(), false);
+        let ActiveAutomarkerDisposition::HoldExactCarrier { preparation_id, .. } = coordinator
+            .classify(
+                &carrier,
+                ActiveAutomarkerClassificationMode::AuthorizeNewCarrier,
+            )
+        else {
+            panic!("prearmed exact carrier was not held")
+        };
+        assert_eq!(
+            coordinator.record_modified_send_may_begin(preparation_id),
+            ActiveAutomarkerCommitDisposition::Committed
+        );
+        assert_eq!(
+            coordinator.commit_send(preparation_id, ActiveAutomarkerSendOutcome::Complete),
+            ActiveAutomarkerCommitDisposition::Committed
+        );
+
+        control.parser_carrier(11, 0x1234_5678).unwrap();
+        let mut confirmation = confirmation_snapshot();
+        if let PrivateParserConfirmationEvent::CorrelatedReturn(returned) =
+            &mut confirmation.events[0]
+        {
+            returned.provenance.capture_sequence = 12;
+            returned.carrier_capture_sequence = 11;
+        }
+        if let PrivateParserConfirmationEvent::MarkerAdd(marker) = &mut confirmation.events[1] {
+            marker.provenance.capture_sequence = 13;
+        }
+        control.parser_snapshot(confirmation).unwrap();
+        assert_eq!(
+            coordinator.observe_timeout(),
+            ActiveAutomarkerTimeoutDisposition::Continue
+        );
+        let ack = packet(FRAME_SEQUENCE + EXACT_CARRIER_BYTES as u32, 0x10, &[], true);
+        assert_eq!(
+            coordinator.classify(&ack, ActiveAutomarkerClassificationMode::DrainExistingOnly),
+            ActiveAutomarkerDisposition::PassThrough
+        );
+        assert_eq!(
+            progress.snapshot().phase,
+            ActiveAutomarkerCanaryPhase::Succeeded
+        );
+    }
+
+    #[test]
+    fn prearmed_worker_never_accepts_arbitrary_or_context_invalidated_carriers() {
+        for candidate in [
+            packet(FRAME_SEQUENCE, 0x18, &frame()[..100], false),
+            packet(FRAME_SEQUENCE, 0x1a, &frame(), false),
+        ] {
+            let mut config = coordinator_config(1, 0);
+            config.carrier_capture_sequence = 0;
+            let (mut coordinator, _control, _) =
+                ProductionActiveAutomarkerCoordinator::create(config, 4).unwrap();
+            assert_eq!(
+                coordinator.classify(
+                    &candidate,
+                    ActiveAutomarkerClassificationMode::AuthorizeNewCarrier,
+                ),
+                ActiveAutomarkerDisposition::PassThrough
+            );
+            assert!(coordinator.adapter.is_none());
+        }
+
+        let mut config = coordinator_config(1, 0);
+        config.carrier_capture_sequence = 0;
+        let (mut coordinator, control, _) =
+            ProductionActiveAutomarkerCoordinator::create(config, 4).unwrap();
+        control.context_invalidated().unwrap();
+        assert_eq!(
+            coordinator.classify(
+                &packet(FRAME_SEQUENCE, 0x18, &frame(), false),
+                ActiveAutomarkerClassificationMode::AuthorizeNewCarrier,
+            ),
+            ActiveAutomarkerDisposition::PassThrough
+        );
+        assert!(coordinator.adapter.is_none());
+
+        let mut config = coordinator_config(1, 0);
+        config.carrier_capture_sequence = 0;
+        let (mut stale, _control, _) =
+            ProductionActiveAutomarkerCoordinator::create(config, 4).unwrap();
+        stale.context_age_started_at = Instant::now()
+            .checked_sub(Duration::from_millis(
+                PREARM_FRESH_CARRIER_TIMEOUT_MILLIS + 1,
+            ))
+            .unwrap();
+        assert_eq!(
+            stale.classify(
+                &packet(FRAME_SEQUENCE, 0x18, &frame(), false),
+                ActiveAutomarkerClassificationMode::AuthorizeNewCarrier,
+            ),
+            ActiveAutomarkerDisposition::PassThrough
+        );
+        assert!(stale.adapter.is_none());
+    }
+
+    #[test]
+    fn terminal_preparation_failure_cannot_arm_a_later_carrier() {
+        let mut config = coordinator_config(1, 0);
+        config.carrier_capture_sequence = 0;
+        // Creation deliberately permits the production coordinator to defer
+        // target validation to the canary arm boundary.
+        config.target_position.x = f32::NAN;
+        let (mut coordinator, _control, progress) =
+            ProductionActiveAutomarkerCoordinator::create(config, 4).unwrap();
+        let carrier = packet(FRAME_SEQUENCE, 0x18, &frame(), false);
+
+        assert_eq!(
+            coordinator.classify(
+                &carrier,
+                ActiveAutomarkerClassificationMode::AuthorizeNewCarrier,
+            ),
+            ActiveAutomarkerDisposition::PassThrough
+        );
+        assert!(coordinator.termination_requested);
+        assert_eq!(
+            progress.snapshot().phase,
+            ActiveAutomarkerCanaryPhase::Failed
+        );
+        assert!(coordinator.adapter.is_none());
+
+        assert_eq!(
+            coordinator.classify(
+                &carrier,
+                ActiveAutomarkerClassificationMode::AuthorizeNewCarrier,
+            ),
+            ActiveAutomarkerDisposition::PassThrough
+        );
+        assert!(coordinator.adapter.is_none());
         assert!(!coordinator.rewrite_obligation_active());
     }
 

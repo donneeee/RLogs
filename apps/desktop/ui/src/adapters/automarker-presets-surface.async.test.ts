@@ -211,7 +211,7 @@ describe("mounted automarker preset editor request ordering", () => {
     expect(copy.title).toMatch(/select Marker 1 during its ten-second preparation countdown/i);
     expect(copy.title).toMatch(/one human click after aim settles/i);
     const placeInGame = [...container.querySelectorAll("button")]
-      .find((candidate) => candidate.textContent === "Place in game")!;
+      .find((candidate) => candidate.textContent === "Arm Marker 1 diagnostic")!;
     expect(placeInGame.disabled).toBe(true);
     copy.click();
     await flushPromises();
@@ -235,7 +235,7 @@ describe("mounted automarker preset editor request ordering", () => {
     mounted.dispose();
   });
 
-  it("arms the current compatible one-point Marker 1 preset and reports both bounded outcomes", async () => {
+  it("arms Marker 1 from a compatible preset and reports both bounded outcomes", async () => {
     const catalog = view(6_525, "mech-facility", "Opener", 7);
     catalog.nativeLoadSupported = true;
     catalog.nativeLoadReason = "native_waymark_canary_available";
@@ -257,7 +257,7 @@ describe("mounted automarker preset editor request ordering", () => {
     await flushPromises();
 
     const place = [...container.querySelectorAll("button")]
-      .find((candidate) => candidate.textContent === "Place in game")!;
+      .find((candidate) => candidate.textContent === "Arm Marker 1 diagnostic")!;
     expect(place.disabled).toBe(false);
     place.click();
     await flushPromises();
@@ -265,12 +265,12 @@ describe("mounted automarker preset editor request ordering", () => {
       presetId: catalog.presets[0]!.presetId,
       expectedContext: catalog.context,
     });
-    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/Marker 1 is armed/i);
+    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/Marker 1 developer diagnostic is armed/i);
 
     place.click();
     await flushPromises();
     expect(activatePreset).toHaveBeenCalledTimes(2);
-    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/fresh verified placement authority is not ready/i);
+    expect(container.querySelector(".automarker-status")?.textContent).toMatch(/exact game process, scene, or native connection authority is not ready/i);
     mounted.dispose();
 
     const multiPoint = view(6_525, "mech-facility", "Unsafe", 7);
@@ -291,11 +291,10 @@ describe("mounted automarker preset editor request ordering", () => {
       openOverlay: async () => undefined,
     });
     await flushPromises();
-    const blockedPlace = [...secondContainer.querySelectorAll("button")]
-      .find((candidate) => candidate.textContent === "Place in game")!;
-    expect(blockedPlace.disabled).toBe(true);
-    blockedPlace.click();
-    await flushPromises();
+    const multiPointPlace = [...secondContainer.querySelectorAll("button")]
+      .find((candidate) => candidate.textContent === "Arm Marker 1 diagnostic")!;
+    expect(multiPointPlace.disabled).toBe(false);
+    expect(multiPointPlace.title).toMatch(/not automatic preset loading/i);
     expect(activatePreset).toHaveBeenCalledTimes(2);
     secondMounted.dispose();
   });
@@ -322,7 +321,7 @@ describe("mounted automarker preset editor request ordering", () => {
     await flushPromises();
 
     const place = [...container.querySelectorAll("button")]
-      .find((candidate) => candidate.textContent === "Place in game")!;
+      .find((candidate) => candidate.textContent === "Arm Marker 1 diagnostic")!;
     place.click();
     const select = container.querySelector("select")!;
     select.value = catalog.presets[1]!.presetId;
@@ -358,7 +357,7 @@ describe("mounted automarker preset editor request ordering", () => {
     const status = container.querySelector(".automarker-status")!;
     const statusBeforeActivation = status.textContent;
     [...container.querySelectorAll("button")]
-      .find((candidate) => candidate.textContent === "Place in game")!.click();
+      .find((candidate) => candidate.textContent === "Arm Marker 1 diagnostic")!.click();
     const select = container.querySelector("select")!;
     select.value = catalog.presets[1]!.presetId;
     select.dispatchEvent(new Event("change"));
@@ -384,7 +383,7 @@ describe("mounted automarker preset editor request ordering", () => {
     expect(operatorPlacementCanaryCommand(catalog, presetId).reason).toMatch(/control/i);
   });
 
-  it("requires the exact active family and exactly one Marker 1", () => {
+  it("requires the exact active family and one unique Marker 1", () => {
     const catalog = view(1_633, "dungeon.1633", "Opener", 1);
     catalog.context!.clientBuild = "25247556";
     const presetId = catalog.presets[0]!.presetId;
@@ -393,7 +392,7 @@ describe("mounted automarker preset editor request ordering", () => {
     expect(operatorPlacementCanaryCommand(catalog, presetId).reason).toMatch(/exact active dungeon family/i);
 
     catalog.presets = [{ ...catalog.presets[0]!, activityFamilyId: "dungeon.1633", points: [] }];
-    expect(operatorPlacementCanaryCommand(catalog, presetId).reason).toMatch(/exactly one Marker 1/i);
+    expect(operatorPlacementCanaryCommand(catalog, presetId).reason).toMatch(/one Marker 1/i);
 
     catalog.presets = [{
       ...catalog.presets[0]!,
@@ -403,7 +402,17 @@ describe("mounted automarker preset editor request ordering", () => {
         { markerNumber: 1, x: 4, y: 5, z: 6 },
       ],
     }];
-    expect(operatorPlacementCanaryCommand(catalog, presetId).reason).toMatch(/exactly one Marker 1/i);
+    expect(operatorPlacementCanaryCommand(catalog, presetId).reason).toMatch(/one Marker 1/i);
+
+    catalog.presets = [{
+      ...catalog.presets[0]!,
+      activityFamilyId: "dungeon.1633",
+      points: [
+        { markerNumber: 1, x: 1, y: 2, z: 3 },
+        { markerNumber: 2, x: 4, y: 5, z: 6 },
+      ],
+    }];
+    expect(operatorPlacementCanaryCommand(catalog, presetId).enabled).toBe(true);
   });
 
   it("exports the selected preset as a safe identity-free JSON download", async () => {
@@ -469,7 +478,7 @@ describe("mounted automarker preset editor request ordering", () => {
     expect(container.querySelector("select")?.textContent).toContain("Save As required");
     const save = [...container.querySelectorAll("button")].find((button) => button.textContent === "Save")!;
     expect(save.disabled).toBe(true);
-    expect([...container.querySelectorAll("button")].find((button) => button.textContent === "Place in game")!.disabled).toBe(true);
+    expect([...container.querySelectorAll("button")].find((button) => button.textContent === "Arm Marker 1 diagnostic")!.disabled).toBe(true);
     [...container.querySelectorAll("button")].find((button) => button.textContent === "Save As…")!.click();
     await flushPromises();
     expect(saveCurrent).toHaveBeenCalledWith({
@@ -744,7 +753,7 @@ describe("mounted automarker preset editor request ordering", () => {
     expect((container.querySelector('input[data-coordinate="x"]') as HTMLInputElement).value).toBe("9");
     expect((container.querySelector('input[placeholder="M1 opener"]') as HTMLInputElement).value).toBe("Alternate");
     expect(container.querySelector(".automarker-status")?.textContent).toContain("Nothing was sent to the game");
-    const place = [...container.querySelectorAll("button")].find((button) => button.textContent === "Place in game")!;
+    const place = [...container.querySelectorAll("button")].find((button) => button.textContent === "Arm Marker 1 diagnostic")!;
     expect(place.disabled).toBe(true);
     mounted.dispose();
   });

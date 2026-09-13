@@ -339,13 +339,22 @@ impl AutomarkerActivePacketInspection {
     }
 }
 
-/// Opaque proof that one connection epoch was observed from SYN and matched
-/// exactly one socket owned by the requested game process.
+/// The exact local observation used to establish process-owned connection
+/// provenance. Callers cannot relabel one proof path as the other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OfflineAutomarkerConnectionOwnershipProof {
+    SynObserved,
+    EstablishedSnapshot,
+}
+
+/// Opaque proof that one connection epoch matched exactly one socket owned by
+/// the requested game process, with its observation provenance retained.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OfflineAutomarkerConnectionEpochBinding {
     process_id: u32,
     connection: AutomarkerOwnedTcpConnection,
     epoch: u64,
+    ownership_proof: OfflineAutomarkerConnectionOwnershipProof,
 }
 
 impl OfflineAutomarkerConnectionEpochBinding {
@@ -359,6 +368,10 @@ impl OfflineAutomarkerConnectionEpochBinding {
 
     pub fn connection(&self) -> AutomarkerOwnedTcpConnection {
         self.connection
+    }
+
+    pub fn ownership_proof(&self) -> OfflineAutomarkerConnectionOwnershipProof {
+        self.ownership_proof
     }
 }
 
@@ -386,6 +399,43 @@ pub fn bind_offline_automarker_connection_epoch(
     if !syn_observed {
         return Err(OfflineAutomarkerBindingError::SynNotObserved);
     }
+    bind_offline_automarker_connection_epoch_with_proof(
+        process_id,
+        connection,
+        epoch,
+        OfflineAutomarkerConnectionOwnershipProof::SynObserved,
+        owned_socket_snapshot,
+    )
+}
+
+/// Creates an offline epoch binding from a current, established-only socket
+/// snapshot. The distinct entry point retains provenance without pretending a
+/// SYN was observed.
+pub fn bind_offline_automarker_established_connection_epoch(
+    process_id: u32,
+    connection: AutomarkerOwnedTcpConnection,
+    epoch: u64,
+    established_socket_snapshot: &[AutomarkerOwnedTcpConnection],
+) -> Result<OfflineAutomarkerConnectionEpochBinding, OfflineAutomarkerBindingError> {
+    bind_offline_automarker_connection_epoch_with_proof(
+        process_id,
+        connection,
+        epoch,
+        OfflineAutomarkerConnectionOwnershipProof::EstablishedSnapshot,
+        established_socket_snapshot,
+    )
+}
+
+fn bind_offline_automarker_connection_epoch_with_proof(
+    process_id: u32,
+    connection: AutomarkerOwnedTcpConnection,
+    epoch: u64,
+    ownership_proof: OfflineAutomarkerConnectionOwnershipProof,
+    owned_socket_snapshot: &[AutomarkerOwnedTcpConnection],
+) -> Result<OfflineAutomarkerConnectionEpochBinding, OfflineAutomarkerBindingError> {
+    if process_id == 0 {
+        return Err(OfflineAutomarkerBindingError::InvalidProcessId);
+    }
     let matches = owned_socket_snapshot
         .iter()
         .filter(|candidate| **candidate == connection && candidate.process_id == process_id)
@@ -396,6 +446,7 @@ pub fn bind_offline_automarker_connection_epoch(
             process_id,
             connection,
             epoch,
+            ownership_proof,
         }),
         _ => Err(OfflineAutomarkerBindingError::AmbiguousOwnedSocket),
     }
@@ -858,6 +909,43 @@ mod tests {
                 connection(),
                 7,
                 true,
+                &[connection(), connection()]
+            ),
+            Err(OfflineAutomarkerBindingError::AmbiguousOwnedSocket)
+        );
+        let syn =
+            bind_offline_automarker_connection_epoch(42, connection(), 7, true, &[connection()])
+                .expect("exact SYN-owned tuple");
+        assert_eq!(
+            syn.ownership_proof(),
+            OfflineAutomarkerConnectionOwnershipProof::SynObserved
+        );
+    }
+
+    #[test]
+    fn established_snapshot_binding_retains_distinct_provenance() {
+        let established = bind_offline_automarker_established_connection_epoch(
+            42,
+            connection(),
+            7,
+            &[connection()],
+        )
+        .expect("exact established owned tuple");
+        assert_eq!(
+            established.ownership_proof(),
+            OfflineAutomarkerConnectionOwnershipProof::EstablishedSnapshot
+        );
+        assert_ne!(
+            established.ownership_proof(),
+            bind_offline_automarker_connection_epoch(42, connection(), 7, true, &[connection()])
+                .expect("exact SYN-owned tuple")
+                .ownership_proof()
+        );
+        assert_eq!(
+            bind_offline_automarker_established_connection_epoch(
+                42,
+                connection(),
+                7,
                 &[connection(), connection()]
             ),
             Err(OfflineAutomarkerBindingError::AmbiguousOwnedSocket)

@@ -13,6 +13,8 @@ mod automarker_marker_confirmation_ingress;
 mod automarker_native_bridge;
 #[cfg(windows)]
 mod automarker_native_readiness;
+mod automarker_native_sequence;
+mod automarker_native_trigger;
 mod automarker_presets;
 #[cfg(windows)]
 #[allow(dead_code)]
@@ -53,8 +55,9 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use automarker_bridge_evidence::{
-    AutomarkerBridgeEvidenceFeed, AutomarkerBridgeEvidenceSnapshot,
-    AutomarkerBridgeRecordProvenance, AutomarkerBridgeSessionIdentity,
+    AutomarkerBridgeCaptureTcpConnection, AutomarkerBridgeEvidenceFeed,
+    AutomarkerBridgeEvidenceSnapshot, AutomarkerBridgeRecordProvenance,
+    AutomarkerBridgeSessionIdentity,
 };
 use automarker_confirmation_ingress::{
     PrivateConfirmationIngressIdentity, extract_private_return_candidate,
@@ -5051,6 +5054,7 @@ struct LiveSessionRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct AutomarkerPassiveStartKey {
     process_id: u32,
+    executable_name: String,
     connection_epoch: u64,
     capture_session_id: String,
     deployment_id: String,
@@ -5071,11 +5075,13 @@ fn automarker_native_dependency_directory(install_root: &Path) -> PathBuf {
 #[cfg(windows)]
 fn automarker_passive_start_key(
     process_id: u32,
+    executable_name: &str,
     connection_epoch: u64,
     session: &AutomarkerBridgeSessionIdentity,
     dependency_directory: &Path,
 ) -> Option<AutomarkerPassiveStartKey> {
     if process_id == 0
+        || executable_name.trim().is_empty()
         || connection_epoch == 0
         || !session.protocol_supported
         || session.capture_session_id.trim().is_empty()
@@ -5089,6 +5095,7 @@ fn automarker_passive_start_key(
     }
     Some(AutomarkerPassiveStartKey {
         process_id,
+        executable_name: executable_name.to_owned(),
         connection_epoch,
         capture_session_id: session.capture_session_id.clone(),
         deployment_id: session.deployment_id.clone(),
@@ -5235,6 +5242,43 @@ fn prepare_live_marker_record(
         previous_markers,
         scene,
         record_mechanics: mechanics.clone(),
+    })
+}
+
+fn automarker_parser_transport(
+    record: &CaptureRecord,
+) -> Option<AutomarkerBridgeCaptureTcpConnection> {
+    let CaptureRecordKind::Packet(packet) = &record.kind else {
+        return None;
+    };
+    if packet.connection_id == 0 || packet.route.is_none() {
+        return None;
+    }
+    let source = packet.source.as_ref()?;
+    let destination = packet.destination.as_ref()?;
+    let source_address = source.address.parse::<Ipv4Addr>().ok()?;
+    let destination_address = destination.address.parse::<Ipv4Addr>().ok()?;
+    let (client_address, client_port, server_address, server_port) = match packet.direction {
+        rlogs_game_bpsr::PacketDirection::ClientToServer => (
+            source_address,
+            source.port,
+            destination_address,
+            destination.port,
+        ),
+        rlogs_game_bpsr::PacketDirection::ServerToClient => (
+            destination_address,
+            destination.port,
+            source_address,
+            source.port,
+        ),
+        _ => return None,
+    };
+    Some(AutomarkerBridgeCaptureTcpConnection {
+        capture_connection_id: packet.connection_id,
+        client_address,
+        client_port,
+        server_address,
+        server_port,
     })
 }
 
@@ -7851,11 +7895,33 @@ impl RuntimeController {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let point = store.resolve_native_one_marker(&request, &live)?;
         drop(store);
+        let mechanics = self.live_mechanics_map_feed.current().snapshot;
+        let context = live.context.as_ref().ok_or_else(|| {
+            "a current supported automarker scene is required before activation".to_owned()
+        })?;
+        if mechanics.session_id.as_deref().is_none()
+            || mechanics.client_build.as_deref() != Some(context.client_build.as_str())
+            || mechanics.scene_id != Some(context.scene_id)
+            || mechanics.map_id != Some(context.map_id)
+        {
+            return Err(
+                "the live mechanics authority does not match the selected automarker scene".into(),
+            );
+        }
+        let local_actor_id = mechanics.local_actor_id.ok_or_else(|| {
+            "the live local player identity is not yet available for automarker activation"
+                .to_owned()
+        })?;
+        if mechanics.revision == 0 {
+            return Err("the live mechanics authority is not yet available".into());
+        }
         #[cfg(windows)]
         let armed = self
             .live_automarker_native_bridge
             .arm_private_one_marker_canary(
                 point,
+                local_actor_id,
+                mechanics.revision,
                 &automarker_native_dependency_directory(&self.install_root),
             )
             .map_err(|_| "native Marker 1 canary could not be armed".to_owned())?;
@@ -10051,8 +10117,15 @@ impl RuntimeController {
         let initial_automarker_connection_epoch = 1_u64;
         let initial_automarker_dependency_directory =
             automarker_native_dependency_directory(&self.install_root);
+        let automarker_native_executable_name = discover_game_processes()
+            .unwrap_or_default()
+            .into_iter()
+            .find(|process| process.process_id == request.process_id)
+            .map(|process| process.executable_name)
+            .unwrap_or_default();
         if let Some(start) = automarker_passive_start_key(
             request.process_id,
+            &automarker_native_executable_name,
             initial_automarker_connection_epoch,
             &automarker_bridge_session,
             &initial_automarker_dependency_directory,
@@ -10061,6 +10134,7 @@ impl RuntimeController {
                 .live_automarker_native_bridge
                 .start_passive_readiness_worker(
                     start.process_id,
+                    &start.executable_name,
                     &initial_automarker_dependency_directory,
                     start.connection_epoch,
                 );
@@ -10096,6 +10170,7 @@ impl RuntimeController {
         let live_automarker_native_bridge = Arc::clone(&self.live_automarker_native_bridge);
         let live_automarker_bridge_session = automarker_bridge_session.clone();
         let automarker_native_process_id = request.process_id;
+        let automarker_native_executable_name = automarker_native_executable_name.clone();
         let automarker_native_dependency_directory =
             automarker_native_dependency_directory(&self.install_root);
         let automarker_scene_families = self.automarker_scene_families.clone();
@@ -10449,6 +10524,7 @@ impl RuntimeController {
                             let _ = live_automarker_native_bridge
                                 .start_passive_readiness_worker(
                                     automarker_native_process_id,
+                                    &automarker_native_executable_name,
                                     &automarker_native_dependency_directory,
                                     automarker_native_connection_epoch,
                                 );
@@ -10466,6 +10542,7 @@ impl RuntimeController {
                                 let _ = live_automarker_native_bridge
                                     .start_passive_readiness_worker(
                                         automarker_native_process_id,
+                                        &automarker_native_executable_name,
                                         &automarker_native_dependency_directory,
                                         automarker_native_connection_epoch,
                                     );
@@ -10513,6 +10590,8 @@ impl RuntimeController {
                             std::cell::RefCell::new(&mut live_local_markers);
                         let automarker_bridge_mechanics_snapshot =
                             std::cell::RefCell::new(live_mechanics_map_cell.borrow().snapshot());
+                        let established_readiness_candidate =
+                            std::cell::Cell::new(None::<AutomarkerBridgeCaptureTcpConnection>);
                         let mut frame_protocol_observability =
                             CastObservabilityCounters::default();
                         let mut frame_event_observability = CastObservabilityCounters::default();
@@ -10915,6 +10994,15 @@ impl RuntimeController {
                                 let bridge_scene = live_automarker_scene_context.current();
                                 let bridge_mechanics =
                                     automarker_bridge_mechanics_snapshot.borrow().clone();
+                                #[cfg(windows)]
+                                if let Some(capture) = automarker_parser_transport(record)
+                                    && live_automarker_native_bridge
+                                        .accept_parser_transport(bridge_scene.as_ref(), capture)
+                                    && live_automarker_native_bridge
+                                        .established_readiness_preferred(capture)
+                                {
+                                    established_readiness_candidate.set(Some(capture));
+                                }
                                 if live_automarker_bridge_evidence
                                     .expire_stale_carrier(record.observed_micros)
                                 {
@@ -11108,6 +11196,21 @@ impl RuntimeController {
                                 }
                             })
                             .map_err(|error| format!("live BPSR decoding failed: {error}"))?;
+                        #[cfg(windows)]
+                        if let Some(capture) = established_readiness_candidate.get()
+                            && let Some(next_epoch) =
+                                automarker_native_connection_epoch.checked_add(1)
+                        {
+                            automarker_native_connection_epoch = next_epoch;
+                            let _ = live_automarker_native_bridge
+                                .start_established_readiness_worker(
+                                    automarker_native_process_id,
+                                    &automarker_native_executable_name,
+                                    &automarker_native_dependency_directory,
+                                    capture,
+                                    automarker_native_connection_epoch,
+                                );
+                        }
                         let _ = live_mechanics_map_cell.into_inner();
                         let _ = live_local_markers_cell.into_inner();
                         let mut mechanics_map_dirty = mechanics_map_dirty.get();
@@ -17309,6 +17412,55 @@ mod tests {
         }
     }
 
+    #[test]
+    fn ordinary_routed_packet_supplies_established_automarker_transport_tuple() {
+        let record = CaptureRecord {
+            sequence: 17,
+            observed_micros: 1_000,
+            wall_clock_unix_micros: None,
+            kind: CaptureRecordKind::Packet(rlogs_game_bpsr::PacketEnvelope {
+                connection_id: 91,
+                stream_id: 3,
+                source: Some(rlogs_game_bpsr::NetworkEndpoint {
+                    address: "10.0.0.2".into(),
+                    port: 40_000,
+                }),
+                destination: Some(rlogs_game_bpsr::NetworkEndpoint {
+                    address: "203.0.113.7".into(),
+                    port: 44_321,
+                }),
+                direction: rlogs_game_bpsr::PacketDirection::ClientToServer,
+                fragment: Some(rlogs_game_bpsr::FragmentKind::Notify),
+                route: Some(rlogs_game_bpsr::RoutedMessage {
+                    key: RouteKey::new(
+                        rlogs_game_bpsr::PacketDirection::ClientToServer,
+                        rlogs_game_bpsr::FragmentKind::Notify,
+                        1,
+                        2,
+                    ),
+                    stub_id: 4,
+                    call_id: None,
+                }),
+                compression: rlogs_game_bpsr::CompressionState::NotCompressed,
+                payload: rlogs_game_bpsr::PacketPayload {
+                    wire_bytes: vec![1, 2, 3],
+                    application_bytes: Some(vec![4, 5, 6]),
+                },
+            }),
+        };
+
+        assert_eq!(
+            automarker_parser_transport(&record),
+            Some(AutomarkerBridgeCaptureTcpConnection {
+                capture_connection_id: 91,
+                client_address: Ipv4Addr::new(10, 0, 0, 2),
+                client_port: 40_000,
+                server_address: Ipv4Addr::new(203, 0, 113, 7),
+                server_port: 44_321,
+            })
+        );
+    }
+
     #[cfg(windows)]
     #[test]
     fn passive_automarker_start_key_precedes_scene_and_requires_exact_session_dependencies() {
@@ -17323,12 +17475,14 @@ mod tests {
             protocol_pack_digest: "sha256:exact".into(),
             protocol_supported: true,
         };
-        let key = automarker_passive_start_key(42, 7, &session, &root).unwrap();
+        let key = automarker_passive_start_key(42, "BPSR_EPIC.exe", 7, &session, &root).unwrap();
         assert_eq!(key.process_id, 42);
+        assert_eq!(key.executable_name, "BPSR_EPIC.exe");
         assert_eq!(key.connection_epoch, 7);
         assert_eq!(key.capture_session_id, "capture-a");
-        assert!(automarker_passive_start_key(0, 7, &session, &root).is_none());
-        assert!(automarker_passive_start_key(42, 0, &session, &root).is_none());
+        assert!(automarker_passive_start_key(0, "BPSR_EPIC.exe", 7, &session, &root).is_none());
+        assert!(automarker_passive_start_key(42, "", 7, &session, &root).is_none());
+        assert!(automarker_passive_start_key(42, "BPSR_EPIC.exe", 0, &session, &root).is_none());
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -17364,8 +17518,9 @@ mod tests {
             protocol_pack_digest: "sha256:exact".into(),
             protocol_supported: true,
         };
-        let first = automarker_passive_start_key(42, 7, &session, &root).unwrap();
-        let next_epoch = automarker_passive_start_key(42, 8, &session, &root).unwrap();
+        let first = automarker_passive_start_key(42, "BPSR_EPIC.exe", 7, &session, &root).unwrap();
+        let next_epoch =
+            automarker_passive_start_key(42, "BPSR_EPIC.exe", 8, &session, &root).unwrap();
         assert_ne!(first, next_epoch);
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -23711,6 +23866,16 @@ developer_only = true
             .lock()
             .unwrap()
             .current = Some(context.clone());
+        let mechanics = mechanics_map::MechanicsMapSnapshot {
+            revision: 1,
+            session_id: Some("developer-canary-session".into()),
+            client_build: Some(context.client_build.clone()),
+            scene_id: Some(context.scene_id),
+            map_id: Some(context.map_id),
+            local_actor_id: Some(77),
+            ..Default::default()
+        };
+        developer.live_mechanics_map_feed.publish(mechanics);
         let preset_id = developer
             .automarker_presets
             .lock()

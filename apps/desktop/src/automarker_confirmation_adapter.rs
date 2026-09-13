@@ -46,6 +46,10 @@ pub(crate) struct PrivateAutomarkerConfirmationBinding {
 
 impl PrivateAutomarkerConfirmationBinding {
     fn valid(&self) -> bool {
+        self.valid_with_source_carrier(true)
+    }
+
+    fn valid_with_source_carrier(&self, source_carrier_bound: bool) -> bool {
         !self.session_key.trim().is_empty()
             && !self.game_build.trim().is_empty()
             && !self.scene_family.trim().is_empty()
@@ -59,7 +63,7 @@ impl PrivateAutomarkerConfirmationBinding {
             && self.target_position.x.is_finite()
             && self.target_position.y.is_finite()
             && self.target_position.z.is_finite()
-            && self.carrier_capture_sequence != 0
+            && (!source_carrier_bound || self.carrier_capture_sequence != 0)
             && self.carrier_rpc_call_id != 0
             && self.mapped_tcp_length != 0
             && self.baseline_runtime_revision != 0
@@ -142,6 +146,7 @@ pub(crate) struct PrivateAutomarkerConfirmationAdapter {
     last_stamp: OwnedConfirmationStamp,
     pending_preparation_id: Option<u64>,
     state: PrivateAutomarkerConfirmationAdapterState,
+    source_carrier_bound: bool,
 }
 
 impl PrivateAutomarkerConfirmationAdapter {
@@ -221,6 +226,7 @@ impl PrivateAutomarkerConfirmationAdapter {
             last_stamp: rewrite_stamp,
             pending_preparation_id: None,
             state: PrivateAutomarkerConfirmationAdapterState::Active,
+            source_carrier_bound: true,
         })
     }
 
@@ -237,14 +243,48 @@ impl PrivateAutomarkerConfirmationAdapter {
             AutomarkerBridgeCoordinatorError,
         >,
     ) -> Result<Self, PrivateAutomarkerConfirmationAdapterError> {
-        if !binding.valid() {
+        Self::begin_prepared_with_source_carrier(binding, true, prepare)
+    }
+
+    /// Begin from an actively intercepted carrier before the ordinary parser
+    /// has assigned that same carrier its capture-sequence identity. Parser
+    /// confirmation remains closed until [`Self::bind_source_carrier`] binds a
+    /// non-zero sequence with the exact RPC call ID decoded from the held
+    /// packet.
+    pub(crate) fn begin_prepared_awaiting_source_carrier(
+        binding: PrivateAutomarkerConfirmationBinding,
+        prepare: impl FnOnce(
+            &PrivateAutomarkerCoordinatorClockInputs,
+        ) -> Result<
+            (AutomarkerBridgeCoordinator, u64),
+            AutomarkerBridgeCoordinatorError,
+        >,
+    ) -> Result<Self, PrivateAutomarkerConfirmationAdapterError> {
+        Self::begin_prepared_with_source_carrier(binding, false, prepare)
+    }
+
+    fn begin_prepared_with_source_carrier(
+        binding: PrivateAutomarkerConfirmationBinding,
+        source_carrier_bound: bool,
+        prepare: impl FnOnce(
+            &PrivateAutomarkerCoordinatorClockInputs,
+        ) -> Result<
+            (AutomarkerBridgeCoordinator, u64),
+            AutomarkerBridgeCoordinatorError,
+        >,
+    ) -> Result<Self, PrivateAutomarkerConfirmationAdapterError> {
+        if !binding.valid_with_source_carrier(source_carrier_bound) {
             return Err(PrivateAutomarkerConfirmationAdapterError::InvalidBinding);
         }
-        let mut router = AutomarkerConfirmationRouter::begin_after_carrier(
-            binding.session_key.clone(),
-            binding.marker_number,
-            binding.carrier_capture_sequence,
-        )
+        let mut router = if source_carrier_bound {
+            AutomarkerConfirmationRouter::begin_after_carrier(
+                binding.session_key.clone(),
+                binding.marker_number,
+                binding.carrier_capture_sequence,
+            )
+        } else {
+            AutomarkerConfirmationRouter::begin(binding.session_key.clone(), binding.marker_number)
+        }
         .ok_or(PrivateAutomarkerConfirmationAdapterError::InvalidBinding)?;
         let baseline_stamp = router
             .stamp_now()
@@ -286,6 +326,7 @@ impl PrivateAutomarkerConfirmationAdapter {
             last_stamp: rewrite_stamp,
             pending_preparation_id: Some(preparation_id),
             state: PrivateAutomarkerConfirmationAdapterState::PreparedAwaitingModifiedSend,
+            source_carrier_bound,
         })
     }
 
@@ -382,7 +423,9 @@ impl PrivateAutomarkerConfirmationAdapter {
         capture_sequence: u64,
         rpc_call_id: u32,
     ) -> Result<(), PrivateAutomarkerConfirmationAdapterError> {
-        if capture_sequence <= self.binding.carrier_capture_sequence
+        if capture_sequence == 0
+            || (self.source_carrier_bound
+                && capture_sequence <= self.binding.carrier_capture_sequence)
             || rpc_call_id == 0
             || rpc_call_id != self.binding.carrier_rpc_call_id
             || matches!(
@@ -398,6 +441,7 @@ impl PrivateAutomarkerConfirmationAdapter {
             .rebind_carrier_capture_sequence(capture_sequence)
             .map_err(PrivateAutomarkerConfirmationAdapterError::Router)?;
         self.binding.carrier_capture_sequence = capture_sequence;
+        self.source_carrier_bound = true;
         Ok(())
     }
 
@@ -468,6 +512,9 @@ impl PrivateAutomarkerConfirmationAdapter {
         snapshot: PrivateParserConfirmationSnapshot,
     ) -> Result<AutomarkerBridgeState, PrivateAutomarkerConfirmationAdapterError> {
         self.require_active()?;
+        if !self.source_carrier_bound {
+            return self.fail(PrivateAutomarkerConfirmationAdapterError::SessionOrContextChanged);
+        }
         if !self.snapshot_context_matches(&snapshot) {
             return self.fail(PrivateAutomarkerConfirmationAdapterError::SessionOrContextChanged);
         }

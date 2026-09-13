@@ -334,12 +334,20 @@ impl AutomarkerPresetStore {
                 "the selected automarker preset belongs to a different dungeon family".into(),
             );
         }
-        let [point] = preset.points.as_slice() else {
+        let mut marker_one = preset
+            .points
+            .iter()
+            .filter(|point| point.marker_number == 1);
+        let point = marker_one.next().ok_or_else(|| {
+            "the private native milestone requires exactly one Marker 1 in the selected preset"
+                .to_owned()
+        })?;
+        if marker_one.next().is_some() {
             return Err(
-                "the passive native milestone requires a preset containing exactly one marker"
+                "the private native milestone requires exactly one Marker 1 in the selected preset"
                     .into(),
             );
-        };
+        }
         Ok(point.clone())
     }
 
@@ -833,7 +841,27 @@ mod tests {
     #[test]
     fn native_activation_resolution_returns_the_exact_point_without_mutating() {
         let path = temporary_path("activate-no-send");
-        let (store, preset_id) = saved_for_activation(&path);
+        let (mut store, preset_id) = saved_for_activation(&path);
+        store
+            .save(
+                SaveAutomarkerPresetRequest {
+                    preset_id: Some(preset_id.clone()),
+                    name: "Native contract fixture".into(),
+                    points: vec![
+                        points(1.0)[0].clone(),
+                        AutomarkerPoint {
+                            marker_number: 2,
+                            x: 4.0,
+                            y: 5.0,
+                            z: 6.0,
+                        },
+                    ],
+                    expected_context: mech(),
+                },
+                mech(),
+                11,
+            )
+            .unwrap();
         let before = std::fs::read(&path).unwrap();
         let result = store
             .resolve_native_one_marker(

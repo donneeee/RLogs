@@ -55,7 +55,7 @@ export function nativePlacementAvailability(
   if (preset.activityFamilyId !== view.context.activityFamilyId) {
     return { enabled: false, reason: localizer.t("ui.automarkers.canary.wrong_family") };
   }
-  if (preset.points.length !== 1 || preset.points[0]?.markerNumber !== 1) {
+  if (preset.points.filter((point) => point.markerNumber === 1).length !== 1) {
     return { enabled: false, reason: localizer.t("ui.automarkers.canary.marker_one") };
   }
   return { enabled: true, reason: localizer.t("ui.automarkers.help.native_canary_ready") };
