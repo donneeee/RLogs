@@ -1,6 +1,8 @@
 param(
     [Parameter(Mandatory = $true)]
-    [string]$OutputDirectory
+    [string]$OutputDirectory,
+
+    [string]$PythonPath = "python"
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,15 +15,23 @@ $work = Join-Path $buildTempRoot "rlogs-map-compiler-work"
 $spec = Join-Path $buildTempRoot "rlogs-map-compiler-spec"
 
 New-Item -ItemType Directory -Force -Path $output, $work, $spec | Out-Null
+$pythonVersion = & $PythonPath -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not execute the requested Python runtime: $PythonPath"
+}
+$pythonVersionParts = @($pythonVersion.Trim().Split('.') | ForEach-Object { [int]$_ })
+if ($pythonVersionParts.Count -ne 2 -or $pythonVersionParts[0] -lt 3 -or ($pythonVersionParts[0] -eq 3 -and $pythonVersionParts[1] -lt 10)) {
+    throw "The map compiler requires Python 3.10 or newer; '$PythonPath' is Python $pythonVersion"
+}
 # Every transitive runtime/build dependency is pinned in the requirements file.
 # --no-deps is intentional: UnityPy declares the optional FMOD audio backend as
 # mandatory even though this dedicated helper only decodes Texture2D assets.
-python -m pip install --disable-pip-version-check --no-deps -r $requirements
+& $PythonPath -m pip install --disable-pip-version-check --no-deps -r $requirements
 if ($LASTEXITCODE -ne 0) {
     throw "Failed to install the pinned map-compiler build environment"
 }
 
-python -m PyInstaller `
+& $PythonPath -m PyInstaller `
     --noconfirm `
     --clean `
     --onefile `
