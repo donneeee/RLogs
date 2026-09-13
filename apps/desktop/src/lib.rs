@@ -6020,39 +6020,51 @@ fn automarker_scene_context(
     })
 }
 
+struct LiveSceneRuntimeContext<'a> {
+    deployment_id: &'a str,
+    client_build: &'a str,
+    protocol_pack_digest: &'a str,
+    scene_families: &'a BTreeMap<i32, String>,
+}
+
+struct LiveSceneConsumers<'a> {
+    combat_feed: &'a LiveCombatFeed,
+    automarker_feed: &'a AutomarkerSceneContextFeed,
+    mechanics_projector: &'a mut MechanicsMapProjector,
+    mechanics_feed: &'a MechanicsMapFeed,
+}
+
 fn reconcile_live_scene(
     scene_id: i32,
     map_id: u32,
-    deployment_id: &str,
-    client_build: &str,
-    protocol_pack_digest: &str,
-    scene_families: &BTreeMap<i32, String>,
-    combat_feed: &LiveCombatFeed,
-    automarker_feed: &AutomarkerSceneContextFeed,
-    mechanics_projector: &mut MechanicsMapProjector,
-    mechanics_feed: &MechanicsMapFeed,
+    runtime: LiveSceneRuntimeContext<'_>,
+    consumers: LiveSceneConsumers<'_>,
 ) -> bool {
-    combat_feed.reconcile_scene(scene_id);
-    automarker_feed.reconcile_scene(
+    consumers.combat_feed.reconcile_scene(scene_id);
+    consumers.automarker_feed.reconcile_scene(
         scene_id,
         map_id,
-        deployment_id,
-        client_build,
-        protocol_pack_digest,
-        scene_families,
+        runtime.deployment_id,
+        runtime.client_build,
+        runtime.protocol_pack_digest,
+        runtime.scene_families,
     );
-    let mechanics_dirty = mechanics_projector.reconcile_scene(scene_id, map_id);
+    let mechanics_dirty = consumers
+        .mechanics_projector
+        .reconcile_scene(scene_id, map_id);
     let scene_name = localized_scene_name_for_identity(
-        deployment_id,
-        client_build,
-        protocol_pack_digest,
+        runtime.deployment_id,
+        runtime.client_build,
+        runtime.protocol_pack_digest,
         i64::from(scene_id),
         "en-US",
     )
     .ok()
     .flatten()
     .map(str::to_owned);
-    mechanics_feed.reconcile_scene_presentation(Some((scene_id, map_id, scene_name)));
+    consumers
+        .mechanics_feed
+        .reconcile_scene_presentation(Some((scene_id, map_id, scene_name)));
     mechanics_dirty
 }
 
@@ -10006,14 +10018,19 @@ impl RuntimeController {
                                         mechanics_map_dirty |= reconcile_live_scene(
                                             scene_id.0,
                                             map_id,
-                                            &automarker_deployment_id,
-                                            &automarker_client_build,
-                                            &automarker_protocol_pack_digest,
-                                            &automarker_scene_families,
-                                            &live_combat_feed,
-                                            &live_automarker_scene_context,
-                                            &mut live_mechanics_map,
-                                            &live_mechanics_map_feed,
+                                            LiveSceneRuntimeContext {
+                                                deployment_id: &automarker_deployment_id,
+                                                client_build: &automarker_client_build,
+                                                protocol_pack_digest:
+                                                    &automarker_protocol_pack_digest,
+                                                scene_families: &automarker_scene_families,
+                                            },
+                                            LiveSceneConsumers {
+                                                combat_feed: &live_combat_feed,
+                                                automarker_feed: &live_automarker_scene_context,
+                                                mechanics_projector: &mut live_mechanics_map,
+                                                mechanics_feed: &live_mechanics_map_feed,
+                                            },
                                         );
                                     }
                                     last_world_context_event = Some(event.clone());
@@ -10457,14 +10474,21 @@ impl RuntimeController {
                                             mechanics_map_dirty |= reconcile_live_scene(
                                                 scene_id,
                                                 map_id,
-                                                &automarker_deployment_id,
-                                                &automarker_client_build,
-                                                &automarker_protocol_pack_digest,
-                                                &automarker_scene_families,
-                                                &live_combat_feed,
-                                                &live_automarker_scene_context,
-                                                &mut live_mechanics_map,
-                                                &live_mechanics_map_feed,
+                                                LiveSceneRuntimeContext {
+                                                    deployment_id: &automarker_deployment_id,
+                                                    client_build: &automarker_client_build,
+                                                    protocol_pack_digest:
+                                                        &automarker_protocol_pack_digest,
+                                                    scene_families: &automarker_scene_families,
+                                                },
+                                                LiveSceneConsumers {
+                                                    combat_feed: &live_combat_feed,
+                                                    automarker_feed:
+                                                        &live_automarker_scene_context,
+                                                    mechanics_projector:
+                                                        &mut live_mechanics_map,
+                                                    mechanics_feed: &live_mechanics_map_feed,
+                                                },
                                             );
                                         }
                                         let metadata_refreshed = (!live_boundary_changed
@@ -18014,14 +18038,18 @@ mod tests {
         assert!(reconcile_live_scene(
             6_565,
             6_565,
-            "global",
-            "25247556",
-            BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
-            &families,
-            &combat,
-            &automarker,
-            &mut mechanics,
-            &mechanics_feed,
+            LiveSceneRuntimeContext {
+                deployment_id: "global",
+                client_build: "25247556",
+                protocol_pack_digest: BUNDLED_RUN_RULE_PROTOCOL_PACK_DIGEST,
+                scene_families: &families,
+            },
+            LiveSceneConsumers {
+                combat_feed: &combat,
+                automarker_feed: &automarker,
+                mechanics_projector: &mut mechanics,
+                mechanics_feed: &mechanics_feed,
+            },
         ));
 
         assert_eq!(
