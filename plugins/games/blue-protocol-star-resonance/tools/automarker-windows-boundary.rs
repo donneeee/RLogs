@@ -24,9 +24,9 @@ mod windows {
     };
 
     use rlogs_capture::{
-        SignatureFlowCaptureConfig, TcpConnection, ValidatedCapture, WindowsProcessSocketOwner,
-        WindowsRouteAwareCaptureMode, WindowsSignatureLiveCapture, npcap_device_name,
-        recommend_windows_capture_adapter, windows_capture_adapters,
+        SignatureFlowCaptureConfig, SignatureFlowCaptureMetrics, TcpConnection, ValidatedCapture,
+        WindowsProcessSocketOwner, WindowsRouteAwareCaptureMode, WindowsSignatureLiveCapture,
+        npcap_device_name, recommend_windows_capture_adapter, windows_capture_adapters,
     };
     use rlogs_game_bpsr::{
         AUTOMARKER_REQUEST_BUILD, AutomarkerRequestXyz, BpsrFrame, BpsrFrameUpLayout,
@@ -105,7 +105,8 @@ mod windows {
                 .unwrap_or_default();
             analyzer.process_frame(&frame, &confirmed, &owned)?;
         }
-        let receipt = analyzer.finish(args.capture_mode());
+        let signature_filter = capture.source().metrics().clone();
+        let receipt = analyzer.finish(args.capture_mode(), &signature_filter);
         let file = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -282,6 +283,7 @@ mod windows {
         physical_payload_segments: u64,
         decoded_tcp_segments: u64,
         process_ownership_available: bool,
+        bpsr_diagnostics: BpsrDiagnosticAggregate,
     }
 
     impl BoundaryAnalyzer {
@@ -310,6 +312,7 @@ mod windows {
                 physical_payload_segments: 0,
                 decoded_tcp_segments: 0,
                 process_ownership_available,
+                bpsr_diagnostics: BpsrDiagnosticAggregate::default(),
             })
         }
 
@@ -347,6 +350,7 @@ mod windows {
                 physical_payload_segments,
                 decoded_tcp_segments,
                 process_ownership_available,
+                bpsr_diagnostics,
             } = self;
             let mut failure = None;
             network.process_frame(frame, |event| {
@@ -399,6 +403,7 @@ mod windows {
                                 connection_ordinals,
                                 markers,
                                 *process_ownership_available,
+                                bpsr_diagnostics,
                             );
                         }
                     });
@@ -413,7 +418,11 @@ mod windows {
             Ok(())
         }
 
-        fn finish(self, capture_mode: CaptureMode) -> Receipt {
+        fn finish(
+            self,
+            capture_mode: CaptureMode,
+            signature_filter: &SignatureFlowCaptureMetrics,
+        ) -> Receipt {
             let mut surfaces = BTreeMap::<CaptureSurface, SurfaceAggregate>::new();
             for connection in self.confirmed.values().copied() {
                 let aggregate = surfaces.entry(surface(connection)).or_default();
@@ -448,7 +457,7 @@ mod windows {
                 });
             let topology = assess_topology(&self.markers, capture_mode);
             Receipt {
-                schema_version: 2,
+                schema_version: 3,
                 audit_kind: "sanitized-passive-automarker-windows-boundary",
                 requested_mode: capture_mode.as_str(),
                 input_scope: InputScope {
@@ -475,6 +484,8 @@ mod windows {
                     .filter(|state| state.syn_observed)
                     .count(),
                 marker_requests: self.markers,
+                signature_filter: SignatureFilterAggregate::from(signature_filter),
+                bpsr_diagnostics: self.bpsr_diagnostics,
                 filtered_tcp: FilteredTcpAggregate::from(
                     self.decoded_tcp_segments,
                     self.physical_payload_segments,
@@ -518,7 +529,23 @@ mod windows {
         connection_ordinals: &BTreeMap<ConnectionKey, u32>,
         markers: &mut Vec<MarkerObservation>,
         process_ownership_available: bool,
+        diagnostics: &mut BpsrDiagnosticAggregate,
     ) {
+        diagnostics.framed_records = diagnostics.framed_records.saturating_add(1);
+        match frame.direction {
+            PacketDirection::ClientToServer => {
+                diagnostics.client_to_server_records =
+                    diagnostics.client_to_server_records.saturating_add(1);
+            }
+            PacketDirection::ServerToClient => {
+                diagnostics.server_to_client_records =
+                    diagnostics.server_to_client_records.saturating_add(1);
+            }
+            PacketDirection::Unknown => {
+                diagnostics.unknown_direction_records =
+                    diagnostics.unknown_direction_records.saturating_add(1);
+            }
+        }
         if frame.direction != PacketDirection::ClientToServer {
             return;
         }
@@ -545,6 +572,9 @@ mod windows {
             return;
         }
         let Some(route) = frame.route else { return };
+        if route.key.fragment == FragmentKind::Call {
+            diagnostics.client_call_records = diagnostics.client_call_records.saturating_add(1);
+        }
         if route.key.direction != PacketDirection::ClientToServer
             || route.key.fragment != FragmentKind::Call
             || route.key.service_id != WORLD_SERVICE
@@ -552,13 +582,34 @@ mod windows {
         {
             return;
         }
+        diagnostics.world_use_slot_calls = diagnostics.world_use_slot_calls.saturating_add(1);
         let Some(application) = frame.application_bytes.as_deref() else {
+            diagnostics.use_slot_calls_without_application = diagnostics
+                .use_slot_calls_without_application
+                .saturating_add(1);
             return;
         };
+        diagnostics.use_slot_calls_with_application = diagnostics
+            .use_slot_calls_with_application
+            .saturating_add(1);
+        if application.len() == 161 {
+            diagnostics.use_slot_calls_with_161_byte_application = diagnostics
+                .use_slot_calls_with_161_byte_application
+                .saturating_add(1);
+        }
         let mut scratch = Vec::new();
-        let Ok(request) = decode_observed_automarker_request_into(pack, application, &mut scratch)
-        else {
-            return;
+        let request = match decode_observed_automarker_request_into(pack, application, &mut scratch)
+        {
+            Ok(request) => {
+                diagnostics.exact_marker_requests_decoded =
+                    diagnostics.exact_marker_requests_decoded.saturating_add(1);
+                request
+            }
+            Err(_) => {
+                diagnostics.exact_marker_schema_rejections =
+                    diagnostics.exact_marker_schema_rejections.saturating_add(1);
+                return;
+            }
         };
         let target = AutomarkerRequestXyz {
             x: request.target_position.x,
@@ -647,11 +698,51 @@ mod windows {
         connection_epochs_observed: u64,
         epochs_with_syn_observed: usize,
         marker_requests: Vec<MarkerObservation>,
+        signature_filter: SignatureFilterAggregate,
+        bpsr_diagnostics: BpsrDiagnosticAggregate,
         filtered_tcp: FilteredTcpAggregate,
         checksum_and_offload: ChecksumAndOffload,
         topology: TopologyAssessment,
         interpretation: Interpretation,
         privacy: Privacy,
+    }
+
+    #[derive(Debug, Default, Serialize)]
+    struct BpsrDiagnosticAggregate {
+        framed_records: u64,
+        client_to_server_records: u64,
+        server_to_client_records: u64,
+        unknown_direction_records: u64,
+        client_call_records: u64,
+        world_use_slot_calls: u64,
+        use_slot_calls_without_application: u64,
+        use_slot_calls_with_application: u64,
+        use_slot_calls_with_161_byte_application: u64,
+        exact_marker_requests_decoded: u64,
+        exact_marker_schema_rejections: u64,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct SignatureFilterAggregate {
+        ingress_frames: u64,
+        emitted_frames: u64,
+        unidentified_frames_discarded: u64,
+        pending_limit_evictions: u64,
+        signature_matches: u64,
+        confirmed_connections: u64,
+    }
+
+    impl SignatureFilterAggregate {
+        fn from(metrics: &SignatureFlowCaptureMetrics) -> Self {
+            Self {
+                ingress_frames: metrics.ingress_frames,
+                emitted_frames: metrics.emitted_frames,
+                unidentified_frames_discarded: metrics.unidentified_frames_discarded,
+                pending_limit_evictions: metrics.pending_limit_evictions,
+                signature_matches: metrics.signature_matches,
+                confirmed_connections: metrics.confirmed_connections,
+            }
+        }
     }
 
     #[derive(Debug, Serialize)]
@@ -910,6 +1001,7 @@ mod windows {
         process_owned_four_tuple_snapshot: bool,
         loopback_and_physical_surface_classification: bool,
         mirror_mode_available: bool,
+        sanitized_recognition_stage_counters: bool,
         exact_application_mutable_byte_count: usize,
         explicit_topology_gates: bool,
         exitlag_process_or_driver_observation_available: bool,
@@ -921,11 +1013,12 @@ mod windows {
 
     fn schema_capabilities() -> SchemaCapabilities {
         SchemaCapabilities {
-            schema_version: 2,
+            schema_version: 3,
             passive_capture_only: true,
             process_owned_four_tuple_snapshot: true,
             loopback_and_physical_surface_classification: true,
             mirror_mode_available: true,
+            sanitized_recognition_stage_counters: true,
             exact_application_mutable_byte_count: 16,
             explicit_topology_gates: true,
             exitlag_process_or_driver_observation_available: false,
@@ -1155,9 +1248,10 @@ mod windows {
 
         #[test]
         fn empty_mirror_receipt_keeps_ownership_and_ordering_unproven() {
+            let signature_filter = SignatureFlowCaptureMetrics::default();
             let receipt = BoundaryAnalyzer::new(current_automarker_pack().unwrap(), false)
                 .unwrap()
-                .finish(CaptureMode::Mirror);
+                .finish(CaptureMode::Mirror, &signature_filter);
             let json = serde_json::to_string(&receipt).unwrap();
             assert!(json.contains("\"requested_mode\":\"mirror\""));
             assert!(json.contains("\"process_socket_table_read\":false"));
@@ -1166,6 +1260,10 @@ mod windows {
             assert!(json.contains("\"exitlag_mode_was_operator_selected\":false"));
             assert!(json.contains("\"exitlag_process_or_driver_state_observed\":false"));
             assert!(json.contains("\"live_interception_activation_allowed\":false"));
+            assert!(json.contains("\"signature_filter\":"));
+            assert!(json.contains("\"bpsr_diagnostics\":"));
+            assert!(json.contains("\"world_use_slot_calls\":0"));
+            assert!(json.contains("\"exact_marker_schema_rejections\":0"));
             assert!(!json.contains("process_id"));
             assert!(!json.contains("interface_name"));
         }
