@@ -9738,8 +9738,10 @@ impl RuntimeController {
                                 if live_overlay_topic_invalidates(topic) {
                                     live_dirty = true;
                                 }
+                                let explicitly_closed_live_dungeon =
+                                    closes_live_run_history(&event.event);
                                 let terminal = live_dungeon_active
-                                    && (closes_live_run_history(&event.event)
+                                    && (explicitly_closed_live_dungeon
                                         || departed_live_dungeon);
                                 if terminal {
                                     freeze_history = true;
@@ -9786,6 +9788,18 @@ impl RuntimeController {
                                     live_dungeon_active = false;
                                     live_dungeon_scene_id = None;
                                     live_boundary_changed = true;
+                                    if clears_live_world_context_after_terminal(
+                                        &event.event,
+                                        departed_live_dungeon,
+                                    ) {
+                                        // A later dungeon can open before another decoded world
+                                        // packet arrives. Never seed that run, the automarker
+                                        // preset selector, or the overlay with the dungeon that
+                                        // just closed. A subsequent WorldChanged event will
+                                        // repopulate both shared scene consumers.
+                                        last_world_context_event = None;
+                                        live_automarker_scene_context.reset();
+                                    }
                                     if departed_live_dungeon {
                                         // The terminal projection above is
                                         // immutable and already queued for
@@ -11369,6 +11383,13 @@ fn closes_live_run_history(event: &CanonicalEvent) -> bool {
         ),
         _ => false,
     }
+}
+
+fn clears_live_world_context_after_terminal(
+    event: &CanonicalEvent,
+    departed_live_dungeon: bool,
+) -> bool {
+    closes_live_run_history(event) && !departed_live_dungeon
 }
 
 fn world_scene_id(event: &CanonicalEvent) -> Option<i32> {
@@ -17488,6 +17509,25 @@ mod tests {
         let mut scene_id = None;
         assert!(!live_dungeon_scene_departed(false, &mut scene_id, Some(8)));
         assert_eq!(scene_id, None);
+    }
+
+    #[test]
+    fn explicit_dungeon_exit_invalidates_world_context_unless_a_new_world_arrived() {
+        let exited = CanonicalEvent::Dungeon(DungeonEvent {
+            kind: DungeonEventKind::Exited,
+            dungeon_id: None,
+            instance_id: Some("closed-instance".into()),
+            difficulty_id: Some(1),
+            objective_map_key: None,
+            objective_id: None,
+            objective_value: None,
+            objective_complete: None,
+            objective_catalog: None,
+            flow: None,
+        });
+
+        assert!(clears_live_world_context_after_terminal(&exited, false));
+        assert!(!clears_live_world_context_after_terminal(&exited, true));
     }
 
     #[test]
