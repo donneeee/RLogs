@@ -12,6 +12,9 @@ use std::{
     path::Path,
     process::Command,
     ptr,
+    sync::{Arc, mpsc},
+    thread::{self, JoinHandle},
+    time::Instant,
 };
 
 use rlogs_capture::{TcpConnection, WindowsProcessSocketOwner};
@@ -59,6 +62,183 @@ pub(crate) struct AutomarkerNativeReadinessRequest<'a> {
     pub observed_syn_packet: &'a [u8],
     pub syn_capture_sequence: u64,
     pub syn_observed_micros: u64,
+}
+
+#[derive(Debug)]
+pub(crate) struct AutomarkerPassiveReadinessObservation {
+    pub readiness: AutomarkerNativeReadinessEvidence,
+    pub syn_ordinal: u64,
+    pub syn_observed_micros: u64,
+}
+
+pub(crate) struct AutomarkerPassiveReadinessWorker {
+    handle: Option<Arc<crate::automarker_windivert_backend::WinDivertHandle>>,
+    result: mpsc::Receiver<Result<AutomarkerPassiveReadinessObservation, String>>,
+    join: Option<JoinHandle<()>>,
+}
+
+impl AutomarkerPassiveReadinessWorker {
+    /// Start a SNIFF|RECV_ONLY worker. Received packets are inspected only
+    /// long enough to identify an exact process-owned outbound SYN and are
+    /// never retained in the worker result.
+    pub(crate) fn spawn(
+        process_id: u32,
+        dependency_directory: &Path,
+        connection_epoch: u64,
+    ) -> Result<Self, String> {
+        if process_id == 0 || connection_epoch == 0 {
+            return Err("passive readiness requires a process and connection epoch".into());
+        }
+        // Verify pinned bytes/signature before loading the backend used by the
+        // passive handle.
+        drop(PinnedWinDivertChecksumHelper::load(dependency_directory)?);
+        let dll = dependency_directory.join("WinDivert.dll");
+        let backend =
+            unsafe { PinnedWinDivertBackend::load(&dll) }.map_err(|error| error.to_string())?;
+        const FILTER: &str = "outbound and ip and tcp and tcp.Syn and !tcp.Ack";
+        backend
+            .compile_network_filter(FILTER)
+            .map_err(|error| error.to_string())?;
+        let handle = match backend
+            .open_arbitrated_network(FILTER, 1, FLAG_SNIFF | FLAG_RECV_ONLY | FLAG_NO_INSTALL)
+            .map_err(|error| error.to_string())?
+        {
+            ArbitratedNetworkOpen::Open(handle) => Arc::new(handle),
+            ArbitratedNetworkOpen::Conflict => {
+                return Err("a same-priority passive WinDivert handle is already open".into());
+            }
+        };
+        if handle.get_param(PARAM_VERSION_MAJOR)? != 2
+            || handle.get_param(PARAM_VERSION_MINOR)? != 2
+        {
+            return Err("loaded WinDivert driver is not version 2.2".into());
+        }
+
+        let (sender, result) = mpsc::sync_channel(1);
+        let worker_handle = Arc::clone(&handle);
+        let dependency_directory = dependency_directory.to_path_buf();
+        let join = thread::Builder::new()
+            .name("rlogs-automarker-passive-readiness".into())
+            .spawn(move || {
+                let owner = match WindowsProcessSocketOwner::new(process_id) {
+                    Ok(owner) => owner,
+                    Err(error) => {
+                        let _ = sender.send(Err(error.to_string()));
+                        return;
+                    }
+                };
+                let started = Instant::now();
+                let mut ordinal = 0_u64;
+                loop {
+                    let received = match worker_handle.receive(65_535) {
+                        Ok(Some(received)) => received,
+                        Ok(None) => return,
+                        Err(error) => {
+                            let _ = sender.send(Err(error));
+                            return;
+                        }
+                    };
+                    let Some(next_ordinal) = ordinal.checked_add(1) else {
+                        let _ = sender.send(Err("passive SYN ordinal exhausted".into()));
+                        return;
+                    };
+                    ordinal = next_ordinal;
+                    let Some(capture) = capture_from_outbound_syn(&received.0) else {
+                        continue;
+                    };
+                    let owned = match process_owns_capture(&owner, capture) {
+                        Ok(owned) => owned,
+                        Err(error) => {
+                            let _ = sender.send(Err(error));
+                            return;
+                        }
+                    };
+                    if !owned {
+                        continue;
+                    }
+                    let micros = started
+                        .elapsed()
+                        .as_micros()
+                        .max(1)
+                        .min(u128::from(u64::MAX)) as u64;
+                    let request = AutomarkerNativeReadinessRequest {
+                        process_id,
+                        dependency_directory: &dependency_directory,
+                        capture,
+                        connection_epoch,
+                        observed_syn_packet: &received.0,
+                        syn_capture_sequence: ordinal,
+                        syn_observed_micros: micros,
+                    };
+                    let outcome = discover_native_readiness(&request).map(|readiness| {
+                        AutomarkerPassiveReadinessObservation {
+                            readiness,
+                            syn_ordinal: ordinal,
+                            syn_observed_micros: micros,
+                        }
+                    });
+                    let _ = sender.send(outcome);
+                    return;
+                }
+            })
+            .map_err(|error| error.to_string())?;
+        Ok(Self {
+            handle: Some(handle),
+            result,
+            join: Some(join),
+        })
+    }
+
+    pub(crate) fn try_take_result(
+        &self,
+    ) -> Option<Result<AutomarkerPassiveReadinessObservation, String>> {
+        match self.result.try_recv() {
+            Ok(result) => Some(result),
+            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                Some(Err("passive readiness worker ended without evidence".into()))
+            }
+        }
+    }
+
+    pub(crate) fn stop_drain_join(mut self) {
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.shutdown_receive();
+        }
+        while self.result.try_recv().is_ok() {}
+        if let Some(join) = self.join.take() {
+            let _ = join.join();
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn completed_for_test(
+        result: Result<AutomarkerPassiveReadinessObservation, String>,
+        joined: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        sender.send(result).expect("test result receiver exists");
+        drop(sender);
+        let join = thread::spawn(move || {
+            joined.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+        Self {
+            handle: None,
+            result: receiver,
+            join: Some(join),
+        }
+    }
+}
+
+impl Drop for AutomarkerPassiveReadinessWorker {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.shutdown_receive();
+        }
+        if let Some(join) = self.join.take() {
+            let _ = join.join();
+        }
+    }
 }
 
 /// Validate one already-observed SYN candidate against local process ownership
@@ -154,8 +334,17 @@ pub(crate) fn discover_native_readiness(
 }
 
 fn is_exact_outbound_syn(packet: &[u8], capture: AutomarkerBridgeCaptureTcpConnection) -> bool {
+    capture_from_outbound_syn(packet).is_some_and(|observed| {
+        observed.client_address == capture.client_address
+            && observed.client_port == capture.client_port
+            && observed.server_address == capture.server_address
+            && observed.server_port == capture.server_port
+    })
+}
+
+fn capture_from_outbound_syn(packet: &[u8]) -> Option<AutomarkerBridgeCaptureTcpConnection> {
     if packet.len() < 40 || packet[0] >> 4 != 4 || packet[9] != 6 {
-        return false;
+        return None;
     }
     let ip_header = usize::from(packet[0] & 0x0f).saturating_mul(4);
     let total = usize::from(u16::from_be_bytes([packet[2], packet[3]]));
@@ -164,23 +353,44 @@ fn is_exact_outbound_syn(packet: &[u8], capture: AutomarkerBridgeCaptureTcpConne
         || total < ip_header.saturating_add(20)
         || u16::from_be_bytes([packet[6], packet[7]]) & 0x3fff != 0
     {
-        return false;
+        return None;
     }
     let tcp_header = usize::from(packet[ip_header + 12] >> 4).saturating_mul(4);
     if tcp_header < 20 || ip_header.saturating_add(tcp_header) > total {
-        return false;
+        return None;
     }
     let flags = packet[ip_header + 13];
     let source = Ipv4Addr::new(packet[12], packet[13], packet[14], packet[15]);
     let destination = Ipv4Addr::new(packet[16], packet[17], packet[18], packet[19]);
     let source_port = u16::from_be_bytes([packet[ip_header], packet[ip_header + 1]]);
     let destination_port = u16::from_be_bytes([packet[ip_header + 2], packet[ip_header + 3]]);
-    flags & 0x02 != 0
-        && flags & 0x10 == 0
-        && source == capture.client_address
-        && source_port == capture.client_port
-        && destination == capture.server_address
-        && destination_port == capture.server_port
+    if flags & 0x02 == 0 || flags & 0x10 != 0 || source_port == 0 || destination_port == 0 {
+        return None;
+    }
+    Some(AutomarkerBridgeCaptureTcpConnection {
+        capture_connection_id: 0,
+        client_address: source,
+        client_port: source_port,
+        server_address: destination,
+        server_port: destination_port,
+    })
+}
+
+fn process_owns_capture(
+    owner: &WindowsProcessSocketOwner,
+    capture: AutomarkerBridgeCaptureTcpConnection,
+) -> Result<bool, String> {
+    let expected = TcpConnection::new(
+        rlogs_capture::TcpEndpoint::new(IpAddr::V4(capture.client_address), capture.client_port),
+        rlogs_capture::TcpEndpoint::new(IpAddr::V4(capture.server_address), capture.server_port),
+    );
+    Ok(owner
+        .snapshot_all_connections()
+        .map_err(|error| error.to_string())?
+        .iter()
+        .filter(|candidate| **candidate == expected)
+        .count()
+        == 1)
 }
 
 struct OwnedKernelHandle(HANDLE);

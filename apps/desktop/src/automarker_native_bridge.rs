@@ -16,7 +16,8 @@ use rlogs_game_bpsr::{
 
 #[cfg(windows)]
 use crate::automarker_native_readiness::{
-    AutomarkerNativeReadinessEvidence, AutomarkerNativeReadinessRequest, discover_native_readiness,
+    AutomarkerNativeReadinessEvidence, AutomarkerNativeReadinessRequest,
+    AutomarkerPassiveReadinessWorker, discover_native_readiness,
 };
 #[cfg(windows)]
 use crate::automarker_windivert_backend::WinDivertHandle;
@@ -141,6 +142,8 @@ struct NativeBridgeState {
     native_flow: Option<NativeFlowEvidence>,
     gates: NativeGateState,
     #[cfg(windows)]
+    passive_readiness_worker: Option<AutomarkerPassiveReadinessWorker>,
+    #[cfg(windows)]
     active_handle: Option<WinDivertHandle>,
     // Declared after the native handle so ordinary struct drop also closes
     // interception before discarding the coordinator's retransmission ledger.
@@ -150,6 +153,8 @@ struct NativeBridgeState {
 #[derive(Default)]
 struct DetachedNativeResources {
     #[cfg(windows)]
+    passive_readiness_worker: Option<AutomarkerPassiveReadinessWorker>,
+    #[cfg(windows)]
     active_handle: Option<WinDivertHandle>,
     coordinator: Option<AutomarkerBridgeCoordinator>,
 }
@@ -158,6 +163,10 @@ impl DetachedNativeResources {
     /// Interception must be closed before the retransmission ledger is
     /// discarded. Both drops happen only after the lifecycle mutex is free.
     fn drop_in_shutdown_order(self) {
+        #[cfg(windows)]
+        if let Some(worker) = self.passive_readiness_worker {
+            worker.stop_drain_join();
+        }
         #[cfg(windows)]
         drop(self.active_handle);
         drop(self.coordinator);
@@ -396,6 +405,89 @@ impl AutomarkerNativeBridgeLifecycle {
         ))
     }
 
+    /// Own a passive SYN observer inside this lifecycle's shutdown domain.
+    /// It does not hold, mutate, or reinject packets and cannot enable Place.
+    #[cfg(windows)]
+    #[allow(dead_code)] // Started by the future private game-PC host wiring.
+    pub(crate) fn start_passive_readiness_worker(
+        &self,
+        process_id: u32,
+        dependency_directory: &std::path::Path,
+        connection_epoch: u64,
+    ) -> Result<bool, String> {
+        let worker = AutomarkerPassiveReadinessWorker::spawn(
+            process_id,
+            dependency_directory,
+            connection_epoch,
+        )?;
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            drop(worker);
+            return Ok(false);
+        };
+        if state.phase != LifecyclePhase::Observing || state.session.is_none() {
+            drop(state);
+            worker.stop_drain_join();
+            return Ok(false);
+        }
+        let previous = state.passive_readiness_worker.replace(worker);
+        drop(state);
+        if let Some(previous) = previous {
+            previous.stop_drain_join();
+        }
+        Ok(true)
+    }
+
+    /// Consume at most one packet-free readiness result. Exact parser
+    /// continuity and the observed carrier tuple must already be present.
+    #[cfg(windows)]
+    #[allow(dead_code)] // Polled by the future private game-PC host wiring.
+    pub(crate) fn poll_passive_readiness_worker(&self) -> bool {
+        let Some(mut state) = self.lock_or_poison_shutdown() else {
+            return false;
+        };
+        let outcome = state
+            .passive_readiness_worker
+            .as_ref()
+            .and_then(AutomarkerPassiveReadinessWorker::try_take_result);
+        let Some(outcome) = outcome else {
+            return false;
+        };
+        let worker = state
+            .passive_readiness_worker
+            .take()
+            .expect("observed worker result has an owning worker");
+        match outcome {
+            Ok(observation)
+                if observation.readiness.reflect_preflight_clear
+                    && observation.readiness.pinned_backend_ready
+                    && observation.readiness.checksum_helper_ready
+                    && Self::retain_native_flow_locked(
+                        &mut state,
+                        observation.readiness.binding,
+                        observation.syn_ordinal,
+                        observation.syn_observed_micros,
+                    ) =>
+            {
+                state.gates.pinned_backend = true;
+                state.gates.checksum_helper_ready = true;
+                // A passive preflight is not authorization for a future
+                // active exact-tuple open; that operation must re-arbitrate.
+                state.gates.reflect_arbitrated = false;
+                drop(state);
+                worker.stop_drain_join();
+                true
+            }
+            Ok(_) | Err(_) => {
+                let mut detached =
+                    Self::detach_owned_state(&mut state, LifecyclePhase::Invalidated, false);
+                detached.passive_readiness_worker = Some(worker);
+                drop(state);
+                detached.drop_in_shutdown_order();
+                false
+            }
+        }
+    }
+
     /// Retain the latest reverse cumulative ACK only on the exact bound epoch
     /// and tuple. SYN/FIN/RST or regressed capture order invalidates the flow.
     #[allow(dead_code)] // Consumed by the future reviewed passive WinDivert loop.
@@ -531,6 +623,8 @@ impl AutomarkerNativeBridgeLifecycle {
         state.gates = NativeGateState::default();
         DetachedNativeResources {
             #[cfg(windows)]
+            passive_readiness_worker: state.passive_readiness_worker.take(),
+            #[cfg(windows)]
             active_handle: state.active_handle.take(),
             coordinator: state.coordinator.take(),
         }
@@ -585,6 +679,11 @@ mod tests {
         bind_offline_automarker_connection_epoch,
     };
     use std::net::Ipv4Addr;
+    #[cfg(windows)]
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
 
     fn state(
         bridge: &AutomarkerNativeBridgeLifecycle,
@@ -690,6 +789,36 @@ mod tests {
         }
     }
 
+    #[cfg(windows)]
+    fn passive_observation()
+    -> crate::automarker_native_readiness::AutomarkerPassiveReadinessObservation {
+        crate::automarker_native_readiness::AutomarkerPassiveReadinessObservation {
+            readiness: AutomarkerNativeReadinessEvidence {
+                binding: binding(443),
+                reflect_preflight_clear: true,
+                pinned_backend_ready: true,
+                checksum_helper_ready: true,
+            },
+            syn_ordinal: 10,
+            syn_observed_micros: 900,
+        }
+    }
+
+    #[cfg(windows)]
+    fn install_completed_worker(
+        bridge: &AutomarkerNativeBridgeLifecycle,
+        result: Result<
+            crate::automarker_native_readiness::AutomarkerPassiveReadinessObservation,
+            String,
+        >,
+    ) -> Arc<AtomicBool> {
+        let joined = Arc::new(AtomicBool::new(false));
+        state(bridge).passive_readiness_worker = Some(
+            AutomarkerPassiveReadinessWorker::completed_for_test(result, Arc::clone(&joined)),
+        );
+        joined
+    }
+
     #[test]
     fn shutdown_clears_every_owned_domain_and_cannot_be_revived() {
         let bridge = AutomarkerNativeBridgeLifecycle::default();
@@ -714,6 +843,19 @@ mod tests {
         ));
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn session_shutdown_stops_and_joins_passive_worker() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        let joined = install_completed_worker(&bridge, Ok(passive_observation()));
+        bridge.finish_session("capture-a");
+        assert!(joined.load(Ordering::SeqCst));
+        let snapshot = state(&bridge);
+        assert_eq!(snapshot.phase, LifecyclePhase::Shutdown);
+        assert!(snapshot.passive_readiness_worker.is_none());
+    }
+
     #[test]
     fn context_change_invalidates_coordinator_domain() {
         let bridge = AutomarkerNativeBridgeLifecycle::default();
@@ -729,6 +871,20 @@ mod tests {
         assert!(snapshot.continuity.is_none());
         assert!(snapshot.coordinator.is_none());
         assert_eq!(snapshot.gates, NativeGateState::default());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn context_change_stops_and_joins_passive_worker() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        assert!(bridge.accept_parser_evidence(Some(&scene("mech-facility")), parser_evidence()));
+        let joined = install_completed_worker(&bridge, Ok(passive_observation()));
+        assert!(bridge.reconcile_context(Some(&scene("sea-ringed-reef"))));
+        assert!(joined.load(Ordering::SeqCst));
+        let snapshot = state(&bridge);
+        assert_eq!(snapshot.phase, LifecyclePhase::Invalidated);
+        assert!(snapshot.passive_readiness_worker.is_none());
     }
 
     #[test]
@@ -811,6 +967,43 @@ mod tests {
         assert!(snapshot.gates.pinned_backend);
         assert!(snapshot.gates.checksum_helper_ready);
         assert!(!snapshot.gates.reflect_arbitrated);
+        drop(snapshot);
+        assert!(!bridge.placement_enabled());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn passive_worker_result_retains_only_readiness_and_cannot_send() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        assert!(bridge.accept_parser_evidence(Some(&scene("mech-facility")), parser_evidence()));
+        let joined = install_completed_worker(&bridge, Ok(passive_observation()));
+        assert!(bridge.poll_passive_readiness_worker());
+        assert!(joined.load(Ordering::SeqCst));
+        let snapshot = state(&bridge);
+        assert!(snapshot.passive_readiness_worker.is_none());
+        assert!(snapshot.gates.exact_local_process);
+        assert!(snapshot.gates.exact_syn_owned_tuple_epoch);
+        assert!(snapshot.gates.pinned_backend);
+        assert!(snapshot.gates.checksum_helper_ready);
+        assert!(!snapshot.gates.reflect_arbitrated);
+        drop(snapshot);
+        assert!(!bridge.placement_enabled());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn passive_worker_error_invalidates_and_joins_fail_closed() {
+        let bridge = AutomarkerNativeBridgeLifecycle::default();
+        bridge.begin_session(session());
+        assert!(bridge.accept_parser_evidence(Some(&scene("mech-facility")), parser_evidence()));
+        let joined = install_completed_worker(&bridge, Err("passive receive failed".into()));
+        assert!(!bridge.poll_passive_readiness_worker());
+        assert!(joined.load(Ordering::SeqCst));
+        let snapshot = state(&bridge);
+        assert_eq!(snapshot.phase, LifecyclePhase::Invalidated);
+        assert!(snapshot.passive_readiness_worker.is_none());
+        assert_eq!(snapshot.gates, NativeGateState::default());
         drop(snapshot);
         assert!(!bridge.placement_enabled());
     }
