@@ -335,11 +335,11 @@ impl AutomarkerConfirmationRouter {
                         continue;
                     }
                     OwnedConfirmationEventKind::RpcReturnCandidate(OwnedRpcReturnCandidate {
-                        method_id: event
-                            .provenance
-                            .route_resolved
-                            .then_some(event.provenance.method_id)
-                            .unwrap_or(0),
+                        method_id: if event.provenance.route_resolved {
+                            event.provenance.method_id
+                        } else {
+                            0
+                        },
                         route_resolved: event.provenance.route_resolved,
                         original_call_id: event.provenance.call_id.unwrap_or(0),
                         asserted_authoritative_server_decode: event
@@ -354,11 +354,11 @@ impl AutomarkerConfirmationRouter {
                     // Only this owned coordinator boundary converts absent or
                     // invalid fields into values the coordinator must reject.
                     OwnedConfirmationEventKind::MarkerAddCandidate(OwnedMarkerAddCandidate {
-                        method_id: event
-                            .provenance
-                            .route_resolved
-                            .then_some(event.provenance.method_id)
-                            .unwrap_or(0),
+                        method_id: if event.provenance.route_resolved {
+                            event.provenance.method_id
+                        } else {
+                            0
+                        },
                         marker_number: normalize_marker_number(&event),
                         marker_owner_actor_id: event.marker_owner_actor_id.unwrap_or(0),
                         position: PrivateMarkerPosition {
