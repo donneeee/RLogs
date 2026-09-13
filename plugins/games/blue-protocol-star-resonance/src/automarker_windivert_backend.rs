@@ -138,8 +138,15 @@ mod windows_backend {
         time::Duration,
     };
     use windows_sys::Win32::{
-        Foundation::{ERROR_NO_DATA, FreeLibrary, GetLastError, HANDLE, INVALID_HANDLE_VALUE},
-        System::LibraryLoader::{GetProcAddress, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR, LoadLibraryExW},
+        Foundation::{
+            CloseHandle, ERROR_IO_PENDING, ERROR_NO_DATA, FreeLibrary, GetLastError, HANDLE,
+            INVALID_HANDLE_VALUE, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
+        },
+        System::{
+            IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED},
+            LibraryLoader::{GetProcAddress, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR, LoadLibraryExW},
+            Threading::{CreateEventW, WaitForMultipleObjects},
+        },
     };
 
     pub(crate) const FLAG_SNIFF: u64 = 1;
@@ -160,6 +167,16 @@ mod windows_backend {
     type OpenFn = unsafe extern "system" fn(*const i8, i32, i16, u64) -> HANDLE;
     type RecvFn =
         unsafe extern "system" fn(HANDLE, *mut c_void, u32, *mut u32, *mut WinDivertAddress) -> i32;
+    type RecvExFn = unsafe extern "system" fn(
+        HANDLE,
+        *mut c_void,
+        u32,
+        *mut u32,
+        u64,
+        *mut WinDivertAddress,
+        *mut u32,
+        *mut OVERLAPPED,
+    ) -> i32;
     type SendFn = unsafe extern "system" fn(
         HANDLE,
         *const c_void,
@@ -178,6 +195,8 @@ mod windows_backend {
     struct Api {
         open: OpenFn,
         recv: RecvFn,
+        #[allow(dead_code)]
+        recv_ex: RecvExFn,
         send: SendFn,
         shutdown: ShutdownFn,
         close: CloseFn,
@@ -273,6 +292,7 @@ mod windows_backend {
             let api = Api {
                 open: export!("WinDivertOpen", OpenFn),
                 recv: export!("WinDivertRecv", RecvFn),
+                recv_ex: export!("WinDivertRecvEx", RecvExFn),
                 send: export!("WinDivertSend", SendFn),
                 shutdown: export!("WinDivertShutdown", ShutdownFn),
                 close: export!("WinDivertClose", CloseFn),
@@ -403,6 +423,21 @@ mod windows_backend {
     }
 
     impl WinDivertHandle {
+        /// Starts one overlapped receive while borrowing this handle.
+        ///
+        /// The returned value owns every pointer passed to WinDivertRecvEx. A
+        /// timeout or control wake does not cancel the receive and does not
+        /// call WinDivertShutdown; the caller can wait on the same operation
+        /// again. Dropping an incomplete operation cancels only that operation
+        /// and drains its completion before releasing its storage.
+        #[allow(dead_code)]
+        pub(crate) fn receive_overlapped(
+            &self,
+            maximum_bytes: usize,
+        ) -> Result<OverlappedReceive<'_>, String> {
+            OverlappedReceive::start(self, maximum_bytes)
+        }
+
         pub(crate) fn receive(
             &self,
             maximum_bytes: usize,
@@ -487,6 +522,245 @@ mod windows_backend {
             }
             Ok(value)
         }
+
+        /// Attempts to close exactly once. On failure ownership of the live
+        /// raw handle is returned to the caller rather than being discarded.
+        #[allow(dead_code)]
+        pub(crate) fn try_close(mut self) -> Result<(), (Self, String)> {
+            if self.raw.is_null() || self.raw == INVALID_HANDLE_VALUE {
+                return Ok(());
+            }
+            if unsafe { (self.loaded.api.close)(self.raw) } == 0 {
+                let error = unsafe { GetLastError() };
+                return Err((
+                    self,
+                    format!("WinDivertClose failed with Windows error {error}"),
+                ));
+            }
+            self.raw = INVALID_HANDLE_VALUE;
+            Ok(())
+        }
+    }
+
+    /// A borrowed event which can wake an overlapped receive wait without
+    /// cancelling or otherwise changing the WinDivert handle.
+    #[derive(Clone, Copy)]
+    #[allow(dead_code)]
+    pub(crate) struct ReceiveControlEvent(HANDLE);
+
+    #[allow(dead_code)]
+    impl ReceiveControlEvent {
+        /// The caller must keep `raw` valid for the duration of each wait.
+        pub(crate) unsafe fn from_raw(raw: HANDLE) -> Result<Self, &'static str> {
+            if raw.is_null() || raw == INVALID_HANDLE_VALUE {
+                return Err("receive control event handle was invalid");
+            }
+            Ok(Self(raw))
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[allow(dead_code)]
+    pub(crate) enum OverlappedReceiveWait {
+        Completed,
+        TimedOut,
+        ControlWoken,
+    }
+
+    #[allow(dead_code)]
+    pub(crate) struct OverlappedReceive<'handle> {
+        handle: &'handle WinDivertHandle,
+        bytes: Vec<u8>,
+        receive_length: Box<u32>,
+        address: Box<WinDivertAddress>,
+        address_length: Box<u32>,
+        overlapped: Box<OVERLAPPED>,
+        event: HANDLE,
+        state: OverlappedReceiveState,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[allow(dead_code)]
+    enum OverlappedReceiveState {
+        Pending,
+        Completed(usize),
+        Taken,
+    }
+
+    #[allow(dead_code)]
+    impl OverlappedReceive<'_> {
+        fn start(
+            handle: &WinDivertHandle,
+            maximum_bytes: usize,
+        ) -> Result<OverlappedReceive<'_>, String> {
+            if maximum_bytes == 0 || maximum_bytes > u32::MAX as usize {
+                return Err("WinDivertRecvEx buffer length was out of range".into());
+            }
+            let event = unsafe { CreateEventW(ptr::null(), 1, 0, ptr::null()) };
+            if event.is_null() {
+                return Err(format!(
+                    "CreateEventW failed with Windows error {}",
+                    unsafe { GetLastError() }
+                ));
+            }
+            let mut receive = OverlappedReceive {
+                handle,
+                bytes: vec![0u8; maximum_bytes],
+                receive_length: Box::new(0),
+                address: Box::new(WinDivertAddress::default()),
+                address_length: Box::new(std::mem::size_of::<WinDivertAddress>() as u32),
+                overlapped: Box::new(unsafe { std::mem::zeroed() }),
+                event,
+                state: OverlappedReceiveState::Pending,
+            };
+            receive.overlapped.hEvent = event;
+            let ok = unsafe {
+                (handle.loaded.api.recv_ex)(
+                    handle.raw,
+                    receive.bytes.as_mut_ptr().cast(),
+                    receive.bytes.len() as u32,
+                    receive.receive_length.as_mut(),
+                    0,
+                    receive.address.as_mut(),
+                    receive.address_length.as_mut(),
+                    receive.overlapped.as_mut(),
+                )
+            };
+            if ok != 0 {
+                receive.complete(*receive.receive_length as usize)?;
+                return Ok(receive);
+            }
+            let error = unsafe { GetLastError() };
+            if error != ERROR_IO_PENDING {
+                receive.state = OverlappedReceiveState::Taken;
+                return Err(format!("WinDivertRecvEx Windows error {error}"));
+            }
+            Ok(receive)
+        }
+
+        pub(crate) fn wait(
+            &mut self,
+            timeout: Duration,
+            control: Option<ReceiveControlEvent>,
+        ) -> Result<OverlappedReceiveWait, String> {
+            match self.state {
+                OverlappedReceiveState::Completed(_) => {
+                    return Ok(OverlappedReceiveWait::Completed);
+                }
+                OverlappedReceiveState::Taken => {
+                    return Err("overlapped receive result was already taken".into());
+                }
+                OverlappedReceiveState::Pending => {}
+            }
+            let handles = [self.event, control.map(|event| event.0).unwrap_or_default()];
+            let count = if control.is_some() { 2 } else { 1 };
+            let result =
+                unsafe { WaitForMultipleObjects(count, handles.as_ptr(), 0, wait_millis(timeout)) };
+            if result == WAIT_OBJECT_0 {
+                let mut transferred = 0u32;
+                if unsafe {
+                    GetOverlappedResult(
+                        self.handle.raw,
+                        self.overlapped.as_mut(),
+                        &mut transferred,
+                        0,
+                    )
+                } == 0
+                {
+                    return Err(format!(
+                        "WinDivertRecvEx completion failed with Windows error {}",
+                        unsafe { GetLastError() }
+                    ));
+                }
+                self.complete(transferred as usize)?;
+                Ok(OverlappedReceiveWait::Completed)
+            } else if control.is_some() && result == WAIT_OBJECT_0 + 1 {
+                Ok(OverlappedReceiveWait::ControlWoken)
+            } else if result == WAIT_TIMEOUT {
+                Ok(OverlappedReceiveWait::TimedOut)
+            } else if result == WAIT_FAILED {
+                Err(format!(
+                    "overlapped receive wait failed with Windows error {}",
+                    unsafe { GetLastError() }
+                ))
+            } else {
+                Err(format!(
+                    "overlapped receive wait returned unexpected status {result}"
+                ))
+            }
+        }
+
+        pub(crate) fn take_packet(
+            &mut self,
+        ) -> Result<Option<(Vec<u8>, WinDivertAddress)>, String> {
+            let OverlappedReceiveState::Completed(length) = self.state else {
+                return match self.state {
+                    OverlappedReceiveState::Pending => Ok(None),
+                    OverlappedReceiveState::Taken => {
+                        Err("overlapped receive result was already taken".into())
+                    }
+                    OverlappedReceiveState::Completed(_) => unreachable!(),
+                };
+            };
+            let mut bytes = std::mem::take(&mut self.bytes);
+            bytes.truncate(length);
+            let address = std::mem::take(self.address.as_mut());
+            self.state = OverlappedReceiveState::Taken;
+            Ok(Some((bytes, address)))
+        }
+
+        fn complete(&mut self, length: usize) -> Result<(), String> {
+            if let Err(error) =
+                validate_receive_completion(self.bytes.len(), length, *self.address_length as usize)
+            {
+                self.state = OverlappedReceiveState::Taken;
+                return Err(error.into());
+            }
+            self.state = OverlappedReceiveState::Completed(length);
+            Ok(())
+        }
+    }
+
+    impl Drop for OverlappedReceive<'_> {
+        fn drop(&mut self) {
+            if self.state == OverlappedReceiveState::Pending {
+                unsafe {
+                    // Cancellation is scoped to this OVERLAPPED operation. Do
+                    // not use WinDivertShutdown for an ordinary timeout/wake.
+                    CancelIoEx(self.handle.raw, self.overlapped.as_mut());
+                    let mut transferred = 0u32;
+                    GetOverlappedResult(
+                        self.handle.raw,
+                        self.overlapped.as_mut(),
+                        &mut transferred,
+                        1,
+                    );
+                }
+            }
+            if !self.event.is_null() {
+                unsafe { CloseHandle(self.event) };
+                self.event = ptr::null_mut();
+            }
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(super) fn wait_millis(timeout: Duration) -> u32 {
+        u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX - 1)
+    }
+
+    pub(super) fn validate_receive_completion(
+        packet_capacity: usize,
+        packet_length: usize,
+        address_length: usize,
+    ) -> Result<(), &'static str> {
+        if packet_length > packet_capacity {
+            return Err("WinDivertRecvEx returned an oversized packet");
+        }
+        if address_length != std::mem::size_of::<WinDivertAddress>() {
+            return Err("WinDivertRecvEx returned an invalid address length");
+        }
+        Ok(())
     }
 }
 
@@ -618,5 +892,46 @@ mod tests {
             .observe(event(ReflectEventKind::Open, sentinel))
             .unwrap();
         assert_eq!(inventory.affirmative(), Ok(true));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn overlapped_wait_timeout_conversion_is_bounded_and_never_infinite() {
+        use std::time::Duration;
+
+        assert_eq!(windows_backend::wait_millis(Duration::ZERO), 0);
+        assert_eq!(
+            windows_backend::wait_millis(Duration::from_millis(1234)),
+            1234
+        );
+        assert_eq!(
+            windows_backend::wait_millis(Duration::from_millis(u64::MAX)),
+            u32::MAX - 1
+        );
+        assert!(
+            unsafe { windows_backend::ReceiveControlEvent::from_raw(std::ptr::null_mut()) }
+                .is_err()
+        );
+        assert!(
+            unsafe {
+                windows_backend::ReceiveControlEvent::from_raw(
+                    windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE,
+                )
+            }
+            .is_err()
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn overlapped_receive_completion_rejects_oversize_and_address_ambiguity() {
+        let address_size = std::mem::size_of::<WinDivertAddress>();
+        assert_eq!(
+            windows_backend::validate_receive_completion(65_535, 1234, address_size),
+            Ok(())
+        );
+        assert!(windows_backend::validate_receive_completion(100, 101, address_size).is_err());
+        assert!(windows_backend::validate_receive_completion(100, 100, address_size - 1).is_err());
+        assert!(windows_backend::validate_receive_completion(100, 100, address_size + 1).is_err());
     }
 }
