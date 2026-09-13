@@ -313,6 +313,7 @@ mod windows_backend {
         }
     }
 
+    #[allow(dead_code)] // Direct tool inclusions do not wire the active worker.
     struct ReflectLifetimeMonitor {
         reflect: Arc<WinDivertHandle>,
         stop: Arc<AtomicBool>,
@@ -322,6 +323,7 @@ mod windows_backend {
         worker: Option<thread::JoinHandle<()>>,
     }
 
+    #[allow(dead_code)] // Direct tool inclusions use only open-time arbitration.
     impl ReflectLifetimeMonitor {
         fn spawn(
             reflect: Arc<WinDivertHandle>,
@@ -452,6 +454,7 @@ mod windows_backend {
         }
     }
 
+    #[allow(dead_code)] // Used by the desktop active transport, not every direct inclusion.
     fn decode_status(status: u8) -> ActiveLifetimeArbitrationStatus {
         match status {
             0 => ActiveLifetimeArbitrationStatus::Healthy,
@@ -719,6 +722,7 @@ mod windows_backend {
     }
 
     impl WinDivertHandle {
+        #[allow(dead_code)] // Direct passthrough tool inclusion has no active worker.
         pub(crate) fn active_lifetime_arbitration_status(&self) -> ActiveLifetimeArbitrationStatus {
             self.lifetime_monitor
                 .as_ref()
@@ -727,6 +731,7 @@ mod windows_backend {
                 })
         }
 
+        #[allow(dead_code)] // Direct passthrough tool inclusion has no send boundary.
         pub(crate) fn synchronize_active_lifetime_arbitration(
             &self,
         ) -> Result<ActiveLifetimeArbitrationStatus, String> {
@@ -828,10 +833,7 @@ mod windows_backend {
         /// this handle without changing bytes/metadata, then close it.
         pub(crate) fn drain_reinject_and_close(self, maximum_bytes: usize) -> Result<(), String> {
             self.shutdown_receive()?;
-            loop {
-                let Some((bytes, address)) = self.receive(maximum_bytes)? else {
-                    break;
-                };
+            while let Some((bytes, address)) = self.receive(maximum_bytes)? {
                 let sent = self.send_unchanged(&bytes, &address)?;
                 if sent != bytes.len() {
                     return Err(format!(
