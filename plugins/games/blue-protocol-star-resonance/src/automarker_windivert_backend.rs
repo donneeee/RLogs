@@ -435,7 +435,17 @@ mod windows_backend {
             &self,
             maximum_bytes: usize,
         ) -> Result<OverlappedReceive<'_>, String> {
-            OverlappedReceive::start(self, maximum_bytes)
+            OverlappedReceive::start(ReceiveHandle::Borrowed(self), maximum_bytes)
+        }
+
+        /// Starts an overlapped receive which owns a strong handle reference.
+        /// This form can safely remain pending across bounded worker wakeups.
+        #[allow(dead_code)]
+        pub(crate) fn receive_overlapped_owned(
+            self: &Arc<Self>,
+            maximum_bytes: usize,
+        ) -> Result<OverlappedReceive<'static>, String> {
+            OverlappedReceive::start(ReceiveHandle::Owned(Arc::clone(self)), maximum_bytes)
         }
 
         pub(crate) fn receive(
@@ -569,7 +579,7 @@ mod windows_backend {
 
     #[allow(dead_code)]
     pub(crate) struct OverlappedReceive<'handle> {
-        handle: &'handle WinDivertHandle,
+        handle: ReceiveHandle<'handle>,
         bytes: Vec<u8>,
         receive_length: Box<u32>,
         address: Box<WinDivertAddress>,
@@ -587,10 +597,24 @@ mod windows_backend {
         Taken,
     }
 
+    enum ReceiveHandle<'handle> {
+        Borrowed(&'handle WinDivertHandle),
+        Owned(Arc<WinDivertHandle>),
+    }
+
+    impl ReceiveHandle<'_> {
+        fn get(&self) -> &WinDivertHandle {
+            match self {
+                Self::Borrowed(handle) => handle,
+                Self::Owned(handle) => handle,
+            }
+        }
+    }
+
     #[allow(dead_code)]
     impl OverlappedReceive<'_> {
         fn start(
-            handle: &WinDivertHandle,
+            handle: ReceiveHandle<'_>,
             maximum_bytes: usize,
         ) -> Result<OverlappedReceive<'_>, String> {
             if maximum_bytes == 0 || maximum_bytes > u32::MAX as usize {
@@ -615,8 +639,8 @@ mod windows_backend {
             };
             receive.overlapped.hEvent = event;
             let ok = unsafe {
-                (handle.loaded.api.recv_ex)(
-                    handle.raw,
+                (receive.handle.get().loaded.api.recv_ex)(
+                    receive.handle.get().raw,
                     receive.bytes.as_mut_ptr().cast(),
                     receive.bytes.len() as u32,
                     receive.receive_length.as_mut(),
@@ -660,7 +684,7 @@ mod windows_backend {
                 let mut transferred = 0u32;
                 if unsafe {
                     GetOverlappedResult(
-                        self.handle.raw,
+                        self.handle.get().raw,
                         self.overlapped.as_mut(),
                         &mut transferred,
                         0,
@@ -727,10 +751,10 @@ mod windows_backend {
                 unsafe {
                     // Cancellation is scoped to this OVERLAPPED operation. Do
                     // not use WinDivertShutdown for an ordinary timeout/wake.
-                    CancelIoEx(self.handle.raw, self.overlapped.as_mut());
+                    CancelIoEx(self.handle.get().raw, self.overlapped.as_mut());
                     let mut transferred = 0u32;
                     GetOverlappedResult(
-                        self.handle.raw,
+                        self.handle.get().raw,
                         self.overlapped.as_mut(),
                         &mut transferred,
                         1,
