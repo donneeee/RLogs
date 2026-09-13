@@ -32,6 +32,8 @@ windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_System_Diagnostics_Debug",
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_Security",
+    "Win32_System_LibraryLoader",
     "Win32_System_Memory",
     "Win32_System_ProcessStatus",
     "Win32_System_Threading",
@@ -527,3 +529,7 @@ path = "tools/automarker-wire-layout-receipt.rs"
 [[bin]]
 name = "rlogs-bpsr-automarker-windows-boundary"
 path = "tools/automarker-windows-boundary.rs"
+
+[[bin]]
+name = "rlogs-bpsr-automarker-windivert-passthrough"
+path = "tools/automarker-windivert-passthrough.rs"
