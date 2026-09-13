@@ -328,6 +328,43 @@ describe("mounted automarker preset editor request ordering", () => {
     mounted.dispose();
   });
 
+  it("suppresses a delayed activation error after the selected preset and context change", async () => {
+    const catalog = view(6_525, "mech-facility", "First", 7);
+    catalog.nativeLoadSupported = true;
+    catalog.nativeLoadReason = "native_waymark_canary_available";
+    catalog.presets = [
+      catalog.presets[0]!,
+      { ...catalog.presets[0]!, presetId: "preset-6525-22222222", name: "Second" },
+    ];
+    const pending = deferred<AutomarkerNativeActivationResult>();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const mounted = mountAutomarkerPresetsSurface(container, {
+      loadPresets: async () => catalog,
+      loadObservedMarkers: async () => unavailableObserved(),
+      saveCurrent: async () => { throw new Error("not used"); },
+      loadPreset: async () => { throw new Error("not used"); },
+      activatePreset: async () => pending.promise,
+      openOverlay: async () => undefined,
+    });
+    await flushPromises();
+
+    const status = container.querySelector(".automarker-status")!;
+    const statusBeforeActivation = status.textContent;
+    [...container.querySelectorAll("button")]
+      .find((candidate) => candidate.textContent === "Place in game")!.click();
+    const select = container.querySelector("select")!;
+    select.value = catalog.presets[1]!.presetId;
+    select.dispatchEvent(new Event("change"));
+    catalog.context = { ...catalog.context!, sceneId: 6_526, mapId: 6_526 };
+    pending.reject(new Error("stale private native failure"));
+    await flushPromises();
+
+    expect(status.textContent).toBe(statusBeforeActivation);
+    expect(status.textContent).not.toContain("stale private native failure");
+    mounted.dispose();
+  });
+
   it("fails the operator placement handoff closed for the wrong build, duplicate names, or control characters", () => {
     const catalog = view(1_633, "dungeon.1633", "Opener", 1);
     const presetId = catalog.presets[0]!.presetId;

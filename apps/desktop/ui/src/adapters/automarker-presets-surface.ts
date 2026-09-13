@@ -377,6 +377,10 @@ export function mountAutomarkerPresetsSurface(
     const requestedPresetId = selectedId;
     const requestedContextKey = automarkerPresetContextKey(view);
     const requestGeneration = ++catalogRequestGeneration;
+    const requestIsCurrent = () => alive &&
+      automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration) &&
+      requestedContextKey === automarkerPresetContextKey(view) &&
+      selectedId === requestedPresetId;
     busy = true;
     render();
     try {
@@ -384,13 +388,12 @@ export function mountAutomarkerPresetsSurface(
         presetId: requestedPresetId,
         expectedContext: { ...view.context },
       });
-      if (!alive || !automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration) ||
-          requestedContextKey !== automarkerPresetContextKey(view) || selectedId !== requestedPresetId) return;
+      if (!requestIsCurrent()) return;
       status.textContent = localizer.t(result.activated
         ? "ui.automarkers.status.native_canary_armed"
         : "ui.automarkers.status.native_canary_not_ready");
     } catch (error) {
-      if (automarkerResponseIsCurrent(requestGeneration, catalogRequestGeneration)) {
+      if (requestIsCurrent()) {
         status.textContent = message(error);
       }
     } finally {
