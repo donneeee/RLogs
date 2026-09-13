@@ -59,6 +59,7 @@ if (Test-Path -LiteralPath $destinationFull) { throw "Refusing to overwrite $des
 New-Item -ItemType Directory -Path $destinationFull | Out-Null
 Copy-Item -LiteralPath (Join-Path $root 'target\release\rlogs-bpsr-automarker-windivert-passthrough.exe') -Destination $destinationFull
 Copy-Item -LiteralPath (Join-Path $root 'tools\windows\run-bpsr-automarker-windivert-passthrough.ps1') -Destination $destinationFull
+Copy-Item -LiteralPath (Join-Path $root 'tools\windows\setup-bpsr-automarker-windivert-driver.ps1') -Destination $destinationFull
 Copy-Item -LiteralPath (Join-Path $root 'docs\AUTOMARKER_WINDIVERT_PASSTHROUGH_CANARY.md') -Destination (Join-Path $destinationFull 'README.md')
 Copy-Item -LiteralPath $dll -Destination $destinationFull
 Copy-Item -LiteralPath $driver -Destination $destinationFull

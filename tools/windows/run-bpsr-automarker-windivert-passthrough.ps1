@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('DRY_RUN', 'RLOGS_WINDIVERT_BYTE_IDENTICAL_PASSTHROUGH_V1')]
+    [ValidateSet('DRY_RUN', 'RLOGS_WINDIVERT_BYTE_IDENTICAL_PASSTHROUGH_V1', 'RLOGS_WINDIVERT_BOOTSTRAP_AND_BYTE_IDENTICAL_PASSTHROUGH_V1')]
     [string]$Mode = 'DRY_RUN',
     [ValidateRange(1, 300)]
     [int]$SynWaitSeconds = 120,
@@ -38,7 +38,7 @@ if (-not $administrator) {
         '-NoProfile',
         '-ExecutionPolicy', 'Bypass',
         '-File', $PSCommandPath,
-        '-Mode', 'RLOGS_WINDIVERT_BYTE_IDENTICAL_PASSTHROUGH_V1',
+        '-Mode', $Mode,
         '-SynWaitSeconds', [string]$SynWaitSeconds,
         '-DurationSeconds', [string]$DurationSeconds,
         '-ExecutablePath', $ExecutablePath
@@ -56,8 +56,15 @@ Write-Warning 'RESEARCH PASS-THROUGH CANARY: for a short interval this diverts o
 Write-Warning 'Do not close this console while the active interval is running. Stop here unless you accept a possible disconnect caused by process/driver failure.'
 Write-Host 'Reconnect the game after the SYN wait begins. The canary refuses existing connections because it requires a fresh SYN-scoped ownership proof.'
 
+$bootstrapArguments = @()
+if ($Mode -eq 'RLOGS_WINDIVERT_BOOTSTRAP_AND_BYTE_IDENTICAL_PASSTHROUGH_V1') {
+    Write-Warning 'EXPLICIT DRIVER BOOTSTRAP: a pinned false-filter handle may install/start WinDivert and will remain open until the pass-through canary ends.'
+    $bootstrapArguments = @('--arm-driver-bootstrap', 'RLOGS_WINDIVERT_DRIVER_BOOTSTRAP_V1')
+}
+
 & $ExecutablePath `
     --arm-byte-identical-passthrough 'RLOGS_WINDIVERT_BYTE_IDENTICAL_PASSTHROUGH_V1' `
+    @bootstrapArguments `
     --process-id $games[0].Id `
     --dependency-directory $PSScriptRoot `
     --syn-wait-seconds $SynWaitSeconds `

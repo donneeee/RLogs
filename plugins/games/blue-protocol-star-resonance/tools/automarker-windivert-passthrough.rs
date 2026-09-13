@@ -10,6 +10,7 @@
 use std::{error::Error, fmt};
 
 const ARM_TOKEN: &str = "RLOGS_WINDIVERT_BYTE_IDENTICAL_PASSTHROUGH_V1";
+const BOOTSTRAP_TOKEN: &str = "RLOGS_WINDIVERT_DRIVER_BOOTSTRAP_V1";
 const MAX_PACKET_BYTES: usize = 65_535;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -139,7 +140,7 @@ mod windows {
     const WINDIVERT_FLAG_SNIFF: u64 = 1;
     const WINDIVERT_FLAG_RECV_ONLY: u64 = 4;
     const WINDIVERT_FLAG_NO_INSTALL: u64 = 16;
-    const WINDIVERT_SHUTDOWN_RECV: i32 = 0;
+    const WINDIVERT_SHUTDOWN_RECV: i32 = 0x1;
     const WINDIVERT_PARAM_QUEUE_LENGTH: i32 = 0;
     const WINDIVERT_PARAM_QUEUE_TIME: i32 = 1;
     const WINDIVERT_PARAM_QUEUE_SIZE: i32 = 2;
@@ -307,6 +308,7 @@ mod windows {
 
     struct Arguments {
         armed: bool,
+        bootstrap: bool,
         process_id: Option<u32>,
         dependency_directory: Option<PathBuf>,
         syn_wait_seconds: u64,
@@ -368,6 +370,22 @@ mod windows {
 
         // Dynamic loading occurs only after literal consent and all non-driver gates.
         let loaded = unsafe { load_pinned_api(&dll)? };
+        // In the separately armed bootstrap-and-pass-through mode, keep this
+        // non-matching handle alive for the entire canary. This is the sole
+        // call site allowed to omit NO_INSTALL. It can install/start the pinned
+        // driver, but its false filter cannot capture, block, or send traffic.
+        let bootstrap_handle = if args.bootstrap {
+            let handle = open_handle(
+                &loaded.api,
+                "false",
+                0,
+                WINDIVERT_FLAG_SNIFF | WINDIVERT_FLAG_RECV_ONLY,
+            )?;
+            configure_and_verify(&loaded.api, handle.0, &mut gates)?;
+            Some(handle)
+        } else {
+            None
+        };
         let owner = WindowsProcessSocketOwner::new(process_id)?;
         let connection =
             discover_exact_bpsr_syn_epoch(&loaded.api, &owner, process_id, args.syn_wait_seconds)?;
@@ -439,7 +457,11 @@ mod windows {
             schema_version: 1,
             artifact_kind: "sanitized-automarker-windivert-byte-identical-passthrough",
             game_build: AUTOMARKER_REQUEST_BUILD,
-            mode: "explicitly-armed",
+            mode: if args.bootstrap {
+                "explicitly-armed-bootstrap-and-passthrough"
+            } else {
+                "explicitly-armed"
+            },
             outcome: if conserved {
                 "pass"
             } else {
@@ -450,6 +472,7 @@ mod windows {
             counts: CountsReceipt::from(relay),
             invariants: InvariantReceipt::armed(conserved),
         };
+        drop(bootstrap_handle);
         write_receipt(&args.output, receipt)
     }
 
@@ -874,6 +897,7 @@ mod windows {
         fn parse(raw: Vec<OsString>) -> Result<Self, Box<dyn Error>> {
             let mut values = raw.into_iter();
             let mut armed = false;
+            let mut bootstrap = false;
             let mut dry_run = false;
             let mut process_id = None;
             let mut dependency_directory = None;
@@ -888,6 +912,9 @@ mod windows {
                 match argument.as_ref() {
                     "--arm-byte-identical-passthrough" => {
                         armed = value(&mut values)?.to_string_lossy() == ARM_TOKEN
+                    }
+                    "--arm-driver-bootstrap" => {
+                        bootstrap = value(&mut values)?.to_string_lossy() == BOOTSTRAP_TOKEN
                     }
                     "--dry-run" => dry_run = true,
                     "--process-id" => {
@@ -906,8 +933,11 @@ mod windows {
                     _ => return Err(format!("unsupported argument {argument}").into()),
                 }
             }
-            if armed == dry_run {
-                return Err("choose exactly one of literal armed mode or --dry-run".into());
+            if armed == dry_run || (bootstrap && !armed) {
+                return Err(
+                    "choose --dry-run or literal pass-through; bootstrap also requires literal pass-through consent"
+                        .into()
+                );
             }
             if !(1..=300).contains(&syn_wait_seconds) || !(1..=60).contains(&duration_seconds) {
                 return Err(
@@ -916,6 +946,7 @@ mod windows {
             }
             Ok(Self {
                 armed,
+                bootstrap,
                 process_id,
                 dependency_directory,
                 syn_wait_seconds,
