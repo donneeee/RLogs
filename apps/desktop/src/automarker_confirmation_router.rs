@@ -94,6 +94,8 @@ pub(crate) struct PrivateCorrelatedReturn {
     pub carrier_capture_sequence: u64,
     pub asserted_authoritative_server_decode: bool,
     pub decoded_as_success: bool,
+    /// Distinguishes a present empty application body from a missing body.
+    pub decoded_body_present: bool,
     pub decoded_body_length: usize,
 }
 
@@ -339,6 +341,9 @@ impl AutomarkerConfirmationRouter {
                     }
                     let target_route_authoritative = event.provenance.route_resolved
                         && event.provenance.service_id == WORLD_SERVICE_ID;
+                    let authoritative_body_decode = target_route_authoritative
+                        && event.decoded_body_present
+                        && event.asserted_authoritative_server_decode;
                     OwnedConfirmationEventKind::RpcReturnCandidate(OwnedRpcReturnCandidate {
                         method_id: if target_route_authoritative {
                             event.provenance.method_id
@@ -347,11 +352,15 @@ impl AutomarkerConfirmationRouter {
                         },
                         route_resolved: event.provenance.route_resolved,
                         original_call_id: event.provenance.call_id.unwrap_or(0),
-                        asserted_authoritative_server_decode: event
-                            .asserted_authoritative_server_decode
-                            && target_route_authoritative,
+                        asserted_authoritative_server_decode: authoritative_body_decode,
                         decoded_as_success: event.decoded_as_success,
-                        decoded_body_length: event.decoded_body_length,
+                        decoded_body_length: if event.decoded_body_present {
+                            event.decoded_body_length
+                        } else {
+                            // Missing and present-empty must never collapse at
+                            // the coordinator boundary.
+                            usize::MAX
+                        },
                     })
                 }
                 PrivateParserConfirmationEvent::MarkerAdd(event) => {
@@ -529,6 +538,7 @@ fn same_event_payload(
                 && left.asserted_authoritative_server_decode
                     == right.asserted_authoritative_server_decode
                 && left.decoded_as_success == right.decoded_as_success
+                && left.decoded_body_present == right.decoded_body_present
                 && left.decoded_body_length == right.decoded_body_length
         }
         (
@@ -638,6 +648,7 @@ mod tests {
             carrier_capture_sequence: 8,
             asserted_authoritative_server_decode: true,
             decoded_as_success: true,
+            decoded_body_present: true,
             decoded_body_length: 0,
         })
     }
@@ -999,6 +1010,83 @@ mod tests {
         assert!(wrong.route_resolved);
         assert_eq!(wrong.method_id, 0);
         assert!(!wrong.asserted_authoritative_server_decode);
+    }
+
+    #[test]
+    fn present_empty_and_missing_return_bodies_remain_distinct_and_fail_closed() {
+        let origin = Instant::now();
+        let mut router =
+            AutomarkerConfirmationRouter::begin_at("private-session".into(), 1, origin).unwrap();
+        let present_empty = successful_return(10, 1);
+        let mut missing = present_empty.clone();
+        let PrivateParserConfirmationEvent::CorrelatedReturn(missing_event) = &mut missing else {
+            unreachable!();
+        };
+        missing_event.decoded_body_present = false;
+        missing_event.provenance.capture_sequence = 11;
+        let mut same_provenance_missing = missing.clone();
+        same_provenance_missing.provenance_mut().capture_sequence = 10;
+        assert!(!same_event_payload(
+            &present_empty,
+            &same_provenance_missing
+        ));
+
+        let routed = router
+            .route_snapshot_at(
+                snapshot(vec![missing, present_empty]),
+                origin + Duration::from_micros(5),
+            )
+            .unwrap();
+        let OwnedConfirmationEventKind::RpcReturnCandidate(present_empty) = &routed[0].kind else {
+            panic!("expected present-empty Return candidate");
+        };
+        assert!(present_empty.route_resolved);
+        assert_eq!(present_empty.method_id, WORLD_USE_SLOT_METHOD_ID);
+        assert!(present_empty.asserted_authoritative_server_decode);
+        assert_eq!(present_empty.decoded_body_length, 0);
+
+        let OwnedConfirmationEventKind::RpcReturnCandidate(missing) = &routed[1].kind else {
+            panic!("expected missing-body Return candidate");
+        };
+        assert!(missing.route_resolved);
+        assert_eq!(missing.method_id, WORLD_USE_SLOT_METHOD_ID);
+        assert!(!missing.asserted_authoritative_server_decode);
+        assert_eq!(missing.decoded_body_length, usize::MAX);
+    }
+
+    #[test]
+    fn missing_return_body_conflict_keeps_batch_transactional() {
+        let origin = Instant::now();
+        let mut router =
+            AutomarkerConfirmationRouter::begin_at("private-session".into(), 1, origin).unwrap();
+        let replay = successful_return(10, 1);
+        router
+            .route_snapshot_at(
+                snapshot(vec![replay.clone()]),
+                origin + Duration::from_micros(1),
+            )
+            .unwrap();
+        let mut conflict = replay.clone();
+        let PrivateParserConfirmationEvent::CorrelatedReturn(conflict_event) = &mut conflict else {
+            unreachable!();
+        };
+        conflict_event.decoded_body_present = false;
+        let fresh = successful_return(11, 2);
+        let before_seen = router.seen_events.clone();
+        let before_frontier = router.capture_frontier.clone();
+        let before_ordinal = router.last_ordinal;
+        let before_micros = router.last_micros;
+        assert_eq!(
+            router.route_snapshot_at(
+                snapshot(vec![replay, fresh, conflict]),
+                origin + Duration::from_micros(2),
+            ),
+            Err(ConfirmationRouterError::ConflictingProvenance)
+        );
+        assert_eq!(router.seen_events, before_seen);
+        assert_eq!(router.capture_frontier, before_frontier);
+        assert_eq!(router.last_ordinal, before_ordinal);
+        assert_eq!(router.last_micros, before_micros);
     }
 
     #[test]
