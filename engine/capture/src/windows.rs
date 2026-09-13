@@ -492,6 +492,15 @@ impl WindowsProcessSocketOwner {
         self.process_id
     }
 
+    /// Returns the exact TCP four-tuples currently owned by this process,
+    /// including loopback sockets used by local routing/proxy software.
+    ///
+    /// This is a read-only IP Helper snapshot. Callers must treat the returned
+    /// endpoints as private and must not persist them in sanitized diagnostics.
+    pub fn snapshot_all_connections(&self) -> Result<Vec<TcpConnection>, CaptureError> {
+        self.snapshot_adapter_candidates()
+    }
+
     fn snapshot_ipv4(&self) -> Result<Vec<TcpConnection>, CaptureError> {
         self.snapshot_ipv4_with_loopback(false)
     }

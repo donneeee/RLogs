@@ -88,6 +88,14 @@ but no send API. `Packet.dll` send exports occur only in dependency compatibilit
 validation and are never bound or called. The repository contains no WinDivert
 implementation and no inline drop, rewrite, retransmission, or checksum engine.
 
+The passive Windows boundary diagnostic described in
+[Passive Windows automarker boundary diagnostic](AUTOMARKER_WINDOWS_BOUNDARY_DIAGNOSTIC.md)
+can now determine whether a normal request is visible on the game-owned
+loopback leg, a physical/routed leg, or both. It also reports sanitized
+connection-epoch, segmentation, retransmission, and exact 16-byte span
+reconstructability evidence. This adds observation only; it does not change
+the no-inline-transport conclusion above.
+
 ## Verdict and next evidence
 
 Application-level byte-length preservation is proven for changing marker

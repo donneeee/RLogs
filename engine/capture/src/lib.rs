@@ -196,6 +196,11 @@ impl<S: CaptureSource> ValidatedCapture<S> {
         self.source.metadata()
     }
 
+    /// Borrows the validated source for read-only adapter diagnostics.
+    pub fn source(&self) -> &S {
+        &self.source
+    }
+
     pub fn next_frame(&mut self) -> Result<Option<CapturedFrame>, CaptureError> {
         let Some(frame) = self.source.next_frame()? else {
             return Ok(None);

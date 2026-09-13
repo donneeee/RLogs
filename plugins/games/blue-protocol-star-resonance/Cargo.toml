@@ -523,3 +523,7 @@ path = "tools/marker-journal-audit.rs"
 [[bin]]
 name = "rlogs-bpsr-automarker-wire-layout-receipt"
 path = "tools/automarker-wire-layout-receipt.rs"
+
+[[bin]]
+name = "rlogs-bpsr-automarker-windows-boundary"
+path = "tools/automarker-windows-boundary.rs"
