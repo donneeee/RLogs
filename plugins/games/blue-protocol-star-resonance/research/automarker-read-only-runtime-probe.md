@@ -334,12 +334,41 @@ and values. The bounded proof is retained in
 classes remain rejected until their normal marker eligibility is separately
 proven.
 
+The marker-skill query is likewise resolved without invoking a lookup method.
+The observer follows the already class-validated current
+`PlayerSkillInputComp`, class-validates `dataMgr_` at `+0x20` as
+`SkillControlDataMgr`, then reads its `skillSlotDict_` at `+0x28` and
+`skillControlDatas_` at `+0x18`. Exact generated layouts and native lookup
+code prove a 16-byte `ZDictionary<int,int>` entry and a 24-byte
+`ZDictionary<int,SkillControlData>` entry, both following the managed-array
+vector at `+0x20`. The read-only gate bounds every container and count,
+requires each entry-array class to report rank one and the corresponding exact
+element size, rejects duplicate active keys, requires slot `201 -> 1101`,
+class-validates the resulting `SkillControlData`, and requires its `skillId_`
+at `+0x10` to remain `1101`. It repeats the entire query across the stability interval and
+requires identical manager, dictionaries, entry arrays, counts, versions,
+mapping, and resolved object. The sanitized receipt exposes only the bounded
+gate result documented in `automarker-read-only-marker-skill-proof.v1.json`;
+it never exposes addresses or dictionary contents.
+
+The party-leader query is also resolved read-only. Exact-build disassembly of
+`PlayerTeamLeaderCondition.Check` proves that leadership is the current
+`PlayerEnt.CharId` at `+0xD8` matching the first member of local attribute
+`151` (`ETeammateList`). The observer follows that same entity's
+`ZAttrCollection` at `+0x48`, reproduces the bounded native
+`ZAttrCacheSlim.TryGet` lookup for local key `0x80000097`, validates the exact
+generic attribute/list and array TypeInfo identities, and requires a positive
+current and first-member CharId match. It repeats the complete chain and
+rejects absent parties, nonleaders, duplicate keys, invalid types, torn cache
+state, or any changed root/container/value. The receipt exposes only a bounded
+gate result; it never exposes either CharId. The retained static proof is
+`automarker-read-only-party-leader-proof.v1.json`.
+
 This preflight deliberately remains blocked even when every currently
-resolvable gate passes. Exact read-only queries for current party leadership
-and non-invoking live marker-skill resolution are not yet reviewed, and no
-sanctioned one-shot Unity main-thread bridge exists. Each remains recorded as a
-separate false gate with a fixed bounded reason. The mode never calls either
-native method, creates or schedules a delegate, emits input, requests
+resolvable gate passes because no sanctioned one-shot Unity main-thread bridge
+exists. The marker-skill and party-leader gates are now live read-only results
+rather than unresolved placeholders. The mode never calls either native method, creates or
+schedules a delegate, emits input, requests
 write/debug/thread rights, modifies memory, or observes/sends packets. It is
 evidence for the next implementation boundary, not placement authority.
 

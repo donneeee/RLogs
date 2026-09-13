@@ -109,12 +109,61 @@ mod windows {
     const IL2CPP_CLASS_NAMESPACE: usize = 0x18;
     const IL2CPP_CLASS_STATIC_FIELDS: usize = 0xB8;
     const IL2CPP_CLASS_GENERIC_CONTEXT: usize = 0xC0;
+    const IL2CPP_CLASS_ELEMENT_SIZE: usize = 0x100;
+    const IL2CPP_CLASS_RANK: usize = 0x12E;
     const GENERIC_CONTEXT_INFLATED_CLASS: usize = 0x10;
     const STATIC_SINGLETON_INSTANCE: usize = 0;
     const ENTITY_MGR_PLAYER_ENT: usize = 0x18;
     const PLAYER_ENT_PURE_COMPONENTS: usize = 0x20;
     const PLAYER_ENT_SKILL_INPUT_COMP: usize = 0x128;
+    const PLAYER_ENT_ATTR_COLLECTION: usize = 0x48;
+    const PLAYER_ENT_CHAR_ID: usize = 0xD8;
+    const ATTR_COLLECTION_CACHE_SLIM: usize = 0x18;
+    const ATTR_CACHE_INDEX_PART: usize = 0;
+    const ATTR_CACHE_VALUES: usize = 0x08;
+    const ATTR_INDEX_PART_COUNT: usize = 0;
+    const ATTR_INDEX_PART_NEXT: usize = 0x08;
+    const ATTR_INDEX_PART_KEY_SEGMENTS: usize = 0x10;
+    const ATTR_INDEX_PART_VALUE_INDEX_SEGMENTS: usize = 0x110;
+    const ATTR_INDEX_PART_START_SEGMENT_MASKS: usize = 0x210;
+    const ATTR_KEY_SEGMENT_COUNT: usize = 0x20;
+    const ATTR_KEY_SEGMENT_CAPACITY: usize = 8;
+    const ATTR_SEGMENT_COUNT: usize = 32;
+    const ATTR_INDEX_PART_CAPACITY: usize = 256;
+    const MAX_ATTR_INDEX_PARTS: usize = 16;
+    const LOCAL_TEAMMATE_LIST_KEY: u32 = 0x8000_0097;
+    const VALUE_TUPLE_UINT_OBJECT_ARRAY_TYPE_INFO_RVA: usize = 0x962_E458;
+    const OBJECT_ARRAY_TYPE_INFO_RVA: usize = 0x961_3B10;
+    const ZLIST_ATTR_LONG_TYPE_INFO_RVA: usize = 0x955_E130;
+    const ZLIST_LONG_TYPE_INFO_RVA: usize = 0x95E_A320;
+    const LONG_ARRAY_TYPE_INFO_RVA: usize = 0x963_26E8;
+    const ZATTR_IS_DEFAULT: usize = 0x10;
+    const ZATTR_VALUE: usize = 0x18;
+    const ZLIST_ITEMS: usize = 0x18;
+    const ZLIST_SIZE: usize = 0x20;
+    const VALUE_TUPLE_STRIDE: usize = 0x10;
+    const VALUE_TUPLE_MASK: usize = 0;
+    const VALUE_TUPLE_OBJECT_ARRAY: usize = 0x08;
+    const MAX_REVIEWED_TEAM_MEMBERS: usize = 64;
+    const SKILL_INPUT_COMP_DATA_MGR: usize = 0x20;
     const SKILL_INPUT_COMP_MGR: usize = 0x28;
+    const SKILL_DATA_MGR_CONTROL_DATAS: usize = 0x18;
+    const SKILL_DATA_MGR_SLOT_DICT: usize = 0x28;
+    const ZDICTIONARY_BUCKETS_LENGTH: usize = 0x14;
+    const ZDICTIONARY_ENTRIES: usize = 0x20;
+    const ZDICTIONARY_COUNT: usize = 0x38;
+    const ZDICTIONARY_VERSION: usize = 0x3C;
+    const ZDICTIONARY_FREE_COUNT: usize = 0x44;
+    const MANAGED_ARRAY_LENGTH: usize = 0x18;
+    const MANAGED_ARRAY_VECTOR: usize = 0x20;
+    const ZDICTIONARY_INT_INT_ENTRY_STRIDE: usize = 0x10;
+    const ZDICTIONARY_INT_OBJECT_ENTRY_STRIDE: usize = 0x18;
+    const ZDICTIONARY_ENTRY_HASH_CODE: usize = 0;
+    const ZDICTIONARY_ENTRY_KEY: usize = 0x08;
+    const ZDICTIONARY_INT_INT_ENTRY_VALUE: usize = 0x0C;
+    const ZDICTIONARY_INT_OBJECT_ENTRY_VALUE: usize = 0x10;
+    const SKILL_CONTROL_DATA_SKILL_ID: usize = 0x10;
+    const MAX_REVIEWED_DICTIONARY_CAPACITY: usize = 16_384;
     const INDICATOR_POS: usize = 0x9C4;
     const INDICATOR_IS_ENABLE: usize = 0x10;
     const INDICATOR_IS_PC_UP_RELEASE: usize = 0x11;
@@ -319,6 +368,44 @@ mod windows {
         current_stage: usize,
         switch_state: u8,
         stage_type: u8,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    struct PartyLeaderSample {
+        player_ent: usize,
+        attr_collection: usize,
+        index_part: usize,
+        values: usize,
+        attr: usize,
+        teammate_list: usize,
+        teammate_items: usize,
+        teammate_count: usize,
+        current_char_id: i64,
+        leader_char_id: i64,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    struct MarkerSkillResolutionSample {
+        data_mgr: usize,
+        slot_dictionary: usize,
+        slot_dictionary_entries: usize,
+        slot_dictionary_count: usize,
+        slot_dictionary_version: i32,
+        control_dictionary: usize,
+        control_dictionary_entries: usize,
+        control_dictionary_count: usize,
+        control_dictionary_version: i32,
+        resolved_slot_skill_id: i32,
+        resolved_control_data: usize,
+        resolved_control_skill_id: i32,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    struct ReviewedDictionary {
+        object: usize,
+        entries: usize,
+        count: usize,
+        version: i32,
     }
 
     #[derive(Clone, Debug, Serialize)]
@@ -2750,14 +2837,46 @@ mod windows {
         );
         let first = coherent_sample_with_roots(memory, module_base);
         let first_stage = read_dungeon_stage_sample(memory, module_base);
+        let first_skill = first
+            .as_ref()
+            .map_err(|error| *error)
+            .and_then(|(roots, _)| read_marker_skill_resolution_sample(memory, roots));
+        let first_leader = first
+            .as_ref()
+            .map_err(|error| *error)
+            .and_then(|(roots, _)| read_party_leader_sample(memory, module_base, roots));
         thread::sleep(Duration::from_millis(STABILITY_SAMPLE_MILLIS));
         let second = coherent_sample_with_roots(memory, module_base);
         let second_stage = read_dungeon_stage_sample(memory, module_base);
+        let second_skill = second
+            .as_ref()
+            .map_err(|error| *error)
+            .and_then(|(roots, _)| read_marker_skill_resolution_sample(memory, roots));
+        let second_leader = second
+            .as_ref()
+            .map_err(|error| *error)
+            .and_then(|(roots, _)| read_party_leader_sample(memory, module_base, roots));
         let root_chain_class_valid = first.is_ok() && second.is_ok();
         let root_chain_stable = matches!((&first, &second), (Ok((a, _)), Ok((b, _))) if a == b);
         let lifecycle_idle =
             matches!(&second, Ok((_, state)) if !state.is_press && !state.indicator.is_enable);
         let dungeon_stage_gate = dungeon_stage_gate(&first_stage, &second_stage);
+        let marker_skill_resolution_gate = if !root_chain_stable {
+            BoundedGate {
+                proven: false,
+                reason: "unavailable-or-invalid-read-only-marker-skill-chain",
+            }
+        } else {
+            marker_skill_resolution_gate(&first_skill, &second_skill)
+        };
+        let leader_gate = if !root_chain_stable {
+            BoundedGate {
+                proven: false,
+                reason: "unavailable-or-invalid-read-only-party-leader-chain",
+            }
+        } else {
+            party_leader_gate(&first_leader, &second_leader)
+        };
 
         let (preset, preset_context_failure_reason) = match read_native_dispatch_preset_context(
             &request.rlogs_base_url,
@@ -2772,6 +2891,8 @@ mod windows {
             && lifecycle_idle
             && preset_context_current
             && dungeon_stage_gate.proven
+            && leader_gate.proven
+            && marker_skill_resolution_gate.proven
             && set_position_code.matches_reviewed_image
             && fire_indicator_code.matches_reviewed_image;
         let (scene_id, map_id, activity_family_id, marker_1_target) =
@@ -2817,14 +2938,8 @@ mod windows {
                 preset_context_current,
                 reviewed_code: [set_position_code, fire_indicator_code],
                 dungeon_stage_gate,
-                leader_gate: BoundedGate {
-                    proven: false,
-                    reason: "unresolved-no-reviewed-read-only-party-leader-query",
-                },
-                marker_skill_resolution_gate: BoundedGate {
-                    proven: false,
-                    reason: "unresolved-no-reviewed-non-invoking-live-skill-resolution",
-                },
+                leader_gate,
+                marker_skill_resolution_gate,
                 main_thread_bridge_gate: BoundedGate {
                     proven: false,
                     reason: "unresolved-no-sanctioned-one-shot-main-thread-bridge",
@@ -2860,6 +2975,436 @@ mod windows {
             switch_state: byte_at(memory, checked_add(stage_mgr, STAGE_MGR_SWITCH_STATE)?)?,
             stage_type: byte_at(memory, checked_add(current_stage, STAGE_BASE_STAGE_TYPE)?)?,
         })
+    }
+
+    fn read_marker_skill_resolution_sample(
+        memory: &impl Memory,
+        roots: &Roots,
+    ) -> Result<MarkerSkillResolutionSample, AcquireError> {
+        let data_mgr = pointer_at(
+            memory,
+            checked_add(roots.skill_input_comp, SKILL_INPUT_COMP_DATA_MGR)?,
+            true,
+        )?;
+        validate_object(memory, data_mgr, "SkillControlDataMgr", "Panda.ZGame")?;
+
+        let slot_dictionary = read_reviewed_dictionary(
+            memory,
+            pointer_at(
+                memory,
+                checked_add(data_mgr, SKILL_DATA_MGR_SLOT_DICT)?,
+                true,
+            )?,
+            ZDICTIONARY_INT_INT_ENTRY_STRIDE,
+        )?;
+        let control_dictionary = read_reviewed_dictionary(
+            memory,
+            pointer_at(
+                memory,
+                checked_add(data_mgr, SKILL_DATA_MGR_CONTROL_DATAS)?,
+                true,
+            )?,
+            ZDICTIONARY_INT_OBJECT_ENTRY_STRIDE,
+        )?;
+        let resolved_slot_skill_id =
+            unique_int_dictionary_value(memory, &slot_dictionary, MARKER_1_SLOT_ID)?;
+        if resolved_slot_skill_id != MARKER_1_SKILL_ID {
+            return Err(AcquireError::Identity);
+        }
+        let resolved_control_data =
+            unique_object_dictionary_value(memory, &control_dictionary, resolved_slot_skill_id)?;
+        validate_object(
+            memory,
+            resolved_control_data,
+            "SkillControlData",
+            "Panda.ZGame",
+        )?;
+        let resolved_control_skill_id = i32_at(
+            memory,
+            checked_add(resolved_control_data, SKILL_CONTROL_DATA_SKILL_ID)?,
+        )?;
+        if resolved_control_skill_id != MARKER_1_SKILL_ID {
+            return Err(AcquireError::Identity);
+        }
+        Ok(MarkerSkillResolutionSample {
+            data_mgr,
+            slot_dictionary: slot_dictionary.object,
+            slot_dictionary_entries: slot_dictionary.entries,
+            slot_dictionary_count: slot_dictionary.count,
+            slot_dictionary_version: slot_dictionary.version,
+            control_dictionary: control_dictionary.object,
+            control_dictionary_entries: control_dictionary.entries,
+            control_dictionary_count: control_dictionary.count,
+            control_dictionary_version: control_dictionary.version,
+            resolved_slot_skill_id,
+            resolved_control_data,
+            resolved_control_skill_id,
+        })
+    }
+
+    fn read_party_leader_sample(
+        memory: &impl Memory,
+        module_base: usize,
+        roots: &Roots,
+    ) -> Result<PartyLeaderSample, AcquireError> {
+        let player_ent = roots.player_ent;
+        let current_char_id = i64_at(memory, checked_add(player_ent, PLAYER_ENT_CHAR_ID)?)?;
+        if current_char_id <= 0 {
+            return Err(AcquireError::Identity);
+        }
+        let attr_collection = pointer_at(
+            memory,
+            checked_add(player_ent, PLAYER_ENT_ATTR_COLLECTION)?,
+            true,
+        )?;
+        validate_object(memory, attr_collection, "ZAttrCollection", "Panda.ZGame")?;
+        let cache = checked_add(attr_collection, ATTR_COLLECTION_CACHE_SLIM)?;
+        let first_index_part =
+            pointer_at(memory, checked_add(cache, ATTR_CACHE_INDEX_PART)?, true)?;
+        let values = pointer_at(memory, checked_add(cache, ATTR_CACHE_VALUES)?, true)?;
+        validate_exact_type_info_object(
+            memory,
+            module_base,
+            values,
+            VALUE_TUPLE_UINT_OBJECT_ARRAY_TYPE_INFO_RVA,
+        )?;
+
+        let (index_part, value_index) =
+            find_unique_attr_value_index(memory, first_index_part, LOCAL_TEAMMATE_LIST_KEY)?;
+        let attr = attr_value_object(memory, module_base, values, value_index)?;
+        validate_exact_type_info_object(memory, module_base, attr, ZLIST_ATTR_LONG_TYPE_INFO_RVA)?;
+        if bool_at(memory, checked_add(attr, ZATTR_IS_DEFAULT)?)? {
+            return Err(AcquireError::Unavailable);
+        }
+        let teammate_list = pointer_at(memory, checked_add(attr, ZATTR_VALUE)?, true)?;
+        validate_exact_type_info_object(
+            memory,
+            module_base,
+            teammate_list,
+            ZLIST_LONG_TYPE_INFO_RVA,
+        )?;
+        let teammate_count = nonnegative_i32_at(memory, checked_add(teammate_list, ZLIST_SIZE)?)?;
+        if teammate_count == 0 || teammate_count > MAX_REVIEWED_TEAM_MEMBERS {
+            return Err(AcquireError::Identity);
+        }
+        let teammate_items = pointer_at(memory, checked_add(teammate_list, ZLIST_ITEMS)?, true)?;
+        validate_exact_type_info_object(
+            memory,
+            module_base,
+            teammate_items,
+            LONG_ARRAY_TYPE_INFO_RVA,
+        )?;
+        let item_capacity = usize_at(memory, checked_add(teammate_items, MANAGED_ARRAY_LENGTH)?)?;
+        if item_capacity < teammate_count || item_capacity > MAX_REVIEWED_DICTIONARY_CAPACITY {
+            return Err(AcquireError::Identity);
+        }
+        let leader_char_id = i64_at(memory, checked_add(teammate_items, MANAGED_ARRAY_VECTOR)?)?;
+        if leader_char_id <= 0 {
+            return Err(AcquireError::Identity);
+        }
+        Ok(PartyLeaderSample {
+            player_ent,
+            attr_collection,
+            index_part,
+            values,
+            attr,
+            teammate_list,
+            teammate_items,
+            teammate_count,
+            current_char_id,
+            leader_char_id,
+        })
+    }
+
+    fn find_unique_attr_value_index(
+        memory: &impl Memory,
+        first_index_part: usize,
+        key: u32,
+    ) -> Result<(usize, usize), AcquireError> {
+        let start_segment = ((key >> 3) as usize) & (ATTR_SEGMENT_COUNT - 1);
+        let mut index_part = first_index_part;
+        let mut found = None;
+        for _ in 0..MAX_ATTR_INDEX_PARTS {
+            let entry_count =
+                nonnegative_i32_at(memory, checked_add(index_part, ATTR_INDEX_PART_COUNT)?)?;
+            if entry_count > ATTR_INDEX_PART_CAPACITY {
+                return Err(AcquireError::Identity);
+            }
+            let mask_offset = start_segment
+                .checked_mul(size_of::<u32>())
+                .and_then(|value| ATTR_INDEX_PART_START_SEGMENT_MASKS.checked_add(value))
+                .ok_or(AcquireError::Read)?;
+            let active_segments = u32_at(memory, checked_add(index_part, mask_offset)?)?;
+            if entry_count == 0 && active_segments != 0 {
+                return Err(AcquireError::Identity);
+            }
+            for segment in 0..ATTR_SEGMENT_COUNT {
+                if active_segments & (1u32 << segment) == 0 {
+                    continue;
+                }
+                let pointer_offset = segment
+                    .checked_mul(size_of::<usize>())
+                    .ok_or(AcquireError::Read)?;
+                let key_segment = pointer_at(
+                    memory,
+                    checked_add(
+                        index_part,
+                        ATTR_INDEX_PART_KEY_SEGMENTS
+                            .checked_add(pointer_offset)
+                            .ok_or(AcquireError::Read)?,
+                    )?,
+                    true,
+                )?;
+                let segment_count =
+                    nonnegative_i32_at(memory, checked_add(key_segment, ATTR_KEY_SEGMENT_COUNT)?)?;
+                if segment_count == 0 || segment_count > ATTR_KEY_SEGMENT_CAPACITY {
+                    return Err(AcquireError::Identity);
+                }
+                for slot in 0..segment_count {
+                    let key_offset = slot
+                        .checked_mul(size_of::<u32>())
+                        .ok_or(AcquireError::Read)?;
+                    if u32_at(memory, checked_add(key_segment, key_offset)?)? != key {
+                        continue;
+                    }
+                    let value_indices = pointer_at(
+                        memory,
+                        checked_add(
+                            index_part,
+                            ATTR_INDEX_PART_VALUE_INDEX_SEGMENTS
+                                .checked_add(pointer_offset)
+                                .ok_or(AcquireError::Read)?,
+                        )?,
+                        true,
+                    )?;
+                    let value_index = i32_at(
+                        memory,
+                        checked_add(
+                            value_indices,
+                            slot.checked_mul(size_of::<i32>())
+                                .ok_or(AcquireError::Read)?,
+                        )?,
+                    )?;
+                    if value_index < 0
+                        || found.replace((index_part, value_index as usize)).is_some()
+                    {
+                        return Err(AcquireError::Identity);
+                    }
+                }
+            }
+            let next = usize_at(memory, checked_add(index_part, ATTR_INDEX_PART_NEXT)?)?;
+            if next == 0 {
+                return found.ok_or(AcquireError::Unavailable);
+            }
+            if !plausible_pointer(next) {
+                return Err(AcquireError::Identity);
+            }
+            index_part = next;
+        }
+        Err(AcquireError::Identity)
+    }
+
+    fn attr_value_object(
+        memory: &impl Memory,
+        module_base: usize,
+        values: usize,
+        value_index: usize,
+    ) -> Result<usize, AcquireError> {
+        let group = value_index / 32;
+        let slot = value_index % 32;
+        let groups = usize_at(memory, checked_add(values, MANAGED_ARRAY_LENGTH)?)?;
+        if group >= groups || groups > MAX_REVIEWED_DICTIONARY_CAPACITY {
+            return Err(AcquireError::Identity);
+        }
+        let tuple_offset = group
+            .checked_mul(VALUE_TUPLE_STRIDE)
+            .and_then(|value| MANAGED_ARRAY_VECTOR.checked_add(value))
+            .ok_or(AcquireError::Read)?;
+        let tuple = checked_add(values, tuple_offset)?;
+        let mask = u32_at(memory, checked_add(tuple, VALUE_TUPLE_MASK)?)?;
+        if mask & (1u32 << slot) == 0 {
+            return Err(AcquireError::Identity);
+        }
+        let objects = pointer_at(memory, checked_add(tuple, VALUE_TUPLE_OBJECT_ARRAY)?, true)?;
+        validate_exact_type_info_object(memory, module_base, objects, OBJECT_ARRAY_TYPE_INFO_RVA)?;
+        let object_count = usize_at(memory, checked_add(objects, MANAGED_ARRAY_LENGTH)?)?;
+        if slot >= object_count || object_count > 32 {
+            return Err(AcquireError::Identity);
+        }
+        pointer_at(
+            memory,
+            checked_add(
+                objects,
+                MANAGED_ARRAY_VECTOR
+                    .checked_add(
+                        slot.checked_mul(size_of::<usize>())
+                            .ok_or(AcquireError::Read)?,
+                    )
+                    .ok_or(AcquireError::Read)?,
+            )?,
+            true,
+        )
+    }
+
+    fn validate_exact_type_info_object(
+        memory: &impl Memory,
+        module_base: usize,
+        object: usize,
+        type_info_rva: usize,
+    ) -> Result<(), AcquireError> {
+        let actual_class = pointer_at(memory, object, false)?;
+        let expected_class = pointer_at(memory, checked_add(module_base, type_info_rva)?, false)?;
+        (actual_class == expected_class)
+            .then_some(())
+            .ok_or(AcquireError::Identity)
+    }
+
+    fn party_leader_gate(
+        first: &Result<PartyLeaderSample, AcquireError>,
+        second: &Result<PartyLeaderSample, AcquireError>,
+    ) -> BoundedGate {
+        match (first, second) {
+            (Ok(first), Ok(second)) if first != second => BoundedGate {
+                proven: false,
+                reason: "unstable-read-only-party-leader-state",
+            },
+            (Ok(sample), Ok(_)) if sample.current_char_id == sample.leader_char_id => BoundedGate {
+                proven: true,
+                reason: "proven-read-only-current-player-is-party-leader",
+            },
+            (Ok(_), Ok(_)) => BoundedGate {
+                proven: false,
+                reason: "current-player-is-not-party-leader",
+            },
+            _ => BoundedGate {
+                proven: false,
+                reason: "unavailable-or-invalid-read-only-party-leader-chain",
+            },
+        }
+    }
+
+    fn read_reviewed_dictionary(
+        memory: &impl Memory,
+        object: usize,
+        entry_stride: usize,
+    ) -> Result<ReviewedDictionary, AcquireError> {
+        validate_object(memory, object, "ZDictionary`2", "ZUtil.Pool.Collections")?;
+        let buckets_length =
+            nonnegative_i32_at(memory, checked_add(object, ZDICTIONARY_BUCKETS_LENGTH)?)?;
+        let count = nonnegative_i32_at(memory, checked_add(object, ZDICTIONARY_COUNT)?)?;
+        let free_count = nonnegative_i32_at(memory, checked_add(object, ZDICTIONARY_FREE_COUNT)?)?;
+        if count == 0
+            || buckets_length == 0
+            || count > MAX_REVIEWED_DICTIONARY_CAPACITY
+            || buckets_length > MAX_REVIEWED_DICTIONARY_CAPACITY
+            || free_count > count
+        {
+            return Err(AcquireError::Identity);
+        }
+        let entries = pointer_at(memory, checked_add(object, ZDICTIONARY_ENTRIES)?, true)?;
+        let entries_length = usize_at(memory, checked_add(entries, MANAGED_ARRAY_LENGTH)?)?;
+        if entries_length < count || entries_length > MAX_REVIEWED_DICTIONARY_CAPACITY {
+            return Err(AcquireError::Identity);
+        }
+        let array_class = pointer_at(memory, entries, false)?;
+        if byte_at(memory, checked_add(array_class, IL2CPP_CLASS_RANK)?)? != 1
+            || nonnegative_i32_at(memory, checked_add(array_class, IL2CPP_CLASS_ELEMENT_SIZE)?)?
+                != entry_stride
+        {
+            return Err(AcquireError::Identity);
+        }
+        Ok(ReviewedDictionary {
+            object,
+            entries,
+            count,
+            version: i32_at(memory, checked_add(object, ZDICTIONARY_VERSION)?)?,
+        })
+    }
+
+    fn unique_int_dictionary_value(
+        memory: &impl Memory,
+        dictionary: &ReviewedDictionary,
+        expected_key: i32,
+    ) -> Result<i32, AcquireError> {
+        let mut found = None;
+        for index in 0..dictionary.count {
+            let entry = dictionary_entry_address(
+                dictionary.entries,
+                index,
+                ZDICTIONARY_INT_INT_ENTRY_STRIDE,
+            )?;
+            if i32_at(memory, checked_add(entry, ZDICTIONARY_ENTRY_HASH_CODE)?)? < 0
+                || i32_at(memory, checked_add(entry, ZDICTIONARY_ENTRY_KEY)?)? != expected_key
+            {
+                continue;
+            }
+            let value = i32_at(memory, checked_add(entry, ZDICTIONARY_INT_INT_ENTRY_VALUE)?)?;
+            if found.replace(value).is_some() {
+                return Err(AcquireError::Identity);
+            }
+        }
+        found.ok_or(AcquireError::Unavailable)
+    }
+
+    fn unique_object_dictionary_value(
+        memory: &impl Memory,
+        dictionary: &ReviewedDictionary,
+        expected_key: i32,
+    ) -> Result<usize, AcquireError> {
+        let mut found = None;
+        for index in 0..dictionary.count {
+            let entry = dictionary_entry_address(
+                dictionary.entries,
+                index,
+                ZDICTIONARY_INT_OBJECT_ENTRY_STRIDE,
+            )?;
+            if i32_at(memory, checked_add(entry, ZDICTIONARY_ENTRY_HASH_CODE)?)? < 0
+                || i32_at(memory, checked_add(entry, ZDICTIONARY_ENTRY_KEY)?)? != expected_key
+            {
+                continue;
+            }
+            let value = pointer_at(
+                memory,
+                checked_add(entry, ZDICTIONARY_INT_OBJECT_ENTRY_VALUE)?,
+                true,
+            )?;
+            if found.replace(value).is_some() {
+                return Err(AcquireError::Identity);
+            }
+        }
+        found.ok_or(AcquireError::Unavailable)
+    }
+
+    fn dictionary_entry_address(
+        entries: usize,
+        index: usize,
+        stride: usize,
+    ) -> Result<usize, AcquireError> {
+        let offset = index
+            .checked_mul(stride)
+            .and_then(|value| MANAGED_ARRAY_VECTOR.checked_add(value))
+            .ok_or(AcquireError::Read)?;
+        checked_add(entries, offset)
+    }
+
+    fn marker_skill_resolution_gate(
+        first: &Result<MarkerSkillResolutionSample, AcquireError>,
+        second: &Result<MarkerSkillResolutionSample, AcquireError>,
+    ) -> BoundedGate {
+        match (first, second) {
+            (Ok(first), Ok(second)) if first == second => BoundedGate {
+                proven: true,
+                reason: "proven-read-only-marker-1-slot-and-skill-resolution",
+            },
+            (Ok(_), Ok(_)) => BoundedGate {
+                proven: false,
+                reason: "unstable-read-only-marker-skill-lifecycle",
+            },
+            _ => BoundedGate {
+                proven: false,
+                reason: "unavailable-or-invalid-read-only-marker-skill-chain",
+            },
+        }
     }
 
     fn dungeon_stage_gate(
@@ -3591,6 +4136,31 @@ mod windows {
         ))
     }
 
+    fn u32_at(memory: &impl Memory, address: usize) -> Result<u32, AcquireError> {
+        let bytes = memory.read_exact(address, 4)?;
+        Ok(u32::from_le_bytes(
+            bytes.try_into().map_err(|_| AcquireError::Read)?,
+        ))
+    }
+
+    fn i64_at(memory: &impl Memory, address: usize) -> Result<i64, AcquireError> {
+        let bytes = memory.read_exact(address, 8)?;
+        Ok(i64::from_le_bytes(
+            bytes.try_into().map_err(|_| AcquireError::Read)?,
+        ))
+    }
+
+    fn nonnegative_i32_at(memory: &impl Memory, address: usize) -> Result<usize, AcquireError> {
+        usize::try_from(i32_at(memory, address)?).map_err(|_| AcquireError::Identity)
+    }
+
+    fn usize_at(memory: &impl Memory, address: usize) -> Result<usize, AcquireError> {
+        let bytes = memory.read_exact(address, size_of::<usize>())?;
+        Ok(usize::from_le_bytes(
+            bytes.try_into().map_err(|_| AcquireError::Read)?,
+        ))
+    }
+
     fn byte_at(memory: &impl Memory, address: usize) -> Result<u8, AcquireError> {
         Ok(memory.read_exact(address, 1)?[0])
     }
@@ -4009,6 +4579,12 @@ mod windows {
             let player = 0x60_0000;
             let storage = 0x70_0000;
             let comp = 0x80_0000;
+            let data_mgr = 0x85_0000;
+            let slot_dictionary = 0x86_0000;
+            let control_dictionary = 0x87_0000;
+            let slot_entries = 0x88_0000;
+            let control_entries = 0x89_0000;
+            let control_data = 0x8A_0000;
             let mgr = 0x90_0000;
             let indicator = 0x91_0000;
             let classes = [0x31_0000, 0x32_0000, 0x33_0000, 0x34_0000];
@@ -4048,6 +4624,7 @@ mod windows {
             m.ptr(player + PLAYER_ENT_SKILL_INPUT_COMP, comp);
             m.ptr(storage, classes[2]);
             m.ptr(comp, classes[3]);
+            m.ptr(comp + SKILL_INPUT_COMP_DATA_MGR, data_mgr);
             m.ptr(comp + SKILL_INPUT_COMP_MGR, mgr);
             for (i, class) in classes.iter().enumerate() {
                 m.ptr(*class + IL2CPP_CLASS_NAME, 0xA1_0000 + i * 0x100);
@@ -4055,6 +4632,85 @@ mod windows {
                 m.text(0xA1_0000 + i * 0x100, names[i]);
                 m.text(0xA2_0000 + i * 0x100, "Panda.ZGame");
             }
+            let data_mgr_class = 0x3B_0000;
+            let dictionary_class = 0x3C_0000;
+            let slot_array_class = 0x3D_0000;
+            let control_array_class = 0x3D_1000;
+            let control_data_class = 0x3E_0000;
+            m.ptr(data_mgr, data_mgr_class);
+            m.ptr(data_mgr_class + IL2CPP_CLASS_NAME, 0xA5_0000);
+            m.ptr(data_mgr_class + IL2CPP_CLASS_NAMESPACE, 0xA5_0100);
+            m.text(0xA5_0000, "SkillControlDataMgr");
+            m.text(0xA5_0100, "Panda.ZGame");
+            m.ptr(data_mgr + SKILL_DATA_MGR_SLOT_DICT, slot_dictionary);
+            m.ptr(data_mgr + SKILL_DATA_MGR_CONTROL_DATAS, control_dictionary);
+            m.ptr(dictionary_class + IL2CPP_CLASS_NAME, 0xA5_0200);
+            m.ptr(dictionary_class + IL2CPP_CLASS_NAMESPACE, 0xA5_0300);
+            m.text(0xA5_0200, "ZDictionary`2");
+            m.text(0xA5_0300, "ZUtil.Pool.Collections");
+            for (dictionary, entries, array_class, entry_stride) in [
+                (
+                    slot_dictionary,
+                    slot_entries,
+                    slot_array_class,
+                    ZDICTIONARY_INT_INT_ENTRY_STRIDE,
+                ),
+                (
+                    control_dictionary,
+                    control_entries,
+                    control_array_class,
+                    ZDICTIONARY_INT_OBJECT_ENTRY_STRIDE,
+                ),
+            ] {
+                m.ptr(dictionary, dictionary_class);
+                m.put(dictionary + ZDICTIONARY_BUCKETS_LENGTH, &1i32.to_le_bytes());
+                m.ptr(dictionary + ZDICTIONARY_ENTRIES, entries);
+                m.put(dictionary + ZDICTIONARY_COUNT, &1i32.to_le_bytes());
+                m.put(dictionary + ZDICTIONARY_VERSION, &7i32.to_le_bytes());
+                m.put(dictionary + ZDICTIONARY_FREE_COUNT, &0i32.to_le_bytes());
+                m.ptr(entries, array_class);
+                m.ptr(entries + MANAGED_ARRAY_LENGTH, 1);
+                m.put(array_class + IL2CPP_CLASS_RANK, &[1]);
+                m.put(
+                    array_class + IL2CPP_CLASS_ELEMENT_SIZE,
+                    &(entry_stride as i32).to_le_bytes(),
+                );
+            }
+            let slot_entry = slot_entries + MANAGED_ARRAY_VECTOR;
+            m.put(
+                slot_entry + ZDICTIONARY_ENTRY_HASH_CODE,
+                &201i32.to_le_bytes(),
+            );
+            m.put(
+                slot_entry + ZDICTIONARY_ENTRY_KEY,
+                &MARKER_1_SLOT_ID.to_le_bytes(),
+            );
+            m.put(
+                slot_entry + ZDICTIONARY_INT_INT_ENTRY_VALUE,
+                &MARKER_1_SKILL_ID.to_le_bytes(),
+            );
+            let control_entry = control_entries + MANAGED_ARRAY_VECTOR;
+            m.put(
+                control_entry + ZDICTIONARY_ENTRY_HASH_CODE,
+                &MARKER_1_SKILL_ID.to_le_bytes(),
+            );
+            m.put(
+                control_entry + ZDICTIONARY_ENTRY_KEY,
+                &MARKER_1_SKILL_ID.to_le_bytes(),
+            );
+            m.ptr(
+                control_entry + ZDICTIONARY_INT_OBJECT_ENTRY_VALUE,
+                control_data,
+            );
+            m.ptr(control_data, control_data_class);
+            m.ptr(control_data_class + IL2CPP_CLASS_NAME, 0xA5_0400);
+            m.ptr(control_data_class + IL2CPP_CLASS_NAMESPACE, 0xA5_0500);
+            m.text(0xA5_0400, "SkillControlData");
+            m.text(0xA5_0500, "Panda.ZGame");
+            m.put(
+                control_data + SKILL_CONTROL_DATA_SKILL_ID,
+                &MARKER_1_SKILL_ID.to_le_bytes(),
+            );
             let mgr_class = 0x35_0000;
             m.ptr(mgr, mgr_class);
             m.ptr(mgr_class + IL2CPP_CLASS_NAME, 0xA1_0400);
@@ -4210,6 +4866,93 @@ mod windows {
             m.text(0xA4_0700, "StageDungeon");
             m.text(0xA4_0800, "Panda");
             m.put(current_stage + STAGE_BASE_STAGE_TYPE, &[STAGE_TYPE_DUNGEON]);
+
+            let attr_collection = 0x94_0000;
+            let index_part = 0x95_0000;
+            let key_segment = 0x96_0000;
+            let value_indices = 0x97_0000;
+            let values = 0x98_0000;
+            let objects = 0x99_0000;
+            let attr = 0x9A_0000;
+            let teammate_list = 0x9B_0000;
+            let teammate_items = 0x9C_0000;
+            let attr_collection_class = 0x43_0000;
+            let values_class = 0x44_0000;
+            let objects_class = 0x45_0000;
+            let attr_class = 0x46_0000;
+            let list_class = 0x47_0000;
+            let long_array_class = 0x48_0000;
+            let char_id = 7_654_321i64;
+            m.ptr(player + PLAYER_ENT_ATTR_COLLECTION, attr_collection);
+            m.put(player + PLAYER_ENT_CHAR_ID, &char_id.to_le_bytes());
+            m.ptr(attr_collection, attr_collection_class);
+            m.ptr(attr_collection_class + IL2CPP_CLASS_NAME, 0xA6_0000);
+            m.ptr(attr_collection_class + IL2CPP_CLASS_NAMESPACE, 0xA6_0100);
+            m.text(0xA6_0000, "ZAttrCollection");
+            m.text(0xA6_0100, "Panda.ZGame");
+            m.ptr(
+                attr_collection + ATTR_COLLECTION_CACHE_SLIM + ATTR_CACHE_INDEX_PART,
+                index_part,
+            );
+            m.ptr(
+                attr_collection + ATTR_COLLECTION_CACHE_SLIM + ATTR_CACHE_VALUES,
+                values,
+            );
+            m.put(index_part + ATTR_INDEX_PART_COUNT, &1i32.to_le_bytes());
+            m.ptr(index_part + ATTR_INDEX_PART_NEXT, 0);
+            let start_segment =
+                ((LOCAL_TEAMMATE_LIST_KEY >> 3) as usize) & (ATTR_SEGMENT_COUNT - 1);
+            let actual_segment = start_segment;
+            m.ptr(
+                index_part + ATTR_INDEX_PART_KEY_SEGMENTS + actual_segment * size_of::<usize>(),
+                key_segment,
+            );
+            m.ptr(
+                index_part
+                    + ATTR_INDEX_PART_VALUE_INDEX_SEGMENTS
+                    + actual_segment * size_of::<usize>(),
+                value_indices,
+            );
+            m.put(
+                index_part + ATTR_INDEX_PART_START_SEGMENT_MASKS + start_segment * size_of::<u32>(),
+                &(1u32 << actual_segment).to_le_bytes(),
+            );
+            m.put(key_segment, &LOCAL_TEAMMATE_LIST_KEY.to_le_bytes());
+            m.put(key_segment + ATTR_KEY_SEGMENT_COUNT, &1i32.to_le_bytes());
+            m.put(value_indices, &0i32.to_le_bytes());
+            m.ptr(values, values_class);
+            m.ptr(
+                base + VALUE_TUPLE_UINT_OBJECT_ARRAY_TYPE_INFO_RVA,
+                values_class,
+            );
+            m.ptr(values + MANAGED_ARRAY_LENGTH, 1);
+            m.put(
+                values + MANAGED_ARRAY_VECTOR + VALUE_TUPLE_MASK,
+                &1u32.to_le_bytes(),
+            );
+            m.ptr(
+                values + MANAGED_ARRAY_VECTOR + VALUE_TUPLE_OBJECT_ARRAY,
+                objects,
+            );
+            m.ptr(objects, objects_class);
+            m.ptr(base + OBJECT_ARRAY_TYPE_INFO_RVA, objects_class);
+            m.ptr(objects + MANAGED_ARRAY_LENGTH, 32);
+            m.ptr(objects + MANAGED_ARRAY_VECTOR, attr);
+            m.ptr(attr, attr_class);
+            m.ptr(base + ZLIST_ATTR_LONG_TYPE_INFO_RVA, attr_class);
+            m.put(attr + ZATTR_IS_DEFAULT, &[0]);
+            m.ptr(attr + ZATTR_VALUE, teammate_list);
+            m.ptr(teammate_list, list_class);
+            m.ptr(base + ZLIST_LONG_TYPE_INFO_RVA, list_class);
+            m.ptr(teammate_list + ZLIST_ITEMS, teammate_items);
+            m.put(teammate_list + ZLIST_SIZE, &1i32.to_le_bytes());
+            m.ptr(teammate_items, long_array_class);
+            m.ptr(base + LONG_ARRAY_TYPE_INFO_RVA, long_array_class);
+            m.ptr(teammate_items + MANAGED_ARRAY_LENGTH, 1);
+            m.put(
+                teammate_items + MANAGED_ARRAY_VECTOR,
+                &char_id.to_le_bytes(),
+            );
             m
         }
 
@@ -4257,6 +5000,224 @@ mod windows {
             let gate = dungeon_stage_gate(&first, &second);
             assert!(gate.proven);
             assert_eq!(gate.reason, "proven-read-only-current-dungeon-stage");
+        }
+
+        #[test]
+        fn proves_marker_one_slot_and_control_data_without_invoking_game_code() {
+            let memory = valid_memory();
+            let roots = acquire_roots(&memory, 0x10_0000).unwrap();
+            let first = read_marker_skill_resolution_sample(&memory, &roots);
+            let second = read_marker_skill_resolution_sample(&memory, &roots);
+            let gate = marker_skill_resolution_gate(&first, &second);
+            assert!(gate.proven);
+            assert_eq!(
+                gate.reason,
+                "proven-read-only-marker-1-slot-and-skill-resolution"
+            );
+            let sample = first.unwrap();
+            assert_eq!(sample.resolved_slot_skill_id, MARKER_1_SKILL_ID);
+            assert_eq!(sample.resolved_control_skill_id, MARKER_1_SKILL_ID);
+        }
+
+        #[test]
+        fn proves_party_leadership_from_stable_attr_151_first_member() {
+            let memory = valid_memory();
+            let roots = acquire_roots(&memory, 0x10_0000).unwrap();
+            let first = read_party_leader_sample(&memory, 0x10_0000, &roots);
+            let second = read_party_leader_sample(&memory, 0x10_0000, &roots);
+            let gate = party_leader_gate(&first, &second);
+            assert!(gate.proven);
+            assert_eq!(
+                gate.reason,
+                "proven-read-only-current-player-is-party-leader"
+            );
+            let sample = first.unwrap();
+            assert_eq!(sample.current_char_id, 7_654_321);
+            assert_eq!(sample.leader_char_id, sample.current_char_id);
+            assert_eq!(sample.teammate_count, 1);
+        }
+
+        #[test]
+        fn party_leader_gate_rejects_a_nonleader_without_exposing_ids() {
+            let mut memory = valid_memory();
+            memory.put(
+                0x9C_0000 + MANAGED_ARRAY_VECTOR,
+                &8_765_432i64.to_le_bytes(),
+            );
+            let roots = acquire_roots(&memory, 0x10_0000).unwrap();
+            let first = read_party_leader_sample(&memory, 0x10_0000, &roots);
+            let second = read_party_leader_sample(&memory, 0x10_0000, &roots);
+            let gate = party_leader_gate(&first, &second);
+            assert!(!gate.proven);
+            assert_eq!(gate.reason, "current-player-is-not-party-leader");
+        }
+
+        #[test]
+        fn party_leader_gate_rejects_an_unstable_double_read() {
+            let memory = valid_memory();
+            let roots = acquire_roots(&memory, 0x10_0000).unwrap();
+            let first = read_party_leader_sample(&memory, 0x10_0000, &roots);
+            let mut second = first;
+            second.as_mut().unwrap().leader_char_id += 1;
+            let gate = party_leader_gate(&first, &second);
+            assert!(!gate.proven);
+            assert_eq!(gate.reason, "unstable-read-only-party-leader-state");
+        }
+
+        #[test]
+        fn party_leader_lookup_rejects_wrong_exact_attr_type() {
+            let mut memory = valid_memory();
+            memory.ptr(0x9A_0000, 0x49_0000);
+            let roots = acquire_roots(&memory, 0x10_0000).unwrap();
+            assert_eq!(
+                read_party_leader_sample(&memory, 0x10_0000, &roots),
+                Err(AcquireError::Identity)
+            );
+        }
+
+        #[test]
+        fn party_leader_lookup_rejects_missing_or_duplicate_attr_151() {
+            let mut missing = valid_memory();
+            let start_segment =
+                ((LOCAL_TEAMMATE_LIST_KEY >> 3) as usize) & (ATTR_SEGMENT_COUNT - 1);
+            missing.put(
+                0x95_0000 + ATTR_INDEX_PART_START_SEGMENT_MASKS + start_segment * size_of::<u32>(),
+                &0u32.to_le_bytes(),
+            );
+            let roots = acquire_roots(&missing, 0x10_0000).unwrap();
+            assert_eq!(
+                read_party_leader_sample(&missing, 0x10_0000, &roots),
+                Err(AcquireError::Unavailable)
+            );
+
+            let mut duplicate = valid_memory();
+            duplicate.put(
+                0x96_0000 + size_of::<u32>(),
+                &LOCAL_TEAMMATE_LIST_KEY.to_le_bytes(),
+            );
+            duplicate.put(0x96_0000 + ATTR_KEY_SEGMENT_COUNT, &2i32.to_le_bytes());
+            duplicate.put(0x97_0000 + size_of::<i32>(), &0i32.to_le_bytes());
+            let roots = acquire_roots(&duplicate, 0x10_0000).unwrap();
+            assert_eq!(
+                read_party_leader_sample(&duplicate, 0x10_0000, &roots),
+                Err(AcquireError::Identity)
+            );
+        }
+
+        #[test]
+        fn party_leader_lookup_rejects_active_segments_with_zero_entry_count() {
+            let mut memory = valid_memory();
+            memory.put(0x95_0000 + ATTR_INDEX_PART_COUNT, &0i32.to_le_bytes());
+            let roots = acquire_roots(&memory, 0x10_0000).unwrap();
+            assert_eq!(
+                read_party_leader_sample(&memory, 0x10_0000, &roots),
+                Err(AcquireError::Identity)
+            );
+        }
+
+        #[test]
+        fn marker_skill_resolution_rejects_wrong_slot_mapping() {
+            let mut memory = valid_memory();
+            let slot_entry = 0x88_0000 + MANAGED_ARRAY_VECTOR;
+            memory.put(
+                slot_entry + ZDICTIONARY_INT_INT_ENTRY_VALUE,
+                &1102i32.to_le_bytes(),
+            );
+            let roots = acquire_roots(&memory, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&memory, &roots),
+                Err(AcquireError::Identity)
+            );
+        }
+
+        #[test]
+        fn marker_skill_resolution_rejects_duplicate_active_slot_key() {
+            let mut memory = valid_memory();
+            memory.put(0x86_0000 + ZDICTIONARY_COUNT, &2i32.to_le_bytes());
+            memory.ptr(0x88_0000 + MANAGED_ARRAY_LENGTH, 2);
+            let duplicate = 0x88_0000 + MANAGED_ARRAY_VECTOR + ZDICTIONARY_INT_INT_ENTRY_STRIDE;
+            memory.put(
+                duplicate + ZDICTIONARY_ENTRY_HASH_CODE,
+                &201i32.to_le_bytes(),
+            );
+            memory.put(
+                duplicate + ZDICTIONARY_ENTRY_KEY,
+                &MARKER_1_SLOT_ID.to_le_bytes(),
+            );
+            memory.put(
+                duplicate + ZDICTIONARY_INT_INT_ENTRY_VALUE,
+                &MARKER_1_SKILL_ID.to_le_bytes(),
+            );
+            let roots = acquire_roots(&memory, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&memory, &roots),
+                Err(AcquireError::Identity)
+            );
+        }
+
+        #[test]
+        fn marker_skill_resolution_rejects_mismatched_control_data_identity() {
+            let mut memory = valid_memory();
+            memory.put(
+                0x8A_0000 + SKILL_CONTROL_DATA_SKILL_ID,
+                &1102i32.to_le_bytes(),
+            );
+            let roots = acquire_roots(&memory, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&memory, &roots),
+                Err(AcquireError::Identity)
+            );
+        }
+
+        #[test]
+        fn marker_skill_resolution_bounds_dictionary_capacity() {
+            let mut memory = valid_memory();
+            memory.put(
+                0x86_0000 + ZDICTIONARY_COUNT,
+                &(MAX_REVIEWED_DICTIONARY_CAPACITY as i32 + 1).to_le_bytes(),
+            );
+            let roots = acquire_roots(&memory, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&memory, &roots),
+                Err(AcquireError::Identity)
+            );
+        }
+
+        #[test]
+        fn marker_skill_resolution_rejects_wrong_concrete_entry_stride() {
+            let mut memory = valid_memory();
+            memory.put(
+                0x3D_0000 + IL2CPP_CLASS_ELEMENT_SIZE,
+                &(ZDICTIONARY_INT_OBJECT_ENTRY_STRIDE as i32).to_le_bytes(),
+            );
+            let roots = acquire_roots(&memory, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&memory, &roots),
+                Err(AcquireError::Identity)
+            );
+        }
+
+        #[test]
+        fn marker_skill_resolution_rejects_non_array_entry_storage() {
+            let mut memory = valid_memory();
+            memory.put(0x3D_0000 + IL2CPP_CLASS_RANK, &[0]);
+            let roots = acquire_roots(&memory, 0x10_0000).unwrap();
+            assert_eq!(
+                read_marker_skill_resolution_sample(&memory, &roots),
+                Err(AcquireError::Identity)
+            );
+        }
+
+        #[test]
+        fn marker_skill_gate_rejects_dictionary_version_change() {
+            let memory = valid_memory();
+            let roots = acquire_roots(&memory, 0x10_0000).unwrap();
+            let first = read_marker_skill_resolution_sample(&memory, &roots).unwrap();
+            let mut second = first;
+            second.slot_dictionary_version += 1;
+            let gate = marker_skill_resolution_gate(&Ok(first), &Ok(second));
+            assert!(!gate.proven);
+            assert_eq!(gate.reason, "unstable-read-only-marker-skill-lifecycle");
         }
 
         #[test]

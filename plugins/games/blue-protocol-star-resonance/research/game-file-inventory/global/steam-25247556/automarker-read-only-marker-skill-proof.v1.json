@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "build_id": "25247556",
+  "proof_kind": "exact-build-read-only-marker-skill-resolution-preflight",
+  "scope": {
+    "offline_static_analysis_only": true,
+    "runtime_probe_read_only": true,
+    "process_memory_write": false,
+    "game_method_invocation": false,
+    "packet_synthesis_or_transmission": false,
+    "runtime_activation_enabled": false
+  },
+  "inputs": {
+    "game_assembly": {
+      "byte_length": 218074672,
+      "sha256": "4a079aec0a3e51a8023aa86bbd152e12068907b65b9aafb355d20bb6d6c41fe3"
+    },
+    "recovered_metadata": {
+      "version": 31,
+      "byte_length": 28697724,
+      "sha256": "2f8213cf2a253d7a99a37b81f796e3a0162d0cf2d1ca6a2d0e0719f8f9a57779"
+    },
+    "dump_cs_sha256": "3bbc01c125dc160be85730986ebb40740dc2a078cb4bb4c5a0add00349b47a32",
+    "il2cpp_h_sha256": "75ce0d79c2995449f7200a9df03bb47e85e39494e6b6098aac64f36a62ed7f91",
+    "script_json_sha256": "84fc7707e91f1eabc4c17ea3735f387da6b9e7a26ee70a34a0c768994e1cbcd4"
+  },
+  "field_layouts": [
+    { "declaring_type": "Panda.ZGame.PlayerSkillInputComp", "field": "dataMgr_", "instance_offset_hex": "0x20", "target_class": "Panda.ZGame.SkillControlDataMgr" },
+    { "declaring_type": "Panda.ZGame.SkillControlDataMgr", "field": "skillControlDatas_", "instance_offset_hex": "0x18", "target_type": "ZUtil.Pool.Collections.ZDictionary<int, Panda.ZGame.SkillControlData>" },
+    { "declaring_type": "Panda.ZGame.SkillControlDataMgr", "field": "skillSlotDict_", "instance_offset_hex": "0x28", "target_type": "ZUtil.Pool.Collections.ZDictionary<int, int>" },
+    { "declaring_type": "Panda.ZGame.SkillControlData", "field": "skillId_", "instance_offset_hex": "0x10", "value_type": "int32" }
+  ],
+  "concrete_zdictionary_layout": {
+    "managed_object_header_bytes": 16,
+    "fields": [
+      { "field": "recyclePooledObj_", "offset_hex": "0x10", "type": "bool" },
+      { "field": "bucketsLen_", "offset_hex": "0x14", "type": "int32" },
+      { "field": "buckets_", "offset_hex": "0x18", "type": "managed int32 array pointer" },
+      { "field": "entries_", "offset_hex": "0x20", "type": "managed entry array pointer" },
+      { "field": "keys_", "offset_hex": "0x28", "type": "managed object pointer" },
+      { "field": "values_", "offset_hex": "0x30", "type": "managed object pointer" },
+      { "field": "count_", "offset_hex": "0x38", "type": "int32" },
+      { "field": "version_", "offset_hex": "0x3C", "type": "int32" },
+      { "field": "freeList_", "offset_hex": "0x40", "type": "int32" },
+      { "field": "freeCount_", "offset_hex": "0x44", "type": "int32" },
+      { "field": "comparer_", "offset_hex": "0x48", "type": "managed object pointer" }
+    ],
+    "managed_array": {
+      "length_offset_hex": "0x18",
+      "vector_offset_hex": "0x20"
+    },
+    "entry_int_int": {
+      "stride_bytes": 16,
+      "hash_code_offset_hex": "0x0",
+      "next_offset_hex": "0x4",
+      "key_offset_hex": "0x8",
+      "value_offset_hex": "0xC"
+    },
+    "entry_int_object": {
+      "stride_bytes": 24,
+      "hash_code_offset_hex": "0x0",
+      "next_offset_hex": "0x4",
+      "key_offset_hex": "0x8",
+      "value_offset_hex": "0x10"
+    }
+  },
+  "bounded_native_semantics": [
+    {
+      "identity": "Panda.ZGame.PlayerSkillInputComp.GetSkillControlData",
+      "rva_hex": "0x41739A0",
+      "byte_length": 160,
+      "sha256": "ec013bd15d129f4c24e0c3860e545c9f7afb8c890b2e94ca25b445d752d0b61d",
+      "bounded_instruction_bytes_hex": "488b592033c04889",
+      "meaning": "loads dataMgr_ from PlayerSkillInputComp offset 0x20 before resolving a skill"
+    },
+    {
+      "identity": "Panda.ZGame.SkillControlDataMgr.TryGetSkillDataBySlotId",
+      "rva_hex": "0x52BE920",
+      "byte_length": 320,
+      "sha256": "6c569240110f989523397ab7330539d621b09e7e7182f863b07805e054463db0",
+      "bounded_instruction_bytes_hex": "48837e280048896c2430746f488b6e28",
+      "meaning": "requires skillSlotDict_ at offset 0x28"
+    },
+    {
+      "identity": "Panda.ZGame.SkillControlDataMgr.TryGetSkillDataBySlotId entry extraction",
+      "rva_hex": "0x52BE9B2",
+      "bounded_instruction_bytes_hex": "488b55204885d20f84900000003b42180f83810000004c8b0d89cd30044c8bc3488b4e1848984803c08b54c22ce8",
+      "meaning": "bounds the entry index by the managed array length, extracts an int value from a 16-byte entry at vector+0xC, then resolves it through skillControlDatas_ at offset 0x18"
+    },
+    {
+      "identity": "Panda.ZGame.SkillControlDataMgr.TryGetSkillIdBySlotId",
+      "rva_hex": "0x52BEA60",
+      "byte_length": 64,
+      "sha256": "f413bcd990d8272cfacc0b30db2a42c6e684e8a8fb4b639de7794fbf9b557af3",
+      "bounded_instruction_bytes_hex": "488b4424484885c074088b401048",
+      "meaning": "returns SkillControlData.skillId_ from offset 0x10 after slot resolution"
+    },
+    {
+      "identity": "ZDictionary<int, object>.TryGetValue value extraction",
+      "rva_hex": "0x10B6833",
+      "bounded_instruction_bytes_hex": "488b4f204885c974593b4118735a48984883c002833df2df9f0800488d0440488b0cc148890b",
+      "meaning": "bounds the entry index by managed-array length and reads the object value from a 24-byte entry at vector+0x10"
+    }
+  ],
+  "runtime_acceptance_contract": [
+    "start from the already class-validated current PlayerSkillInputComp root",
+    "class-validate dataMgr_ as Panda.ZGame.SkillControlDataMgr",
+    "class-validate both dictionary objects as ZUtil.Pool.Collections.ZDictionary`2 and require each entry-array class to have rank 1 and the exact concrete 16-byte or 24-byte element size",
+    "require positive bounded bucket lengths and counts, freeCount no larger than count, and managed entry-array length at least count and no larger than 16384",
+    "scan only count entries using the exact concrete stride, reject duplicate active keys, and require skillSlotDict_[201] == 1101",
+    "require skillControlDatas_[1101] to be a class-valid Panda.ZGame.SkillControlData whose skillId_ is 1101",
+    "repeat after the stability interval and require identical manager, dictionary, entry-array, count, version, mapping, and resolved-object identity"
+  ],
+  "sanitized_receipt": {
+    "success": { "proven": true, "reason": "proven-read-only-marker-1-slot-and-skill-resolution" },
+    "failure_reasons": [
+      "unstable-read-only-marker-skill-lifecycle",
+      "unavailable-or-invalid-read-only-marker-skill-chain"
+    ],
+    "emits_runtime_addresses": false,
+    "emits_dictionary_contents": false,
+    "emits_character_or_account_identity": false
+  },
+  "decision": {
+    "slot_201_to_skill_1101_static_layout_proven": true,
+    "non_invoking_live_resolution_probe_implemented": true,
+    "game_method_invocation_enabled": false,
+    "native_placement_enabled": false
+  },
+  "privacy": {
+    "contains_raw_dump_or_full_binary": false,
+    "contains_only_bounded_instruction_bytes": true,
+    "contains_private_paths": false,
+    "contains_process_addresses": false,
+    "contains_personal_identity": false
+  }
+}

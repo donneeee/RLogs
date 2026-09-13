@@ -12,6 +12,16 @@ const dungeonProofUrl = new URL(
   import.meta.url,
 );
 const dungeonProof = JSON.parse(await readFile(fileURLToPath(dungeonProofUrl), "utf8"));
+const leaderProofUrl = new URL(
+  "../plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-25247556/automarker-read-only-party-leader-proof.v1.json",
+  import.meta.url,
+);
+const leaderProof = JSON.parse(await readFile(fileURLToPath(leaderProofUrl), "utf8"));
+const markerSkillProofUrl = new URL(
+  "../plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-25247556/automarker-read-only-marker-skill-proof.v1.json",
+  import.meta.url,
+);
+const markerSkillProof = JSON.parse(await readFile(fileURLToPath(markerSkillProofUrl), "utf8"));
 
 assert.equal(proof.schema_version, 1);
 assert.equal(proof.build_id, "25247556");
@@ -93,6 +103,62 @@ assert.doesNotMatch(
   JSON.stringify(dungeonProof),
   /[A-Z]:\\|\\\\[A-Za-z0-9._-]+\\/i,
   "dungeon-stage proof must not contain private absolute paths",
+);
+
+assert.equal(leaderProof.schema_version, 1);
+assert.equal(leaderProof.build_id, "25247556");
+assert.equal(leaderProof.proof_kind, "exact-build-read-only-current-party-leader-preflight");
+assert.equal(leaderProof.inputs.game_assembly.sha256, proof.build_identity.game_assembly.sha256);
+assert.equal(leaderProof.inputs.recovered_metadata.sha256, proof.build_identity.global_metadata.sha256);
+assert.equal(leaderProof.authoritative_game_predicate.rva_hex, "0x54215C0");
+assert.equal(leaderProof.authoritative_game_predicate.semantic_block_rva_hex, "0x5421671");
+assert.equal(leaderProof.authoritative_game_predicate.semantic_block_byte_length, 122);
+assert.match(leaderProof.authoritative_game_predicate.semantic_block_sha256, /^[0-9a-f]{64}$/);
+assert.equal(leaderProof.cache_lookup_semantics.native_try_get.rva_hex, "0x3F54D80");
+assert.equal(leaderProof.cache_lookup_semantics.local_attribute_key_hex, "0x80000097");
+assert.equal(leaderProof.runtime_acceptance_contract.length, 9);
+for (const denied of ["process_memory_write", "game_method_invocation", "runtime_activation_enabled"]) {
+  assert.equal(leaderProof.scope[denied], false, `leader proof ${denied} must stay disabled`);
+}
+assert.equal(leaderProof.privacy.contains_private_paths, false);
+assert.equal(leaderProof.privacy.contains_process_addresses, false);
+assert.equal(leaderProof.privacy.contains_personal_identity, false);
+assert.doesNotMatch(
+  JSON.stringify(leaderProof),
+  /[A-Z]:\\|\\\\[A-Za-z0-9._-]+\\/i,
+  "party-leader proof must not contain private absolute paths",
+);
+
+assert.equal(markerSkillProof.schema_version, 1);
+assert.equal(markerSkillProof.build_id, "25247556");
+assert.equal(markerSkillProof.proof_kind, "exact-build-read-only-marker-skill-resolution-preflight");
+assert.equal(markerSkillProof.inputs.game_assembly.sha256, proof.build_identity.game_assembly.sha256);
+assert.equal(markerSkillProof.inputs.recovered_metadata.sha256, proof.build_identity.global_metadata.sha256);
+assert.deepEqual(
+  markerSkillProof.field_layouts.map(({ instance_offset_hex }) => instance_offset_hex),
+  ["0x20", "0x18", "0x28", "0x10"],
+);
+assert.equal(markerSkillProof.concrete_zdictionary_layout.entry_int_int.stride_bytes, 16);
+assert.equal(markerSkillProof.concrete_zdictionary_layout.entry_int_object.stride_bytes, 24);
+assert.equal(markerSkillProof.runtime_acceptance_contract.length, 7);
+assert.deepEqual(markerSkillProof.sanitized_receipt.success, {
+  proven: true,
+  reason: "proven-read-only-marker-1-slot-and-skill-resolution",
+});
+assert.equal(markerSkillProof.decision.slot_201_to_skill_1101_static_layout_proven, true);
+assert.equal(markerSkillProof.decision.non_invoking_live_resolution_probe_implemented, true);
+assert.equal(markerSkillProof.decision.game_method_invocation_enabled, false);
+assert.equal(markerSkillProof.decision.native_placement_enabled, false);
+for (const denied of ["process_memory_write", "game_method_invocation", "packet_synthesis_or_transmission", "runtime_activation_enabled"]) {
+  assert.equal(markerSkillProof.scope[denied], false, `marker-skill proof ${denied} must stay disabled`);
+}
+assert.equal(markerSkillProof.privacy.contains_private_paths, false);
+assert.equal(markerSkillProof.privacy.contains_process_addresses, false);
+assert.equal(markerSkillProof.privacy.contains_personal_identity, false);
+assert.doesNotMatch(
+  JSON.stringify(markerSkillProof),
+  /[A-Z]:\\|\\\\[A-Za-z0-9._-]+\\/i,
+  "marker-skill proof must not contain private absolute paths",
 );
 
 console.log("validated exact-build automarker internal-route proof");

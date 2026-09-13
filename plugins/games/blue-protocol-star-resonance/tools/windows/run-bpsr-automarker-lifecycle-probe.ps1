@@ -661,22 +661,44 @@ function Assert-NativeDispatchPreflight($Value) {
         (-not [bool]$dungeonGate.proven -and [string]$dungeonGate.reason -cnotin $dungeonFalseReasons)) {
         throw 'The sanitized native-dispatch preflight has an invalid dungeon_stage_gate result.'
     }
-    $expectedGates = [ordered]@{
-        leader_gate = 'unresolved-no-reviewed-read-only-party-leader-query'
-        marker_skill_resolution_gate = 'unresolved-no-reviewed-non-invoking-live-skill-resolution'
+    $leaderGate = $Value.leader_gate
+    $leaderFalseReasons = @(
+        'unstable-read-only-party-leader-state',
+        'current-player-is-not-party-leader',
+        'unavailable-or-invalid-read-only-party-leader-chain'
+    )
+    if (-not (Test-ExactPropertySet $leaderGate @('proven', 'reason')) -or
+        $leaderGate.proven -isnot [bool] -or
+        ([bool]$leaderGate.proven -and [string]$leaderGate.reason -cne 'proven-read-only-current-player-is-party-leader') -or
+        (-not [bool]$leaderGate.proven -and [string]$leaderGate.reason -cnotin $leaderFalseReasons)) {
+        throw 'The sanitized native-dispatch preflight has an invalid leader_gate result.'
+    }
+    $expectedUnresolvedGates = [ordered]@{
         main_thread_bridge_gate = 'unresolved-no-sanctioned-one-shot-main-thread-bridge'
     }
-    foreach ($field in $expectedGates.Keys) {
+    foreach ($field in $expectedUnresolvedGates.Keys) {
         $gate = $Value.$field
         if (-not (Test-ExactPropertySet $gate @('proven', 'reason')) -or
             $gate.proven -isnot [bool] -or $gate.proven -or
-            [string]$gate.reason -cne [string]$expectedGates[$field]) {
+            [string]$gate.reason -cne [string]$expectedUnresolvedGates[$field]) {
             throw "The sanitized native-dispatch preflight has an invalid $field result."
         }
     }
+    $markerSkillGate = $Value.marker_skill_resolution_gate
+    $markerSkillFalseReasons = @(
+        'unstable-read-only-marker-skill-lifecycle',
+        'unavailable-or-invalid-read-only-marker-skill-chain'
+    )
+    if (-not (Test-ExactPropertySet $markerSkillGate @('proven', 'reason')) -or
+        $markerSkillGate.proven -isnot [bool] -or
+        ([bool]$markerSkillGate.proven -and [string]$markerSkillGate.reason -cne 'proven-read-only-marker-1-slot-and-skill-resolution') -or
+        (-not [bool]$markerSkillGate.proven -and [string]$markerSkillGate.reason -cnotin $markerSkillFalseReasons)) {
+        throw 'The sanitized native-dispatch preflight has an invalid marker_skill_resolution_gate result.'
+    }
     $computedResolvable = [bool]$Value.root_chain_class_valid -and [bool]$Value.root_chain_stable -and
         [bool]$Value.lifecycle_idle -and [bool]$Value.preset_context_current -and
-        [bool]$Value.dungeon_stage_gate.proven -and
+        [bool]$Value.dungeon_stage_gate.proven -and [bool]$Value.leader_gate.proven -and
+        [bool]$Value.marker_skill_resolution_gate.proven -and
         [bool]$Value.reviewed_code[0].matches_reviewed_image -and [bool]$Value.reviewed_code[1].matches_reviewed_image
     if ([bool]$Value.exact_image_identity -ne
         ([bool]$Value.reviewed_code[0].matches_reviewed_image -and [bool]$Value.reviewed_code[1].matches_reviewed_image) -or
@@ -1137,8 +1159,8 @@ function Invoke-LauncherSelfTest {
                 [ordered]@{ identity = 'Panda.ZGame.ZSkillInputMgr.FirePlaySkillByIndicator'; rva = '0x52E09E0'; byte_length = 208; sha256 = '6ae23a6d1f432969dd2d4c9dd4461f80b7ac6ecf5b5382526dbc00a7b6d8b9f6'; matches_reviewed_image = $true }
             )
             dungeon_stage_gate = [ordered]@{ proven = $true; reason = 'proven-read-only-current-dungeon-stage' }
-            leader_gate = [ordered]@{ proven = $false; reason = 'unresolved-no-reviewed-read-only-party-leader-query' }
-            marker_skill_resolution_gate = [ordered]@{ proven = $false; reason = 'unresolved-no-reviewed-non-invoking-live-skill-resolution' }
+            leader_gate = [ordered]@{ proven = $true; reason = 'proven-read-only-current-player-is-party-leader' }
+            marker_skill_resolution_gate = [ordered]@{ proven = $true; reason = 'proven-read-only-marker-1-slot-and-skill-resolution' }
             main_thread_bridge_gate = [ordered]@{ proven = $false; reason = 'unresolved-no-sanctioned-one-shot-main-thread-bridge' }
             all_resolvable_gates_passed = $true; activation_attempted = $false; outcome = 'blocked-unresolved-native-gates'
         }
@@ -1159,6 +1181,24 @@ function Invoke-LauncherSelfTest {
         $native.canary.native_dispatch_preflight.all_resolvable_gates_passed = $false
         [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
         [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1)))
+        $native.canary.native_dispatch_preflight.dungeon_stage_gate = [ordered]@{ proven = $true; reason = 'proven-read-only-current-dungeon-stage' }
+        $native.canary.native_dispatch_preflight.leader_gate = [ordered]@{ proven = $false; reason = 'current-player-is-not-party-leader' }
+        [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1)))
+        $native.canary.native_dispatch_preflight.leader_gate.reason = 'unreviewed-leader-result'
+        [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        $rejected = $false
+        try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
+        if (-not $rejected) { throw 'Self-test failed: an unknown party-leader gate result was accepted.' }
+        $native.canary.native_dispatch_preflight.leader_gate = [ordered]@{ proven = $true; reason = 'proven-read-only-current-player-is-party-leader' }
+        $native.canary.native_dispatch_preflight.marker_skill_resolution_gate = [ordered]@{ proven = $false; reason = 'unavailable-or-invalid-read-only-marker-skill-chain' }
+        [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1)))
+        $native.canary.native_dispatch_preflight.marker_skill_resolution_gate.reason = 'unreviewed-marker-skill-result'
+        [IO.File]::WriteAllText($receiptTestPath, ($native | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        $rejected = $false
+        try { [void](Read-ValidatedLifecycleReceipt $receiptTestPath 'native-dispatch-preflight-v1' $false 100 10 $notBefore ([DateTime]::UtcNow.AddSeconds(1))) } catch { $rejected = $true }
+        if (-not $rejected) { throw 'Self-test failed: an unknown marker-skill gate result was accepted.' }
 
         foreach ($invalid in @('wrong-schema', 'missing-critical', 'extra-critical', 'mismatched-mode', 'mismatched-invocation', 'stale-receipt', 'unsafe-policy')) {
             $candidate = New-SyntheticLifecycleReceipt $true 'marker1-closed-loop-aim-and-rollback-v1' 'passed'

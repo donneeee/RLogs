@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "build_id": "25247556",
+  "proof_kind": "exact-build-read-only-current-party-leader-preflight",
+  "scope": {
+    "offline_static_analysis_only": true,
+    "process_memory_write": false,
+    "game_method_invocation": false,
+    "runtime_activation_enabled": false
+  },
+  "inputs": {
+    "game_assembly": {
+      "byte_length": 218074672,
+      "sha256": "4a079aec0a3e51a8023aa86bbd152e12068907b65b9aafb355d20bb6d6c41fe3"
+    },
+    "recovered_metadata": {
+      "version": 31,
+      "byte_length": 28697724,
+      "sha256": "2f8213cf2a253d7a99a37b81f796e3a0162d0cf2d1ca6a2d0e0719f8f9a57779"
+    },
+    "dump_cs_sha256": "3bbc01c125dc160be85730986ebb40740dc2a078cb4bb4c5a0add00349b47a32",
+    "il2cpp_h_sha256": "75ce0d79c2995449f7200a9df03bb47e85e39494e6b6098aac64f36a62ed7f91",
+    "script_json_sha256": "84fc7707e91f1eabc4c17ea3735f387da6b9e7a26ee70a34a0c768994e1cbcd4"
+  },
+  "authoritative_game_predicate": {
+    "identity": "Panda.ZGame.PlayerTeamLeaderCondition.Check",
+    "rva_hex": "0x54215C0",
+    "semantic_block_rva_hex": "0x5421671",
+    "semantic_block_byte_length": 122,
+    "semantic_block_sha256": "c81cb47b3e8b7c714579e5c194ecfda34c82bf50da85f9d481754f040abeeb1b",
+    "bounded_semantics": [
+      "resolve the exact ZEntityMgr singleton and its current PlayerEnt",
+      "request local attribute 151 (ETeammateList); ZEntity.GetAttr sets bit 31 before consulting ZAttrCollection",
+      "require the resulting ZList<long> to be non-null and have Count greater than zero",
+      "require the backing long array to contain index zero",
+      "return true exactly when the first teammate CharId equals PlayerEnt.CharId"
+    ],
+    "method_info_slot": {
+      "rva_hex": "0x95E9460",
+      "recovered_name": "Method$Panda.ZGame.ZEntity.GetAttr<ZList<long>>()"
+    }
+  },
+  "identity_roots": {
+    "entity_manager": "reuse the exact-build class-validated ZEntityMgr singleton and current PlayerEnt chain from automarker-read-only-root-layout-proof.v1.json",
+    "required_stability": "the PlayerEnt root, attribute collection, cache nodes, attribute object, list object, backing array, current CharId, leader CharId, and list count must match across two complete reads"
+  },
+  "field_and_container_layouts": [
+    {
+      "declaring_type": "Panda.ZGame.ZEntity",
+      "field": "attrs_",
+      "instance_offset_hex": "0x48",
+      "target_type": "Panda.ZGame.ZAttrCollection"
+    },
+    {
+      "declaring_type": "Panda.ZGame.ZEntity",
+      "field": "<CharId>k__BackingField",
+      "instance_offset_hex": "0xD8",
+      "value_type": "System.Int64"
+    },
+    {
+      "declaring_type": "Panda.ZGame.ZAttrCollection",
+      "field": "cacheSlim_",
+      "instance_offset_hex": "0x18",
+      "value_type": "Zproto.ZAttrCacheSlim"
+    },
+    {
+      "declaring_type": "Zproto.ZAttrCacheSlim",
+      "field": "_indexPart",
+      "inline_offset_hex": "0x0"
+    },
+    {
+      "declaring_type": "Zproto.ZAttrCacheSlim",
+      "field": "_values",
+      "inline_offset_hex": "0x8",
+      "target_type": "System.ValueTuple<uint, object[]>[]"
+    },
+    {
+      "declaring_type": "Zproto.ZAttrCacheSlim index part",
+      "fields": {
+        "entry_count_offset_hex": "0x0",
+        "next_index_part_offset_hex": "0x8",
+        "key_segment_pointer_table_offset_hex": "0x10",
+        "value_index_pointer_table_offset_hex": "0x110",
+        "start_segment_masks_offset_hex": "0x210"
+      },
+      "capacity": 256,
+      "segment_count": 32,
+      "segment_size": 8
+    },
+    {
+      "declaring_type": "Zproto.ZAttrCacheSlim.KeySegment",
+      "fields": {
+        "keys_offset_hex": "0x0",
+        "count_offset_hex": "0x20"
+      },
+      "byte_length": 36
+    },
+    {
+      "declaring_type": "Panda.ZGame.ZAttr<ZList<long>>",
+      "fields": {
+        "is_default_offset_hex": "0x10",
+        "value_offset_hex": "0x18"
+      }
+    },
+    {
+      "declaring_type": "ZUtil.Pool.Collections.ZList<long>",
+      "fields": {
+        "items_offset_hex": "0x18",
+        "size_offset_hex": "0x20"
+      }
+    },
+    {
+      "declaring_type": "System.Int64[]",
+      "fields": {
+        "length_offset_hex": "0x18",
+        "vector_offset_hex": "0x20"
+      }
+    }
+  ],
+  "cache_lookup_semantics": {
+    "native_try_get": {
+      "rva_hex": "0x3F54D80",
+      "byte_length": 516,
+      "sha256": "3c4389aefd1bbc042750e36fc62ae570d0a3b4845fe7a048a4fe4a56b50820bf"
+    },
+    "local_attribute_key_hex": "0x80000097",
+    "start_segment_expression": "(key >> 3) & 31",
+    "acceptance": [
+      "walk only the linked index parts owned by this exact PlayerEnt attribute collection, with a fixed maximum node count",
+      "use the start segment mask to visit only native-active candidate segments",
+      "require every referenced key segment count to be in 1..8",
+      "require exactly one active key equal to 0x80000097",
+      "resolve its signed value index through the matching value-index segment and reject negative indices",
+      "bounds-check the outer ValueTuple array and its selected object[] before following the attribute object"
+    ]
+  },
+  "exact_runtime_type_info_slots": [
+    {
+      "rva_hex": "0x962E458",
+      "type": "System.ValueTuple<uint, object[]>[]"
+    },
+    {
+      "rva_hex": "0x9613B10",
+      "type": "System.Object[]"
+    },
+    {
+      "rva_hex": "0x955E130",
+      "type": "Panda.ZGame.ZListAttr<long>"
+    },
+    {
+      "rva_hex": "0x95EA320",
+      "type": "ZUtil.Pool.Collections.ZList<long>"
+    },
+    {
+      "rva_hex": "0x96326E8",
+      "type": "System.Int64[]"
+    }
+  ],
+  "runtime_acceptance_contract": [
+    "require the exact executable and GameAssembly identities before reading",
+    "reuse the current class-valid PlayerEnt from the stable exact singleton chain",
+    "class-validate ZAttrCollection by name and namespace",
+    "compare every generic and array object class pointer with its exact recovered TypeInfo slot",
+    "require a non-default, nonempty ZList<long> whose backing Int64 array capacity covers the declared count and contains index zero",
+    "require current CharId and first teammate CharId to be positive and equal",
+    "repeat the complete semantic read and require the retained PlayerEnt, attribute collection, matched index part, value containers, list containers, count, and compared scalar values to be identical",
+    "bind the result to the same current PlayerEnt root and live preset/session context used by NativeDispatchPreflight",
+    "fail closed on absent parties, leader transitions, torn cache state, invalid types, duplicate keys, excessive linked nodes, or any incomplete chain"
+  ],
+  "privacy": {
+    "contains_raw_dump_or_full_binary": false,
+    "contains_only_bounded_instruction_hashes_and_layouts": true,
+    "contains_private_paths": false,
+    "contains_process_addresses": false,
+    "contains_personal_identity": false
+  }
+}
