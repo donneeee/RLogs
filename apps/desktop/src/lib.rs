@@ -10,6 +10,7 @@ mod automarker_confirmation_ingress;
 mod automarker_confirmation_router;
 pub mod automarker_coordinate_planner;
 mod automarker_marker_confirmation_ingress;
+mod automarker_native_adapter_policy;
 mod automarker_native_bridge;
 mod automarker_native_protocol;
 #[cfg(windows)]
