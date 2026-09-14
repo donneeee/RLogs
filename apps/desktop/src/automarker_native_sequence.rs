@@ -13,6 +13,7 @@ use crate::{
     automarker_active_coordinator::{ActiveAutomarkerCanaryPhase, ActiveAutomarkerCanaryProgress},
     automarker_native_trigger::{
         NativeAutomarkerCarrierTrigger, NativeCarrierTriggerReceipt, NativeCarrierTriggerRequest,
+        NativeMarkerTarget, marker_skill_id,
     },
     automarker_presets::AutomarkerPoint,
 };
@@ -29,7 +30,7 @@ pub(crate) struct NativeSourceUnboundPrearmRequest {
     pub context_generation: u64,
     pub connection_epoch: u64,
     pub requested_micros: u64,
-    pub target: AutomarkerPoint,
+    pub target: NativeMarkerTarget,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +38,7 @@ pub(crate) enum NativeSourceUnboundPrearmReceipt {
     Armed {
         attempt_id: u64,
         installed_micros: u64,
+        target: NativeMarkerTarget,
     },
     Unavailable,
     Rejected,
@@ -110,7 +112,7 @@ pub(crate) struct NativeAutomarkerPresetSequence<P, T> {
     prearm: P,
     trigger: T,
     context: NativeSequenceContext,
-    plan: Vec<AutomarkerPoint>,
+    plan: Vec<NativeMarkerTarget>,
     next_index: usize,
     state: NativePresetSequenceState,
     next_attempt_id: u64,
@@ -147,6 +149,13 @@ impl<P: NativeAutomarkerSourceUnboundPrearm, T: NativeAutomarkerCarrierTrigger>
         {
             return Err(NativePresetSequenceError::InvalidPlan);
         }
+        let Some(plan) = plan
+            .iter()
+            .map(NativeMarkerTarget::from_saved_point)
+            .collect::<Option<Vec<_>>>()
+        else {
+            return Err(NativePresetSequenceError::InvalidPlan);
+        };
         let marker_number = plan[0].marker_number;
         Ok(Self {
             prearm,
@@ -197,13 +206,17 @@ impl<P: NativeAutomarkerSourceUnboundPrearm, T: NativeAutomarkerCarrierTrigger>
                 context_generation: context.context_generation,
                 connection_epoch: context.connection_epoch,
                 requested_micros: now_micros,
-                target: self.plan[self.next_index].clone(),
+                target: self.plan[self.next_index],
             });
         let installed_micros = match receipt {
             NativeSourceUnboundPrearmReceipt::Armed {
                 attempt_id: received_attempt,
                 installed_micros,
-            } if received_attempt == attempt_id && installed_micros >= now_micros => {
+                target,
+            } if received_attempt == attempt_id
+                && installed_micros >= now_micros
+                && target == self.plan[self.next_index] =>
+            {
                 installed_micros
             }
             NativeSourceUnboundPrearmReceipt::Unavailable => {
@@ -231,6 +244,9 @@ impl<P: NativeAutomarkerSourceUnboundPrearm, T: NativeAutomarkerCarrierTrigger>
                 .request_game_owned_carrier_after_prearm(NativeCarrierTriggerRequest {
                     prearm_attempt_id: attempt_id,
                     marker_number,
+                    marker_skill_id: marker_skill_id(marker_number)
+                        .expect("validated marker number has a reviewed skill identity"),
+                    target: self.plan[self.next_index],
                     context_generation: context.context_generation,
                     requested_micros: installed_micros,
                 });
@@ -399,6 +415,7 @@ mod tests {
                 } => NativeSourceUnboundPrearmReceipt::Armed {
                     attempt_id: request.attempt_id,
                     installed_micros: installed_micros.max(request.requested_micros),
+                    target: request.target,
                 },
                 receipt => receipt,
             }
@@ -430,6 +447,14 @@ mod tests {
                     request.prearm_attempt_id,
                     request.marker_number
                 ))
+            );
+            assert_eq!(
+                request.target,
+                NativeMarkerTarget::from_saved_point(&point(request.marker_number)).unwrap()
+            );
+            assert_eq!(
+                request.marker_skill_id,
+                marker_skill_id(request.marker_number).unwrap()
             );
             trace.push(TraceEvent::Triggered(
                 request.prearm_attempt_id,
@@ -478,6 +503,7 @@ mod tests {
                 receipt: NativeSourceUnboundPrearmReceipt::Armed {
                     attempt_id: 0,
                     installed_micros: 0,
+                    target: NativeMarkerTarget::from_saved_point(&point(1)).unwrap(),
                 },
             },
             ScriptedTrigger {
@@ -644,11 +670,58 @@ mod tests {
                 NativeSourceUnboundPrearmReceipt::Armed {
                     attempt_id: request.attempt_id + 1,
                     installed_micros: request.requested_micros,
+                    target: request.target,
                 }
             }
         }
         let mut sequence = NativeAutomarkerPresetSequence::new(
             BadPrearm(Arc::clone(&trace)),
+            trigger,
+            vec![point(1)],
+            context(),
+        )
+        .unwrap();
+        assert_eq!(
+            sequence.prearm_then_request_next_trigger(context(), 10),
+            Err(NativePresetSequenceError::PrearmReceiptMismatch)
+        );
+        assert!(
+            !trace
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|event| matches!(event, TraceEvent::Triggered(..)))
+        );
+    }
+
+    #[test]
+    fn bit_mismatched_prearm_target_fails_before_trigger() {
+        let (_, trigger, trace) = adapters();
+        struct WrongTargetPrearm(Arc<Mutex<Vec<TraceEvent>>>);
+        impl NativeAutomarkerSourceUnboundPrearm for WrongTargetPrearm {
+            fn prearm_source_unbound(
+                &mut self,
+                request: NativeSourceUnboundPrearmRequest,
+            ) -> NativeSourceUnboundPrearmReceipt {
+                self.0.lock().unwrap().push(TraceEvent::Prearmed(
+                    request.attempt_id,
+                    request.target.marker_number,
+                ));
+                NativeSourceUnboundPrearmReceipt::Armed {
+                    attempt_id: request.attempt_id,
+                    installed_micros: request.requested_micros,
+                    target: NativeMarkerTarget::from_saved_point(&AutomarkerPoint {
+                        marker_number: request.target.marker_number,
+                        x: f32::from_bits(request.target.coordinates()[0].to_bits() ^ 1),
+                        y: request.target.coordinates()[1],
+                        z: request.target.coordinates()[2],
+                    })
+                    .unwrap(),
+                }
+            }
+        }
+        let mut sequence = NativeAutomarkerPresetSequence::new(
+            WrongTargetPrearm(Arc::clone(&trace)),
             trigger,
             vec![point(1)],
             context(),
@@ -778,23 +851,28 @@ mod tests {
     }
 
     #[test]
-    fn trigger_contract_has_no_ui_input_or_player_position_dependency() {
+    fn trigger_contract_has_saved_target_but_no_ui_input_or_player_position_dependency() {
+        let target = NativeMarkerTarget::from_saved_point(&point(1)).unwrap();
         let debug = format!(
             "{:?}",
             NativeCarrierTriggerRequest {
                 prearm_attempt_id: 1,
                 marker_number: 1,
+                marker_skill_id: 1101,
+                target,
                 context_generation: 9,
                 requested_micros: 10
             }
         )
         .to_ascii_lowercase();
         for forbidden in [
-            " x:", " y:", " z:", "player", "position", "input", "menu", "packet", "address",
-            "port", "process", "pid", "call_id", "session",
+            "player", "position", "input", "menu", "packet", "address", "port", "process", "pid",
+            "call_id", "session", "socket",
         ] {
             assert!(!debug.contains(forbidden));
         }
+        assert!(debug.contains("marker_skill_id: 1101"));
+        assert_eq!(target.coordinates(), [10.0, 118.0, -1.0]);
     }
 
     #[test]
