@@ -56,6 +56,10 @@ impl NativeMarkerTarget {
             f32::from_bits(self.z_bits),
         ]
     }
+
+    pub(crate) fn coordinate_bits(self) -> [u32; 3] {
+        [self.x_bits, self.y_bits, self.z_bits]
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

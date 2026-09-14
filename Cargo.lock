@@ -3189,6 +3189,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "etherparse",
+ "hmac",
  "reqwest 0.12.28",
  "rlogs-bpsr-module-optimizer",
  "rlogs-capture",
